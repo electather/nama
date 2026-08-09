@@ -1,0 +1,3 @@
+# Deployment and exposure
+
+The supported MVP deployment is Linux with Docker Compose: one Nama application image contains the Node core and first-party plugin executables, which still run as separate subprocesses, and PostgreSQL 18 is the only separate service; persistent database data and explicit configuration are mounted, health checks and graceful `SIGTERM` are required, and logs go to stdout/stderr. Nama binds as configured but does not provision TLS, domains, tunnels, or a reverse proxy—users choose direct LAN, VPN, or their own proxy—and local development on macOS follows the same process boundaries; clustering, Kubernetes, embedded ingress, automatic certificates, and Windows production support are not release requirements.

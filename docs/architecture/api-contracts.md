@@ -1,0 +1,3 @@
+# API contracts
+
+All supported clients are generated from Buf-managed Protobuf: public services live in versioned `nama.api.v1`, plugin services in the separate `nama.plugin.v1`, and CI runs `buf lint`, `buf breaking`, and pinned code generation for TypeScript, Swift, Go, and Connect. MVP methods are unary, requests are validated at the trust boundary, Connect error codes and typed details form the error contract, fields evolve additively, and neither provider SDK types nor Better Auth wire formats enter the schema; ordinary HTTP is limited to operational endpoints and future auth callbacks that cannot be represented honestly as RPCs.

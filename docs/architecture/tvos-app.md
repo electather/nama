@@ -1,0 +1,3 @@
+# tvOS application
+
+The first native client targets tvOS 17+ in Swift and SwiftUI, uses generated Swift-Protobuf/Connect-Swift clients for every server operation, Network.framework Bonjour browsing for optional `_nama._tcp` discovery with manual URL fallback, and Keychain for the paired-device bearer token. App-owned view and domain models isolate generated messages, and a single app-owned playback adapter isolates AetherEngine; the MVP UI covers pairing, home/continue watching, library browsing, title detail, playback, track selection, progress reporting, watched status, and actionable connection/playback errors, with no generalized client framework for platforms not yet being built.

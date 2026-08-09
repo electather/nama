@@ -1,0 +1,3 @@
+# Canonical data model
+
+PostgreSQL, accessed through Drizzle ORM, stores Nama-owned users, server and plugin configuration, canonical media records, provider-to-canonical identifier mappings, library membership, playback progress, watched state, device pairing, and per-source sync replicas/cursors; provider payloads may be retained only as bounded diagnostic metadata, never as the model clients depend on. The initial schema supports the one Jellyfin vertical slice and adds columns or tables only when a shipped feature needs them, with database constraints protecting identity, uniqueness, and referential integrity and secrets encrypted or hashed according to whether the core must recover them.
