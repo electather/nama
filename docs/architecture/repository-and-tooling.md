@@ -127,7 +127,7 @@ The current development machine has Swift command-line tools but not full Xcode.
 
 ## Repository publication
 
-Implementation initializes Git with `main`, commits the locally verified baseline, creates the public `electather/nama` repository, and pushes `main`. If that remote repository already exists, implementation stops and inspects it instead of overwriting or force-pushing.
+The approved documentation is already committed to local `main`. Implementation commits the locally verified baseline on top, creates the public `electather/nama` repository, and pushes `main`. If that remote repository already exists, implementation stops and inspects it instead of overwriting or force-pushing.
 
 Publication is complete only after the initial GitHub Actions run passes. No release, package publication, deployment, or branch-protection configuration accompanies the initial push.
 
