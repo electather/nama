@@ -1,0 +1,45 @@
+version: v2
+clean: true
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/electather/nama/gen/go
+plugins:
+  - remote: buf.build/bufbuild/es:v2.13.0
+    revision: 1
+    out: gen/ts/src
+    opt:
+      - target=ts
+      - import_extension=js
+  - remote: buf.build/protocolbuffers/go:v1.36.11
+    revision: 1
+    out: gen/go
+    opt:
+      - paths=source_relative
+    exclude_types:
+      - nama.plugin.v1
+  - remote: buf.build/connectrpc/go:v1.20.0
+    revision: 1
+    out: gen/go
+    opt:
+      - paths=source_relative
+      - package_suffix
+    exclude_types:
+      - nama.plugin.v1
+  - remote: buf.build/apple/swift:v1.38.1
+    revision: 1
+    out: gen/swift/Sources/NamaAPI
+    opt:
+      - Visibility=Public
+      - FileNaming=PathToUnderscores
+    exclude_types:
+      - nama.plugin.v1
+  - remote: buf.build/connectrpc/swift:v1.2.3
+    revision: 1
+    out: gen/swift/Sources/NamaAPI
+    opt:
+      - Visibility=Public
+      - FileNaming=PathToUnderscores
+    exclude_types:
+      - nama.plugin.v1

@@ -15,6 +15,12 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  gen/ts:
+    dependencies:
+      '@bufbuild/protobuf':
+        specifier: 2.13.0
+        version: 2.13.0
+
 packages:
 
   '@biomejs/biome@2.5.7':
@@ -73,6 +79,9 @@ packages:
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [win32]
+
+  '@bufbuild/protobuf@2.13.0':
+    resolution: {integrity: sha512-acq7c49vxfm1ggJ95P70TX7ABDM0vxr1SYD3BB0o0jnBLB4OAqeHyKuN+cD3w80gXEDQ2zxHpR6CUeA+O/aU9g==}
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     resolution: {integrity: sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==}
@@ -235,6 +244,8 @@ snapshots:
 
   '@biomejs/cli-win32-x64@2.5.7':
     optional: true
+
+  '@bufbuild/protobuf@2.13.0': {}
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     optional: true

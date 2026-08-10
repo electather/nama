@@ -55,7 +55,6 @@ The baseline excludes server behavior, database access, authentication, provider
 │   └── plugin/v1/
 ├── docs/
 ├── buf.gen.yaml
-├── buf.lock
 ├── buf.yaml
 ├── compose.yaml
 ├── go.mod
@@ -79,7 +78,7 @@ Native files remain authoritative:
 - strict TypeScript configuration and Biome own TypeScript compilation and checks;
 - `go.mod` and `go.sum` own Go and Cobra dependencies;
 - the checked-in Xcode project, `gen/swift/Package.swift`, and `apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` own tvOS and Swift dependencies;
-- Buf module, lint, generation, and lock files own Protobuf; and
+- Buf module, lint, and generation files own Protobuf. `buf.lock` is generated and committed only when `buf.yaml` first declares an external schema dependency. This dependency-free baseline contains neither a hand-written empty lock nor a fake dependency; and
 - `compose.yaml` owns the PostgreSQL 18 development service.
 
 The implementation chooses exact patch releases that satisfy the accepted architecture and records them in configuration and lockfiles. Those patches are implementation data, not long-term promises in this design.
@@ -144,7 +143,7 @@ The workflow contains three jobs:
 
 At design approval, the development machine has Swift command-line tools but not full Xcode. Before the first push, every locally available check must pass. The macOS GitHub Actions job is the authoritative initial tvOS verification; once Xcode is installed locally, `mise run check` covers the complete repository. Changes to the pinned runner or Xcode pair are deliberate compatibility upgrades.
 
-As a one-time Milestone 0 acceptance check after the baseline commit but before its first push, implementation builds an unbroken Buf image from local `HEAD`. It then copies the root Buf configuration, Buf lockfile, and `proto/` into a disposable workspace, removes the committed `Check` method there, and verifies that the repository's breaking rules exit non-zero when comparing the broken temporary module with the unbroken image. The disposable workspace and image are then discarded. This proves the gate without retaining a deliberately broken fixture or modifying the working tree.
+As a one-time Milestone 0 acceptance check after the baseline commit but before its first push, implementation builds an unbroken Buf image from local `HEAD`. It then copies the root Buf configuration and `proto/` into a disposable workspace, removes the committed `Check` method there, and verifies that the repository's breaking rules exit non-zero when comparing the broken temporary module with the unbroken image. The disposable workspace and image are then discarded. This proves the gate without retaining a deliberately broken fixture or modifying the working tree.
 
 ## Repository publication
 

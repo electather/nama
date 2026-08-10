@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package nama.api.v1;
+
+enum ServingStatus {
+  SERVING_STATUS_UNSPECIFIED = 0;
+  SERVING_STATUS_SERVING = 1;
+  SERVING_STATUS_NOT_SERVING = 2;
+}
+
+message CheckRequest {}
+
+message CheckResponse {
+  ServingStatus status = 1;
+}
+
+service HealthService {
+  rpc Check(CheckRequest) returns (CheckResponse);
+}
