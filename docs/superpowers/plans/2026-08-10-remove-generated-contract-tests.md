@@ -246,7 +246,7 @@ In `2026-08-10-milestone-0-plugin-contracts-and-conformance.md`:
 
 Replace the completion claims about descriptor counts and cross-language round trips with authorization completeness, real application compilation, the CEL test, and the field-error normalizer test.
 
-- [ ] **Step 6: Prove the four plans cannot recreate generated tests**
+- [ ] **Step 6: Search for known stale generated-test references and review every plan step**
 
 Run:
 
@@ -258,7 +258,9 @@ if rg -n '^- \[ \].*(round.?trip|unknown (enum|oneof|field)|descriptor (package|
 git diff --check -- docs/architecture/api-contracts.md $plans
 ```
 
-Expected: no generated-harness path or generated-behavior test step remains. `apps/server/src/contract.test.ts` appears only for handwritten authorization, CEL, normalization, or real adapter behavior.
+Then read the complete body of all four plans, not only matching checkbox headings. Classify every test instruction as handwritten authorization, CEL, error normalization, or actual adapter behavior, and confirm that schema/generation/application-check steps contain no instruction to create a generated-binding test.
+
+Expected: the targeted searches find no known generated-harness path or generated-behavior checkbox heading. The required full-plan review finds no generated-code test requirement, and every `apps/server/src/contract.test.ts` reference belongs only to handwritten authorization, CEL, normalization, or real adapter behavior. The regexes are a stale-reference aid, not a completeness proof.
 
 - [ ] **Step 7: Run retained repository gates and inspect scope**
 

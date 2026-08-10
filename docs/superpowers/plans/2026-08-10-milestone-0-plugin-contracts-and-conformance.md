@@ -866,16 +866,37 @@ Run: `mise run format`
 Run:
 
 ```bash
+set -eu
 mise run check:contracts
 mise run check:ts
 mise run check:go
-mise run check:swift
 mise run check:docker
-mise run check
 git diff --check
+if rg -n 'nama/plugin/v1' gen/go gen/swift; then
+  printf '%s\n' 'unexpected private contract in a public generated client' >&2
+  exit 1
+else
+  search_status=$?
+  test "$search_status" -eq 1
+fi
+if rg -n -i 'jellyfin|plex|provider_item|provider_source|stream_index|file_path|session_context' proto/nama/api; then
+  printf '%s\n' 'unexpected provider-private symbol in public contract' >&2
+  exit 1
+else
+  search_status=$?
+  test "$search_status" -eq 1
+fi
+rg -n 'password|token|credential|url|headers|session_context|google\.protobuf\.Struct' proto/nama
+if test -d /Applications/Xcode_26.6.app; then
+  mise run check:swift
+  mise run check
+else
+  printf '%s\n' 'Xcode 26.6 unavailable locally; unchanged tvOS gate must pass in macOS CI'
+fi
+git status --short
 ```
 
-Expected: every command PASS. If the machine lacks the pinned Xcode, stop and use the existing macOS CI result; do not weaken the Swift check.
+Expected: every supported local gate, source search, diff check, and status check passes regardless of Xcode availability. When pinned Xcode 26.6 is present, the Swift and aggregate gates also pass. Otherwise the limitation is recorded and the unchanged tvOS build remains required in macOS CI.
 
 - [ ] **Step 14: Commit the complete contract baseline**
 
@@ -932,12 +953,38 @@ Expected: the breaking command fails and the captured output identifies removal 
 Run:
 
 ```bash
+set -eu
 mise run generate
-mise run check
+mise run check:contracts
+mise run check:ts
+mise run check:go
+mise run check:docker
+git diff --check
+if rg -n 'nama/plugin/v1' gen/go gen/swift; then
+  printf '%s\n' 'unexpected private contract in a public generated client' >&2
+  exit 1
+else
+  search_status=$?
+  test "$search_status" -eq 1
+fi
+if rg -n -i 'jellyfin|plex|provider_item|provider_source|stream_index|file_path|session_context' proto/nama/api; then
+  printf '%s\n' 'unexpected provider-private symbol in public contract' >&2
+  exit 1
+else
+  search_status=$?
+  test "$search_status" -eq 1
+fi
+rg -n 'password|token|credential|url|headers|session_context|google\.protobuf\.Struct' proto/nama
+if test -d /Applications/Xcode_26.6.app; then
+  mise run check:swift
+  mise run check
+else
+  printf '%s\n' 'Xcode 26.6 unavailable locally; unchanged tvOS gate must pass in macOS CI'
+fi
 git status --short
 ```
 
-Expected: generation is a no-op, all checks PASS, and the working tree is clean.
+Expected: generation is a no-op; every supported local gate, source search, diff check, and status check passes; and the working tree is clean. When pinned Xcode 26.6 is absent, record the limitation and require the unchanged tvOS build in macOS CI rather than running the Swift or aggregate gate locally.
 
 ## Milestone 0 Completion Gate
 
