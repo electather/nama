@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package nama.api.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+message HttpHeader {
+  string name = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string value = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 8192
+  ];
+}
+
+message BearerCredential {
+  string token = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 4096
+  ];
+  google.protobuf.Timestamp expires_at = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+}

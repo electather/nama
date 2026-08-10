@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package nama.plugin.v1;
+
+import "buf/validate/validate.proto";
+
+message HttpHeader {
+  string name = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string value = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 8192
+  ];
+}
+
+message ProviderItemReference {
+  string item_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+message ProviderSourceReference {
+  ProviderItemReference item_reference = 1 [(buf.validate.field).required = true];
+  string source_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+message ProviderPartReference {
+  ProviderSourceReference source_reference = 1 [(buf.validate.field).required = true];
+  string part_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+message ProviderTrackReference {
+  ProviderPartReference part_reference = 1 [(buf.validate.field).required = true];
+  string track_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+message ProviderArtworkReference {
+  ProviderItemReference item_reference = 1 [(buf.validate.field).required = true];
+  string artwork_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}

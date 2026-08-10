@@ -1,6 +1,9 @@
 version: v2
 modules:
   - path: proto
+deps:
+  - buf.build/bufbuild/protovalidate:435963d1631043e694e56e6bcc3c79c3
+  - buf.build/googleapis/googleapis:c17df5b2beca46928cc87d5656bd5343
 lint:
   use:
     - STANDARD
