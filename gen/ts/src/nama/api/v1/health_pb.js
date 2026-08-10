@@ -3,12 +3,14 @@
 /* eslint-disable */
 
 import { enumDesc, fileDesc, messageDesc, serviceDesc, tsEnum } from "@bufbuild/protobuf/codegenv2";
+import { file_buf_validate_validate } from "../../../buf/validate/validate_pb.js";
+import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
  * Describes the file nama/api/v1/health.proto.
  */
 export const file_nama_api_v1_health = /*@__PURE__*/
-  fileDesc("ChhuYW1hL2FwaS92MS9oZWFsdGgucHJvdG8SC25hbWEuYXBpLnYxIg4KDENoZWNrUmVxdWVzdCI7Cg1DaGVja1Jlc3BvbnNlEioKBnN0YXR1cxgBIAEoDjIaLm5hbWEuYXBpLnYxLlNlcnZpbmdTdGF0dXMqawoNU2VydmluZ1N0YXR1cxIeChpTRVJWSU5HX1NUQVRVU19VTlNQRUNJRklFRBAAEhoKFlNFUlZJTkdfU1RBVFVTX1NFUlZJTkcQARIeChpTRVJWSU5HX1NUQVRVU19OT1RfU0VSVklORxACMk8KDUhlYWx0aFNlcnZpY2USPgoFQ2hlY2sSGS5uYW1hLmFwaS52MS5DaGVja1JlcXVlc3QaGi5uYW1hLmFwaS52MS5DaGVja1Jlc3BvbnNlQqEBCg9jb20ubmFtYS5hcGkudjFCC0hlYWx0aFByb3RvUAFaM2dpdGh1Yi5jb20vZWxlY3RhdGhlci9uYW1hL2dlbi9nby9uYW1hL2FwaS92MTthcGl2MaICA05BWKoCC05hbWEuQXBpLlYxygILTmFtYVxBcGlcVjHiAhdOYW1hXEFwaVxWMVxHUEJNZXRhZGF0YeoCDU5hbWE6OkFwaTo6VjFiBnByb3RvMw");
+  fileDesc("ChhuYW1hL2FwaS92MS9oZWFsdGgucHJvdG8SC25hbWEuYXBpLnYxIg4KDENoZWNrUmVxdWVzdCLMAQoNQ2hlY2tSZXNwb25zZRI0CgZzdGF0dXMYASABKA4yGi5uYW1hLmFwaS52MS5TZXJ2aW5nU3RhdHVzQgi6SAWCAQIgABIiCg5zZXJ2ZXJfdmVyc2lvbhgCIAEoCUIKukgHcgUQARiAAhITCgtpbml0aWFsaXplZBgDIAEoCBINCgVyZWFkeRgEIAEoCBI9Cg9kYXRhYmFzZV9zdGF0dXMYBSABKA4yGi5uYW1hLmFwaS52MS5TZXJ2aW5nU3RhdHVzQgi6SAWCAQIgACK9AQoTRGlhZ25vc3RpY0NvbXBvbmVudBIYCgRuYW1lGAEgASgJQgq6SAdyBRABGIACEjQKBnN0YXR1cxgCIAEoDjIaLm5hbWEuYXBpLnYxLlNlcnZpbmdTdGF0dXNCCLpIBYIBAiAAEhsKB3N1bW1hcnkYAyABKAlCCrpIB3IFEAEYgAISOQoKY2hlY2tlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBCCbpIBsgBAbIBACIXChVHZXREaWFnbm9zdGljc1JlcXVlc3QingEKFkdldERpYWdub3N0aWNzUmVzcG9uc2USIgoOc2VydmVyX3ZlcnNpb24YASABKAlCCrpIB3IFEAEYgAISHgoKcmVxdWVzdF9pZBgCIAEoCUIKukgHcgUQARiAAhJACgpjb21wb25lbnRzGAMgAygLMiAubmFtYS5hcGkudjEuRGlhZ25vc3RpY0NvbXBvbmVudEIKukgHkgEECAIQZiprCg1TZXJ2aW5nU3RhdHVzEh4KGlNFUlZJTkdfU1RBVFVTX1VOU1BFQ0lGSUVEEAASGgoWU0VSVklOR19TVEFUVVNfU0VSVklORxABEh4KGlNFUlZJTkdfU1RBVFVTX05PVF9TRVJWSU5HEAIyqgEKDUhlYWx0aFNlcnZpY2USPgoFQ2hlY2sSGS5uYW1hLmFwaS52MS5DaGVja1JlcXVlc3QaGi5uYW1hLmFwaS52MS5DaGVja1Jlc3BvbnNlElkKDkdldERpYWdub3N0aWNzEiIubmFtYS5hcGkudjEuR2V0RGlhZ25vc3RpY3NSZXF1ZXN0GiMubmFtYS5hcGkudjEuR2V0RGlhZ25vc3RpY3NSZXNwb25zZUKhAQoPY29tLm5hbWEuYXBpLnYxQgtIZWFsdGhQcm90b1ABWjNnaXRodWIuY29tL2VsZWN0YXRoZXIvbmFtYS9nZW4vZ28vbmFtYS9hcGkvdjE7YXBpdjGiAgNOQViqAgtOYW1hLkFwaS5WMcoCC05hbWFcQXBpXFYx4gIXTmFtYVxBcGlcVjFcR1BCTWV0YWRhdGHqAg1OYW1hOjpBcGk6OlYxYgZwcm90bzM", [file_buf_validate_validate, file_google_protobuf_timestamp]);
 
 /**
  * Describes the message nama.api.v1.CheckRequest.
@@ -23,6 +25,27 @@ export const CheckRequestSchema = /*@__PURE__*/
  */
 export const CheckResponseSchema = /*@__PURE__*/
   messageDesc(file_nama_api_v1_health, 1);
+
+/**
+ * Describes the message nama.api.v1.DiagnosticComponent.
+ * Use `create(DiagnosticComponentSchema)` to create a new message.
+ */
+export const DiagnosticComponentSchema = /*@__PURE__*/
+  messageDesc(file_nama_api_v1_health, 2);
+
+/**
+ * Describes the message nama.api.v1.GetDiagnosticsRequest.
+ * Use `create(GetDiagnosticsRequestSchema)` to create a new message.
+ */
+export const GetDiagnosticsRequestSchema = /*@__PURE__*/
+  messageDesc(file_nama_api_v1_health, 3);
+
+/**
+ * Describes the message nama.api.v1.GetDiagnosticsResponse.
+ * Use `create(GetDiagnosticsResponseSchema)` to create a new message.
+ */
+export const GetDiagnosticsResponseSchema = /*@__PURE__*/
+  messageDesc(file_nama_api_v1_health, 4);
 
 /**
  * Describes the enum nama.api.v1.ServingStatus.

@@ -75,6 +75,67 @@ public nonisolated struct Nama_Api_V1_CheckResponse: Sendable {
 
   public var status: Nama_Api_V1_ServingStatus = .unspecified
 
+  public var serverVersion: String = String()
+
+  public var initialized: Bool = false
+
+  public var ready: Bool = false
+
+  public var databaseStatus: Nama_Api_V1_ServingStatus = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Nama_Api_V1_DiagnosticComponent: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var name: String = String()
+
+  public var status: Nama_Api_V1_ServingStatus = .unspecified
+
+  public var summary: String = String()
+
+  public var checkedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_checkedAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_checkedAt = newValue}
+  }
+  /// Returns true if `checkedAt` has been explicitly set.
+  public var hasCheckedAt: Bool {self._checkedAt != nil}
+  /// Clears the value of `checkedAt`. Subsequent reads from it will return its default value.
+  public mutating func clearCheckedAt() {self._checkedAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _checkedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+public nonisolated struct Nama_Api_V1_GetDiagnosticsRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Nama_Api_V1_GetDiagnosticsResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var serverVersion: String = String()
+
+  public var requestID: String = String()
+
+  public var components: [Nama_Api_V1_DiagnosticComponent] = []
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -109,7 +170,7 @@ nonisolated extension Nama_Api_V1_CheckRequest: SwiftProtobuf.Message, SwiftProt
 
 nonisolated extension Nama_Api_V1_CheckResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CheckResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}status\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}status\0\u{3}server_version\0\u{1}initialized\0\u{1}ready\0\u{3}database_status\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -118,6 +179,10 @@ nonisolated extension Nama_Api_V1_CheckResponse: SwiftProtobuf.Message, SwiftPro
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularEnumField(value: &self.status) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.serverVersion) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.initialized) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.ready) }()
+      case 5: try { try decoder.decodeSingularEnumField(value: &self.databaseStatus) }()
       default: break
       }
     }
@@ -127,11 +192,135 @@ nonisolated extension Nama_Api_V1_CheckResponse: SwiftProtobuf.Message, SwiftPro
     if self.status != .unspecified {
       try visitor.visitSingularEnumField(value: self.status, fieldNumber: 1)
     }
+    if !self.serverVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.serverVersion, fieldNumber: 2)
+    }
+    if self.initialized != false {
+      try visitor.visitSingularBoolField(value: self.initialized, fieldNumber: 3)
+    }
+    if self.ready != false {
+      try visitor.visitSingularBoolField(value: self.ready, fieldNumber: 4)
+    }
+    if self.databaseStatus != .unspecified {
+      try visitor.visitSingularEnumField(value: self.databaseStatus, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Nama_Api_V1_CheckResponse, rhs: Nama_Api_V1_CheckResponse) -> Bool {
     if lhs.status != rhs.status {return false}
+    if lhs.serverVersion != rhs.serverVersion {return false}
+    if lhs.initialized != rhs.initialized {return false}
+    if lhs.ready != rhs.ready {return false}
+    if lhs.databaseStatus != rhs.databaseStatus {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Nama_Api_V1_DiagnosticComponent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DiagnosticComponent"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}status\0\u{1}summary\0\u{3}checked_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.status) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.summary) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._checkedAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
+    }
+    if self.status != .unspecified {
+      try visitor.visitSingularEnumField(value: self.status, fieldNumber: 2)
+    }
+    if !self.summary.isEmpty {
+      try visitor.visitSingularStringField(value: self.summary, fieldNumber: 3)
+    }
+    try { if let v = self._checkedAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Nama_Api_V1_DiagnosticComponent, rhs: Nama_Api_V1_DiagnosticComponent) -> Bool {
+    if lhs.name != rhs.name {return false}
+    if lhs.status != rhs.status {return false}
+    if lhs.summary != rhs.summary {return false}
+    if lhs._checkedAt != rhs._checkedAt {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Nama_Api_V1_GetDiagnosticsRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".GetDiagnosticsRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Nama_Api_V1_GetDiagnosticsRequest, rhs: Nama_Api_V1_GetDiagnosticsRequest) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Nama_Api_V1_GetDiagnosticsResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".GetDiagnosticsResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}server_version\0\u{3}request_id\0\u{1}components\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.serverVersion) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.requestID) }()
+      case 3: try { try decoder.decodeRepeatedMessageField(value: &self.components) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.serverVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.serverVersion, fieldNumber: 1)
+    }
+    if !self.requestID.isEmpty {
+      try visitor.visitSingularStringField(value: self.requestID, fieldNumber: 2)
+    }
+    if !self.components.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.components, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Nama_Api_V1_GetDiagnosticsResponse, rhs: Nama_Api_V1_GetDiagnosticsResponse) -> Bool {
+    if lhs.serverVersion != rhs.serverVersion {return false}
+    if lhs.requestID != rhs.requestID {return false}
+    if lhs.components != rhs.components {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

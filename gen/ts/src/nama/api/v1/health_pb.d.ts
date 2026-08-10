@@ -4,6 +4,7 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
  * Describes the file nama/api/v1/health.proto.
@@ -30,6 +31,26 @@ export declare type CheckResponse = Message<"nama.api.v1.CheckResponse"> & {
    * @generated from field: nama.api.v1.ServingStatus status = 1;
    */
   status: ServingStatus;
+
+  /**
+   * @generated from field: string server_version = 2;
+   */
+  serverVersion: string;
+
+  /**
+   * @generated from field: bool initialized = 3;
+   */
+  initialized: boolean;
+
+  /**
+   * @generated from field: bool ready = 4;
+   */
+  ready: boolean;
+
+  /**
+   * @generated from field: nama.api.v1.ServingStatus database_status = 5;
+   */
+  databaseStatus: ServingStatus;
 };
 
 /**
@@ -37,6 +58,75 @@ export declare type CheckResponse = Message<"nama.api.v1.CheckResponse"> & {
  * Use `create(CheckResponseSchema)` to create a new message.
  */
 export declare const CheckResponseSchema: GenMessage<CheckResponse>;
+
+/**
+ * @generated from message nama.api.v1.DiagnosticComponent
+ */
+export declare type DiagnosticComponent = Message<"nama.api.v1.DiagnosticComponent"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: nama.api.v1.ServingStatus status = 2;
+   */
+  status: ServingStatus;
+
+  /**
+   * @generated from field: string summary = 3;
+   */
+  summary: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp checked_at = 4;
+   */
+  checkedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message nama.api.v1.DiagnosticComponent.
+ * Use `create(DiagnosticComponentSchema)` to create a new message.
+ */
+export declare const DiagnosticComponentSchema: GenMessage<DiagnosticComponent>;
+
+/**
+ * @generated from message nama.api.v1.GetDiagnosticsRequest
+ */
+export declare type GetDiagnosticsRequest = Message<"nama.api.v1.GetDiagnosticsRequest"> & {
+};
+
+/**
+ * Describes the message nama.api.v1.GetDiagnosticsRequest.
+ * Use `create(GetDiagnosticsRequestSchema)` to create a new message.
+ */
+export declare const GetDiagnosticsRequestSchema: GenMessage<GetDiagnosticsRequest>;
+
+/**
+ * @generated from message nama.api.v1.GetDiagnosticsResponse
+ */
+export declare type GetDiagnosticsResponse = Message<"nama.api.v1.GetDiagnosticsResponse"> & {
+  /**
+   * @generated from field: string server_version = 1;
+   */
+  serverVersion: string;
+
+  /**
+   * @generated from field: string request_id = 2;
+   */
+  requestId: string;
+
+  /**
+   * @generated from field: repeated nama.api.v1.DiagnosticComponent components = 3;
+   */
+  components: DiagnosticComponent[];
+};
+
+/**
+ * Describes the message nama.api.v1.GetDiagnosticsResponse.
+ * Use `create(GetDiagnosticsResponseSchema)` to create a new message.
+ */
+export declare const GetDiagnosticsResponseSchema: GenMessage<GetDiagnosticsResponse>;
 
 /**
  * @generated from enum nama.api.v1.ServingStatus
@@ -74,6 +164,14 @@ export declare const HealthService: GenService<{
     methodKind: "unary";
     input: typeof CheckRequestSchema;
     output: typeof CheckResponseSchema;
+  },
+  /**
+   * @generated from rpc nama.api.v1.HealthService.GetDiagnostics
+   */
+  getDiagnostics: {
+    methodKind: "unary";
+    input: typeof GetDiagnosticsRequestSchema;
+    output: typeof GetDiagnosticsResponseSchema;
   },
 }>;
 

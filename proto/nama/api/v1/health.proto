@@ -2,6 +2,9 @@ syntax = "proto3";
 
 package nama.api.v1;
 
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
 enum ServingStatus {
   SERVING_STATUS_UNSPECIFIED = 0;
   SERVING_STATUS_SERVING = 1;
@@ -11,9 +14,56 @@ enum ServingStatus {
 message CheckRequest {}
 
 message CheckResponse {
-  ServingStatus status = 1;
+  ServingStatus status = 1 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  string server_version = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  bool initialized = 3;
+  bool ready = 4;
+  ServingStatus database_status = 5 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message DiagnosticComponent {
+  string name = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  ServingStatus status = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  string summary = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  google.protobuf.Timestamp checked_at = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+}
+
+message GetDiagnosticsRequest {}
+
+message GetDiagnosticsResponse {
+  string server_version = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string request_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  repeated DiagnosticComponent components = 3 [(buf.validate.field).repeated = {
+    min_items: 2
+    max_items: 102
+  }];
 }
 
 service HealthService {
   rpc Check(CheckRequest) returns (CheckResponse);
+  rpc GetDiagnostics(GetDiagnosticsRequest) returns (GetDiagnosticsResponse);
 }

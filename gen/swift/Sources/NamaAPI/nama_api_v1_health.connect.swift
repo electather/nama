@@ -13,6 +13,9 @@ public protocol Nama_Api_V1_HealthServiceClientInterface: Sendable {
 
     @available(iOS 13, *)
     func `check`(request: Nama_Api_V1_CheckRequest, headers: Connect.Headers) async -> ResponseMessage<Nama_Api_V1_CheckResponse>
+
+    @available(iOS 13, *)
+    func `getDiagnostics`(request: Nama_Api_V1_GetDiagnosticsRequest, headers: Connect.Headers) async -> ResponseMessage<Nama_Api_V1_GetDiagnosticsResponse>
 }
 
 /// Concrete implementation of `Nama_Api_V1_HealthServiceClientInterface`.
@@ -28,9 +31,15 @@ public final class Nama_Api_V1_HealthServiceClient: Nama_Api_V1_HealthServiceCli
         return await self.client.unary(path: "/nama.api.v1.HealthService/Check", idempotencyLevel: .unknown, request: request, headers: headers)
     }
 
+    @available(iOS 13, *)
+    public func `getDiagnostics`(request: Nama_Api_V1_GetDiagnosticsRequest, headers: Connect.Headers = [:]) async -> ResponseMessage<Nama_Api_V1_GetDiagnosticsResponse> {
+        return await self.client.unary(path: "/nama.api.v1.HealthService/GetDiagnostics", idempotencyLevel: .unknown, request: request, headers: headers)
+    }
+
     public enum Metadata {
         public enum Methods {
             public static let check = Connect.MethodSpec(name: "Check", service: "nama.api.v1.HealthService", type: .unary)
+            public static let getDiagnostics = Connect.MethodSpec(name: "GetDiagnostics", service: "nama.api.v1.HealthService", type: .unary)
         }
     }
 }

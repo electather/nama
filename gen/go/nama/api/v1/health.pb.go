@@ -7,8 +7,10 @@
 package apiv1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -107,10 +109,14 @@ func (*CheckRequest) Descriptor() ([]byte, []int) {
 }
 
 type CheckResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Status        ServingStatus          `protobuf:"varint,1,opt,name=status,proto3,enum=nama.api.v1.ServingStatus" json:"status,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Status         ServingStatus          `protobuf:"varint,1,opt,name=status,proto3,enum=nama.api.v1.ServingStatus" json:"status,omitempty"`
+	ServerVersion  string                 `protobuf:"bytes,2,opt,name=server_version,json=serverVersion,proto3" json:"server_version,omitempty"`
+	Initialized    bool                   `protobuf:"varint,3,opt,name=initialized,proto3" json:"initialized,omitempty"`
+	Ready          bool                   `protobuf:"varint,4,opt,name=ready,proto3" json:"ready,omitempty"`
+	DatabaseStatus ServingStatus          `protobuf:"varint,5,opt,name=database_status,json=databaseStatus,proto3,enum=nama.api.v1.ServingStatus" json:"database_status,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CheckResponse) Reset() {
@@ -150,20 +156,237 @@ func (x *CheckResponse) GetStatus() ServingStatus {
 	return ServingStatus_SERVING_STATUS_UNSPECIFIED
 }
 
+func (x *CheckResponse) GetServerVersion() string {
+	if x != nil {
+		return x.ServerVersion
+	}
+	return ""
+}
+
+func (x *CheckResponse) GetInitialized() bool {
+	if x != nil {
+		return x.Initialized
+	}
+	return false
+}
+
+func (x *CheckResponse) GetReady() bool {
+	if x != nil {
+		return x.Ready
+	}
+	return false
+}
+
+func (x *CheckResponse) GetDatabaseStatus() ServingStatus {
+	if x != nil {
+		return x.DatabaseStatus
+	}
+	return ServingStatus_SERVING_STATUS_UNSPECIFIED
+}
+
+type DiagnosticComponent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Status        ServingStatus          `protobuf:"varint,2,opt,name=status,proto3,enum=nama.api.v1.ServingStatus" json:"status,omitempty"`
+	Summary       string                 `protobuf:"bytes,3,opt,name=summary,proto3" json:"summary,omitempty"`
+	CheckedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=checked_at,json=checkedAt,proto3" json:"checked_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiagnosticComponent) Reset() {
+	*x = DiagnosticComponent{}
+	mi := &file_nama_api_v1_health_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiagnosticComponent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiagnosticComponent) ProtoMessage() {}
+
+func (x *DiagnosticComponent) ProtoReflect() protoreflect.Message {
+	mi := &file_nama_api_v1_health_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiagnosticComponent.ProtoReflect.Descriptor instead.
+func (*DiagnosticComponent) Descriptor() ([]byte, []int) {
+	return file_nama_api_v1_health_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *DiagnosticComponent) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DiagnosticComponent) GetStatus() ServingStatus {
+	if x != nil {
+		return x.Status
+	}
+	return ServingStatus_SERVING_STATUS_UNSPECIFIED
+}
+
+func (x *DiagnosticComponent) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *DiagnosticComponent) GetCheckedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CheckedAt
+	}
+	return nil
+}
+
+type GetDiagnosticsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDiagnosticsRequest) Reset() {
+	*x = GetDiagnosticsRequest{}
+	mi := &file_nama_api_v1_health_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDiagnosticsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDiagnosticsRequest) ProtoMessage() {}
+
+func (x *GetDiagnosticsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_nama_api_v1_health_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDiagnosticsRequest.ProtoReflect.Descriptor instead.
+func (*GetDiagnosticsRequest) Descriptor() ([]byte, []int) {
+	return file_nama_api_v1_health_proto_rawDescGZIP(), []int{3}
+}
+
+type GetDiagnosticsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerVersion string                 `protobuf:"bytes,1,opt,name=server_version,json=serverVersion,proto3" json:"server_version,omitempty"`
+	RequestId     string                 `protobuf:"bytes,2,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	Components    []*DiagnosticComponent `protobuf:"bytes,3,rep,name=components,proto3" json:"components,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDiagnosticsResponse) Reset() {
+	*x = GetDiagnosticsResponse{}
+	mi := &file_nama_api_v1_health_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDiagnosticsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDiagnosticsResponse) ProtoMessage() {}
+
+func (x *GetDiagnosticsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_nama_api_v1_health_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDiagnosticsResponse.ProtoReflect.Descriptor instead.
+func (*GetDiagnosticsResponse) Descriptor() ([]byte, []int) {
+	return file_nama_api_v1_health_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetDiagnosticsResponse) GetServerVersion() string {
+	if x != nil {
+		return x.ServerVersion
+	}
+	return ""
+}
+
+func (x *GetDiagnosticsResponse) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *GetDiagnosticsResponse) GetComponents() []*DiagnosticComponent {
+	if x != nil {
+		return x.Components
+	}
+	return nil
+}
+
 var File_nama_api_v1_health_proto protoreflect.FileDescriptor
 
 const file_nama_api_v1_health_proto_rawDesc = "" +
 	"\n" +
-	"\x18nama/api/v1/health.proto\x12\vnama.api.v1\"\x0e\n" +
-	"\fCheckRequest\"C\n" +
-	"\rCheckResponse\x122\n" +
-	"\x06status\x18\x01 \x01(\x0e2\x1a.nama.api.v1.ServingStatusR\x06status*k\n" +
+	"\x18nama/api/v1/health.proto\x12\vnama.api.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x0e\n" +
+	"\fCheckRequest\"\x87\x02\n" +
+	"\rCheckResponse\x12<\n" +
+	"\x06status\x18\x01 \x01(\x0e2\x1a.nama.api.v1.ServingStatusB\b\xbaH\x05\x82\x01\x02 \x00R\x06status\x121\n" +
+	"\x0eserver_version\x18\x02 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\rserverVersion\x12 \n" +
+	"\vinitialized\x18\x03 \x01(\bR\vinitialized\x12\x14\n" +
+	"\x05ready\x18\x04 \x01(\bR\x05ready\x12M\n" +
+	"\x0fdatabase_status\x18\x05 \x01(\x0e2\x1a.nama.api.v1.ServingStatusB\b\xbaH\x05\x82\x01\x02 \x00R\x0edatabaseStatus\"\xdf\x01\n" +
+	"\x13DiagnosticComponent\x12\x1e\n" +
+	"\x04name\x18\x01 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\x04name\x12<\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x1a.nama.api.v1.ServingStatusB\b\xbaH\x05\x82\x01\x02 \x00R\x06status\x12$\n" +
+	"\asummary\x18\x03 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\asummary\x12D\n" +
+	"\n" +
+	"checked_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampB\t\xbaH\x06\xc8\x01\x01\xb2\x01\x00R\tcheckedAt\"\x17\n" +
+	"\x15GetDiagnosticsRequest\"\xc4\x01\n" +
+	"\x16GetDiagnosticsResponse\x121\n" +
+	"\x0eserver_version\x18\x01 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\rserverVersion\x12)\n" +
+	"\n" +
+	"request_id\x18\x02 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\trequestId\x12L\n" +
+	"\n" +
+	"components\x18\x03 \x03(\v2 .nama.api.v1.DiagnosticComponentB\n" +
+	"\xbaH\a\x92\x01\x04\b\x02\x10fR\n" +
+	"components*k\n" +
 	"\rServingStatus\x12\x1e\n" +
 	"\x1aSERVING_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16SERVING_STATUS_SERVING\x10\x01\x12\x1e\n" +
-	"\x1aSERVING_STATUS_NOT_SERVING\x10\x022O\n" +
+	"\x1aSERVING_STATUS_NOT_SERVING\x10\x022\xaa\x01\n" +
 	"\rHealthService\x12>\n" +
-	"\x05Check\x12\x19.nama.api.v1.CheckRequest\x1a\x1a.nama.api.v1.CheckResponseB\xa1\x01\n" +
+	"\x05Check\x12\x19.nama.api.v1.CheckRequest\x1a\x1a.nama.api.v1.CheckResponse\x12Y\n" +
+	"\x0eGetDiagnostics\x12\".nama.api.v1.GetDiagnosticsRequest\x1a#.nama.api.v1.GetDiagnosticsResponseB\xa1\x01\n" +
 	"\x0fcom.nama.api.v1B\vHealthProtoP\x01Z3github.com/electather/nama/gen/go/nama/api/v1;apiv1\xa2\x02\x03NAX\xaa\x02\vNama.Api.V1\xca\x02\vNama\\Api\\V1\xe2\x02\x17Nama\\Api\\V1\\GPBMetadata\xea\x02\rNama::Api::V1b\x06proto3"
 
 var (
@@ -179,21 +402,31 @@ func file_nama_api_v1_health_proto_rawDescGZIP() []byte {
 }
 
 var file_nama_api_v1_health_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_nama_api_v1_health_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_nama_api_v1_health_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_nama_api_v1_health_proto_goTypes = []any{
-	(ServingStatus)(0),    // 0: nama.api.v1.ServingStatus
-	(*CheckRequest)(nil),  // 1: nama.api.v1.CheckRequest
-	(*CheckResponse)(nil), // 2: nama.api.v1.CheckResponse
+	(ServingStatus)(0),             // 0: nama.api.v1.ServingStatus
+	(*CheckRequest)(nil),           // 1: nama.api.v1.CheckRequest
+	(*CheckResponse)(nil),          // 2: nama.api.v1.CheckResponse
+	(*DiagnosticComponent)(nil),    // 3: nama.api.v1.DiagnosticComponent
+	(*GetDiagnosticsRequest)(nil),  // 4: nama.api.v1.GetDiagnosticsRequest
+	(*GetDiagnosticsResponse)(nil), // 5: nama.api.v1.GetDiagnosticsResponse
+	(*timestamppb.Timestamp)(nil),  // 6: google.protobuf.Timestamp
 }
 var file_nama_api_v1_health_proto_depIdxs = []int32{
 	0, // 0: nama.api.v1.CheckResponse.status:type_name -> nama.api.v1.ServingStatus
-	1, // 1: nama.api.v1.HealthService.Check:input_type -> nama.api.v1.CheckRequest
-	2, // 2: nama.api.v1.HealthService.Check:output_type -> nama.api.v1.CheckResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	0, // 1: nama.api.v1.CheckResponse.database_status:type_name -> nama.api.v1.ServingStatus
+	0, // 2: nama.api.v1.DiagnosticComponent.status:type_name -> nama.api.v1.ServingStatus
+	6, // 3: nama.api.v1.DiagnosticComponent.checked_at:type_name -> google.protobuf.Timestamp
+	3, // 4: nama.api.v1.GetDiagnosticsResponse.components:type_name -> nama.api.v1.DiagnosticComponent
+	1, // 5: nama.api.v1.HealthService.Check:input_type -> nama.api.v1.CheckRequest
+	4, // 6: nama.api.v1.HealthService.GetDiagnostics:input_type -> nama.api.v1.GetDiagnosticsRequest
+	2, // 7: nama.api.v1.HealthService.Check:output_type -> nama.api.v1.CheckResponse
+	5, // 8: nama.api.v1.HealthService.GetDiagnostics:output_type -> nama.api.v1.GetDiagnosticsResponse
+	7, // [7:9] is the sub-list for method output_type
+	5, // [5:7] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_nama_api_v1_health_proto_init() }
@@ -207,7 +440,7 @@ func file_nama_api_v1_health_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_nama_api_v1_health_proto_rawDesc), len(file_nama_api_v1_health_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   2,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

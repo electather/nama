@@ -34,11 +34,15 @@ const (
 const (
 	// HealthServiceCheckProcedure is the fully-qualified name of the HealthService's Check RPC.
 	HealthServiceCheckProcedure = "/nama.api.v1.HealthService/Check"
+	// HealthServiceGetDiagnosticsProcedure is the fully-qualified name of the HealthService's
+	// GetDiagnostics RPC.
+	HealthServiceGetDiagnosticsProcedure = "/nama.api.v1.HealthService/GetDiagnostics"
 )
 
 // HealthServiceClient is a client for the nama.api.v1.HealthService service.
 type HealthServiceClient interface {
 	Check(context.Context, *connect.Request[CheckRequest]) (*connect.Response[CheckResponse], error)
+	GetDiagnostics(context.Context, *connect.Request[GetDiagnosticsRequest]) (*connect.Response[GetDiagnosticsResponse], error)
 }
 
 // NewHealthServiceClient constructs a client for the nama.api.v1.HealthService service. By default,
@@ -58,12 +62,19 @@ func NewHealthServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(healthServiceMethods.ByName("Check")),
 			connect.WithClientOptions(opts...),
 		),
+		getDiagnostics: connect.NewClient[GetDiagnosticsRequest, GetDiagnosticsResponse](
+			httpClient,
+			baseURL+HealthServiceGetDiagnosticsProcedure,
+			connect.WithSchema(healthServiceMethods.ByName("GetDiagnostics")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // healthServiceClient implements HealthServiceClient.
 type healthServiceClient struct {
-	check *connect.Client[CheckRequest, CheckResponse]
+	check          *connect.Client[CheckRequest, CheckResponse]
+	getDiagnostics *connect.Client[GetDiagnosticsRequest, GetDiagnosticsResponse]
 }
 
 // Check calls nama.api.v1.HealthService.Check.
@@ -71,9 +82,15 @@ func (c *healthServiceClient) Check(ctx context.Context, req *connect.Request[Ch
 	return c.check.CallUnary(ctx, req)
 }
 
+// GetDiagnostics calls nama.api.v1.HealthService.GetDiagnostics.
+func (c *healthServiceClient) GetDiagnostics(ctx context.Context, req *connect.Request[GetDiagnosticsRequest]) (*connect.Response[GetDiagnosticsResponse], error) {
+	return c.getDiagnostics.CallUnary(ctx, req)
+}
+
 // HealthServiceHandler is an implementation of the nama.api.v1.HealthService service.
 type HealthServiceHandler interface {
 	Check(context.Context, *connect.Request[CheckRequest]) (*connect.Response[CheckResponse], error)
+	GetDiagnostics(context.Context, *connect.Request[GetDiagnosticsRequest]) (*connect.Response[GetDiagnosticsResponse], error)
 }
 
 // NewHealthServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -89,10 +106,18 @@ func NewHealthServiceHandler(svc HealthServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(healthServiceMethods.ByName("Check")),
 		connect.WithHandlerOptions(opts...),
 	)
+	healthServiceGetDiagnosticsHandler := connect.NewUnaryHandler(
+		HealthServiceGetDiagnosticsProcedure,
+		svc.GetDiagnostics,
+		connect.WithSchema(healthServiceMethods.ByName("GetDiagnostics")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/nama.api.v1.HealthService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case HealthServiceCheckProcedure:
 			healthServiceCheckHandler.ServeHTTP(w, r)
+		case HealthServiceGetDiagnosticsProcedure:
+			healthServiceGetDiagnosticsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -104,4 +129,8 @@ type UnimplementedHealthServiceHandler struct{}
 
 func (UnimplementedHealthServiceHandler) Check(context.Context, *connect.Request[CheckRequest]) (*connect.Response[CheckResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("nama.api.v1.HealthService.Check is not implemented"))
+}
+
+func (UnimplementedHealthServiceHandler) GetDiagnostics(context.Context, *connect.Request[GetDiagnosticsRequest]) (*connect.Response[GetDiagnosticsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("nama.api.v1.HealthService.GetDiagnostics is not implemented"))
 }

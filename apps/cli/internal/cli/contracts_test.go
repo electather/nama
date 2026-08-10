@@ -37,3 +37,56 @@ func TestContractRoundTrips(t *testing.T) {
 		}
 	}
 }
+
+func TestOperatorHealthContractRoundTrips(t *testing.T) {
+	check := &apiv1.CheckResponse{
+		Status:         apiv1.ServingStatus_SERVING_STATUS_SERVING,
+		ServerVersion:  "0.1.0",
+		Initialized:    true,
+		Ready:          true,
+		DatabaseStatus: apiv1.ServingStatus_SERVING_STATUS_SERVING,
+	}
+	encodedCheck, err := proto.Marshal(check)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodedCheck := &apiv1.CheckResponse{}
+	if err := proto.Unmarshal(encodedCheck, decodedCheck); err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(decodedCheck, check) {
+		t.Fatal("health check round trip mismatch")
+	}
+
+	diagnostics := &apiv1.GetDiagnosticsResponse{
+		ServerVersion: "0.1.0",
+		RequestId:     "request-1",
+		Components: []*apiv1.DiagnosticComponent{
+			{Name: "core", Status: apiv1.ServingStatus_SERVING_STATUS_SERVING, Summary: "ready", CheckedAt: timestamppb.New(time.Unix(1, 0))},
+			{Name: "database", Status: apiv1.ServingStatus_SERVING_STATUS_SERVING, Summary: "connected", CheckedAt: timestamppb.New(time.Unix(2, 0))},
+			{Name: "provider_instance/opaque-id", Status: apiv1.ServingStatus_SERVING_STATUS_NOT_SERVING, Summary: "unavailable", CheckedAt: timestamppb.New(time.Unix(3, 0))},
+		},
+	}
+	encodedDiagnostics, err := proto.Marshal(diagnostics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodedDiagnostics := &apiv1.GetDiagnosticsResponse{}
+	if err := proto.Unmarshal(encodedDiagnostics, decodedDiagnostics); err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(decodedDiagnostics, diagnostics) {
+		t.Fatal("diagnostics round trip mismatch")
+	}
+	wantNames := []string{"core", "database", "provider_instance/opaque-id"}
+	for index, want := range wantNames {
+		if got := decodedDiagnostics.Components[index].Name; got != want {
+			t.Fatalf("component %d name = %q, want %q", index, got, want)
+		}
+	}
+
+	methods := apiv1.File_nama_api_v1_health_proto.Services().ByName("HealthService").Methods()
+	if methods.ByName("Check") == nil || methods.ByName("GetDiagnostics") == nil {
+		t.Fatal("health service method descriptors are incomplete")
+	}
+}
