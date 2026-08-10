@@ -15,11 +15,23 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  apps/server:
+    dependencies:
+      '@nama/api':
+        specifier: workspace:*
+        version: link:../../gen/ts
+
   gen/ts:
     dependencies:
       '@bufbuild/protobuf':
         specifier: 2.13.0
         version: 2.13.0
+
+  plugins/jellyfin:
+    dependencies:
+      '@nama/api':
+        specifier: workspace:*
+        version: link:../../gen/ts
 
 packages:
 

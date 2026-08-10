@@ -1,0 +1,11 @@
+{
+  "name": "@nama/jellyfin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check:type": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@nama/api": "workspace:*"
+  }
+}

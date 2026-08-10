@@ -6,7 +6,7 @@
   "scripts": {
     "check:format": "biome check package.json biome.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
     "check:ts": "pnpm run check:format && pnpm run check:type",
-    "check:type": "pnpm --filter @nama/server run check:type && pnpm --filter @nama/jellyfin run check:type"
+    "check:type": "pnpm --filter @nama/server --fail-if-no-match run check:type && pnpm --filter @nama/jellyfin --fail-if-no-match run check:type"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
