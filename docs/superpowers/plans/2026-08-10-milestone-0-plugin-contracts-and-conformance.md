@@ -710,12 +710,14 @@ git commit -m "feat(plugin): add watch state contract"
 
 **Files:**
 
+- Modify: `apps/server/package.json`
 - Modify: `apps/server/src/contract.test.ts`
 - Modify: `apps/server/src/contract-authorization.ts`
 - Modify: `apps/server/src/contract-probe.ts`
 - Modify: `apps/cli/internal/cli/contracts_test.go`
 - Modify: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
 - Modify: `plugins/jellyfin/src/contract-probe.ts`
+- Modify: `pnpm-lock.yaml`
 - Modify: `docs/architecture.md`
 - Modify: `docs/release-plan.md`
 - Modify: `docs/architecture/core-server.md`
@@ -768,6 +770,12 @@ Cover private movie/episode observations, begin/continuation catalog scans, artw
 Cover provider plan/session/sidecar, begin/continuation watch scans, and every mutation-result class.
 
 - [ ] **Step 11: Prove public and private unknown-enum validation in TypeScript**
+
+Before importing `createValidator`, add the direct runtime dependency:
+
+```bash
+pnpm --filter @nama/server add --save-dev --save-exact @bufbuild/protovalidate@1.2.0
+```
 
 Round-trip a `ProviderConnectionTest` whose required `status` is numeric value 99. Run `createValidator().validate(ProviderConnectionTestSchema, message)` and assert `result.kind === "valid"`.
 
@@ -1097,7 +1105,7 @@ Expected: every command PASS. If the machine lacks the pinned Xcode, stop and us
 - [ ] **Step 27: Commit the complete contract baseline**
 
 ```bash
-git add apps/server/src/contract.test.ts apps/server/src/contract-authorization.ts apps/server/src/contract-probe.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests/NamaAPITests/ContractTests.swift plugins/jellyfin/src/contract-probe.ts docs/architecture.md docs/release-plan.md docs/architecture/core-server.md
+git add apps/server/package.json apps/server/src/contract.test.ts apps/server/src/contract-authorization.ts apps/server/src/contract-probe.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests/NamaAPITests/ContractTests.swift plugins/jellyfin/src/contract-probe.ts pnpm-lock.yaml docs/architecture.md docs/release-plan.md docs/architecture/core-server.md
 git commit -m "feat(api): complete milestone 0 contracts"
 ```
 

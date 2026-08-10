@@ -271,7 +271,7 @@ Replace the two-file export list in `gen/ts/package.json` with one native subpat
 }
 ```
 
-Keep `@bufbuild/protobuf` exact-pinned. Do not add `@bufbuild/protovalidate` to `@nama/api`: the generated TypeScript imports only Protobuf and local generated files. Task 3 adds its direct server test dependency.
+Keep `@bufbuild/protobuf` exact-pinned. Do not add `@bufbuild/protovalidate` to `@nama/api`: the generated TypeScript imports only Protobuf and local generated files. Plan 4 Task 5 adds it directly to the server when the validation harness first imports it.
 
 - [ ] **Step 4: Generate every configured client**
 
@@ -331,8 +331,8 @@ git commit -m "build(api): pin contract generation inputs"
 
 **Interfaces:**
 
-- Consumes: generated common schemas and standard Google error details.
-- Produces: one expandable TypeScript test for both packages, one Go public test, and one Swift public test. Later plans extend these same files instead of creating parallel harnesses.
+- Consumes: generated common schemas, standard Google error details, and direct Node/Protobuf test dependencies.
+- Produces: one expandable TypeScript baseline test for both packages, one Go public test, and one Swift public test. Plan 4 Task 5 adds the direct validation runtime when the harness first validates generated schemas.
 
 - [ ] **Step 1: Create the complete TypeScript baseline fixture**
 
@@ -399,13 +399,13 @@ test("selected google.rpc details compile and round-trip", () => {
 
 Run: `pnpm --filter @nama/server run check:type`
 
-Expected: FAIL because the server package does not yet own the Node, Protobuf, or Protovalidate dependencies used by its contract harness.
+Expected: FAIL because the server package does not yet own the Node or Protobuf dependencies used by its contract harness.
 
-- [ ] **Step 3: Add the three direct server test dependencies**
+- [ ] **Step 3: Add the two direct server test dependencies**
 
-Run: `pnpm --filter @nama/server add --save-dev --save-exact @types/node@24.13.3 @bufbuild/protobuf@2.13.0 @bufbuild/protovalidate@1.2.0`
+Run: `pnpm --filter @nama/server add --save-dev --save-exact @types/node@24.13.3 @bufbuild/protobuf@2.13.0`
 
-pnpm's strict package boundary must not rely on `@nama/api` exposing its runtime dependencies.
+pnpm's strict package boundary must not rely on `@nama/api` exposing its runtime dependencies. Plan 4 Task 5 adds the direct Protovalidate dependency when it first imports `createValidator`.
 
 - [ ] **Step 4: Add the server contract-test script**
 
