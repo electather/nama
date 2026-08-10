@@ -857,7 +857,7 @@ Provider configuration schema changes follow the schema compatibility rules abov
 
 `buf.yaml` adds pinned dependencies for Protovalidate annotations and the Google APIs definitions used by `google.rpc` and `google.type`, then commits `buf.lock`. A Buf module dependency supplies schemas to the compiler; it is not by itself a language runtime dependency. Connect error details are also out-of-band and therefore do not become normal imports merely because the server attaches them. `buf.gen.yaml` and the native package manifests own packaging explicitly:
 
-- `buf.gen.yaml` declares the local module plus a pinned googleapis input restricted to `ErrorInfo`, `BadRequest`, `RequestInfo`, and `RetryInfo`, so clients can unpack the exact standard details even though no request/response field imports them;
+- `buf.gen.yaml` is the cleaning local-module template; `buf.gen.googleapis.yaml` is the additive selected-googleapis template; and `mise run generate` runs them in that order;
 - TypeScript generates both `nama.api.v1` and `nama.plugin.v1` messages and clients, includes transitive non-WKT imports such as `google.type` and validation options, generates the selected `google.rpc` messages, and pins the Protobuf/Protovalidate runtime packages in the workspace lockfile;
 - Go generates public messages and Connect clients only, excludes dependency-owned message generation, and pins the Google RPC/type and Protovalidate Go modules named by generated imports in `go.mod`; and
 - Swift generates public messages and Connect clients only, uses per-plugin `include_imports: true` for transitive non-WKT definitions, generates the selected `google.rpc` messages, and continues to obtain WKTs from SwiftProtobuf.
