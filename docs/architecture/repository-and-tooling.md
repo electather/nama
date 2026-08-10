@@ -37,6 +37,8 @@ The baseline excludes server behavior, database access, authentication, provider
 ├── .github/workflows/ci.yml
 ├── apps/
 │   ├── cli/
+│   │   ├── cmd/nama/
+│   │   └── internal/cli/
 │   ├── server/
 │   └── tvos/
 ├── gen/
@@ -63,7 +65,7 @@ The baseline excludes server behavior, database access, authentication, provider
 └── pnpm-workspace.yaml
 ```
 
-`apps/server` and `plugins/jellyfin` are separate strict-TypeScript ESM packages. `apps/cli` is a Cobra executable within the root Go module `github.com/electather/nama`. `apps/tvos` is a checked-in, minimal SwiftUI Xcode project targeting tvOS 17 or later. It has a runnable app target but no product screens or networking behavior.
+`apps/server` and `plugins/jellyfin` are separate strict-TypeScript ESM packages. `apps/cli` is a Cobra executable within the root Go module `github.com/electather/nama`: `cmd/nama/main.go` is its composition root and `internal/cli/root.go` owns the minimal command tree. This baseline creates no management behavior or speculative CLI packages. `apps/tvos` is a checked-in, minimal SwiftUI Xcode project targeting tvOS 17 or later. It has a runnable app target but no product screens or networking behavior.
 
 Generated code is isolated under `gen`, but only generated-only leaves are Buf outputs. `gen/ts` is a pnpm workspace package whose generated files live under `gen/ts/src`. `gen/go` is entirely generated and belongs to the root Go module. `gen/swift` is a local Swift package whose generated files live under `gen/swift/Sources/NamaAPI`. Package manifests remain outside directories that Buf cleans. Handwritten application code never lives in generated-only leaves.
 
@@ -120,7 +122,7 @@ Buf managed mode sets `go_package_prefix` to `github.com/electather/nama/gen/go`
 
 `gen/swift/Package.swift` exports one `NamaAPI` library target with direct `Connect` and `SwiftProtobuf` product dependencies. Both Swift generators use `Visibility=Public`. The tvOS compile probe references the generated Health service client interface type, rather than merely importing the module.
 
-The server compile target imports both TypeScript namespaces. The Jellyfin compile target imports only `plugin.v1`. The CLI references the public Go Health client type from the declared import path. The tvOS app references the public Swift Health client type.
+The server compile target imports both TypeScript namespaces. The Jellyfin compile target imports only `plugin.v1`. The CLI's root command references the public Go Health client type from the declared import path. The tvOS app references the public Swift Health client type.
 
 Generated output is committed. Clean generation removes obsolete output before recreating it; afterward the contract check examines tracked changes and untracked files under `gen`, and either condition fails. Developers change schemas and generator configuration, run generation, and commit schemas and outputs together.
 
