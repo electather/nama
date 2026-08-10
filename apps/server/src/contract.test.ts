@@ -99,6 +99,7 @@ void test("operator health and ordered diagnostics round-trip", () => {
     GetDiagnosticsResponseSchema,
     toBinary(GetDiagnosticsResponseSchema, diagnostics),
   );
+  assert.deepEqual(decoded, diagnostics);
   const componentNames: string[] = [];
   for (const component of decoded.components) {
     componentNames.push(component.name);

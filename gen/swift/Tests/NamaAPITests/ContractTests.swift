@@ -56,6 +56,7 @@ final class ContractTests: XCTestCase {
     let encodedDiagnostics = try diagnostics.serializedData()
     let decodedDiagnostics = try Nama_Api_V1_GetDiagnosticsResponse(
       serializedBytes: encodedDiagnostics)
+    XCTAssertEqual(decodedDiagnostics, diagnostics)
     XCTAssertEqual(
       decodedDiagnostics.components.map(\.name),
       [
