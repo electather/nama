@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: nama
+      POSTGRES_PASSWORD: nama
+      POSTGRES_USER: nama
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username nama --dbname nama"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - nama-postgres:/var/lib/postgresql
+
+volumes:
+  nama-postgres:
