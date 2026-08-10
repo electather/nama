@@ -13,7 +13,7 @@ plugins:
     out: gen/ts/src
     include_imports: true
     opt:
-      - target=ts
+      - target=js+dts
       - import_extension=js
   - remote: buf.build/apple/swift:v1.38.1
     revision: 1

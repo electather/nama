@@ -227,7 +227,7 @@ plugins:
     out: gen/ts/src
     include_imports: true
     opt:
-      - target=ts
+      - target=js+dts
       - import_extension=js
   - remote: buf.build/apple/swift:v1.38.1
     revision: 1
@@ -263,21 +263,24 @@ Change the existing `check:contracts` generation line from `buf generate` to `mi
 
 - [ ] **Step 3: Simplify generated TypeScript exports**
 
-Replace the two-file export list in `gen/ts/package.json` with one native subpath pattern:
+Replace the two-file export list in `gen/ts/package.json` with one native subpath pattern that exposes generated JavaScript at runtime and declarations to TypeScript:
 
 ```json
 "exports": {
-  "./*.js": "./src/*.ts"
+  "./*.js": {
+    "types": "./src/*.d.ts",
+    "default": "./src/*.js"
+  }
 }
 ```
 
-Keep `@bufbuild/protobuf` exact-pinned. Do not add `@bufbuild/protovalidate` to `@nama/api`: the generated TypeScript imports only Protobuf and local generated files. Plan 4 Task 5 adds it directly to the server when the validation harness first imports it.
+Use `target=js+dts` on the ES plugin in both generation templates. Generated relative `.js` imports then resolve to committed sibling JavaScript while the `.d.ts` files preserve the TypeScript SDK surface. Keep `@bufbuild/protobuf` exact-pinned. Do not add `@bufbuild/protovalidate` to `@nama/api`: the generated SDK imports only Protobuf and local generated files. Plan 4 Task 5 adds it directly to the server when the validation harness first imports it.
 
 - [ ] **Step 4: Generate every configured client**
 
 Run: `mise run generate`
 
-Expected: ES generates both Nama packages plus transitive validation/date and selected error-detail types; Go excludes the plugin package, and Swift excludes it while generating selected Google RPC details and required imported support.
+Expected: ES generates executable JavaScript plus declarations for both Nama packages, transitive validation/date support, and selected error-detail types; Go excludes the plugin package, and Swift excludes it while generating selected Google RPC details and required imported support.
 
 - [ ] **Step 5: Let native manifests follow actual imports**
 

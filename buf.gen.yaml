@@ -16,7 +16,7 @@ plugins:
     out: gen/ts/src
     include_imports: true
     opt:
-      - target=ts
+      - target=js+dts
       - import_extension=js
   - remote: buf.build/protocolbuffers/go:v1.36.11
     revision: 1

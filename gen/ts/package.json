@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./*.js": "./src/*.ts"
+    "./*.js": {
+      "types": "./src/*.d.ts",
+      "default": "./src/*.js"
+    }
   },
   "dependencies": {
     "@bufbuild/protobuf": "2.13.0"
