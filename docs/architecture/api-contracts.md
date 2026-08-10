@@ -130,7 +130,7 @@ Each plugin returns its build version and contract major from `PluginService.Get
 - Request and response bodies, authorization headers, locator headers, passwords, bootstrap tokens, polling tokens, provider configuration, and opaque plugin session context are never logged.
 - Locators are absolute HTTP or HTTPS URLs. Any attached headers are allowlisted by the core and valid only for the referenced artwork or playback session.
 
-`nama.api.v1.HttpHeader` contains `name` and `value`. It is used only inside short-lived artwork and playback locator responses and applies only to the locator URL's origin. Artwork and playback locators also contain repeated `allowed_redirect_origins`, validated by the core. Each value is a normalized scheme/host/port origin with no credentials, path, query, or fragment. Clients check every redirect, reject an origin outside that list, and never forward custom locator headers when origin changes. A playback engine that cannot enforce these rules cannot advertise the corresponding direct-play capability. `nama.api.v1.BearerCredential` contains `token` and `expires_at`. Credential-bearing responses are sensitive in their entirety.
+`nama.api.v1.HttpHeader` contains `name` and `value`. It is used only inside artwork, media, and external-subtitle locator responses and applies only to the locator URL's origin. Every locator also contains repeated `allowed_redirect_origins`, validated by the core. Each value is a normalized scheme/host/port origin with no credentials, path, query, or fragment. Clients check every redirect, reject an origin outside that list, and never forward custom locator headers when origin changes. A playback engine that cannot enforce these rules cannot advertise the corresponding direct-play capability. `nama.api.v1.BearerCredential` contains `token` and `expires_at`. Credential-bearing responses are sensitive in their entirety.
 
 ## Public services
 
@@ -147,7 +147,9 @@ The public package is domain-oriented rather than split into separate consumer a
 
 `CheckResponse` contains the existing `status`, then `server_version`, `initialized`, `ready`, and `database_status`. Both status fields use `ServingStatus`.
 
-`DiagnosticComponent` contains `name`, `status`, `summary`, and `checked_at`. `name` is a stable Nama component key; `summary` is a short redacted operator message. `GetDiagnosticsResponse` contains `server_version`, `request_id`, and repeated `components`. It never contains configuration values, URLs, credentials, raw database messages, provider errors, or stack traces.
+`DiagnosticComponent` contains `name`, `status`, `summary`, and `checked_at`. `status` uses `ServingStatus`. `name` is globally unique and stable for the component: initial keys are `core`, `database`, and `provider_instance/<opaque-id>`. Clients compare a name but do not parse an opaque provider ID from it. `summary` is a short redacted operator message.
+
+`GetDiagnosticsResponse` contains `server_version`, `request_id`, and repeated `components` in deterministic order: core, database, then provider instances by opaque ID. It is complete rather than paginated or truncated. The MVP limit of 100 configured provider instances bounds the response at 102 components. It never contains configuration values, URLs, credentials, raw database messages, provider errors, or stack traces.
 
 The public HTTP liveness endpoint only proves that the process can answer. Readiness probes PostgreSQL with the bounded behavior defined in `core-server.md`. These HTTP responses are not mirrors of the authenticated RPC messages.
 
@@ -173,6 +175,8 @@ Once the Better Auth creation call can commit, cancellation cannot restore setup
 | `SignOut` | Administrator | none | none |
 
 `SignIn` calls Better Auth's private server API and returns the signed token extracted from its `set-auth-token` response header, not a raw session token or cookie. This exact extraction and `autoSignIn: false` setup behavior must pass the pinned Better Auth spike before implementation is accepted. Better Auth owns expiry, rotation, and revocation; Nama adds no refresh-token protocol and does not force a different expiry. Authentication failure always uses the same public reason regardless of whether an email exists. A Nama-owned limiter wraps the public SignIn RPC because private server-API calls do not rely on Better Auth's HTTP-route limiter.
+
+`SignOut` succeeds only after the durable session store confirms that the presented bearer no longer resolves to an active session. Clearing cookies or client state is not proof of revocation. If deletion fails or its outcome cannot be confirmed, Nama returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the caller retains the bearer and resolves the ambiguity with `GetCurrentUser` before retrying. An unauthenticated read proves the credential is no longer usable. The pinned Better Auth spike must exercise a forced session-deletion failure and prove that Nama never reports successful sign-out while the bearer remains valid.
 
 ### DeviceService
 
@@ -236,6 +240,8 @@ Secret values are write-only. They are omitted from returned `configuration`, di
 Secret classification is monotonic. Once a property key has been accepted as `writeOnly`, the core persists that classification and rejects a later schema revision that removes it or changes the property's type. A provider must introduce a new key plus an explicit migration to replace a secret field; a plugin update can never make stored ciphertext readable through management responses.
 
 Enabled instances have unique positive sync priorities. On create, an omitted priority receives the next lowest precedence after existing instances. An update may reorder it; a duplicate value returns a field-level `CONFLICT`. This field is the administrator-configured source-priority tie breaker required by watch-state reconciliation.
+
+The MVP permits at most 100 configured provider instances. Creating another returns `RESOURCE_EXHAUSTED` with reason `PROVIDER_INSTANCE_LIMIT_REACHED`. This hard bound keeps complete operator diagnostics unary without introducing a second pagination contract.
 
 The provider user's opaque binding is established by the successful create connection test and is immutable for the instance. A configuration or credential update may reconnect only as the same provider user. Changing the remote user requires a new provider instance so existing replica state cannot silently cross identities.
 
@@ -334,7 +340,9 @@ The selected oneof member must agree with `summary.kind`. Counts are absent when
 
 Text presence is descriptive, not guaranteed. Clients prefer textless cover art when available but always render the mandatory media title as the accessibility and missing-art fallback.
 
-Artwork references never contain a provider path, token, or URL. `LibraryService.ResolveArtwork` converts one reference into a short-lived `ArtworkLocator` containing `url`, repeated scoped `headers`, repeated `allowed_redirect_origins`, `expires_at`, and optional resolved dimensions. The request may include `max_width` and `max_height`; zero means no preference. The core validates the initial and allowed redirect origins and that the locator contains no reusable account credential. Headers apply only to the initial origin and are stripped on any origin change.
+Artwork references never contain a provider path, token, or URL. `LibraryService.ResolveArtwork` converts one reference into an `ArtworkLocator` containing `url`, repeated scoped `headers`, repeated `allowed_redirect_origins`, `refresh_at`, optional `access_expires_at`, and optional resolved dimensions. The request may include `max_width` and `max_height`; zero means no preference. `refresh_at` is the core-selected time after which the client resolves the reference again; it is cache freshness, not an access-control claim. `access_expires_at` is present only when the provider enforces that the locator authorization stops working at that time. Clients do not start a new fetch after either deadline.
+
+The core validates the initial and allowed redirect origins and that the locator contains no reusable account credential. Headers apply only to the initial origin and are stripped on any origin change. A locator whose URL or headers carry authorization must have provider-enforced, item-constrained access and an `access_expires_at`; otherwise resolution fails as ordinary missing artwork and the client keeps its title fallback. A credential-free public artwork URL may omit `access_expires_at`; its `refresh_at` remains only a re-resolution deadline.
 
 ### Sources, parts, and tracks
 
@@ -450,7 +458,12 @@ Planning is side-effect-free from Nama's perspective: it creates only an expirin
 - a `PlaybackLocator` containing URL, scoped headers, MIME type, and expiry;
 - repeated core-validated allowed redirect origins within the locator;
 - `report_interval`; and
-- selected plan-scoped audio and subtitle track IDs.
+- repeated `PlaybackSessionTrack` values in `tracks`, optional session-scoped `selected_audio_track_id`, and session-scoped `selected_subtitle` using `SubtitleSelection`; and
+- repeated `ExternalSubtitleLocator` values in `external_subtitles`, keyed by session track ID.
+
+`PlaybackSessionTrack` contains a new opaque session-scoped `id`, type, optional label and language, default and forced flags, the relevant normalized audio or subtitle format fields, and `switchable_without_reopen`. `ExternalSubtitleLocator` contains `track_id`, `url`, repeated scoped `headers`, repeated `allowed_redirect_origins`, `mime_type`, and `expires_at`. It exists exactly once for each session subtitle track delivered as `EXTERNAL`; `track_id` must identify that session track. It follows the same origin, redirect, header, credential, and expiry rules as the main playback locator.
+
+On successful open, the core copies the materialized plan-to-provider track mappings into the active session and retains them until the session is closed or its bounded abandoned-session cleanup expires. Plan expiry after open does not invalidate session track IDs. Only a track marked `switchable_without_reopen` may be selected locally and reported under the existing session. Selecting any other plan candidate requires close, a new plan, and a new open at the current position. There is no `SwitchTrack` RPC in the unary MVP.
 
 Opening the same operation ID with the same request returns the same logical session while it remains valid. Opening with a different payload fails with `IDEMPOTENCY_KEY_REUSED`. A plan may be opened once logically; a second operation ID fails with `PLAYBACK_PLAN_ALREADY_OPENED`.
 
@@ -466,9 +479,11 @@ Milestone 1 must prove that Jellyfin can satisfy this security boundary on real 
 - monotonically increasing `sequence` within the session;
 - `state` (`PLAYING`, `PAUSED`, or `BUFFERING`);
 - `position`, optional `duration`, and optional `client_observed_at`; and
-- optional selected audio and subtitle track IDs.
+- optional selected session-scoped audio and subtitle track IDs.
 
 `ReportPlaybackResponse` contains `accepted_sequence` and the canonical `user_state` after applying any accepted event.
+
+Reported track IDs are observations of player state, not commands to switch a provider stream. They must belong to the active session and may change only to a track marked `switchable_without_reopen`. A candidate requiring another lease follows the close, replan, and reopen flow instead.
 
 Duplicate event IDs return the original logical result. A sequence at or below the highest applied sequence is acknowledged without regressing state. A later genuine seek or rewatch may report a smaller position with a higher sequence and must be preserved. Nama-originated ordering uses server receipt time plus session sequence; bounded client time is diagnostic evidence only and never outranks those values. Telemetry is sent on state change and at the returned report interval; reporting frequency is not encoded as a fixed provider rule.
 
@@ -493,17 +508,25 @@ Canonical state commits before provider telemetry is considered delivered. A pro
 
 | RPC | Access | Request | Response |
 | --- | --- | --- | --- |
-| `GetSyncStatus` | Administrator | optional `provider_instance_id` | aggregate status and repeated instance statuses |
+| `GetSyncStatus` | Administrator | optional `provider_instance_id`, `page_size`, `page_token` | `aggregate_status`, repeated `provider_statuses`, `next_page_token` |
 | `TriggerSync` | Administrator | `operation_id`, optional `provider_instance_id` | `run` |
 | `GetSyncRun` | Administrator | `sync_run_id` | `run` |
 
-`SyncRun` contains core-owned `id`, optional `provider_instance_id`, `phase`, `created_at`, optional `started_at`, optional `finished_at`, bounded `counts`, and optional redacted `failure_summary`. Phases are `QUEUED`, `PULLING`, `RECONCILING`, `PUSHING`, `COMPLETED`, or `FAILED`.
+`GetSyncStatusResponse` contains `aggregate_status`, repeated `ProviderSyncStatus` values, and `next_page_token`. When `provider_instance_id` is absent, all configured instances, including disabled instances, follow the common page contract and are ordered by provider-instance creation time then opaque ID. `aggregate_status` is computed over every matching instance, not only the returned page. When the ID is present, page fields must be absent or default, exactly one matching status is returned, and `next_page_token` is absent; an unknown ID returns `NOT_FOUND`.
+
+`ProviderSyncStatus` contains `provider_instance_id`, `status`, optional `active_run`, optional `last_success_at`, optional `next_attempt_at`, and optional redacted `failure_summary`. `SyncStatus` is `IDLE`, `QUEUED`, `RUNNING`, `FAILED`, or `DISABLED`. An active run determines `QUEUED` or `RUNNING`; otherwise a disabled instance is `DISABLED`, the latest unresolved terminal failure is `FAILED`, and the instance is `IDLE`. Aggregate precedence is `FAILED`, `RUNNING`, `QUEUED`, then `IDLE`; it is `DISABLED` only when every matching instance is disabled. An empty configured set is `IDLE`.
+
+`SyncRun` contains core-owned `id`, optional `provider_instance_id`, `phase`, `created_at`, optional `started_at`, optional `finished_at`, bounded `counts`, optional redacted `failure_summary`, and repeated `child_runs`. A `SyncChildRunReference` contains `sync_run_id` and `provider_instance_id`. Provider runs set `provider_instance_id` and have no children. Parent runs omit it and contain one child reference per enabled instance targeted by that trigger. A child has no parent ID because one already-active provider run may be joined by multiple aggregate triggers.
+
+Phases are `QUEUED`, `RUNNING`, `PULLING`, `RECONCILING`, `PUSHING`, `COMPLETED`, or `FAILED`. `RUNNING` is used only by a parent while any child is active; provider runs use the stage-specific phases. A parent is `QUEUED` before any referenced child starts, `RUNNING` while any child is nonterminal after work starts, `FAILED` after all children are terminal if any failed, and otherwise `COMPLETED`.
+
+A parent's `created_at` is the aggregate-trigger time. Its `started_at` is that same time when any joined child is already active, otherwise the first later child start; it never precedes `created_at`. `finished_at` is set when every referenced child is terminal. A parent with no enabled children sets all three timestamps to the trigger time and completes immediately. Parent counts are bounded sums of each referenced child's full-lifetime counts, including work completed before this parent joined an already-active child.
 
 `SyncCounts` contains items scanned, canonical states reconciled, mutations attempted, mutations applied, and mutations failed. Counts are operational summaries, not transaction guarantees.
 
-An omitted provider instance means all enabled instances. The response is a parent run whose children are visible in status. Only one run per provider instance is active. Triggering during an active run returns that run rather than queuing duplicate work. The MVP has no separate pull/push buttons and no cancellation RPC.
+For `TriggerSync`, an omitted provider instance means all enabled instances. The response is a parent run with explicit child references; each reference may identify a newly created child or an active provider run joined by this trigger. With a provider ID, the response is that provider run. Only one run per provider instance is active. Triggering during an active run returns that run rather than queuing duplicate work. The MVP has no separate pull/push buttons and no cancellation RPC.
 
-A failed import or export does not roll back already committed canonical state. `GetSyncStatus` exposes last success, active run, next scheduled attempt, and a sanitized status per instance so the CLI can show recovery without raw provider errors.
+A failed import or export does not roll back already committed canonical state. Status failures are sanitized so the CLI can show recovery without raw provider errors.
 
 Reconciliation stores the last normalized replica observed from each provider instance. A committed Nama-originated action wins immediately and is exported outward. Otherwise the most recent reliable provider activity wins, including a lower position or unwatched state from a genuine seek or rewatch. Missing or heuristic activity time, and exact reliable-time ties, use the instance's configured `sync_priority`. Equality with an already observed target produces no export. No rule takes maximum position or makes watched state permanently dominant.
 
@@ -583,7 +606,9 @@ The core durably records the catalog scan run and last accepted continuation. Af
 
 `GetItem` supports targeted repair and refresh before a write. Missing items return `NOT_FOUND`; provider unavailability returns `UNAVAILABLE`. Provider event subscriptions are not part of the unary MVP contract.
 
-`ProviderArtworkLease` contains provider URL, required headers, repeated proposed `allowed_redirect_origins`, optional expiry, MIME type, and authorization scope. The core independently validates every origin against configured provider/CDN policy before converting it to a public `ArtworkLocator`. A lease that requires a reusable provider-account credential or unsafe redirect is rejected; the client receives ordinary missing artwork and keeps its title fallback.
+`ProviderArtworkLease` contains provider URL, required headers, repeated proposed `allowed_redirect_origins`, optional provider-enforced `access_expires_at`, MIME type, and artwork authorization scope (`PUBLIC`, `MEDIA_ITEM`, or `PROVIDER_ACCOUNT`). A `PUBLIC` lease carries no credential and may omit access expiry. A `MEDIA_ITEM` lease must be constrained to that item and include an enforced access expiry. `PROVIDER_ACCOUNT` is always rejected.
+
+The core independently validates every origin against configured provider/CDN policy before converting the lease to a public `ArtworkLocator`, and selects the public `refresh_at` no later than any provider access expiry. A lease that requires a reusable provider-account credential, claims protected access without enforced expiry, or proposes an unsafe redirect is rejected; the client receives ordinary missing artwork and keeps its title fallback.
 
 ### Plugin PlaybackService
 
@@ -596,24 +621,27 @@ The plugin lifecycle has the same four RPC names as the public service:
 | `ReportPlayback` | Send bounded provider telemetry for an active lease |
 | `ClosePlayback` | Send the terminal provider event and release provider resources |
 
-`PluginPlanPlaybackRequest` contains the provider item and source references, package-local normalized playback capabilities, optional start position, and preferences. Capability and preference fields have the same semantics as the public package but are independently declared in `nama.plugin.v1`.
+The package-local `PlanPlaybackRequest` contains the provider item and source references, normalized playback capabilities, optional start position, and preferences. Capability and preference fields have the same semantics as the public package but are independently declared in `nama.plugin.v1`.
 
-`PluginPlaybackPlan` contains an opaque plugin plan ID, expiry, strategy, expected format and protocol, provider-scoped selectable tracks, defaults, and track actions. The core maps provider-scoped IDs to new public plan-scoped IDs and keeps that mapping only for the plan lifetime.
+`PluginPlaybackPlan` contains an opaque plugin plan ID, expiry, strategy, expected format and protocol, provider-scoped selectable tracks, defaults, and track actions. The core maps provider-scoped IDs to new public plan-scoped IDs for planning. When a plan opens, it copies every materialized mapping needed by the returned lease into the active core session and retains it through session cleanup rather than only through plan expiry.
 
-`PluginOpenPlaybackRequest` contains `operation_id`, plugin plan ID, and explicit selected provider track references. It returns a private `PlaybackLease` containing:
+The package-local `OpenPlaybackRequest` contains `operation_id`, plugin plan ID, and explicit selected provider track references. It returns a private `PlaybackLease` containing:
 
 - opaque provider `session_id`;
 - provider URL, headers, protocol, and MIME type;
 - repeated proposed `allowed_redirect_origins`;
 - expiry and recommended report interval;
 - authorization scope (`SESSION`, `MEDIA_ITEM`, or `PROVIDER_ACCOUNT`); and
+- repeated `ProviderSessionTrack` values, selected audio and subtitle provider track references, and repeated `ProviderExternalSubtitleLocator` values; and
 - opaque `session_context` bytes needed for later report or close calls.
+
+`ProviderSessionTrack` contains `track_reference` from the plugin plan and `switchable_without_reopen`. `ProviderExternalSubtitleLocator` contains `track_reference`, `url`, repeated required `headers`, repeated proposed `allowed_redirect_origins`, `mime_type`, and `expires_at`. It is required exactly once for every external subtitle in the materialized session and inherits the enclosing lease's authorization scope. The core validates it independently and maps it to the corresponding public session track ID.
 
 `session_context` may contain provider state or secrets. The core keeps it only for the active session, never logs it, and supplies it unchanged to later plugin processes if the original process restarts. It is never copied to a public response.
 
 The core exposes only `SESSION` or sufficiently constrained `MEDIA_ITEM` leases. It rejects `PROVIDER_ACCOUNT` authorization and any header, URL, or redirect origin that is reusable or unsafe outside the planned item. Redirect origins proposed by a plugin are untrusted and must match core configuration; public clients strip custom headers on every origin change. A plugin cannot weaken this rule by advertising a capability.
 
-Plugin report fields mirror public event ID, sequence, state, position, duration, selected tracks, and optional diagnostic client time, plus the private session context. Plugin close fields mirror final position, duration, reason, operation ID, and optional diagnostic client time, plus the context.
+Plugin report fields mirror public event ID, sequence, state, position, duration, observed selected tracks, and optional diagnostic client time, plus the private session context. Selected track references must belong to the active lease and are observations rather than switch commands. Plugin close fields mirror final position, duration, reason, operation ID, and optional diagnostic client time, plus the context.
 
 A provider that has no report or cleanup operation may implement the relevant call as a validated no-op. The core attempts to close every materialized lease on stop, cancellation, deadline, abandoned public open, shutdown, or partial failure. When the provider is unreachable, cleanup remains pending for a bounded safe retry and otherwise expires with the lease. If a public open is cancelled after the provider created a lease, the core records and attempts cleanup before discarding its active mapping.
 
@@ -739,6 +767,7 @@ Clients first branch on Connect code, then on `ErrorInfo.reason`. They must fall
 | Invalid or mismatched page token | `INVALID_ARGUMENT` | `PAGE_TOKEN_INVALID` |
 | Invalid bootstrap token or sign-in credentials | `UNAUTHENTICATED` | `AUTHENTICATION_FAILED` |
 | Missing, invalid, expired, or revoked bearer | `UNAUTHENTICATED` | `CREDENTIAL_INVALID` |
+| Durable session revocation cannot be confirmed | `UNAVAILABLE` | `SESSION_REVOCATION_UNCONFIRMED` |
 | Authenticated authority cannot call method | `PERMISSION_DENIED` | `PERMISSION_DENIED` |
 | Server has not completed setup | `FAILED_PRECONDITION` | `NOT_INITIALIZED` |
 | Setup is permanently closed | `FAILED_PRECONDITION` | `ALREADY_INITIALIZED` |
@@ -756,6 +785,7 @@ Clients first branch on Connect code, then on `ErrorInfo.reason`. They must fall
 | Same idempotency key was reused for another payload | `ALREADY_EXISTS` | `IDEMPOTENCY_KEY_REUSED` |
 | Expected provider revision is stale | `ABORTED` | `REVISION_MISMATCH` |
 | Updated credentials resolve to another provider user | `FAILED_PRECONDITION` | `PROVIDER_USER_CHANGED` |
+| Configured provider-instance limit is reached | `RESOURCE_EXHAUSTED` | `PROVIDER_INSTANCE_LIMIT_REACHED` |
 | Provider deletion is blocked by active work or enabled state | `FAILED_PRECONDITION` | `PROVIDER_INSTANCE_BUSY` |
 | Provider or plugin is temporarily unreachable | `UNAVAILABLE` | `PROVIDER_UNAVAILABLE` or `PLUGIN_UNAVAILABLE` |
 | Plugin returned invalid or unsafe data | `INTERNAL` | `PLUGIN_RESPONSE_INVALID` |
@@ -776,7 +806,7 @@ A transport request ID correlates one network attempt. An operation or event ID 
 
 The following are safe to retry after `UNAVAILABLE` or `DEADLINE_EXCEEDED`: reads, lists, search, status checks, connection tests, targeted state reads, `PlanPlayback`, and polling pairing status. Clients still honor deadlines and `RetryInfo`.
 
-`CreateAdministrator` and `SignIn` are never retried automatically. Lost setup response recovery is status then sign-in. Sign-out and device revocation are naturally convergent but clients should read current state after an ambiguous result.
+`CreateAdministrator`, `SignIn`, and `SignOut` are never retried automatically. Lost setup response recovery is status then sign-in. After `SESSION_REVOCATION_UNCONFIRMED`, a client retains the bearer and calls `GetCurrentUser`: `UNAUTHENTICATED` resolves the operation as revoked, while a still-active session permits an explicit `SignOut` retry. Device revocation is naturally convergent, but clients read current state after an ambiguous result.
 
 These public mutations carry `operation_id` and are retried only with the same ID and identical payload:
 
@@ -849,7 +879,7 @@ Contract tests inspect descriptors and representative encoded messages rather th
 - every public method appears exactly once in the authorization matrix;
 - field-validation reasons and paths map consistently, including `configuration.base_url` and cross-field errors;
 - the restricted provider schema round-trips through TypeScript, Go, and Swift `Struct` support;
-- representative movie, show, season, episode, artwork, source, part, track, and playback messages round-trip in all generated languages;
+- representative movie, show, season, episode, artwork, source, part, track, playback-session track, external-subtitle locator, diagnostic, sync-status, and parent/child sync-run messages round-trip in all generated languages;
 - begin/continuation scan oneofs and per-mutation watch results survive unknown enum values;
 - public descriptors contain no Jellyfin-, Plex-, or other provider-branded service, method, message, or field names;
 - credential and secret fields appear only in their explicitly approved messages; and
@@ -889,11 +919,11 @@ These flows define how the services compose. They are not authorization shortcut
 1. Scheduled plugin catalog scans return normalized provider observations.
 2. The core reconciles and stores canonical items and source mappings.
 3. tvOS loads lean home/list summaries, then details and technical source data only as screens require them.
-4. Artwork references are separately resolved to safe short-lived locators.
+4. Artwork references are separately resolved to safe refresh-bounded locators, with access expiry when authorization is present.
 5. tvOS sends real player capabilities and preferences to `PlanPlayback`.
 6. The core calls the owning plugin plan method and maps provider track references to public plan IDs.
-7. `OpenPlayback` materializes a private provider lease and returns only a safe direct descriptor.
-8. Media bytes flow from provider to tvOS. tvOS reports ordered telemetry and closes the session.
+7. `OpenPlayback` materializes a private provider lease and returns a safe direct descriptor with session-scoped tracks and any external subtitle locators.
+8. Media bytes flow from provider to tvOS. tvOS reports ordered telemetry, including observed session tracks, and closes the session.
 9. The core commits canonical state, attempts lease cleanup, and schedules only provider exports not already performed by playback telemetry.
 
 ### Synchronize watch state
@@ -923,6 +953,8 @@ These flows define how the services compose. They are not authorization shortcut
 This design follows established provider and television behavior without adopting provider wire shapes:
 
 - Apple tvOS interaction and media-detail expectations: [Designing for tvOS](https://developer.apple.com/design/human-interface-guidelines/designing-for-tvos/) and [Apple TV movie and show information](https://support.apple.com/en-ca/guide/tv/atvb0d26676e/tvos).
+- AetherEngine's player surface and separate sidecar-subtitle URL/header handling: [README](https://github.com/superuser404notfound/aetherengine/blob/main/README.md) and [format support](https://github.com/superuser404notfound/aetherengine/blob/main/docs/formats.md).
+- Better Auth's current sign-out implementation, whose caught session-deletion failure must not become a successful Nama response: [sign-out source](https://github.com/better-auth/better-auth/blob/v1.6.26/packages/better-auth/src/api/routes/sign-out.ts#L34-L49). The implementation spike rechecks the exact pinned release.
 - Jellyfin's documented surface: [stable OpenAPI](https://api.jellyfin.org/openapi/jellyfin-openapi-stable.json). Current source was also inspected at commit [`1fbd873`](https://github.com/jellyfin/jellyfin/tree/1fbd8739292cce610231be93daf43368733edf63) to distinguish implementation behavior from API guarantees.
 - Plex's documented surface: [metadata](https://developer.plex.tv/pms/#section/API-Info/Metadata-Response), [pagination](https://developer.plex.tv/pms/#section/API-Info/Pagination), [scrobble](https://developer.plex.tv/pms/#tag/Timeline/operation/putScrobble), and [timeline reporting](https://developer.plex.tv/pms/#tag/Timeline/operation/timelinePostSlash).
 - Standard field-level error details: [`google/rpc/error_details.proto`](https://github.com/googleapis/googleapis/blob/master/google/rpc/error_details.proto#L250-L310).
