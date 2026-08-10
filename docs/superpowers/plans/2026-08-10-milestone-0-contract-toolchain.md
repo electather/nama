@@ -248,7 +248,7 @@ disable:
     module: buf.build/bufbuild/protovalidate
 ```
 
-Change `mise` generation ownership to create a fresh validated staging root as a unique sibling of the canonical repository, never under a caller-controlled temporary directory. Run the cleaning local template first and the additive selected-googleapis template second with that root as Buf's `--output`, then validate the three staged and committed generated leaves. Publish each leaf with same-filesystem renames: move the committed leaf to a backup under staging, then move its staged replacement into place. EXIT and signal handling must roll back every backup after any partial failure, moving partial new output back under staging before restoring the committed leaf. Only after all three replacements succeed may cleanup discard the backups. The validated staging root is the only variable recursive-cleanup target.
+Change `mise` generation ownership to create a fresh validated staging root as a unique sibling of the canonical repository, never under a caller-controlled temporary directory. Before Buf runs, use BSD/macOS or GNU `stat` syntax to fail closed unless staging, the repository root, and all three generated-leaf parents report one device ID. Run the cleaning local template first and the additive selected-googleapis template second with that root as Buf's `--output`, then validate the three staged and committed generated leaves. Publish each leaf with same-filesystem renames: move the committed leaf to a backup under staging, then move its staged replacement into place. EXIT and signal handling must roll back every backup after any partial failure, moving partial new output back under staging before restoring the committed leaf. Only after all three replacements succeed may cleanup discard the backups. The validated staging root is the only variable recursive-cleanup target.
 
 ```toml
 [tasks.generate]
@@ -325,6 +325,26 @@ trap cleanup_generation EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+device_id() {
+  if device_value="$(stat -f '%d' "$1" 2>/dev/null)"; then
+    :
+  elif device_value="$(stat -c '%d' "$1" 2>/dev/null)"; then
+    :
+  else
+    return 1
+  fi
+  case "$device_value" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '%s\n' "$device_value"
+}
+
+generation_device="$(device_id "$generation_dir")"
+for publication_parent in "$repo_dir" "$repo_dir/gen" "$repo_dir/gen/ts" "$repo_dir/gen/swift/Sources"; do
+  test -d "$publication_parent"
+  test "$(device_id "$publication_parent")" = "$generation_device"
+done
 
 mkdir "$generation_dir/tmp"
 test ! -L "$generation_dir/tmp"
@@ -680,7 +700,7 @@ Make a whitespace-only change in a temporary copy of one schema and run the curr
 
 - [ ] **Step 2: Harden `check:contracts` without adding another wrapper**
 
-The task body must create and validate one sibling staging root before invoking Buf, then run format, lint, build, and both generation templates in that order with tool temporary files confined to staging. It must prove the staging root is outside the repository and all three fixed generated leaves before installing cleanup or invoking Buf, validate the staged and committed leaves, and compare them directly without invoking the mutating `generate` task:
+The task body must create and validate one sibling staging root before invoking Buf, fail closed unless it and every generated-leaf parent share one portable device ID, then run format, lint, build, and both generation templates in that order with tool temporary files confined to staging. It must prove the staging root is outside the repository and all three fixed generated leaves before installing cleanup or invoking Buf, validate the staged and committed leaves, and compare them directly without invoking the mutating `generate` task:
 
 ```toml
 [tasks."check:contracts"]
@@ -708,6 +728,26 @@ for generated_leaf in gen/ts/src gen/go gen/swift/Sources/NamaAPI; do
   esac
 done
 trap 'rm -rf -- "${generation_dir:?}"' EXIT
+
+device_id() {
+  if device_value="$(stat -f '%d' "$1" 2>/dev/null)"; then
+    :
+  elif device_value="$(stat -c '%d' "$1" 2>/dev/null)"; then
+    :
+  else
+    return 1
+  fi
+  case "$device_value" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '%s\n' "$device_value"
+}
+
+generation_device="$(device_id "$generation_dir")"
+for publication_parent in "$repo_dir" "$repo_dir/gen" "$repo_dir/gen/ts" "$repo_dir/gen/swift/Sources"; do
+  test -d "$publication_parent"
+  test "$(device_id "$publication_parent")" = "$generation_device"
+done
 
 mkdir "$generation_dir/tmp"
 test ! -L "$generation_dir/tmp"

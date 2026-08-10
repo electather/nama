@@ -92,6 +92,26 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+device_id() {
+  if device_value="$(stat -f '%d' "$1" 2>/dev/null)"; then
+    :
+  elif device_value="$(stat -c '%d' "$1" 2>/dev/null)"; then
+    :
+  else
+    return 1
+  fi
+  case "$device_value" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '%s\n' "$device_value"
+}
+
+generation_device="$(device_id "$generation_dir")"
+for publication_parent in "$repo_dir" "$repo_dir/gen" "$repo_dir/gen/ts" "$repo_dir/gen/swift/Sources"; do
+  test -d "$publication_parent"
+  test "$(device_id "$publication_parent")" = "$generation_device"
+done
+
 mkdir "$generation_dir/tmp"
 test ! -L "$generation_dir/tmp"
 test "$(cd "$generation_dir/tmp" && pwd -P)" = "$generation_dir/tmp"
@@ -153,6 +173,26 @@ for generated_leaf in gen/ts/src gen/go gen/swift/Sources/NamaAPI; do
   esac
 done
 trap 'rm -rf -- "${generation_dir:?}"' EXIT
+
+device_id() {
+  if device_value="$(stat -f '%d' "$1" 2>/dev/null)"; then
+    :
+  elif device_value="$(stat -c '%d' "$1" 2>/dev/null)"; then
+    :
+  else
+    return 1
+  fi
+  case "$device_value" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf '%s\n' "$device_value"
+}
+
+generation_device="$(device_id "$generation_dir")"
+for publication_parent in "$repo_dir" "$repo_dir/gen" "$repo_dir/gen/ts" "$repo_dir/gen/swift/Sources"; do
+  test -d "$publication_parent"
+  test "$(device_id "$publication_parent")" = "$generation_device"
+done
 
 mkdir "$generation_dir/tmp"
 test ! -L "$generation_dir/tmp"
