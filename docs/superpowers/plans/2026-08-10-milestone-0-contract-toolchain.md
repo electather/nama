@@ -248,14 +248,16 @@ disable:
     module: buf.build/bufbuild/protovalidate
 ```
 
-Change `mise` generation ownership to create a fresh validated staging root, run the cleaning local template first and the additive selected-googleapis template second with that root as Buf's `--output`, validate the three staged and committed generated leaves, and only then replace the committed leaves from the staged copies. A failure from either Buf command must leave committed output untouched. The validated staging root is the only variable recursive-cleanup target.
+Change `mise` generation ownership to create a fresh validated staging root as a unique sibling of the canonical repository, never under a caller-controlled temporary directory. Run the cleaning local template first and the additive selected-googleapis template second with that root as Buf's `--output`, then validate the three staged and committed generated leaves. Publish each leaf with same-filesystem renames: move the committed leaf to a backup under staging, then move its staged replacement into place. EXIT and signal handling must roll back every backup after any partial failure, moving partial new output back under staging before restoring the committed leaf. Only after all three replacements succeed may cleanup discard the backups. The validated staging root is the only variable recursive-cleanup target.
 
 ```toml
 [tasks.generate]
 description = "Generate committed clients from Protobuf schemas"
 run = """
 set -eu
-generation_dir="$(mktemp -d "${TMPDIR:-/tmp}/nama-generate.XXXXXX")"
+repo_dir="$(pwd -P)"
+repo_parent="$(dirname "$repo_dir")"
+generation_dir="$(mktemp -d "$repo_parent/.nama-generate.XXXXXX")"
 test -n "$generation_dir"
 test -d "$generation_dir"
 test ! -L "$generation_dir"
@@ -263,27 +265,93 @@ generation_dir="$(cd "$generation_dir" && pwd -P)"
 test -n "$generation_dir"
 test -d "$generation_dir"
 test ! -L "$generation_dir"
-trap 'rm -rf -- "${generation_dir:?}"' EXIT
+test "$(dirname "$generation_dir")" = "$repo_parent"
+case "$generation_dir" in
+  "$repo_dir"|"$repo_dir"/*) exit 1 ;;
+esac
+for generated_leaf in gen/ts/src gen/go gen/swift/Sources/NamaAPI; do
+  real_path="$repo_dir/$generated_leaf"
+  case "$generation_dir" in
+    "$real_path"|"$real_path"/*) exit 1 ;;
+  esac
+done
 
-buf generate --template buf.gen.yaml --output "$generation_dir"
-buf generate --template buf.gen.googleapis.yaml --output "$generation_dir"
+backup_root="$generation_dir/backups"
+publish_complete=0
+rollback_failed=0
 
-repo_dir="$(pwd -P)"
-for path in gen/ts/src gen/go gen/swift/Sources/NamaAPI; do
-  staged_path="$generation_dir/$path"
+restore_leaf() {
+  generated_leaf="$1"
+  real_path="$repo_dir/$generated_leaf"
+  staged_path="$generation_dir/$generated_leaf"
+  backup_path="$backup_root/$generated_leaf"
+
+  if [ -d "$backup_path" ]; then
+    if [ -d "$real_path" ] || [ -L "$real_path" ]; then
+      if [ -d "$staged_path" ] || [ -L "$staged_path" ]; then
+        rollback_failed=1
+      elif ! mv "$real_path" "$staged_path"; then
+        rollback_failed=1
+      fi
+    fi
+    if [ ! -d "$real_path" ] && [ ! -L "$real_path" ]; then
+      if ! mv "$backup_path" "$real_path"; then
+        rollback_failed=1
+      fi
+    else
+      rollback_failed=1
+    fi
+  fi
+}
+
+cleanup_generation() {
+  exit_status=$?
+  trap - EXIT
+  trap '' HUP INT TERM
+  if [ "$publish_complete" -ne 1 ]; then
+    restore_leaf gen/swift/Sources/NamaAPI
+    restore_leaf gen/go
+    restore_leaf gen/ts/src
+    if [ "$rollback_failed" -ne 0 ]; then
+      printf '%s\n' "generated-output rollback failed; recovery data preserved at $generation_dir" >&2
+      exit 1
+    fi
+  fi
+  rm -rf -- "${generation_dir:?}"
+  exit "$exit_status"
+}
+
+trap cleanup_generation EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+mkdir "$generation_dir/tmp"
+test ! -L "$generation_dir/tmp"
+test "$(cd "$generation_dir/tmp" && pwd -P)" = "$generation_dir/tmp"
+TMPDIR="$generation_dir/tmp" buf generate --template buf.gen.yaml --output "$generation_dir"
+TMPDIR="$generation_dir/tmp" buf generate --template buf.gen.googleapis.yaml --output "$generation_dir"
+
+for generated_leaf in gen/ts/src gen/go gen/swift/Sources/NamaAPI; do
+  staged_path="$generation_dir/$generated_leaf"
   test -d "$staged_path"
   test ! -L "$staged_path"
   test "$(cd "$staged_path" && pwd -P)" = "$staged_path"
-  test -d "$path"
-  test ! -L "$path"
-  test "$(cd "$path" && pwd -P)" = "$repo_dir/$path"
+  test -d "$generated_leaf"
+  test ! -L "$generated_leaf"
+  test "$(cd "$generated_leaf" && pwd -P)" = "$repo_dir/$generated_leaf"
 done
 
-rm -rf -- gen/ts/src gen/go gen/swift/Sources/NamaAPI
-mkdir -p gen/ts gen/swift/Sources
-cp -R "$generation_dir/gen/ts/src" gen/ts/src
-cp -R "$generation_dir/gen/go" gen/go
-cp -R "$generation_dir/gen/swift/Sources/NamaAPI" gen/swift/Sources/NamaAPI
+mkdir -p "$backup_root/gen/ts" "$backup_root/gen/swift/Sources"
+test -d "$backup_root"
+test ! -L "$backup_root"
+test "$(cd "$backup_root" && pwd -P)" = "$backup_root"
+
+for generated_leaf in gen/ts/src gen/go gen/swift/Sources/NamaAPI; do
+  mv "$repo_dir/$generated_leaf" "$backup_root/$generated_leaf"
+  mv "$generation_dir/$generated_leaf" "$repo_dir/$generated_leaf"
+done
+publish_complete=1
 """
 ```
 
@@ -612,14 +680,16 @@ Make a whitespace-only change in a temporary copy of one schema and run the curr
 
 - [ ] **Step 2: Harden `check:contracts` without adding another wrapper**
 
-The task body must run format, lint, and build first, then generate both templates into one fresh validated staging root in local-then-googleapis order. It must validate the same three staged and committed generated leaves and compare them directly without invoking the mutating `generate` task:
+The task body must create and validate one sibling staging root before invoking Buf, then run format, lint, build, and both generation templates in that order with tool temporary files confined to staging. It must prove the staging root is outside the repository and all three fixed generated leaves before installing cleanup or invoking Buf, validate the staged and committed leaves, and compare them directly without invoking the mutating `generate` task:
 
-```bash
+```toml
+[tasks."check:contracts"]
+description = "Lint contracts and reject generated drift"
+run = """
 set -eu
-buf format --diff --exit-code
-buf lint
-buf build
-generation_dir="$(mktemp -d "${TMPDIR:-/tmp}/nama-contracts.XXXXXX")"
+repo_dir="$(pwd -P)"
+repo_parent="$(dirname "$repo_dir")"
+generation_dir="$(mktemp -d "$repo_parent/.nama-contracts.XXXXXX")"
 test -n "$generation_dir"
 test -d "$generation_dir"
 test ! -L "$generation_dir"
@@ -627,28 +697,44 @@ generation_dir="$(cd "$generation_dir" && pwd -P)"
 test -n "$generation_dir"
 test -d "$generation_dir"
 test ! -L "$generation_dir"
+test "$(dirname "$generation_dir")" = "$repo_parent"
+case "$generation_dir" in
+  "$repo_dir"|"$repo_dir"/*) exit 1 ;;
+esac
+for generated_leaf in gen/ts/src gen/go gen/swift/Sources/NamaAPI; do
+  real_path="$repo_dir/$generated_leaf"
+  case "$generation_dir" in
+    "$real_path"|"$real_path"/*) exit 1 ;;
+  esac
+done
 trap 'rm -rf -- "${generation_dir:?}"' EXIT
 
-buf generate --template buf.gen.yaml --output "$generation_dir"
-buf generate --template buf.gen.googleapis.yaml --output "$generation_dir"
+mkdir "$generation_dir/tmp"
+test ! -L "$generation_dir/tmp"
+test "$(cd "$generation_dir/tmp" && pwd -P)" = "$generation_dir/tmp"
+TMPDIR="$generation_dir/tmp" buf format --diff --exit-code
+TMPDIR="$generation_dir/tmp" buf lint
+TMPDIR="$generation_dir/tmp" buf build
+TMPDIR="$generation_dir/tmp" buf generate --template buf.gen.yaml --output "$generation_dir"
+TMPDIR="$generation_dir/tmp" buf generate --template buf.gen.googleapis.yaml --output "$generation_dir"
 
-repo_dir="$(pwd -P)"
-for path in gen/ts/src gen/go gen/swift/Sources/NamaAPI; do
-  staged_path="$generation_dir/$path"
+for generated_leaf in gen/ts/src gen/go gen/swift/Sources/NamaAPI; do
+  staged_path="$generation_dir/$generated_leaf"
   test -d "$staged_path"
   test ! -L "$staged_path"
   test "$(cd "$staged_path" && pwd -P)" = "$staged_path"
-  test -d "$path"
-  test ! -L "$path"
-  test "$(cd "$path" && pwd -P)" = "$repo_dir/$path"
+  test -d "$generated_leaf"
+  test ! -L "$generated_leaf"
+  test "$(cd "$generated_leaf" && pwd -P)" = "$repo_dir/$generated_leaf"
 done
 
 diff -ru gen/ts/src "$generation_dir/gen/ts/src"
 diff -ru gen/go "$generation_dir/gen/go"
 diff -ru gen/swift/Sources/NamaAPI "$generation_dir/gen/swift/Sources/NamaAPI"
+"""
 ```
 
-The direct comparisons cover only Buf-owned leaves, so local `node_modules`, Swift `.build`, manifests, locks, and handwritten tests are never copied or mutated. They detect changed, added, and removed generated files and pass when an implementation task has already regenerated an intentional uncommitted schema change, while CI still fails when checked-in output is stale. A remote generation failure affects only the validated staging directory, which is the only recursive cleanup target.
+The direct comparisons cover only Buf-owned leaves, so local `node_modules`, Swift `.build`, manifests, locks, and handwritten tests are never copied or mutated. They detect changed, added, and removed generated files and pass when an implementation task has already regenerated an intentional uncommitted schema change, while CI still fails when checked-in output is stale. Caller-controlled temporary-directory configuration is ignored; a remote generation failure affects only the validated sibling staging directory, which is the only recursive cleanup target.
 
 - [ ] **Step 3: Confirm CI ownership remains thin**
 
