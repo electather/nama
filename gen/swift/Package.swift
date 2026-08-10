@@ -5,7 +5,8 @@ import PackageDescription
 let package = Package(
     name: "NamaAPI",
     platforms: [
-        .tvOS(.v17)
+        .tvOS(.v17),
+        .macOS(.v10_15)
     ],
     products: [
         .library(name: "NamaAPI", targets: ["NamaAPI"])
