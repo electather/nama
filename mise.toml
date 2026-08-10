@@ -18,7 +18,10 @@ run = [
 
 [tasks.generate]
 description = "Generate committed clients from Protobuf schemas"
-run = "buf generate"
+run = [
+  "buf generate --template buf.gen.yaml",
+  "buf generate --template buf.gen.googleapis.yaml",
+]
 
 [tasks.format]
 description = "Format handwritten source files"
@@ -33,7 +36,7 @@ description = "Lint contracts and reject generated drift"
 run = """
 set -eu
 buf lint
-buf generate
+mise run generate
 status="$(git status --porcelain=v1 -- gen)"
 if [ -n "$status" ]; then
   printf '%s\n' "$status"

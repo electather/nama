@@ -1,7 +1,12 @@
 version: v2
 clean: true
+inputs:
+  - directory: proto
 managed:
   enabled: true
+  disable:
+    - file_option: go_package_prefix
+      module: buf.build/bufbuild/protovalidate
   override:
     - file_option: go_package_prefix
       value: github.com/electather/nama/gen/go
@@ -9,6 +14,7 @@ plugins:
   - remote: buf.build/bufbuild/es:v2.13.0
     revision: 1
     out: gen/ts/src
+    include_imports: true
     opt:
       - target=ts
       - import_extension=js
@@ -30,6 +36,7 @@ plugins:
   - remote: buf.build/apple/swift:v1.38.1
     revision: 1
     out: gen/swift/Sources/NamaAPI
+    include_imports: true
     opt:
       - Visibility=Public
       - FileNaming=PathToUnderscores
@@ -38,6 +45,7 @@ plugins:
   - remote: buf.build/connectrpc/swift:v1.2.3
     revision: 1
     out: gen/swift/Sources/NamaAPI
+    include_imports: true
     opt:
       - Visibility=Public
       - FileNaming=PathToUnderscores

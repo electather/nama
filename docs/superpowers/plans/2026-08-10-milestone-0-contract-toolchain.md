@@ -177,6 +177,8 @@ git commit -m "feat(api): add contract foundations"
 **Files:**
 
 - Modify: `buf.gen.yaml`
+- Create: `buf.gen.googleapis.yaml`
+- Modify: `mise.toml`
 - Modify: `gen/ts/package.json`
 - Modify: `pnpm-lock.yaml`
 - Modify if generated imports require it: `go.mod`
@@ -196,32 +198,68 @@ Run: `rg -A3 'name: buf.build/googleapis/googleapis' buf.lock`
 
 Expected: immutable commit `c17df5b2beca46928cc87d5656bd5343`, matching `buf.yaml`. If it differs, stop: the checked-in dependency pin and the generation input must be changed together in a deliberate dependency update.
 
-- [ ] **Step 2: Add explicit v2 generation inputs**
+- [ ] **Step 2: Split local and selected-googleapis generation**
 
-Add `inputs` before `managed` in `buf.gen.yaml`:
+Buf 1.72 evaluates plugin filters independently against every configured input. Keep `buf.gen.yaml` as the cleaning local-module template with one explicit input:
 
 ```yaml
 inputs:
   - directory: proto
+```
+
+Configure the local ES plugin and both local Swift plugins with `include_imports: true`. Keep `nama.plugin.v1` excluded from Go and Swift. Keep the existing Nama Go package-prefix override and the Protovalidate managed-mode disable; no googleapis input or `google.rpc` exclusion belongs in this local template.
+
+Create `buf.gen.googleapis.yaml` as a non-cleaning second template:
+
+```yaml
+version: v2
+clean: false
+inputs:
   - module: buf.build/googleapis/googleapis:c17df5b2beca46928cc87d5656bd5343
     types:
       - google.rpc.ErrorInfo
       - google.rpc.BadRequest
       - google.rpc.RequestInfo
       - google.rpc.RetryInfo
+plugins:
+  - remote: buf.build/bufbuild/es:v2.13.0
+    revision: 1
+    out: gen/ts/src
+    include_imports: true
+    opt:
+      - target=ts
+      - import_extension=js
+  - remote: buf.build/apple/swift:v1.38.1
+    revision: 1
+    out: gen/swift/Sources/NamaAPI
+    include_imports: true
+    opt:
+      - Visibility=Public
+      - FileNaming=PathToUnderscores
 ```
 
-Configure the ES plugin with `include_imports: true`. Configure both Swift plugins with `include_imports: true`. Keep `nama.plugin.v1` excluded from Go and Swift. On both Go plugins, also exclude `google.rpc.ErrorInfo`, `google.rpc.BadRequest`, `google.rpc.RequestInfo`, and `google.rpc.RetryInfo`; Go consumes those dependency-owned types from their generated module instead of copying them into `gen/go`. Keep WKT generation disabled.
+Do not add Go or Connect-Swift plugins to the selected-googleapis template: Go consumes dependency-owned error details from `google.golang.org/genproto`, and the selected messages define no services. Keep WKT generation disabled.
 
-Keep the existing Nama Go package-prefix override, but add managed-mode disables so it never rewrites dependency-owned `go_package` options:
+Keep this managed-mode disable in the local template so it never rewrites dependency-owned Protovalidate `go_package` options:
 
 ```yaml
 disable:
   - file_option: go_package_prefix
     module: buf.build/bufbuild/protovalidate
-  - file_option: go_package_prefix
-    module: buf.build/googleapis/googleapis
 ```
+
+Change `mise` generation ownership to run the cleaning local template first and the additive selected-googleapis template second:
+
+```toml
+[tasks.generate]
+description = "Generate committed clients from Protobuf schemas"
+run = [
+  "buf generate --template buf.gen.yaml",
+  "buf generate --template buf.gen.googleapis.yaml",
+]
+```
+
+Change the existing `check:contracts` generation line from `buf generate` to `mise run generate`; Task 4 later hardens the rest of that gate.
 
 - [ ] **Step 3: Simplify generated TypeScript exports**
 
@@ -272,7 +310,7 @@ Expected: the first command has no matches; the second lists exactly the files n
 - [ ] **Step 7: Commit deterministic generation ownership**
 
 ```bash
-git add buf.gen.yaml gen/ts/package.json pnpm-lock.yaml go.mod go.sum gen/ts gen/go gen/swift/Sources/NamaAPI
+git add buf.gen.yaml buf.gen.googleapis.yaml mise.toml gen/ts/package.json pnpm-lock.yaml go.mod go.sum gen/ts gen/go gen/swift/Sources/NamaAPI docs/superpowers/plans/2026-08-10-milestone-0-contract-toolchain.md
 git commit -m "build(api): pin contract generation inputs"
 ```
 
@@ -559,7 +597,7 @@ mkdir -p "$snapshot_dir/gen/ts" "$snapshot_dir/gen/swift/Sources"
 cp -R gen/ts/src "$snapshot_dir/gen/ts/src"
 cp -R gen/go "$snapshot_dir/gen/go"
 cp -R gen/swift/Sources/NamaAPI "$snapshot_dir/gen/swift/Sources/NamaAPI"
-buf generate
+mise run generate
 diff -ru "$snapshot_dir/gen/ts/src" gen/ts/src
 diff -ru "$snapshot_dir/gen/go" gen/go
 diff -ru "$snapshot_dir/gen/swift/Sources/NamaAPI" gen/swift/Sources/NamaAPI

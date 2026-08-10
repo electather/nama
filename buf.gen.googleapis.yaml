@@ -1,0 +1,24 @@
+version: v2
+clean: false
+inputs:
+  - module: buf.build/googleapis/googleapis:c17df5b2beca46928cc87d5656bd5343
+    types:
+      - google.rpc.ErrorInfo
+      - google.rpc.BadRequest
+      - google.rpc.RequestInfo
+      - google.rpc.RetryInfo
+plugins:
+  - remote: buf.build/bufbuild/es:v2.13.0
+    revision: 1
+    out: gen/ts/src
+    include_imports: true
+    opt:
+      - target=ts
+      - import_extension=js
+  - remote: buf.build/apple/swift:v1.38.1
+    revision: 1
+    out: gen/swift/Sources/NamaAPI
+    include_imports: true
+    opt:
+      - Visibility=Public
+      - FileNaming=PathToUnderscores
