@@ -36,13 +36,22 @@ run = [
 description = "Lint contracts and reject generated drift"
 run = """
 set -eu
+buf format --diff --exit-code
 buf lint
+buf build
+snapshot_dir="$(mktemp -d "${TMPDIR:-/tmp}/nama-contracts.XXXXXX")"
+test -n "$snapshot_dir"
+test -d "$snapshot_dir"
+test ! -L "$snapshot_dir"
+trap 'rm -rf -- "${snapshot_dir:?}"' EXIT
+mkdir -p "$snapshot_dir/gen/ts" "$snapshot_dir/gen/swift/Sources"
+cp -R gen/ts/src "$snapshot_dir/gen/ts/src"
+cp -R gen/go "$snapshot_dir/gen/go"
+cp -R gen/swift/Sources/NamaAPI "$snapshot_dir/gen/swift/Sources/NamaAPI"
 mise run generate
-status="$(git status --porcelain=v1 -- gen)"
-if [ -n "$status" ]; then
-  printf '%s\n' "$status"
-  exit 1
-fi
+diff -ru "$snapshot_dir/gen/ts/src" gen/ts/src
+diff -ru "$snapshot_dir/gen/go" gen/go
+diff -ru "$snapshot_dir/gen/swift/Sources/NamaAPI" gen/swift/Sources/NamaAPI
 """
 
 [tasks."check:ts"]
