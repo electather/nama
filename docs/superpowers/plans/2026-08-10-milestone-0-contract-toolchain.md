@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Establish the deterministic dependency, generation, validation, and native round-trip test foundation required by the complete Milestone 0 contracts.
+**Goal:** Establish the deterministic dependency, generation, validation, and real-application compile foundations required by the complete Milestone 0 contracts.
 
-**Architecture:** Buf remains the only schema and generation owner. The local module imports pinned Protovalidate and Google API schemas; TypeScript generates both Nama packages, Go generates public Nama only, and Swift generates public Nama plus selected dependency-owned Google RPC details and required imported support. Handwritten manifests and tests stay outside Buf-cleaned leaves.
+**Architecture:** Buf remains the only schema and generation owner. The local module imports pinned Protovalidate and Google API schemas; TypeScript generates both Nama packages, Go generates public Nama only, and Swift generates public Nama plus selected dependency-owned Google RPC details and required imported support. Handwritten manifests and real application probes stay outside Buf-cleaned leaves; later plans add tests only for handwritten Nama policy and normalization.
 
 **Tech Stack:** Buf 1.72.0, Protobuf, Protovalidate v1 annotations, protoc-gen-es 2.13.0, protoc-gen-go 1.36.11, Connect-Go 1.20.0, SwiftProtobuf 1.38.1, Connect-Swift 1.2.3, Node.js 24, Go 1.26, Swift 6/Xcode 26.6, mise.
 
@@ -13,7 +13,7 @@
 - This is plan 1 of 4. Execute it before the public-management, public-media/playback, and plugin-contract plans.
 - Before changing schemas, run `git status --short`, confirm the approved contract and plan documents are committed on the implementation branch, and stop on unrelated changes. Do not make implementation commits on top of an ambiguous documentation worktree.
 - Execute all four plans on one feature branch/worktree and merge only after the Milestone 0 completion gate. Task commits are review checkpoints, not partial v1 releases.
-- Milestone 0 creates schemas, generated SDKs, compile probes, and descriptor/round-trip checks only. It creates no handlers, database tables, provider clients, fake servers, or runtime behavior.
+- Milestone 0 creates schemas, generated SDKs, application compile probes, and later handwritten-policy tests only. It creates no handlers, database tables, provider clients, fake servers, or runtime behavior.
 - `nama.api.v1` and `nama.plugin.v1` never import each other or a third Nama package.
 - Every enum starts with an `*_UNSPECIFIED = 0` value. Every RPC is unary and has method-specific request and response messages; do not use `google.protobuf.Empty`.
 - Required enum fields exclude only zero with `(buf.validate.field).enum = { not_in: [0] }`. Never use `defined_only`: unknown future numeric enum values must remain valid for forward-compatible clients.
@@ -433,254 +433,47 @@ git add buf.gen.yaml buf.gen.googleapis.yaml mise.toml gen/ts/package.json pnpm-
 git commit -m "build(api): pin contract generation inputs"
 ```
 
-### Task 3: Add one native round-trip harness per generated consumer
+### Task 3: Verify generated clients through real applications
 
 **Files:**
 
-- Modify: `apps/server/package.json`
-- Modify: `package.json`
-- Modify: `pnpm-lock.yaml`
-- Create: `apps/server/src/contract.test.ts`
-- Create: `apps/cli/internal/cli/contracts_test.go`
-- Modify: `gen/swift/Package.swift`
-- Create: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
-- Create after SwiftPM resolution: `gen/swift/Package.resolved`
-- Modify: `mise.toml`
-- Modify: `.github/workflows/ci.yml`
+- Verify: `apps/server/src/contract-probe.ts`
+- Verify: `plugins/jellyfin/src/contract-probe.ts`
+- Verify: `apps/cli/internal/cli/root.go`
+- Verify: `apps/tvos/Nama/NamaApp.swift`
 
 **Interfaces:**
 
-- Consumes: generated common schemas, standard Google error details, and direct Node/Protobuf test dependencies.
-- Produces: one expandable TypeScript baseline test for both packages, one Go public test, and one Swift public test. Plan 4 Task 5 adds the direct validation runtime when the harness first validates generated schemas.
+- Consumes: generated public and private Health clients.
+- Produces: compile evidence from the four applications that actually consume those clients.
 
-- [ ] **Step 1: Create the complete TypeScript baseline fixture**
-
-Use Node's built-in test runner and Protobuf-ES `create`, `toBinary`, and `fromBinary` APIs. The test must construct both package-local `HttpHeader` values and a public `BearerCredential`, then assert deep equality after binary round trip. Also construct each selected `google.rpc` detail once so missing generated inputs fail compilation.
-
-```ts
-import assert from "node:assert/strict";
-import test from "node:test";
-import {
-  create,
-  fromBinary,
-  toBinary,
-  type DescMessage,
-  type MessageShape,
-} from "@bufbuild/protobuf";
-import {
-  BadRequestSchema,
-  ErrorInfoSchema,
-  RequestInfoSchema,
-  RetryInfoSchema,
-} from "@nama/api/google/rpc/error_details_pb.js";
-import {
-  BearerCredentialSchema,
-  HttpHeaderSchema as PublicHttpHeaderSchema,
-} from "@nama/api/nama/api/v1/common_pb.js";
-import { HttpHeaderSchema as PluginHttpHeaderSchema } from "@nama/api/nama/plugin/v1/common_pb.js";
-
-function assertRoundTrip<Desc extends DescMessage>(
-  schema: Desc,
-  message: MessageShape<Desc>,
-): void {
-  assert.deepEqual(fromBinary(schema, toBinary(schema, message)), message);
-}
-
-test("common messages round-trip across both Nama packages", () => {
-  const publicHeader = create(PublicHttpHeaderSchema, { name: "x-test", value: "public" });
-  const pluginHeader = create(PluginHttpHeaderSchema, { name: "x-test", value: "plugin" });
-  const credential = create(BearerCredentialSchema, {
-    token: "opaque",
-    expiresAt: { seconds: 1n, nanos: 0 },
-  });
-  assertRoundTrip(PublicHttpHeaderSchema, publicHeader);
-  assertRoundTrip(PluginHttpHeaderSchema, pluginHeader);
-  assertRoundTrip(BearerCredentialSchema, credential);
-});
-
-test("selected google.rpc details compile and round-trip", () => {
-  assertRoundTrip(ErrorInfoSchema, create(ErrorInfoSchema, { reason: "TEST", domain: "nama.api.v1" }));
-  assertRoundTrip(
-    BadRequestSchema,
-    create(BadRequestSchema, {
-      fieldViolations: [{ field: "field", description: "invalid", reason: "REQUIRED" }],
-    }),
-  );
-  assertRoundTrip(RequestInfoSchema, create(RequestInfoSchema, { requestId: "request-1" }));
-  assertRoundTrip(
-    RetryInfoSchema,
-    create(RetryInfoSchema, { retryDelay: { seconds: 1n, nanos: 0 } }),
-  );
-});
-```
-
-- [ ] **Step 2: Run the TypeScript red check**
-
-Run: `pnpm --filter @nama/server run check:type`
-
-Expected: FAIL because the server package does not yet own the Node or Protobuf dependencies used by its contract harness.
-
-- [ ] **Step 3: Add the two direct server test dependencies**
-
-Run: `pnpm --filter @nama/server add --save-dev --save-exact @types/node@24.13.3 @bufbuild/protobuf@2.13.0`
-
-pnpm's strict package boundary must not rely on `@nama/api` exposing its runtime dependencies. Plan 4 Task 5 adds the direct Protovalidate dependency when it first imports `createValidator`.
-
-- [ ] **Step 4: Add the server contract-test script**
-
-Add `"check:contract": "node --test src/contract.test.ts"` to `apps/server/package.json`. Node 24's built-in type stripping executes the erasable handwritten test syntax, while generated runtime files are JavaScript; do not add a separate TypeScript runner.
-
-- [ ] **Step 5: Wire the contract script into the root TypeScript check**
-
-Run the server's `check:contract` after root type checking in `package.json`, preserving the existing format/lint/type order.
-
-- [ ] **Step 6: Format the TypeScript contract baseline**
-
-Run: `pnpm exec oxfmt apps/server/src/contract.test.ts`
-
-- [ ] **Step 7: Run the first TypeScript contract baseline**
-
-Run: `pnpm --filter @nama/server run check:contract`
-
-Expected: PASS. A missing generated import, export, or runtime fails here before the schema surface expands in later plans.
-
-- [ ] **Step 8: Add the Go common/error-detail round trip**
-
-Create `apps/cli/internal/cli/contracts_test.go` with this complete baseline; do not compare generated implementation fields:
-
-```go
-package cli
-
-import (
-	"testing"
-	"time"
-
-	apiv1 "github.com/electather/nama/gen/go/nama/api/v1"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/durationpb"
-	"google.golang.org/protobuf/types/known/timestamppb"
-)
-
-func TestContractRoundTrips(t *testing.T) {
-	fixtures := []proto.Message{
-		&apiv1.HttpHeader{Name: "x-test", Value: "public"},
-		&apiv1.BearerCredential{Token: "opaque", ExpiresAt: timestamppb.New(time.Unix(1, 0))},
-		&errdetails.ErrorInfo{Reason: "TEST", Domain: "nama.api.v1"},
-		&errdetails.BadRequest{FieldViolations: []*errdetails.BadRequest_FieldViolation{{
-			Field: "field", Description: "invalid", Reason: "REQUIRED",
-		}}},
-		&errdetails.RequestInfo{RequestId: "request-1"},
-		&errdetails.RetryInfo{RetryDelay: durationpb.New(time.Second)},
-	}
-
-	for _, want := range fixtures {
-		encoded, err := proto.Marshal(want)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got := want.ProtoReflect().Type().New().Interface()
-		if err := proto.Unmarshal(encoded, got); err != nil {
-			t.Fatal(err)
-		}
-		if !proto.Equal(got, want) {
-			t.Fatalf("round trip mismatch for %s", want.ProtoReflect().Descriptor().FullName())
-		}
-	}
-}
-```
-
-- [ ] **Step 9: Run the Go contract fixture**
-
-Run: `go test ./apps/cli/internal/cli -run TestContractRoundTrips -count=1`
-
-Expected: PASS.
-
-- [ ] **Step 10: Add the Swift package test target**
-
-Add this target beside the existing library target in `gen/swift/Package.swift`:
-
-```swift
-.testTarget(
-  name: "NamaAPITests",
-  dependencies: [
-    "NamaAPI",
-    .product(name: "SwiftProtobuf", package: "swift-protobuf"),
-  ]
-)
-```
-
-- [ ] **Step 11: Add the Swift public round-trip fixture**
-
-Create `gen/swift/Tests/NamaAPITests/ContractTests.swift` with the public header round trip and exact selected-type compile proof:
-
-```swift
-import NamaAPI
-import SwiftProtobuf
-import XCTest
-
-final class ContractTests: XCTestCase {
-  func testCommonContractRoundTrip() throws {
-    var header = Nama_Api_V1_HttpHeader()
-    header.name = "x-test"
-    header.value = "public"
-
-    let encoded = try header.serializedData()
-    let decoded = try Nama_Api_V1_HttpHeader(serializedBytes: encoded)
-    XCTAssertEqual(decoded, header)
-
-    _ = Google_Rpc_ErrorInfo()
-    _ = Google_Rpc_BadRequest()
-    _ = Google_Rpc_RequestInfo()
-    _ = Google_Rpc_RetryInfo()
-  }
-}
-```
-
-- [ ] **Step 12: Run the Swift contract fixture**
-
-Run: `swift test --package-path gen/swift`
-
-Expected: PASS and a SwiftPM `Package.resolved` containing the exact dependencies already declared by the package.
-
-- [ ] **Step 13: Make the local Go owner check compare before and after**
-
-In `check:go`, capture `lock_state="$(cksum go.mod go.sum)"` before `go vet`/`go test`, then finish with `test "$lock_state" = "$(cksum go.mod go.sum)"`. This permits an intentional pre-existing module edit while detecting mutation caused by the check.
-
-- [ ] **Step 14: Add the Swift package test to local format and check tasks**
-
-Include `gen/swift/Tests` in the Swift format and strict-format-lint path lists. In `check:swift`, capture one `cksum` snapshot of both resolved files, run `swift test --package-path gen/swift` before the tvOS build, then compare the same two files with the snapshot. Do not add a root test framework or universal test command.
-
-- [ ] **Step 15: Extend setup for the generated Swift package lock**
-
-Run `swift package resolve --package-path gen/swift` from `setup`, then include `gen/swift/Package.resolved` in its clean-checkout `git diff --exit-code` lock check. Setup keeps comparing to `HEAD` because it is defined to start from committed lock state.
-
-- [ ] **Step 16: Extend the existing macOS CI job**
-
-After package resolution, run `swift test --package-path gen/swift`, include `gen/swift/Tests` in strict formatting, and include both resolved files in the clean-checkout lock checks before and after tests/build. Do not add another job.
-
-- [ ] **Step 17: Format the native contract fixtures**
-
-Run: `mise run format`
-
-- [ ] **Step 18: Run all three narrow checks**
+- [ ] **Step 1: Confirm every application probe imports HealthService**
 
 Run:
 
 ```bash
-mise run check:ts
-mise run check:go
-mise run check:swift
+rg -n 'HealthService' apps/server/src/contract-probe.ts plugins/jellyfin/src/contract-probe.ts apps/cli/internal/cli/root.go apps/tvos/Nama/NamaApp.swift
 ```
 
-Expected: PASS.
+Expected: all four application probes match.
 
-- [ ] **Step 19: Commit the native contract harnesses**
+- [ ] **Step 2: Compile the TypeScript applications**
 
-```bash
-git add package.json apps/server/package.json apps/server/src/contract.test.ts apps/cli/internal/cli/contracts_test.go gen/swift/Package.swift gen/swift/Package.resolved gen/swift/Tests mise.toml .github/workflows/ci.yml pnpm-lock.yaml
-git commit -m "test(api): add native contract round trips"
-```
+Run: `mise run check:ts`
+
+Expected: PASS for the real server and plugin probes.
+
+- [ ] **Step 3: Compile the Go application**
+
+Run: `mise run check:go`
+
+Expected: PASS for the CLI probe.
+
+- [ ] **Step 4: Compile the tvOS application**
+
+Run: `mise run check:swift`
+
+Expected: PASS with the pinned Xcode 26.6 toolchain. If `/Applications/Xcode_26.6.app` is unavailable locally, report the limitation and rely on the unchanged macOS CI tvOS build; do not replace it with a standalone generated-package test.
 
 ### Task 4: Make contract drift checks complete
 

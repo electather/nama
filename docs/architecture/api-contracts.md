@@ -874,16 +874,16 @@ Generated code stays committed. Milestone 0 repository checks run:
 6. Buf breaking comparison against the pull request base; and
 7. a one-time automated proof that a deliberate field removal is rejected.
 
-Contract tests inspect descriptors and representative encoded messages rather than starting fake servers. They verify:
+Nama does not test generated Protobuf or Connect behavior. Buf and the pinned language generators/runtimes own serialization, descriptor construction, unknown-value preservation, and generated API shape. Generated-contract acceptance consists of schema format/lint/build, deterministic generated-leaf comparison, pull-request-base breaking checks, and compilation by the real TypeScript server/plugin, Go CLI, and tvOS applications.
 
-- every public method appears exactly once in the authorization matrix;
-- field-validation reasons and paths map consistently, including `configuration.base_url` and cross-field errors;
-- the restricted provider schema round-trips through TypeScript, Go, and Swift `Struct` support;
-- representative movie, show, season, episode, artwork, source, part, track, playback-session track, external-subtitle locator, diagnostic, sync-status, and parent/child sync-run messages round-trip in all generated languages;
-- begin/continuation scan oneofs and per-mutation watch results survive unknown enum values;
-- public descriptors contain no Jellyfin-, Plex-, or other provider-branded service, method, message, or field names;
-- credential and secret fields appear only in their explicitly approved messages; and
-- removed tags and names remain reserved.
+Focused contract tests cover handwritten Nama behavior only:
+
+- every generated RPC method appears exactly once in the handwritten default-deny authorization inventory;
+- the package-local `PlaybackPreferences` CEL rule executes for valid and invalid CAPPED bit-rate combinations;
+- validation inputs normalize to deterministic, capped per-field errors with stable paths and reasons; and
+- adapters translate generated transport values into Nama-owned values without leaking provider-private data.
+
+Generated values or descriptors may be inputs to those tests, but serialization round trips, generated symbol inventories, descriptor snapshots, unknown enum/oneof/field preservation, and cross-language parity are not test subjects.
 
 Handler conformance, database persistence, provider fixtures, authorization execution, idempotency ledgers, pagination token cryptography, and end-to-end media tests belong to the milestone that implements each behavior. Milestone 0 does not add fake handlers, fake provider clients, or database scaffolding merely to make the schemas look exercised.
 

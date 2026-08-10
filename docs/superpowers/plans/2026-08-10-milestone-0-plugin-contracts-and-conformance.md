@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Define the complete private provider-plugin contract and close Milestone 0 with descriptor, boundary, generation, and breaking-change evidence across every consumer.
+**Goal:** Define the complete private provider-plugin contract and close Milestone 0 with handwritten policy, normalization, boundary, generation, application-compilation, and breaking-change evidence.
 
-**Architecture:** `nama.plugin.v1` is an independent, authenticated subprocess boundary. It duplicates normalized concepts where necessary, retains opaque provider references only inside the private package, and returns bounded observations or leases for the core to validate and map. Final conformance checks inspect descriptors and encoded messages without starting a server or provider.
+**Architecture:** `nama.plugin.v1` is an independent, authenticated subprocess boundary. It duplicates normalized concepts where necessary, retains opaque provider references only inside the private package, and returns bounded observations or leases for the core to validate and map. Final conformance checks compile the real TypeScript applications and test only handwritten authorization, CEL execution, field-error normalization, and real adapter behavior.
 
 **Tech Stack:** Protobuf, Protovalidate annotations, Buf, Protobuf-ES, Node.js built-in tests, TypeScript, mise, existing GitHub Actions.
 
@@ -57,7 +57,6 @@ An `optional` marker means proto3 explicit presence for a scalar/enum. Message f
 
 - Modify: `proto/nama/plugin/v1/health.proto`
 - Create: `proto/nama/plugin/v1/plugin.proto`
-- Modify: `apps/server/src/contract.test.ts`
 - Modify: `plugins/jellyfin/src/contract-probe.ts`
 - Regenerate: `gen/ts/src/**`
 
@@ -66,17 +65,7 @@ An `optional` marker means proto3 explicit presence for a scalar/enum. Message f
 - Consumes: private `HttpHeader`/provider references from plan 1 and the existing plugin Health anchor.
 - Produces: discovery-safe plugin information and configured/candidate connection inspection.
 
-- [ ] **Step 1: Write failing plugin info/connection round trips**
-
-Create a discovery `PluginInfo` with a restricted configuration schema and a connected `PluginConnection` with an opaque provider-user reference. Compile Health, GetInfo, and GetConnection service descriptors.
-
-- [ ] **Step 2: Run the plugin identity red check**
-
-Run: `mise run check:ts`
-
-Expected: FAIL because `plugin.proto` is absent.
-
-- [ ] **Step 3: Declare private capability and connection enums**
+- [ ] **Step 1: Declare private capability and connection enums**
 
 ```proto
 enum ProviderCapability {
@@ -103,7 +92,7 @@ enum PluginConnectionStatus {
 
 These values deliberately match public capability semantics without importing the public package.
 
-- [ ] **Step 4: Declare plugin resources and RPCs**
+- [ ] **Step 2: Declare plugin resources and RPCs**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -123,15 +112,15 @@ service PluginService {
 
 Require positive `contract_major`, bound capability lists to 32 unique values, and apply the same schema-text bounds as public ProviderService. Do not add instance configuration or credentials to either request.
 
-- [ ] **Step 5: Add validation without changing the Health anchor**
+- [ ] **Step 3: Add validation without changing the Health anchor**
 
 Import `buf/validate/validate.proto` and attach `(buf.validate.field).enum = { not_in: [0] }` to `CheckResponse.status`. Do not contact a provider or add connection fields. Preserve `ServingStatus` values, `CheckResponse.status = 1`, and `HealthService.Check` exactly.
 
-- [ ] **Step 6: Generate the plugin identity client**
+- [ ] **Step 4: Generate the plugin identity client**
 
 Run: `mise run generate`
 
-- [ ] **Step 7: Run the plugin identity checks**
+- [ ] **Step 5: Run the plugin identity schema and application checks**
 
 Run:
 
@@ -142,10 +131,10 @@ mise run check:ts
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit plugin identity**
+- [ ] **Step 6: Commit plugin identity**
 
 ```bash
-git add proto/nama/plugin/v1/health.proto proto/nama/plugin/v1/plugin.proto apps/server/src/contract.test.ts plugins/jellyfin/src/contract-probe.ts gen/ts
+git add proto/nama/plugin/v1/health.proto proto/nama/plugin/v1/plugin.proto plugins/jellyfin/src/contract-probe.ts gen/ts
 git commit -m "feat(plugin): add identity and connection contracts"
 ```
 
@@ -155,7 +144,6 @@ git commit -m "feat(plugin): add identity and connection contracts"
 
 - Create: `proto/nama/plugin/v1/media.proto`
 - Create: `proto/nama/plugin/v1/library.proto`
-- Modify: `apps/server/src/contract.test.ts`
 - Modify: `plugins/jellyfin/src/contract-probe.ts`
 - Regenerate: `gen/ts/src/**`
 
@@ -164,17 +152,7 @@ git commit -m "feat(plugin): add identity and connection contracts"
 - Consumes: hierarchical provider references and private plugin identity capabilities.
 - Produces: bounded normalized provider observations, best-effort scans, targeted repair, and artwork leases.
 
-- [ ] **Step 1: Write failing normalized-item and scan round trips**
-
-Round-trip one movie and one episode with opaque item/source/part/track/artwork references, external IDs, credits, technical tracks, and absent unknown metadata. Round-trip a begin scan, a continuation scan, and a media-item-scoped artwork lease.
-
-- [ ] **Step 2: Run the private media/library red check**
-
-Run: `pnpm --filter @nama/server run check:contract`
-
-Expected: FAIL because plugin media/library schemas do not exist.
-
-- [ ] **Step 3: Declare private media-kind and availability enums**
+- [ ] **Step 1: Declare private media-kind and availability enums**
 
 Declare these package-local values; do not import `nama.api.v1`:
 
@@ -194,7 +172,7 @@ enum SourceAvailability {
 }
 ```
 
-- [ ] **Step 4: Declare private audiovisual enums**
+- [ ] **Step 2: Declare private audiovisual enums**
 
 ```proto
 enum DynamicRange {
@@ -218,7 +196,7 @@ enum SubtitleRepresentation {
 }
 ```
 
-- [ ] **Step 5: Declare private artwork and credit enums**
+- [ ] **Step 3: Declare private artwork and credit enums**
 
 ```proto
 enum ArtworkRole {
@@ -243,7 +221,7 @@ enum MediaCreditRole {
 }
 ```
 
-- [ ] **Step 6: Declare credits and kind-specific observations**
+- [ ] **Step 4: Declare credits and kind-specific observations**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -254,7 +232,7 @@ enum MediaCreditRole {
 | `ProviderSeasonDetails` | optional `show_reference`, `season_number`, optional `episode_count` |
 | `ProviderEpisodeDetails` | optional `show_reference`, optional `season_reference`, `season_number`, `episode_number`, optional `release_date` |
 
-- [ ] **Step 7: Declare artwork and technical-track observations**
+- [ ] **Step 5: Declare artwork and technical-track observations**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -263,7 +241,7 @@ enum MediaCreditRole {
 | `ProviderAudioTrack` | `codec`, optional `title`, optional `language`, optional `channel_count`, optional `channel_layout`, optional `sample_rate_hz`, optional `spatial_format`, `is_default`, `is_commentary` |
 | `ProviderSubtitleTrack` | `codec`, optional `title`, optional `language`, `representation`, `is_default`, `is_forced`, `is_hearing_impaired`, `is_commentary` |
 
-- [ ] **Step 8: Declare part, source, and track wrappers**
+- [ ] **Step 6: Declare part, source, and track wrappers**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -272,7 +250,7 @@ enum MediaCreditRole {
 
 Declare `ProviderMediaTrack` as required `track_reference = 1`, `order = 2`, and required oneof group `details`: `video = 3`, `audio = 4`, `subtitle = 5`.
 
-- [ ] **Step 9: Declare the normalized ProviderMediaItem**
+- [ ] **Step 7: Declare the normalized ProviderMediaItem**
 
 Declare `ProviderMediaItem` fields exactly:
 
@@ -295,7 +273,7 @@ Declare `ProviderMediaItem` fields exactly:
 
 Set `genres` and `studios` to at most 50; `credits`, `external_identifiers`, and `sources` to at most 100; and `artwork` to at most 20. Each source has at most 100 parts and each part at most 100 tracks. Never add raw JSON, a display-derived inferred value, a provider SDK object, a filesystem path, or an already-authorized media URL.
 
-- [ ] **Step 10: Declare scan consistency and artwork scope enums**
+- [ ] **Step 8: Declare scan consistency and artwork scope enums**
 
 ```proto
 enum ListConsistency {
@@ -311,7 +289,7 @@ enum ArtworkAuthorizationScope {
 }
 ```
 
-- [ ] **Step 11: Declare paged scan and targeted-get messages**
+- [ ] **Step 9: Declare paged scan and targeted-get messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -323,7 +301,7 @@ enum ArtworkAuthorizationScope {
 
 For continuation, use a bounded string directly in the oneof; do not wrap it with mutable scan parameters. Cap pages at 100.
 
-- [ ] **Step 12: Declare artwork resolution messages**
+- [ ] **Step 10: Declare artwork resolution messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -333,7 +311,7 @@ For continuation, use a bounded string directly in the oneof; do not wrap it wit
 
 Scope/expiry and header/origin safety relationships are core validation, not trusted plugin assertions.
 
-- [ ] **Step 13: Declare the private LibraryService**
+- [ ] **Step 11: Declare the private LibraryService**
 
 ```proto
 service LibraryService {
@@ -343,11 +321,11 @@ service LibraryService {
 }
 ```
 
-- [ ] **Step 14: Generate the private media/library client**
+- [ ] **Step 12: Generate the private media/library client**
 
 Run: `mise run generate`
 
-- [ ] **Step 15: Run the private media/library checks**
+- [ ] **Step 13: Run the private media/library schema and application checks**
 
 Run:
 
@@ -358,7 +336,7 @@ mise run check:ts
 
 Expected: PASS.
 
-- [ ] **Step 16: Prove package isolation**
+- [ ] **Step 14: Prove package isolation**
 
 Run:
 
@@ -374,10 +352,10 @@ fi
 
 Expected: no matches.
 
-- [ ] **Step 17: Commit plugin media/library contracts**
+- [ ] **Step 15: Commit plugin media/library contracts**
 
 ```bash
-git add proto/nama/plugin/v1/media.proto proto/nama/plugin/v1/library.proto apps/server/src/contract.test.ts plugins/jellyfin/src/contract-probe.ts gen/ts
+git add proto/nama/plugin/v1/media.proto proto/nama/plugin/v1/library.proto plugins/jellyfin/src/contract-probe.ts gen/ts
 git commit -m "feat(plugin): add media and library contracts"
 ```
 
@@ -386,7 +364,6 @@ git commit -m "feat(plugin): add media and library contracts"
 **Files:**
 
 - Create: `proto/nama/plugin/v1/playback.proto`
-- Modify: `apps/server/src/contract.test.ts`
 - Modify: `plugins/jellyfin/src/contract-probe.ts`
 - Regenerate: `gen/ts/src/**`
 
@@ -395,17 +372,7 @@ git commit -m "feat(plugin): add media and library contracts"
 - Consumes: plugin item/source/track references and package-local normalized media enums.
 - Produces: private provider plans, materialized leases, session-track mappings, external subtitle locators, telemetry, and cleanup messages.
 
-- [ ] **Step 1: Write failing plugin playback round trips**
-
-Round-trip a direct provider plan, an open request with explicit provider track selections, and a lease containing session context, two session tracks, and an external subtitle locator. Round-trip report and close messages with the same opaque session context.
-
-- [ ] **Step 2: Run the private playback red check**
-
-Run: `mise run check:ts`
-
-Expected: FAIL because plugin playback is absent.
-
-- [ ] **Step 3: Declare exact transport and preference enums**
+- [ ] **Step 1: Declare exact transport and preference enums**
 
 ```proto
 enum DeliveryProtocol {
@@ -434,7 +401,7 @@ enum SubtitlePreference {
 }
 ```
 
-- [ ] **Step 4: Declare exact strategy and track-action enums**
+- [ ] **Step 2: Declare exact strategy and track-action enums**
 
 ```proto
 enum PlaybackStrategy {
@@ -459,7 +426,7 @@ enum TrackActionKind {
 }
 ```
 
-- [ ] **Step 5: Declare exact lifecycle and authorization enums**
+- [ ] **Step 3: Declare exact lifecycle and authorization enums**
 
 ```proto
 enum PlaybackState {
@@ -483,7 +450,7 @@ enum PlaybackAuthorizationScope {
 }
 ```
 
-- [ ] **Step 6: Declare exact private capability and format messages**
+- [ ] **Step 4: Declare exact private capability and format messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -504,7 +471,7 @@ option (buf.validate.message).cel = {
 };
 ```
 
-- [ ] **Step 7: Declare provider playback tracks and plans**
+- [ ] **Step 5: Declare provider playback tracks and plans**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -515,14 +482,14 @@ option (buf.validate.message).cel = {
 
 Require the plan expiry to be a valid Timestamp. Track references in every selection/action must come from the plan at runtime; the wire schema only enforces presence and bounds.
 
-- [ ] **Step 8: Declare PlanPlayback method messages**
+- [ ] **Step 6: Declare PlanPlayback method messages**
 
 | Message | Fields in tag order |
 | --- | --- |
 | `PlanPlaybackRequest` | required `item_reference`, required `source_reference`, required `capabilities`, optional `start_position`, required `preferences` |
 | `PlanPlaybackResponse` | required `plan` |
 
-- [ ] **Step 9: Declare open-selection and session-track messages**
+- [ ] **Step 7: Declare open-selection and session-track messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -530,14 +497,14 @@ Require the plan expiry to be a valid Timestamp. Track references in every selec
 | `ProviderSessionTrack` | required `track_reference`, `switchable_without_reopen` |
 | `ProviderExternalSubtitleLocator` | required `track_reference`, `url`, repeated `headers`, repeated `allowed_redirect_origins`, `mime_type`, required `expires_at` |
 
-- [ ] **Step 10: Declare the PlaybackLease and open response**
+- [ ] **Step 8: Declare the PlaybackLease and open response**
 
 | Message | Fields in tag order |
 | --- | --- |
 | `PlaybackLease` | `session_id`, `url`, repeated `headers`, `protocol`, `mime_type`, repeated `allowed_redirect_origins`, required `expires_at`, required `report_interval`, `authorization_scope`, repeated `tracks`, optional `selected_audio_track_reference`, required `selected_subtitle`, repeated `external_subtitles`, `session_context` |
 | `OpenPlaybackResponse` | required `lease` |
 
-- [ ] **Step 11: Declare report and close messages**
+- [ ] **Step 9: Declare report and close messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -548,7 +515,7 @@ Require the plan expiry to be a valid Timestamp. Track references in every selec
 
 Bound `session_context` to 65,536 bytes, tracks/sidecars to 100, and require positive report interval/sequence. Do not add public IDs, account credentials, provider write outcomes, or a switch-track method.
 
-- [ ] **Step 12: Declare the mirrored lifecycle service**
+- [ ] **Step 10: Declare the mirrored lifecycle service**
 
 ```proto
 service PlaybackService {
@@ -559,11 +526,11 @@ service PlaybackService {
 }
 ```
 
-- [ ] **Step 13: Generate the private playback client**
+- [ ] **Step 11: Generate the private playback client**
 
 Run: `mise run generate`
 
-- [ ] **Step 14: Run the private playback checks**
+- [ ] **Step 12: Run the private playback schema and application checks**
 
 Run:
 
@@ -572,12 +539,12 @@ mise run check:contracts
 mise run check:ts
 ```
 
-Expected: PASS, including session-track and sidecar round trips.
+Expected: PASS with the generated private playback client compiled by the server and plugin applications.
 
-- [ ] **Step 15: Commit the private playback contract**
+- [ ] **Step 13: Commit the private playback contract**
 
 ```bash
-git add proto/nama/plugin/v1/playback.proto apps/server/src/contract.test.ts plugins/jellyfin/src/contract-probe.ts gen/ts
+git add proto/nama/plugin/v1/playback.proto plugins/jellyfin/src/contract-probe.ts gen/ts
 git commit -m "feat(plugin): add playback lease contract"
 ```
 
@@ -586,7 +553,6 @@ git commit -m "feat(plugin): add playback lease contract"
 **Files:**
 
 - Create: `proto/nama/plugin/v1/watch_state.proto`
-- Modify: `apps/server/src/contract.test.ts`
 - Modify: `plugins/jellyfin/src/contract-probe.ts`
 - Regenerate: `gen/ts/src/**`
 
@@ -595,17 +561,7 @@ git commit -m "feat(plugin): add playback lease contract"
 - Consumes: provider item references, Timestamp, and Duration.
 - Produces: full-pass scans, targeted read results, explicit watched/progress mutations, and per-member non-atomic outcomes.
 
-- [ ] **Step 1: Write failing scan/read/mutation round trips**
-
-Round-trip: a begin and continuation scan; a heuristic provider activity; ordered FOUND/NOT_FOUND targeted results; a batch containing SetWatched and resumable-rewatch SetProgress targets; and APPLIED plus RETRYABLE_AMBIGUOUS results. Inject an unknown future result status and assert it survives binary round trip.
-
-- [ ] **Step 2: Run the watch-state red check**
-
-Run: `pnpm --filter @nama/server run check:contract`
-
-Expected: FAIL because watch-state schemas are absent.
-
-- [ ] **Step 3: Declare watch-state enums exactly**
+- [ ] **Step 1: Declare watch-state enums exactly**
 
 ```proto
 enum WatchStateConsistency {
@@ -646,7 +602,7 @@ enum WatchStateMutationStatus {
 }
 ```
 
-- [ ] **Step 4: Declare observations and read methods**
+- [ ] **Step 2: Declare observations and read methods**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -661,7 +617,7 @@ enum WatchStateMutationStatus {
 
 Require 1–100 targeted references and preserve result order. FOUND/state agreement and non-FOUND absence are handler/plugin conformance rules.
 
-- [ ] **Step 5: Declare explicit mutation targets and results**
+- [ ] **Step 3: Declare explicit mutation targets and results**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -674,7 +630,7 @@ Require 1–100 targeted references and preserve result order. FOUND/state agree
 
 Cap mutations/results at 100. Do not add toggle, play count, percentage, last-played setter, atomic flag, checkpoint, or provider idempotency claim.
 
-- [ ] **Step 6: Declare the WatchStateService inventory**
+- [ ] **Step 4: Declare the WatchStateService inventory**
 
 ```proto
 service WatchStateService {
@@ -684,11 +640,11 @@ service WatchStateService {
 }
 ```
 
-- [ ] **Step 7: Generate the private watch-state client**
+- [ ] **Step 5: Generate the private watch-state client**
 
 Run: `mise run generate`
 
-- [ ] **Step 8: Run the private watch-state checks**
+- [ ] **Step 6: Run the private watch-state schema and application checks**
 
 Run:
 
@@ -699,10 +655,10 @@ mise run check:ts
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit the private watch-state contract**
+- [ ] **Step 7: Commit the private watch-state contract**
 
 ```bash
-git add proto/nama/plugin/v1/watch_state.proto apps/server/src/contract.test.ts plugins/jellyfin/src/contract-probe.ts gen/ts
+git add proto/nama/plugin/v1/watch_state.proto plugins/jellyfin/src/contract-probe.ts gen/ts
 git commit -m "feat(plugin): add watch state contract"
 ```
 
@@ -714,8 +670,7 @@ git commit -m "feat(plugin): add watch state contract"
 - Modify: `apps/server/src/contract.test.ts`
 - Modify: `apps/server/src/contract-authorization.ts`
 - Modify: `apps/server/src/contract-probe.ts`
-- Modify: `apps/cli/internal/cli/contracts_test.go`
-- Modify: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
+- Create: `apps/server/src/contract-errors.ts`
 - Modify: `plugins/jellyfin/src/contract-probe.ts`
 - Modify: `pnpm-lock.yaml`
 - Modify: `docs/architecture.md`
@@ -726,82 +681,30 @@ git commit -m "feat(plugin): add watch state contract"
 
 **Interfaces:**
 
-- Consumes: all 36 public and 13 plugin RPC descriptors, both complete v1 schemas, and all generated languages.
-- Produces: final Milestone 0 descriptor evidence, exact boundary checks, reconciled companion summaries, and a demonstrated breaking gate.
+- Consumes: every generated public/plugin method descriptor, both package-local `PlaybackPreferences` schemas, validation violations, and the real application probes.
+- Produces: complete handwritten authorization policy, executable CEL evidence, deterministic field-error normalization, source-level boundary evidence, reconciled companion summaries, and a demonstrated breaking gate.
 
 - [ ] **Step 1: Add every private method to the authorization table**
 
-Add `"plugin-bearer"` to `ContractAuthority` and enter every one of the 13 fully qualified plugin methods in `contractAuthorityByMethod`.
+Add `"plugin-bearer"` to `ContractAuthority` and enter every generated plugin method in `contractAuthorityByMethod`.
 
-- [ ] **Step 2: Lock exact public/private RPC counts and authority completeness**
+- [ ] **Step 2: Prove handwritten authorization completeness**
 
-Assert exactly 36 `nama.api.v1` RPCs, exactly 13 `nama.plugin.v1` RPCs, every public method exactly once in `contractAuthorityByMethod`, and every plugin method exactly once with `plugin-bearer`, for 49 total table keys.
+Use generated public and plugin method descriptors only as inputs to the existing comparison. Assert that every generated method key appears exactly once in `contractAuthorityByMethod`, every plugin key maps to `plugin-bearer`, and no handwritten key is stale. Do not assert generated RPC counts, descriptor construction, package names, symbols, reservations, or Health descriptor snapshots.
 
-- [ ] **Step 3: Add descriptor package-boundary assertions**
+- [ ] **Step 3: Add the direct validation runtime**
 
-Assert that the two packages import no file from each other; public descriptor names contain no provider brands or private reference names; and plugin descriptors contain no public bearer credential, administrator, device, canonical media ID, or provider-instance ID field.
-
-- [ ] **Step 4: Lock reservations and the existing Health anchors**
-
-Walk every message and enum descriptor's reserved names and ranges. Compare the non-empty result with an explicit `expectedReservations` object, initially `{}`. A later reservation must update that reviewed snapshot; an unnoticed rename or tag retirement fails the test. Keep direct assertions that public and plugin `ServingStatus` use values 0, 1, and 2, `CheckResponse.status` uses tag 1, and `HealthService.Check` retains its exact name.
-
-- [ ] **Step 5: Complete TypeScript public media and playback checks**
-
-Cover public movie/show/season/episode, artwork locator, source/part/track, playback-session track, and external subtitle locator.
-
-- [ ] **Step 6: Complete TypeScript public management and sync checks**
-
-Cover diagnostics, provider status, and a parent/child sync run.
-
-- [ ] **Step 7: Complete the representative Go public checks**
-
-Add the same representative public cases to the existing Go file. Keep them in that native harness; do not create per-message suites.
-
-- [ ] **Step 8: Complete the representative Swift public checks**
-
-Add the same representative public cases to the existing Swift file. Keep them in that native harness; do not create per-message suites.
-
-- [ ] **Step 9: Complete TypeScript private media and library checks**
-
-Cover private movie/episode observations, begin/continuation catalog scans, artwork lease, and `Struct` configuration preservation.
-
-- [ ] **Step 10: Complete TypeScript private playback and watch-state checks**
-
-Cover provider plan/session/sidecar, begin/continuation watch scans, and every mutation-result class.
-
-- [ ] **Step 11: Prove public and private unknown-enum validation in TypeScript**
-
-Before importing `createValidator`, add the direct runtime dependency:
+Before importing `createValidator`, add the exact direct server dev dependency:
 
 ```bash
 pnpm --filter @nama/server add --save-dev --save-exact @bufbuild/protovalidate@1.2.0
 ```
 
-Round-trip a `ProviderConnectionTest` whose required `status` is numeric value 99. Run `createValidator().validate(ProviderConnectionTestSchema, message)` and assert `result.kind === "valid"`.
+The application owns this dependency because the handwritten contract test executes validation. Do not add it to Go or Swift.
 
-Also round-trip and validate the private per-mutation result with an unknown future status:
+- [ ] **Step 4: Execute the CAPPED bit-rate invariant in both packages**
 
-```ts
-const futureMutationResult = create(WatchStateMutationResultSchema, {
-  mutationId: "mutation-1",
-  status: 99 as WatchStateMutationStatus,
-});
-const decodedFutureMutationResult = fromBinary(
-  WatchStateMutationResultSchema,
-  toBinary(WatchStateMutationResultSchema, futureMutationResult),
-);
-assert.equal(decodedFutureMutationResult.status, 99);
-assert.equal(
-  createValidator().validate(WatchStateMutationResultSchema, decodedFutureMutationResult).kind,
-  "valid",
-);
-```
-
-These checks prove both packages exclude zero on required enums without rejecting future numeric values. The begin/continuation scan oneofs are already covered by the private library and watch-state fixtures; they do not require an unknown enum value.
-
-- [ ] **Step 12: Execute the CAPPED bit-rate invariant in both packages**
-
-Import `PlaybackPreferencesSchema`, `PlaybackQuality`, and `SubtitlePreference` from both generated playback modules with `Public` and `Plugin` aliases. Use one `createValidator()` instance and assert all seven cases against each package-local schema:
+Import `PlaybackPreferencesSchema`, `PlaybackQuality`, and `SubtitlePreference` from both generated playback modules with `Public` and `Plugin` aliases. Use one `createValidator()` instance and assert all seven cases against each package-local schema, without serializing any message:
 
 ```ts
 const validator = createValidator();
@@ -871,65 +774,37 @@ for (const { schema, capped, automatic, original, subtitleAuto } of [
 }
 ```
 
-This is the executable proof for the only custom CEL rule; a hand-built `BadRequest` is not a substitute.
+This is the executable proof for the only custom CEL rule; no generated serialization assertion or hand-built `BadRequest` substitutes for it.
 
-- [ ] **Step 13: Prove the unknown enum round-trips in Go**
+- [ ] **Step 5: Implement deterministic field-error normalization**
 
-Round-trip the same public `ProviderConnectionTest.status = 99` fixture in the existing Go harness and assert the numeric value survives.
-
-- [ ] **Step 14: Prove the unknown enum round-trips in Swift**
-
-Round-trip the same public fixture in the existing Swift harness and assert the unrecognized numeric value survives.
-
-- [ ] **Step 15: Decode an unknown oneof tag in TypeScript**
-
-Use public `SubtitleSelection` with only field 3, a future varint alternative in the `selection` oneof. Protobuf-ES retains unknown binary fields by default, so assert the old generated oneof remains unset and the complete wire value survives:
+Create `apps/server/src/contract-errors.ts` exporting:
 
 ```ts
-const futureSelectionWire = Uint8Array.of(0x18, 0x01);
-const decodedFutureSelection = fromBinary(SubtitleSelectionSchema, futureSelectionWire);
-assert.equal(decodedFutureSelection.selection.case, undefined);
-assert.deepEqual(toBinary(SubtitleSelectionSchema, decodedFutureSelection), futureSelectionWire);
+export type ContractFieldErrorInput = Readonly<{
+  field: string;
+  reason: string;
+  description: string;
+  localizedMessage?: Readonly<{ locale: string; message: string }>;
+}>;
+
+export type ContractFieldError = {
+  field: string;
+  reason: string;
+  description: string;
+  localizedMessage?: { locale: string; message: string };
+};
+
+export function normalizeContractFieldErrors(
+  violations: readonly ContractFieldErrorInput[],
+): ContractFieldError[];
 ```
 
-- [ ] **Step 16: Decode an unknown oneof tag in Go**
+Sort a copy by `field`, then `reason`, then `description`, comparing strings with JavaScript code-unit `<`/`>` comparisons rather than locale-aware sorting. Take the first 50 results, copy only those four fields, and deep-copy `localizedMessage` when present. Never mutate the input or pass through provider/private metadata.
 
-Add `bytes` to the existing imports and run the identical wire fixture through the Go runtime:
+- [ ] **Step 6: Test field-error ordering, copying, and cap**
 
-```go
-futureSelectionWire := []byte{0x18, 0x01}
-var decodedFutureSelection apiv1.SubtitleSelection
-if err := proto.Unmarshal(futureSelectionWire, &decodedFutureSelection); err != nil {
-	t.Fatal(err)
-}
-if decodedFutureSelection.GetTrackId() != "" || decodedFutureSelection.GetDisabled() {
-	t.Fatal("future-only oneof alternative populated an old selection")
-}
-encodedFutureSelection, err := proto.Marshal(&decodedFutureSelection)
-if err != nil {
-	t.Fatal(err)
-}
-if !bytes.Equal(encodedFutureSelection, futureSelectionWire) {
-	t.Fatalf("unknown oneof field was not preserved: %x", encodedFutureSelection)
-}
-```
-
-- [ ] **Step 17: Decode an unknown oneof tag in Swift**
-
-Add `Foundation` to the existing imports and assert SwiftProtobuf retains the same bytes:
-
-```swift
-let futureSelectionWire = Data([0x18, 0x01])
-let decodedFutureSelection = try Nama_Api_V1_SubtitleSelection(
-  serializedBytes: futureSelectionWire
-)
-XCTAssertNil(decodedFutureSelection.selection)
-XCTAssertEqual(try decodedFutureSelection.serializedData(), futureSelectionWire)
-```
-
-- [ ] **Step 18: Add the deterministic TypeScript per-field error fixture**
-
-Construct one `google.rpc.BadRequest` in this deterministic field-path order:
+Supply these six approved violations to `normalizeContractFieldErrors` in reverse order and assert the exact sorted result:
 
 | Field | Reason | Description | Localized fallback |
 | --- | --- | --- | --- |
@@ -940,153 +815,53 @@ Construct one `google.rpc.BadRequest` in this deterministic field-path order:
 | `max_bit_rate_bps` | `MISMATCH` | `must be positive when quality is CAPPED` | absent |
 | `quality` | `MISMATCH` | `must omit max_bit_rate_bps unless quality is CAPPED` | absent |
 
-Use this exact TypeScript fixture and assertion:
+Also pass 51 distinct reverse-ordered violations and assert that the result is sorted, contains exactly 50 entries, and omits the final entry after sorting. Confirm the returned objects and localized fallback are copies containing no field beyond `field`, `reason`, `description`, and optional `localizedMessage`.
 
-```ts
-const fieldError = create(BadRequestSchema, {
-  fieldViolations: [
-    {
-      field: "clear_configuration_fields[0]",
-      reason: "CONFLICT",
-      description: "cannot clear a field also present in configuration_patch",
-    },
-    {
-      field: "configuration.api_key",
-      reason: "REQUIRED",
-      description: "required by the selected provider schema",
-    },
-    {
-      field: "configuration.base_url",
-      reason: "INVALID_FORMAT",
-      description: "must be an absolute HTTP or HTTPS URL",
-      localizedMessage: { locale: "en", message: "Enter a valid server URL." },
-    },
-    {
-      field: "configuration_patch.api_key",
-      reason: "CONFLICT",
-      description: "cannot set a field also present in clear_configuration_fields",
-    },
-    {
-      field: "max_bit_rate_bps",
-      reason: "MISMATCH",
-      description: "must be positive when quality is CAPPED",
-    },
-    {
-      field: "quality",
-      reason: "MISMATCH",
-      description: "must omit max_bit_rate_bps unless quality is CAPPED",
-    },
-  ],
-});
-assert.deepEqual(fromBinary(BadRequestSchema, toBinary(BadRequestSchema, fieldError)), fieldError);
-```
+- [ ] **Step 7: Keep adapter tests on handwritten behavior only**
 
-The two `MISMATCH` entries represent the same CAPPED/bit-rate rule; the two `CONFLICT` entries represent one patch/clear overlap.
+Add or retain an adapter test only when an actual handwritten adapter's mapping, filtering, redaction, or fallback is the subject. Generated transport values may be inputs, but do not add a representative-message fixture before such an adapter exists.
 
-- [ ] **Step 19: Mirror the per-field error fixture in Go**
-
-Round-trip and compare the exact ordered fixture:
-
-```go
-fieldError := &errdetails.BadRequest{FieldViolations: []*errdetails.BadRequest_FieldViolation{
-	{Field: "clear_configuration_fields[0]", Reason: "CONFLICT", Description: "cannot clear a field also present in configuration_patch"},
-	{Field: "configuration.api_key", Reason: "REQUIRED", Description: "required by the selected provider schema"},
-	{
-		Field: "configuration.base_url", Reason: "INVALID_FORMAT",
-		Description: "must be an absolute HTTP or HTTPS URL",
-		LocalizedMessage: &errdetails.LocalizedMessage{Locale: "en", Message: "Enter a valid server URL."},
-	},
-	{Field: "configuration_patch.api_key", Reason: "CONFLICT", Description: "cannot set a field also present in clear_configuration_fields"},
-	{Field: "max_bit_rate_bps", Reason: "MISMATCH", Description: "must be positive when quality is CAPPED"},
-	{Field: "quality", Reason: "MISMATCH", Description: "must omit max_bit_rate_bps unless quality is CAPPED"},
-}}
-encodedFieldError, err := proto.Marshal(fieldError)
-if err != nil {
-	t.Fatal(err)
-}
-decodedFieldError := new(errdetails.BadRequest)
-if err := proto.Unmarshal(encodedFieldError, decodedFieldError); err != nil {
-	t.Fatal(err)
-}
-if !proto.Equal(decodedFieldError, fieldError) {
-	t.Fatalf("BadRequest round trip mismatch: %v", decodedFieldError)
-}
-```
-
-- [ ] **Step 20: Mirror the per-field error fixture in Swift**
-
-Add this local constructor, then round-trip and compare the exact ordered fixture:
-
-```swift
-func fieldViolation(
-  _ field: String,
-  _ reason: String,
-  _ description: String,
-  localized: (String, String)? = nil
-) -> Google_Rpc_BadRequest.FieldViolation {
-  var violation = Google_Rpc_BadRequest.FieldViolation()
-  violation.field = field
-  violation.reason = reason
-  violation.description_p = description
-  if let localized {
-    var message = Google_Rpc_LocalizedMessage()
-    message.locale = localized.0
-    message.message = localized.1
-    violation.localizedMessage = message
-  }
-  return violation
-}
-
-var fieldError = Google_Rpc_BadRequest()
-fieldError.fieldViolations = [
-  fieldViolation("clear_configuration_fields[0]", "CONFLICT", "cannot clear a field also present in configuration_patch"),
-  fieldViolation("configuration.api_key", "REQUIRED", "required by the selected provider schema"),
-  fieldViolation(
-    "configuration.base_url",
-    "INVALID_FORMAT",
-    "must be an absolute HTTP or HTTPS URL",
-    localized: ("en", "Enter a valid server URL.")
-  ),
-  fieldViolation("configuration_patch.api_key", "CONFLICT", "cannot set a field also present in clear_configuration_fields"),
-  fieldViolation("max_bit_rate_bps", "MISMATCH", "must be positive when quality is CAPPED"),
-  fieldViolation("quality", "MISMATCH", "must omit max_bit_rate_bps unless quality is CAPPED"),
-]
-let encodedFieldError = try fieldError.serializedData()
-let decodedFieldError = try Google_Rpc_BadRequest(serializedBytes: encodedFieldError)
-XCTAssertEqual(decodedFieldError, fieldError)
-```
-
-- [ ] **Step 21: Add an exact sensitive-surface allowlist check**
-
-Walk descriptors recursively. Candidate fields are bytes; names containing `password`, `token`, `credential`, `url`, `headers`, or `session_context`; fields typed as `BearerCredential`; fields typed as repeated `HttpHeader`; and every member of either package's `HttpHeader` message. Compare them with this exact fully qualified allowlist:
-
-- `nama.api.v1.HttpHeader.name`, `nama.api.v1.HttpHeader.value`, `nama.api.v1.BearerCredential.token`;
-- `nama.api.v1.CreateAdministratorRequest.bootstrap_token`, `nama.api.v1.CreateAdministratorRequest.password`, `nama.api.v1.SignInRequest.password`, `nama.api.v1.SignInResponse.credential`;
-- `nama.api.v1.BeginPairingResponse.polling_token`, `nama.api.v1.GetPairingStatusRequest.polling_token`, `nama.api.v1.GetPairingStatusResponse.credential`;
-- `nama.api.v1.ArtworkLocator.url`, `nama.api.v1.ArtworkLocator.headers`, `nama.api.v1.PlaybackLocator.url`, `nama.api.v1.PlaybackLocator.headers`, `nama.api.v1.ExternalSubtitleLocator.url`, `nama.api.v1.ExternalSubtitleLocator.headers`;
-- `nama.plugin.v1.HttpHeader.name`, `nama.plugin.v1.HttpHeader.value`, `nama.plugin.v1.ProviderArtworkLease.url`, `nama.plugin.v1.ProviderArtworkLease.headers`;
-- `nama.plugin.v1.ProviderExternalSubtitleLocator.url`, `nama.plugin.v1.ProviderExternalSubtitleLocator.headers`, `nama.plugin.v1.PlaybackLease.url`, `nama.plugin.v1.PlaybackLease.headers`;
-- `nama.plugin.v1.PlaybackLease.session_context`, `nama.plugin.v1.ReportPlaybackRequest.session_context`, and `nama.plugin.v1.ClosePlaybackRequest.session_context`.
-
-Classify `page_token`, `next_page_token`, and private `continuation` fields separately as opaque navigation state, never as credentials. Separately assert that only `nama.api.v1.TestProviderConfigurationRequest.configuration`, `nama.api.v1.CreateProviderInstanceRequest.configuration`, and `nama.api.v1.UpdateProviderInstanceRequest.configuration_patch` are Struct write sites that may contain write-only values; `ProviderInstance.configuration` remains a non-secret response. Fail with any missing or unexpected fully qualified path.
-
-- [ ] **Step 22: Reconcile the provider boundary summary**
+- [ ] **Step 8: Reconcile the provider boundary summary**
 
 In `docs/architecture.md`, replace the unqualified provider-boundary invariant with wording that remote provider resource IDs/errors/SDK types and provider-specific consumer shapes stop at the plugin, while installed provider type IDs and schema-driven configuration are authenticated Nama management resources. Do not duplicate the full API specification.
 
-- [ ] **Step 23: Reconcile the deferred provider-user mapping summary**
+- [ ] **Step 9: Reconcile the deferred provider-user mapping summary**
 
 In `docs/release-plan.md`, clarify that deferred provider-user mapping means mapping multiple Nama users to provider users; the immutable single provider principal configured for an MVP instance is not deferred. Do not expand the milestone scope.
 
-- [ ] **Step 24: Reconcile request authentication/validation ordering**
+- [ ] **Step 10: Reconcile request authentication/validation ordering**
 
 In `docs/architecture/core-server.md`, order public request processing as request/correlation assignment first, authentication of protected methods second, then field validation/handler work, so unauthenticated callers receive no validation oracle. Do not duplicate the full API specification.
 
-- [ ] **Step 25: Format the completed handwritten contract files**
+- [ ] **Step 11: Review source-level package and sensitive boundaries**
+
+Run and review these source searches:
+
+```bash
+if rg -n 'nama/plugin/v1' gen/go gen/swift; then
+  printf '%s\n' 'unexpected private contract in a public generated client' >&2
+  exit 1
+else
+  search_status=$?
+  test "$search_status" -eq 1
+fi
+if rg -n -i 'jellyfin|plex|provider_item|provider_source|stream_index|file_path|session_context' proto/nama/api; then
+  printf '%s\n' 'unexpected provider-private symbol in public contract' >&2
+  exit 1
+else
+  search_status=$?
+  test "$search_status" -eq 1
+fi
+rg -n 'password|token|credential|url|headers|session_context|google\.protobuf\.Struct' proto/nama
+```
+
+Expected: package-isolation and public-boundary searches have no matches. Review every sensitive-surface match against the approved contract ownership; do not replace this source review with descriptor snapshots.
+
+- [ ] **Step 12: Format the completed handwritten contract files**
 
 Run: `mise run format`
 
-- [ ] **Step 26: Run the complete repository verification**
+- [ ] **Step 13: Run the complete repository verification**
 
 Run:
 
@@ -1102,14 +877,14 @@ git diff --check
 
 Expected: every command PASS. If the machine lacks the pinned Xcode, stop and use the existing macOS CI result; do not weaken the Swift check.
 
-- [ ] **Step 27: Commit the complete contract baseline**
+- [ ] **Step 14: Commit the complete contract baseline**
 
 ```bash
-git add apps/server/package.json apps/server/src/contract.test.ts apps/server/src/contract-authorization.ts apps/server/src/contract-probe.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests/NamaAPITests/ContractTests.swift plugins/jellyfin/src/contract-probe.ts pnpm-lock.yaml docs/architecture.md docs/release-plan.md docs/architecture/core-server.md
+git add apps/server/package.json apps/server/src/contract.test.ts apps/server/src/contract-authorization.ts apps/server/src/contract-errors.ts apps/server/src/contract-probe.ts plugins/jellyfin/src/contract-probe.ts pnpm-lock.yaml docs/architecture.md docs/release-plan.md docs/architecture/core-server.md
 git commit -m "feat(api): complete milestone 0 contracts"
 ```
 
-- [ ] **Step 28: Prove one real breaking change is rejected**
+- [ ] **Step 15: Prove one real breaking change is rejected**
 
 After the complete baseline commit, run this single validation shell. It creates a unique module, patches only the copy, captures the expected failure, and removes the temporary directory on every shell exit:
 
@@ -1152,7 +927,7 @@ rg -n 'CheckResponse|status|field.*1' "$breaking_output"
 
 Expected: the breaking command fails and the captured output identifies removal of `CheckResponse.status` field 1. The validated `mktemp` directory is the only recursive cleanup target. Leave repository schemas untouched. Record the failure summary in the task report; no permanent proof script is needed because CI runs the real base comparison.
 
-- [ ] **Step 29: Verify a clean deterministic rerun**
+- [ ] **Step 16: Verify a clean deterministic rerun**
 
 Run:
 
@@ -1169,10 +944,11 @@ Expected: generation is a no-op, all checks PASS, and the working tree is clean.
 Milestone 0 is complete only when:
 
 - all 18 source schema files exist: 11 public and 7 plugin;
-- 36 public and 13 plugin unary RPCs are descriptor-tested;
-- TypeScript consumes both packages, while Go/Swift consume public only;
+- every generated public and plugin RPC has exactly one handwritten default-deny authorization entry;
+- the real TypeScript server/plugin, Go CLI, and tvOS applications compile their generated clients;
 - generated code is committed and deterministic;
-- public descriptors remain provider-neutral;
-- representative schemas round-trip in every consuming language;
+- source-level package and provider-private boundary reviews pass;
+- the package-local CAPPED CEL rule passes all seven valid/invalid cases in both packages;
+- the handwritten field-error normalizer proves deterministic ordering, safe copying, and the 50-entry cap;
 - the PR-base breaking gate is present and a deliberate removal has failed locally; and
 - no handler, persistence, provider client, fake server, CLI behavior, or tvOS product behavior was added.

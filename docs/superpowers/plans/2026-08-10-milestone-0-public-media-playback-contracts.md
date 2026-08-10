@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - This is plan 3 of 4 and depends on the contract-toolchain and public-management plans.
-- Milestone 0 adds schemas, generated code, compile probes, and contract tests only. Do not add catalog storage, provider mapping, tvOS screens, playback engines, handlers, or fake media.
+- Milestone 0 adds schemas, generated code, application compile probes, and the handwritten authorization-policy test only. Do not add catalog storage, provider mapping, tvOS screens, playback engines, handlers, or fake media.
 - Public descriptors must contain no provider brand, provider resource ID, stream index, filesystem path, SDK type, raw provider error, or reusable provider credential.
 - A source is a playable representation of one edition; file size belongs to a part. Alternate cuts remain different canonical items.
 - Lists use `MediaSummary`; `GetMedia` returns `MediaDetails`; `GetMediaSource` alone returns parts/tracks.
@@ -51,9 +51,6 @@ An `optional` marker means proto3 explicit presence for a scalar/enum. Message f
 **Files:**
 
 - Create: `proto/nama/api/v1/media.proto`
-- Modify: `apps/server/src/contract.test.ts`
-- Modify: `apps/cli/internal/cli/contracts_test.go`
-- Modify: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
 - Regenerate: `gen/ts/src/nama/api/v1/**`
 - Regenerate: `gen/go/nama/api/v1/**`
 - Regenerate: `gen/swift/Sources/NamaAPI/**`
@@ -63,67 +60,7 @@ An `optional` marker means proto3 explicit presence for a scalar/enum. Message f
 - Consumes: public `HttpHeader`, Timestamp, Duration, and `google.type.Date`.
 - Produces: summary, details, artwork, source, part, and technical-track messages shared by library, playback, and user-state contracts.
 
-- [ ] **Step 1: Write the failing TypeScript movie round trip**
-
-Construct a movie `MediaDetails` with its matching kind oneof, textless poster art, ordered actor/director credits, two source summaries, one part with video/audio/subtitle tracks, and a resumable `MediaUserState` whose position is explicitly zero.
-
-- [ ] **Step 2: Run the TypeScript movie red check**
-
-Run: `mise run check:ts`
-
-Expected: FAIL because `media.proto` does not exist.
-
-- [ ] **Step 3: Add TypeScript show, season, and episode fixtures**
-
-Add one lean `MediaDetails` per hierarchy kind with the matching oneof, parent links, episode position, release metadata, and artwork.
-
-- [ ] **Step 4: Run the TypeScript hierarchy red check**
-
-Run: `mise run check:ts`
-
-Expected: FAIL on the same absent schema.
-
-- [ ] **Step 5: Mirror the movie fixture in Go**
-
-Add the movie and nested source/track fixture to the existing Go harness.
-
-- [ ] **Step 6: Run the Go movie red check**
-
-Run: `mise run check:go`
-
-Expected: FAIL because the generated public media package does not exist.
-
-- [ ] **Step 7: Add Go hierarchy fixtures**
-
-Add the show, season, and episode fixtures with their matching oneofs to the Go harness.
-
-- [ ] **Step 8: Run the Go hierarchy red check**
-
-Run: `mise run check:go`
-
-Expected: FAIL on the same absent package.
-
-- [ ] **Step 9: Mirror the movie fixture in Swift**
-
-Add the movie and nested source/track fixture to the existing Swift package test.
-
-- [ ] **Step 10: Run the Swift movie red check**
-
-Run: `mise run check:swift`
-
-Expected: FAIL because the generated public media types do not exist.
-
-- [ ] **Step 11: Add Swift hierarchy fixtures**
-
-Add the show, season, and episode fixtures with their matching oneofs to the Swift test.
-
-- [ ] **Step 12: Run the Swift hierarchy red check**
-
-Run: `mise run check:swift`
-
-Expected: FAIL on the same absent types.
-
-- [ ] **Step 13: Declare media-kind and availability enums**
+- [ ] **Step 1: Declare media-kind and availability enums**
 
 ```proto
 enum MediaKind {
@@ -149,7 +86,7 @@ enum SourceAvailability {
 }
 ```
 
-- [ ] **Step 14: Declare normalized audiovisual enums**
+- [ ] **Step 2: Declare normalized audiovisual enums**
 
 ```proto
 enum DynamicRange {
@@ -175,7 +112,7 @@ enum SubtitleRepresentation {
 }
 ```
 
-- [ ] **Step 15: Declare artwork and credit enums**
+- [ ] **Step 3: Declare artwork and credit enums**
 
 ```proto
 enum ArtworkRole {
@@ -202,7 +139,7 @@ enum MediaCreditRole {
 }
 ```
 
-- [ ] **Step 16: Declare state and compact quality messages**
+- [ ] **Step 4: Declare state and compact quality messages**
 
 Assign sequential tags using this inventory:
 
@@ -215,7 +152,7 @@ Assign sequential tags using this inventory:
 
 Use positive values for present season/episode numbers and dimensions.
 
-- [ ] **Step 17: Declare compact source and artwork references**
+- [ ] **Step 5: Declare compact source and artwork references**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -224,7 +161,7 @@ Use positive values for present season/episode numbers and dimensions.
 
 Locale is a bounded BCP 47-shaped string; canonicalization remains handler/client behavior.
 
-- [ ] **Step 18: Declare the lean MediaSummary**
+- [ ] **Step 6: Declare the lean MediaSummary**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -232,7 +169,7 @@ Locale is a bounded BCP 47-shaped string; canonicalization remains handler/clien
 
 Artwork arrays are at most 20; source-summary arrays are at most 100.
 
-- [ ] **Step 19: Declare detail support and kind-specific messages**
+- [ ] **Step 7: Declare detail support and kind-specific messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -243,7 +180,7 @@ Artwork arrays are at most 20; source-summary arrays are at most 100.
 | `SeasonDetails` | `season_number`, optional `episode_count` |
 | `EpisodeDetails` | `season_number`, `episode_number`, optional `release_date` |
 
-- [ ] **Step 20: Declare MediaDetails and its required kind oneof**
+- [ ] **Step 8: Declare MediaDetails and its required kind oneof**
 
 Declare `MediaDetails` tags exactly:
 
@@ -271,7 +208,7 @@ message MediaDetails {
 
 Require `summary`; cap ordered credits at 100, genres/studios at 50, parents at 3, and source summaries at 100. Matching the oneof member to `summary.kind` remains handler validation.
 
-- [ ] **Step 21: Declare artwork locator, source, and part messages**
+- [ ] **Step 9: Declare artwork locator, source, and part messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -281,7 +218,7 @@ Require `summary`; cap ordered credits at 100, genres/studios at 50, parents at 
 
 Cap parts at 100, validate absolute HTTP/HTTPS locator URLs, and cap headers/origins using plan 1 limits.
 
-- [ ] **Step 22: Declare technical track messages**
+- [ ] **Step 10: Declare technical track messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -291,11 +228,11 @@ Cap parts at 100, validate absolute HTTP/HTTPS locator URLs, and cap headers/ori
 
 Declare `MediaTrack` as `order = 1` plus required oneof group `details`: `video = 2`, `audio = 3`, `subtitle = 4`. Cap tracks at 100 and require non-zero dimensions/bit depth/rates when present.
 
-- [ ] **Step 23: Generate the canonical media clients**
+- [ ] **Step 11: Generate the canonical media clients**
 
 Run: `mise run generate`
 
-- [ ] **Step 24: Run all public media round trips**
+- [ ] **Step 12: Run the public media schema and application checks**
 
 Run:
 
@@ -306,12 +243,12 @@ mise run check:go
 mise run check:swift
 ```
 
-Expected: PASS, including `google.type.Date` compilation in every public language.
+Expected: PASS, including `google.type.Date` compilation in every real public application.
 
-- [ ] **Step 25: Commit the canonical media model**
+- [ ] **Step 13: Commit the canonical media model**
 
 ```bash
-git add proto/nama/api/v1/media.proto apps/server/src/contract.test.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests gen/ts gen/go gen/swift/Sources/NamaAPI go.mod go.sum
+git add proto/nama/api/v1/media.proto gen/ts gen/go gen/swift/Sources/NamaAPI go.mod go.sum
 git commit -m "feat(api): add canonical media contract"
 ```
 
@@ -320,9 +257,6 @@ git commit -m "feat(api): add canonical media contract"
 **Files:**
 
 - Create: `proto/nama/api/v1/library.proto`
-- Modify: `apps/server/src/contract.test.ts`
-- Modify: `apps/cli/internal/cli/contracts_test.go`
-- Modify: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
 - Regenerate: `gen/ts/src/nama/api/v1/**`
 - Regenerate: `gen/go/nama/api/v1/**`
 - Regenerate: `gen/swift/Sources/NamaAPI/**`
@@ -332,17 +266,7 @@ git commit -m "feat(api): add canonical media contract"
 - Consumes: canonical media and artwork messages from `media.proto`.
 - Produces: bounded home, browse, search, hierarchy, source-detail, and artwork-resolution reads.
 
-- [ ] **Step 1: Write failing home/list/detail tests**
-
-Round-trip a three-section Home response, a filtered movie list, a cast-name search response, a season child page, a technical source response, and an artwork locator with distinct refresh/access deadlines.
-
-- [ ] **Step 2: Run the public library red check**
-
-Run: `mise run check:go`
-
-Expected: FAIL because library messages do not exist.
-
-- [ ] **Step 3: Declare the three library enums**
+- [ ] **Step 1: Declare the three library enums**
 
 ```proto
 enum HomeSectionKind {
@@ -368,11 +292,11 @@ enum LibrarySort {
 }
 ```
 
-- [ ] **Step 4: Declare HomeSection and LibraryFilter**
+- [ ] **Step 2: Declare HomeSection and LibraryFilter**
 
 Declare `HomeSection` fields `id = 1`, `title = 2`, `kind = 3`, repeated `items = 4`. Declare `LibraryFilter` fields repeated `kinds = 1`, optional `genre = 2`, optional `release_year = 3`, `watch_filter = 4`, `playable_only = 5`.
 
-- [ ] **Step 5: Declare the seven-method LibraryService inventory**
+- [ ] **Step 3: Declare the seven-method LibraryService inventory**
 
 ```proto
 service LibraryService {
@@ -386,7 +310,7 @@ service LibraryService {
 }
 ```
 
-- [ ] **Step 6: Declare home and library-list messages**
+- [ ] **Step 4: Declare home and library-list messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -397,7 +321,7 @@ service LibraryService {
 
 Section size is zero/default or 1–50. Home has at most three initial sections and 50 items per section. Page responses are at most 100.
 
-- [ ] **Step 7: Declare search and media-detail messages**
+- [ ] **Step 5: Declare search and media-detail messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -408,7 +332,7 @@ Section size is zero/default or 1–50. Home has at most three initial sections 
 
 Search query is trimmed, 1–256 characters; whitespace-only rejection remains handler validation.
 
-- [ ] **Step 8: Declare hierarchy, source, and artwork messages**
+- [ ] **Step 6: Declare hierarchy, source, and artwork messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -421,11 +345,11 @@ Search query is trimmed, 1–256 characters; whitespace-only rejection remains h
 
 Page responses are at most 100.
 
-- [ ] **Step 9: Generate the library clients**
+- [ ] **Step 7: Generate the library clients**
 
 Run: `mise run generate`
 
-- [ ] **Step 10: Run the library contract checks**
+- [ ] **Step 8: Run the library schema and application checks**
 
 Run:
 
@@ -438,10 +362,10 @@ mise run check:swift
 
 Expected: PASS.
 
-- [ ] **Step 11: Commit the library contract slice**
+- [ ] **Step 9: Commit the library contract slice**
 
 ```bash
-git add proto/nama/api/v1/library.proto apps/server/src/contract.test.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests gen/ts gen/go gen/swift/Sources/NamaAPI
+git add proto/nama/api/v1/library.proto gen/ts gen/go gen/swift/Sources/NamaAPI
 git commit -m "feat(api): add library read contracts"
 ```
 
@@ -450,9 +374,6 @@ git commit -m "feat(api): add library read contracts"
 **Files:**
 
 - Create: `proto/nama/api/v1/playback.proto`
-- Modify: `apps/server/src/contract.test.ts`
-- Modify: `apps/cli/internal/cli/contracts_test.go`
-- Modify: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
 - Regenerate: `gen/ts/src/nama/api/v1/**`
 - Regenerate: `gen/go/nama/api/v1/**`
 - Regenerate: `gen/swift/Sources/NamaAPI/**`
@@ -462,17 +383,7 @@ git commit -m "feat(api): add library read contracts"
 - Consumes: public media quality/state types and `HttpHeader`.
 - Produces: capability-aware planning, one logical open, session-scoped tracks/sidecars, ordered telemetry, and idempotent close messages.
 
-- [ ] **Step 1: Write failing plan/session/sidecar round trips**
-
-Create a plan with direct-play and subtitle actions, then a session with new session track IDs, one locally switchable audio track, one non-switchable subtitle track, and one external subtitle locator. Round-trip report sequence 7 and a completed close response.
-
-- [ ] **Step 2: Run the public playback red check**
-
-Run: `mise run check:swift`
-
-Expected: FAIL because playback messages do not exist.
-
-- [ ] **Step 3: Declare transport and preference enums**
+- [ ] **Step 1: Declare transport and preference enums**
 
 ```proto
 enum DeliveryProtocol {
@@ -501,7 +412,7 @@ enum SubtitlePreference {
 }
 ```
 
-- [ ] **Step 4: Declare strategy and track-action enums**
+- [ ] **Step 2: Declare strategy and track-action enums**
 
 ```proto
 enum PlaybackStrategy {
@@ -526,7 +437,7 @@ enum TrackActionKind {
 }
 ```
 
-- [ ] **Step 5: Declare playback lifecycle enums**
+- [ ] **Step 3: Declare playback lifecycle enums**
 
 ```proto
 enum PlaybackState {
@@ -544,7 +455,7 @@ enum PlaybackCloseReason {
 }
 ```
 
-- [ ] **Step 6: Declare capabilities, preferences, and track formats**
+- [ ] **Step 4: Declare capabilities, preferences, and track formats**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -567,7 +478,7 @@ option (buf.validate.message).cel = {
 };
 ```
 
-- [ ] **Step 7: Declare planning and opening messages**
+- [ ] **Step 5: Declare planning and opening messages**
 
 `PlaybackPlan` fields, in order:
 
@@ -600,7 +511,7 @@ Declare method/resource fields:
 
 Cap tracks/actions at 100, external sidecars at 100, and require every plan, locator, and sidecar expiry to be a present valid Timestamp. The exactly-one-sidecar-per-external-track, safe authorization scope, selected-track membership, plan single-open, and session mapping lifetime are handler rules.
 
-- [ ] **Step 8: Declare report/close messages and service**
+- [ ] **Step 6: Declare report/close messages and service**
 
 ```proto
 service PlaybackService {
@@ -620,11 +531,11 @@ service PlaybackService {
 
 Require positive sequence numbers and valid non-negative durations. Do not encode provider telemetry results or cleanup state in public responses.
 
-- [ ] **Step 9: Generate the public playback client**
+- [ ] **Step 7: Generate the public playback client**
 
 Run: `mise run generate`
 
-- [ ] **Step 10: Run the public playback checks**
+- [ ] **Step 8: Run the public playback schema and application checks**
 
 Run:
 
@@ -635,12 +546,12 @@ mise run check:go
 mise run check:swift
 ```
 
-Expected: PASS, including external-subtitle and session-track round trips.
+Expected: PASS with the generated playback client compiled by every real public application.
 
-- [ ] **Step 11: Commit public playback**
+- [ ] **Step 9: Commit public playback**
 
 ```bash
-git add proto/nama/api/v1/playback.proto apps/server/src/contract.test.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests gen/ts gen/go gen/swift/Sources/NamaAPI
+git add proto/nama/api/v1/playback.proto gen/ts gen/go gen/swift/Sources/NamaAPI
 git commit -m "feat(api): add playback lifecycle contract"
 ```
 
@@ -649,9 +560,6 @@ git commit -m "feat(api): add playback lifecycle contract"
 **Files:**
 
 - Create: `proto/nama/api/v1/user_state.proto`
-- Modify: `apps/server/src/contract.test.ts`
-- Modify: `apps/cli/internal/cli/contracts_test.go`
-- Modify: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
 - Regenerate: `gen/ts/src/nama/api/v1/**`
 - Regenerate: `gen/go/nama/api/v1/**`
 - Regenerate: `gen/swift/Sources/NamaAPI/**`
@@ -661,17 +569,7 @@ git commit -m "feat(api): add playback lifecycle contract"
 - Consumes: `MediaUserState` from `media.proto`.
 - Produces: one read and one explicit watched-target mutation; no duplicate progress mutation path.
 
-- [ ] **Step 1: Write failing watched/unwatched round trips**
-
-Construct `SetWatchedRequest` once with `watched = true` and once with `watched = false`; verify false survives serialization as an explicit target because request presence comes from the containing message, not a toggle convention.
-
-- [ ] **Step 2: Run the user-state red check**
-
-Run: `mise run check:go`
-
-Expected: FAIL because UserStateService is missing.
-
-- [ ] **Step 3: Declare exact methods and messages**
+- [ ] **Step 1: Declare exact methods and messages**
 
 ```proto
 service UserStateService {
@@ -689,11 +587,11 @@ service UserStateService {
 
 Do not add `user_id`, toggle, client timestamp, or `SetProgress`.
 
-- [ ] **Step 4: Generate the user-state client**
+- [ ] **Step 2: Generate the user-state client**
 
 Run: `mise run generate`
 
-- [ ] **Step 5: Verify the user-state contract**
+- [ ] **Step 3: Verify the user-state schema and applications**
 
 Run:
 
@@ -706,14 +604,14 @@ mise run check:swift
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit the user-state contract**
+- [ ] **Step 4: Commit the user-state contract**
 
 ```bash
-git add proto/nama/api/v1/user_state.proto apps/server/src/contract.test.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests gen/ts gen/go gen/swift/Sources/NamaAPI
+git add proto/nama/api/v1/user_state.proto gen/ts gen/go gen/swift/Sources/NamaAPI
 git commit -m "feat(api): add user state contract"
 ```
 
-### Task 5: Complete the 36-method public contract inventory
+### Task 5: Complete the public authorization inventory
 
 **Files:**
 
@@ -723,34 +621,24 @@ git commit -m "feat(api): add user state contract"
 
 **Interfaces:**
 
-- Consumes: the 23 management methods from plan 2 and 13 consumer methods from this plan.
-- Produces: a complete public descriptor/authority inventory and consumer compile probes.
+- Consumes: the management authorization rules from plan 2 and the generated consumer-service descriptors from this plan.
+- Produces: a complete handwritten default-deny authorization inventory and the server application compile probe.
 
-- [ ] **Step 1: Run the existing descriptor completeness test**
+- [ ] **Step 1: Run the existing authorization-completeness test**
 
 Run: `pnpm --filter @nama/server run check:contract`
 
-Expected: FAIL with the seven Library, four Playback, and two UserState methods absent from the authority map.
+Expected: FAIL with the generated consumer methods absent from the handwritten authority map.
 
-- [ ] **Step 2: Add all 13 consumer methods**
+- [ ] **Step 2: Add every consumer method**
 
-Map every method in `LibraryService`, `PlaybackService`, and `UserStateService` to `administrator-or-device`. The sorted descriptor set must then equal the 36 map keys exactly.
+Map every method in `LibraryService`, `PlaybackService`, and `UserStateService` to `administrator-or-device`. Use the generated method descriptors only as inputs to the comparison; the test passes when the sorted generated method keys equal the handwritten map keys, with every RPC covered exactly once.
 
-- [ ] **Step 3: Add public boundary checks**
+- [ ] **Step 3: Complete only the server compile probe**
 
-Extend the TypeScript contract test to inspect generated public descriptors and assert:
+Reference every public service descriptor from the existing TypeScript server probe. Keep the CLI and tvOS application entry points on their approved Health-only Milestone 0 probes. No Go or Swift contract test exists; their real applications accept the generated clients through compilation.
 
-- no service, method, message, or field name contains `jellyfin`, `plex`, `provider_item`, `provider_source`, `stream_index`, `file_path`, or `session_context`;
-- `BadRequest.FieldViolation` round-trips `field`, `description`, `reason`, and `localized_message` for `configuration.base_url`;
-- an unknown future numeric enum value survives a representative TypeScript round trip (plan 4 mirrors and validates it natively);
-- `SubtitleSelection` preserves both the track and disabled alternatives; and
-- refresh and access expiries are distinct fields.
-
-- [ ] **Step 4: Complete only the server compile probe**
-
-Reference every public service descriptor from the existing TypeScript server probe. Keep the CLI and tvOS application entry points on their approved Health-only Milestone 0 probes; the Go and Swift native package tests compile and round-trip representative `MediaSummary`, `MediaDetails`, `PlaybackPlan`, and `PlaybackSession` values without importing plugin types or AetherEngine.
-
-- [ ] **Step 5: Run all public checks**
+- [ ] **Step 4: Run all public checks**
 
 Run:
 
@@ -761,9 +649,9 @@ mise run check:go
 mise run check:swift
 ```
 
-Expected: PASS and exactly 36 public RPC descriptors.
+Expected: PASS with every generated public RPC covered exactly once by the handwritten authorization inventory.
 
-- [ ] **Step 6: Commit the public contract inventory**
+- [ ] **Step 5: Commit the public authorization inventory**
 
 ```bash
 git add apps/server/src/contract-authorization.ts apps/server/src/contract.test.ts apps/server/src/contract-probe.ts

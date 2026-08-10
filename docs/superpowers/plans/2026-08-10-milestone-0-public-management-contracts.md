@@ -48,9 +48,6 @@ An `optional` marker in a table means proto3 explicit presence for a scalar/enum
 **Files:**
 
 - Modify: `proto/nama/api/v1/health.proto`
-- Modify: `apps/server/src/contract.test.ts`
-- Modify: `apps/cli/internal/cli/contracts_test.go`
-- Modify: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
 - Regenerate: `gen/ts/src/nama/api/v1/**`
 - Regenerate: `gen/go/nama/api/v1/**`
 - Regenerate: `gen/swift/Sources/NamaAPI/**`
@@ -60,37 +57,7 @@ An `optional` marker in a table means proto3 explicit presence for a scalar/enum
 - Consumes: existing `ServingStatus`, `CheckRequest`, `CheckResponse.status = 1`, and `HealthService.Check`.
 - Produces: additive operator health fields and deterministic diagnostics messages/RPC.
 
-- [ ] **Step 1: Write the failing TypeScript health fixture**
-
-Construct a `CheckResponse` with `server_version`, `initialized`, `ready`, and `database_status`, plus a `GetDiagnosticsResponse` containing `core`, `database`, and one `provider_instance/opaque-id` component. Assert binary round trip and ordered component names.
-
-- [ ] **Step 2: Run the TypeScript health red check**
-
-Run: `mise run check:ts`
-
-Expected: FAIL because the additive fields and diagnostics types do not exist.
-
-- [ ] **Step 3: Mirror the failing health fixture in Go**
-
-Add the same response and ordered diagnostics fixture to the existing Go harness.
-
-- [ ] **Step 4: Run the Go health red check**
-
-Run: `mise run check:go`
-
-Expected: FAIL on the absent generated fields.
-
-- [ ] **Step 5: Mirror the failing health fixture in Swift**
-
-Add the same response and ordered diagnostics fixture to the existing Swift harness.
-
-- [ ] **Step 6: Run the Swift health red check**
-
-Run: `mise run check:swift`
-
-Expected: FAIL because the additive fields and diagnostics types do not exist.
-
-- [ ] **Step 7: Add the exact health declarations**
+- [ ] **Step 1: Add the exact health declarations**
 
 Keep existing declarations in place and add these tags:
 
@@ -132,18 +99,18 @@ service HealthService {
 
 Import Timestamp and Protovalidate. Attach `(buf.validate.field).enum = { not_in: [0] }` to `CheckResponse.status`, `CheckResponse.database_status`, and `DiagnosticComponent.status`. Require non-empty bounded version, component name, summary, and request ID; require timestamps; constrain components to 2–102 because core and database are always present.
 
-- [ ] **Step 8: Generate the additive health clients**
+- [ ] **Step 2: Generate the additive health clients**
 
 Run: `mise run generate`
 
 Expected: generated public clients now contain the additive fields and `GetDiagnostics`.
 
-- [ ] **Step 9: Run the health contract checks**
+- [ ] **Step 3: Run the health schema and application checks**
 
 Run:
 
 ```bash
-buf lint
+mise run check:contracts
 mise run check:ts
 mise run check:go
 mise run check:swift
@@ -151,10 +118,10 @@ mise run check:swift
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit the health slice**
+- [ ] **Step 4: Commit the health slice**
 
 ```bash
-git add proto/nama/api/v1/health.proto apps/server/src/contract.test.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests gen/ts gen/go gen/swift/Sources/NamaAPI
+git add proto/nama/api/v1/health.proto gen/ts gen/go gen/swift/Sources/NamaAPI
 git commit -m "feat(api): add operator diagnostics contract"
 ```
 
@@ -164,9 +131,6 @@ git commit -m "feat(api): add operator diagnostics contract"
 
 - Create: `proto/nama/api/v1/setup.proto`
 - Create: `proto/nama/api/v1/auth.proto`
-- Modify: `apps/server/src/contract.test.ts`
-- Modify: `apps/cli/internal/cli/contracts_test.go`
-- Modify: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
 - Regenerate: `gen/ts/src/nama/api/v1/**`
 - Regenerate: `gen/go/nama/api/v1/**`
 - Regenerate: `gen/swift/Sources/NamaAPI/**`
@@ -176,17 +140,7 @@ git commit -m "feat(api): add operator diagnostics contract"
 - Consumes: `nama.api.v1.BearerCredential` from `common.proto`.
 - Produces: `Administrator`, `SetupService`, and `AuthService` with no Better Auth types on the wire.
 
-- [ ] **Step 1: Write failing setup/auth round trips**
-
-Construct one `Administrator`, one successful `CreateAdministratorResponse`, and one `SignInResponse` containing a bearer with expiry. Compile references to every service method descriptor, including empty request/response messages.
-
-- [ ] **Step 2: Run the setup/auth red check**
-
-Run: `mise run check:ts`
-
-Expected: FAIL on missing setup/auth schemas.
-
-- [ ] **Step 3: Create `setup.proto` with sequential tags**
+- [ ] **Step 1: Create `setup.proto` with sequential tags**
 
 Use this service exactly:
 
@@ -209,7 +163,7 @@ Declare fields in this order, assigning tags from 1:
 
 Validate email with the Protovalidate email rule and a 320-character maximum. Bound display name to 1–256, password to 1–1024, and bootstrap token to the secret-token bound. Never attach a rule that echoes either secret.
 
-- [ ] **Step 4: Create `auth.proto` with sequential tags**
+- [ ] **Step 2: Create `auth.proto` with sequential tags**
 
 Import `common.proto` and `setup.proto`, then declare:
 
@@ -232,11 +186,11 @@ service AuthService {
 
 Use the same email/password constraints as setup. Do not add cookies, refresh tokens, session IDs, or Better Auth messages.
 
-- [ ] **Step 5: Generate the setup/auth clients**
+- [ ] **Step 3: Generate the setup/auth clients**
 
 Run: `mise run generate`
 
-- [ ] **Step 6: Prove all public languages consume setup/auth**
+- [ ] **Step 4: Prove all public applications compile with setup/auth**
 
 Run:
 
@@ -249,10 +203,10 @@ mise run check:swift
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit the setup/auth slice**
+- [ ] **Step 5: Commit the setup/auth slice**
 
 ```bash
-git add proto/nama/api/v1/setup.proto proto/nama/api/v1/auth.proto apps/server/src/contract.test.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests gen/ts gen/go gen/swift/Sources/NamaAPI
+git add proto/nama/api/v1/setup.proto proto/nama/api/v1/auth.proto gen/ts gen/go gen/swift/Sources/NamaAPI
 git commit -m "feat(api): add setup and auth contracts"
 ```
 
@@ -261,9 +215,6 @@ git commit -m "feat(api): add setup and auth contracts"
 **Files:**
 
 - Create: `proto/nama/api/v1/device.proto`
-- Modify: `apps/server/src/contract.test.ts`
-- Modify: `apps/cli/internal/cli/contracts_test.go`
-- Modify: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
 - Regenerate: `gen/ts/src/nama/api/v1/**`
 - Regenerate: `gen/go/nama/api/v1/**`
 - Regenerate: `gen/swift/Sources/NamaAPI/**`
@@ -273,17 +224,7 @@ git commit -m "feat(api): add setup and auth contracts"
 - Consumes: `BearerCredential` and common time/duration types.
 - Produces: short-code approval separated from the high-entropy polling secret and revocable device credentials.
 
-- [ ] **Step 1: Write the failing pairing round trip**
-
-Create a pending pairing response and an approved status response with a `Device` and credential. Also round-trip a two-device list response and compile every service method.
-
-- [ ] **Step 2: Run the device-pairing red check**
-
-Run: `mise run check:go`
-
-Expected: FAIL because `device.proto` is absent.
-
-- [ ] **Step 3: Define enum and resource numbers**
+- [ ] **Step 1: Define enum and resource numbers**
 
 ```proto
 enum PairingStatus {
@@ -296,7 +237,7 @@ enum PairingStatus {
 
 Declare `Device` fields in tag order: `id = 1`, `display_name = 2`, required `created_at = 3`, optional `last_seen_at = 4`, `revoked = 5`, optional `revoked_at = 6`. Require every present Timestamp to be valid; do not add wrapper types.
 
-- [ ] **Step 4: Define method messages and service**
+- [ ] **Step 2: Define method messages and service**
 
 ```proto
 service DeviceService {
@@ -323,11 +264,11 @@ service DeviceService {
 
 Bound the human code to 6–32 characters. Attach `(buf.validate.field).required = true` to both pairing time messages, require a valid expiry Timestamp, and constrain `poll_interval` with duration `gt: {}` and `lte: { seconds: 60 }`. Cap list devices and page size at 100. Keep denial and an administrator-supplied polling ID out of the schema.
 
-- [ ] **Step 5: Generate the device contract**
+- [ ] **Step 3: Generate the device contract**
 
 Run: `mise run generate`
 
-- [ ] **Step 6: Validate the device contract**
+- [ ] **Step 4: Validate the device schema and applications**
 
 Run:
 
@@ -340,10 +281,10 @@ mise run check:swift
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit the device contract**
+- [ ] **Step 5: Commit the device contract**
 
 ```bash
-git add proto/nama/api/v1/device.proto apps/server/src/contract.test.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests gen/ts gen/go gen/swift/Sources/NamaAPI
+git add proto/nama/api/v1/device.proto gen/ts gen/go gen/swift/Sources/NamaAPI
 git commit -m "feat(api): add device pairing contract"
 ```
 
@@ -352,9 +293,6 @@ git commit -m "feat(api): add device pairing contract"
 **Files:**
 
 - Create: `proto/nama/api/v1/provider.proto`
-- Modify: `apps/server/src/contract.test.ts`
-- Modify: `apps/cli/internal/cli/contracts_test.go`
-- Modify: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
 - Regenerate: `gen/ts/src/nama/api/v1/**`
 - Regenerate: `gen/go/nama/api/v1/**`
 - Regenerate: `gen/swift/Sources/NamaAPI/**`
@@ -364,17 +302,7 @@ git commit -m "feat(api): add device pairing contract"
 - Consumes: `google.protobuf.Struct`, Timestamp, and public common types.
 - Produces: provider-type discovery and optimistic-concurrency instance management without provider-specific endpoints.
 
-- [ ] **Step 1: Write failing provider schema and secret-marker round trips**
-
-Round-trip a `ProviderType` whose configuration schema contains `base_url`, `api_key`, and `user_id`; round-trip a `ProviderInstance` whose returned configuration omits `api_key` but whose `configured_secrets` marks it configured. Test `Struct` preservation in TypeScript, Go, and Swift.
-
-- [ ] **Step 2: Run the provider-management red check**
-
-Run: `mise run check:swift`
-
-Expected: FAIL because provider messages do not exist.
-
-- [ ] **Step 3: Declare provider enums with fixed values**
+- [ ] **Step 1: Declare provider enums with fixed values**
 
 ```proto
 enum ProviderCapability {
@@ -407,7 +335,7 @@ enum ProviderConnectionStatus {
 }
 ```
 
-- [ ] **Step 4: Declare provider resources with sequential tags**
+- [ ] **Step 2: Declare provider resources with sequential tags**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -418,7 +346,7 @@ enum ProviderConnectionStatus {
 
 Constrain priorities to positive `uint32`, provider/schema IDs to the opaque-ID bound, display fields to short text, description/summary to at most 1,024, and capabilities to unique lists of at most 32. Require valid creation/update Timestamps and reject unspecified enum values where required.
 
-- [ ] **Step 5: Declare the neutral ProviderService method inventory**
+- [ ] **Step 3: Declare the neutral ProviderService method inventory**
 
 ```proto
 service ProviderService {
@@ -433,7 +361,7 @@ service ProviderService {
 }
 ```
 
-- [ ] **Step 6: Add provider list and get messages**
+- [ ] **Step 4: Add provider list and get messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -446,7 +374,7 @@ service ProviderService {
 
 Cap list results and non-zero page sizes at 100.
 
-- [ ] **Step 7: Add candidate and stored-configuration test messages**
+- [ ] **Step 5: Add candidate and stored-configuration test messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -457,7 +385,7 @@ Cap list results and non-zero page sizes at 100.
 
 Provider-schema validation and remote connection outcomes follow the approved handler semantics; the Protobuf schema enforces only IDs, presence, and Struct bounds.
 
-- [ ] **Step 8: Add create and update messages**
+- [ ] **Step 6: Add create and update messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -468,7 +396,7 @@ Provider-schema validation and remote connection outcomes follow the approved ha
 
 Use lower-snake-case validation for `clear_configuration_fields`; make it unique and at most 100 entries. Patch/clear overlap, required-key removal, revision checks, instance limit, and immutable remote user remain handler rules.
 
-- [ ] **Step 9: Add delete messages**
+- [ ] **Step 7: Add delete messages**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -477,11 +405,11 @@ Use lower-snake-case validation for `clear_configuration_fields`; make it unique
 
 Delete-busy and state ownership remain handler semantics; do not add state-dependent CEL.
 
-- [ ] **Step 10: Generate the provider-management clients**
+- [ ] **Step 8: Generate the provider-management clients**
 
 Run: `mise run generate`
 
-- [ ] **Step 11: Prove there is no provider-branded public symbol**
+- [ ] **Step 9: Prove there is no provider-branded public symbol**
 
 Run:
 
@@ -497,7 +425,7 @@ fi
 
 Expected: no matches.
 
-- [ ] **Step 12: Run the provider-management checks**
+- [ ] **Step 10: Run the provider-management schema and application checks**
 
 Run:
 
@@ -510,10 +438,10 @@ mise run check:swift
 
 Expected: PASS.
 
-- [ ] **Step 13: Commit provider management**
+- [ ] **Step 11: Commit provider management**
 
 ```bash
-git add proto/nama/api/v1/provider.proto apps/server/src/contract.test.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests gen/ts gen/go gen/swift/Sources/NamaAPI
+git add proto/nama/api/v1/provider.proto gen/ts gen/go gen/swift/Sources/NamaAPI
 git commit -m "feat(api): add provider management contract"
 ```
 
@@ -522,9 +450,6 @@ git commit -m "feat(api): add provider management contract"
 **Files:**
 
 - Create: `proto/nama/api/v1/sync.proto`
-- Modify: `apps/server/src/contract.test.ts`
-- Modify: `apps/cli/internal/cli/contracts_test.go`
-- Modify: `gen/swift/Tests/NamaAPITests/ContractTests.swift`
 - Regenerate: `gen/ts/src/nama/api/v1/**`
 - Regenerate: `gen/go/nama/api/v1/**`
 - Regenerate: `gen/swift/Sources/NamaAPI/**`
@@ -534,17 +459,7 @@ git commit -m "feat(api): add provider management contract"
 - Consumes: opaque provider-instance IDs and Timestamp.
 - Produces: stable CLI-readable status plus provider and aggregate run models with explicit child references.
 
-- [ ] **Step 1: Write failing status and joined-child round trips**
-
-Round-trip: a paged response with one disabled and one running provider status; a provider run in `PULLING`; and an aggregate run with two child references, aggregate counts, trigger-time `created_at`, and terminal `finished_at`.
-
-- [ ] **Step 2: Run the synchronization red check**
-
-Run: `mise run check:ts`
-
-Expected: FAIL on missing sync schemas.
-
-- [ ] **Step 3: Declare sync enums exactly**
+- [ ] **Step 1: Declare sync enums exactly**
 
 ```proto
 enum SyncStatus {
@@ -568,7 +483,7 @@ enum SyncPhase {
 }
 ```
 
-- [ ] **Step 4: Declare run and status resources**
+- [ ] **Step 2: Declare run and status resources**
 
 | Message | Fields in tag order |
 | --- | --- |
@@ -579,7 +494,7 @@ enum SyncPhase {
 
 Bound child references to 100 and failure summaries to 1,024; require every present run Timestamp to be valid. An aggregate parent's `created_at` is trigger time; `started_at` is that time when any joined child is already active, otherwise the first later child start; and `finished_at` follows every referenced child reaching a terminal phase. Joined-child counts cover each referenced child's full lifetime, including work before the parent joined it. These phase, timestamp, count, and aggregate-precedence rules are handler semantics rather than duplicated CEL.
 
-- [ ] **Step 5: Declare the three RPCs and exact response names**
+- [ ] **Step 3: Declare the three RPCs and exact response names**
 
 ```proto
 service SyncService {
@@ -600,11 +515,11 @@ service SyncService {
 
 Do not add separate pull, push, cancel, or provider-specific sync methods.
 
-- [ ] **Step 6: Generate the synchronization contracts**
+- [ ] **Step 4: Generate the synchronization contracts**
 
 Run: `mise run generate`
 
-- [ ] **Step 7: Run the synchronization checks**
+- [ ] **Step 5: Run the synchronization schema and application checks**
 
 Run:
 
@@ -617,10 +532,10 @@ mise run check:swift
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit the synchronization contracts**
+- [ ] **Step 6: Commit the synchronization contracts**
 
 ```bash
-git add proto/nama/api/v1/sync.proto apps/server/src/contract.test.ts apps/cli/internal/cli/contracts_test.go gen/swift/Tests gen/ts gen/go gen/swift/Sources/NamaAPI
+git add proto/nama/api/v1/sync.proto gen/ts gen/go gen/swift/Sources/NamaAPI
 git commit -m "feat(api): add synchronization contracts"
 ```
 
@@ -628,8 +543,13 @@ git commit -m "feat(api): add synchronization contracts"
 
 **Files:**
 
+- Modify: `.oxlintrc.json`
+- Modify: `package.json`
+- Modify: `pnpm-lock.yaml`
+- Modify: `apps/server/package.json`
+- Modify: `apps/server/tsconfig.json`
 - Create: `apps/server/src/contract-authorization.ts`
-- Modify: `apps/server/src/contract.test.ts`
+- Create: `apps/server/src/contract.test.ts`
 - Modify: `apps/server/src/contract-probe.ts`
 
 **Interfaces:**
@@ -637,7 +557,19 @@ git commit -m "feat(api): add synchronization contracts"
 - Consumes: generated service descriptors from Tasks 1–5.
 - Produces: a descriptor-keyed, default-deny inventory covering every management method exactly once; later runtime code can consume the same table rather than recreating it.
 
-- [ ] **Step 1: Add an intentionally incomplete method inventory**
+- [ ] **Step 1: Add the first handwritten contract-test infrastructure**
+
+Add exact `@types/node@24.13.3` and `@bufbuild/protobuf@2.13.0` server dev dependencies. Add `"check:contract": "node --test src/contract.test.ts"` to `apps/server/package.json`, set the root `check:ts` script to `pnpm run check:format && pnpm run check:lint && pnpm run check:type && pnpm --filter @nama/server run check:contract`, and add `"types": ["node"]` to the server compiler options. Restore only these lint allowances:
+
+```json
+"import/no-nodejs-modules": ["error", { "allow": ["node:assert/strict", "node:test"] }],
+"eslint/no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
+"eslint/sort-imports": ["warn", { "allowSeparatedGroups": true }]
+```
+
+Do not add another test runner or generalized lint exceptions.
+
+- [ ] **Step 2: Add an intentionally incomplete method inventory**
 
 Represent authority as string literals, not a framework:
 
@@ -654,15 +586,15 @@ export const contractAuthorityByMethod = {
 } as const satisfies Record<string, ContractAuthority>;
 ```
 
-Add a test that collects fully qualified method names from every currently generated public service and compares the sorted set with the map keys.
+Add a test that uses the generated service method descriptors as inputs, collects their fully qualified method names, and compares that sorted set with the handwritten map keys. Do not assert generated descriptor presence, names, or counts independently.
 
-- [ ] **Step 2: Run the authorization-inventory red check**
+- [ ] **Step 3: Run the authorization-inventory red check**
 
 Run: `pnpm --filter @nama/server run check:contract`
 
 Expected: FAIL and list the missing methods.
 
-- [ ] **Step 3: Complete the 23-method management inventory**
+- [ ] **Step 4: Complete the management inventory**
 
 Assign:
 
@@ -672,13 +604,13 @@ Assign:
 - `DeviceService.GetPairingStatus` → `polling-token`;
 - both Health methods, `AuthService.GetCurrentUser`, `AuthService.SignOut`, device approval/list/revoke, all Provider methods, and all Sync methods → `administrator`.
 
-No generated method may be absent or listed twice. The public media plan adds the consumer methods to this same table.
+No generated method may be absent or listed twice. The public media plan adds the consumer methods to this same table. This assertion tests the handwritten default-deny policy, not generated descriptor construction or method presence.
 
-- [ ] **Step 4: Expand only the server compile probe**
+- [ ] **Step 5: Expand only the server compile probe**
 
-Reference each management service descriptor and both public/plugin common namespaces from the existing TypeScript server probe. Keep the CLI and tvOS application entry points on their approved Health-only Milestone 0 probes; the Go and Swift native package tests already compile the complete generated public clients.
+Reference each management service descriptor and both public/plugin common namespaces from the existing TypeScript server probe. Keep the CLI and tvOS application entry points on their approved Health-only Milestone 0 probes. No Go or Swift contract test exists; those applications accept generated code through their real compile probes.
 
-- [ ] **Step 5: Run the plan-level checks**
+- [ ] **Step 6: Run the plan-level checks**
 
 Run:
 
@@ -689,12 +621,12 @@ mise run check:go
 mise run check:swift
 ```
 
-Expected: PASS and the descriptor inventory reports exactly 23 public management methods.
+Expected: PASS and the handwritten authorization inventory has exactly the same method keys as the generated management descriptors.
 
-- [ ] **Step 6: Commit the management contract inventory**
+- [ ] **Step 7: Commit the management contract inventory**
 
 ```bash
-git add apps/server/src/contract-authorization.ts apps/server/src/contract.test.ts apps/server/src/contract-probe.ts
+git add .oxlintrc.json package.json pnpm-lock.yaml apps/server/package.json apps/server/tsconfig.json apps/server/src/contract-authorization.ts apps/server/src/contract.test.ts apps/server/src/contract-probe.ts
 git commit -m "test(api): lock management method inventory"
 ```
 
