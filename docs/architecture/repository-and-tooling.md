@@ -75,7 +75,7 @@ Generated code is isolated under `gen`, but only generated-only leaves are Buf o
 Native files remain authoritative:
 
 - `package.json`, `pnpm-workspace.yaml`, and `pnpm-lock.yaml` own Node packages and exact JavaScript dependencies;
-- Oxfmt and Oxlint own handwritten TypeScript and JSON formatting and linting; `tsc --noEmit` remains the TypeScript type check;
+- Oxfmt owns explicit handwritten TypeScript and JSON formatting and import-order policy. Oxlint enables its stable correctness, suspicious, pedantic, performance, and style categories as errors, adds type-aware TypeScript, import, promise, and Node rules, rejects warnings and unused suppressions, and excludes unstable nursery rules and blanket language restrictions. `tsc --noEmit` remains the authoritative type check with strict mode, full library checking, unchecked-access protection, and unused, unreachable, fallthrough, implicit-return, and side-effect-import diagnostics;
 - `go.mod` and `go.sum` own Go and Cobra dependencies;
 - the checked-in Xcode project, `gen/swift/Package.swift`, and `apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` own tvOS and Swift dependencies;
 - Buf module, lint, and generation files own Protobuf. `buf.lock` is generated and committed only when `buf.yaml` first declares an external schema dependency. This dependency-free baseline contains neither a hand-written empty lock nor a fake dependency; and

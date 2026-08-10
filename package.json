@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check:format": "oxfmt --check package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
+    "check:format": "oxfmt --check .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
     "check:lint": "oxlint apps/server plugins/jellyfin",
     "check:ts": "pnpm run check:format && pnpm run check:lint && pnpm run check:type",
     "check:type": "pnpm --filter @nama/server --fail-if-no-match run check:type && pnpm --filter @nama/jellyfin --fail-if-no-match run check:type"
@@ -11,6 +11,7 @@
   "devDependencies": {
     "oxfmt": "0.62.0",
     "oxlint": "1.77.0",
+    "oxlint-tsgolint": "7.0.2001",
     "typescript": "7.0.2"
   },
   "packageManager": "pnpm@11.20.0"

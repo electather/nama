@@ -23,7 +23,7 @@ run = "buf generate"
 [tasks.format]
 description = "Format handwritten source files"
 run = [
-  "pnpm exec oxfmt package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
+  "pnpm exec oxfmt .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
   "gofmt -w apps/cli gen/go",
   "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer swift format format --in-place --recursive apps/tvos gen/swift/Package.swift",
 ]
