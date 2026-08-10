@@ -252,10 +252,14 @@ Run:
 
 ```bash
 set -eu
-plans='docs/superpowers/plans/2026-08-10-milestone-0-contract-toolchain.md docs/superpowers/plans/2026-08-10-milestone-0-public-management-contracts.md docs/superpowers/plans/2026-08-10-milestone-0-public-media-playback-contracts.md docs/superpowers/plans/2026-08-10-milestone-0-plugin-contracts-and-conformance.md'
-if rg -n 'apps/cli/internal/cli/contracts_test\.go|gen/swift/Tests|gen/swift/Package\.resolved|swift test --package-path gen/swift' $plans; then exit 1; else test "$?" -eq 1; fi
-if rg -n '^- \[ \].*(round.?trip|unknown (enum|oneof|field)|descriptor (package|symbol|reservation))' $plans; then exit 1; else test "$?" -eq 1; fi
-git diff --check -- docs/architecture/api-contracts.md $plans
+set -- \
+  docs/superpowers/plans/2026-08-10-milestone-0-contract-toolchain.md \
+  docs/superpowers/plans/2026-08-10-milestone-0-public-management-contracts.md \
+  docs/superpowers/plans/2026-08-10-milestone-0-public-media-playback-contracts.md \
+  docs/superpowers/plans/2026-08-10-milestone-0-plugin-contracts-and-conformance.md
+if rg -n 'apps/cli/internal/cli/contracts_test\.go|gen/swift/Tests|gen/swift/Package\.resolved|swift test --package-path gen/swift' "$@"; then exit 1; else test "$?" -eq 1; fi
+if rg -n '^- \[ \].*(round.?trip|unknown (enum|oneof|field)|descriptor (package|symbol|reservation))' "$@"; then exit 1; else test "$?" -eq 1; fi
+git diff --check -- docs/architecture/api-contracts.md "$@"
 ```
 
 Then read the complete body of all four plans, not only matching checkbox headings. Classify every test instruction as handwritten authorization, CEL, error normalization, or actual adapter behavior, and confirm that schema/generation/application-check steps contain no instruction to create a generated-binding test.
