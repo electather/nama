@@ -75,7 +75,7 @@ Generated code is isolated under `gen`, but only generated-only leaves are Buf o
 Native files remain authoritative:
 
 - `package.json`, `pnpm-workspace.yaml`, and `pnpm-lock.yaml` own Node packages and exact JavaScript dependencies;
-- strict TypeScript configuration and Biome own TypeScript compilation and checks;
+- Oxfmt and Oxlint own handwritten TypeScript and JSON formatting and linting; `tsc --noEmit` remains the TypeScript type check;
 - `go.mod` and `go.sum` own Go and Cobra dependencies;
 - the checked-in Xcode project, `gen/swift/Package.swift`, and `apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` own tvOS and Swift dependencies;
 - Buf module, lint, and generation files own Protobuf. `buf.lock` is generated and committed only when `buf.yaml` first declares an external schema dependency. This dependency-free baseline contains neither a hand-written empty lock nor a fake dependency; and
@@ -92,11 +92,12 @@ The public command surface is:
 - `mise install`: install the pinned command-line tools;
 - `mise run setup`: resolve pnpm, Go, and Swift dependencies using committed lock state;
 - `mise run generate`: generate all supported clients from the committed schemas;
+- `mise run format`: format handwritten TypeScript/JSON with Oxfmt, Go with `gofmt`, and Swift with the built-in `swift format`;
 - `mise run check`: run every repository check on a fully provisioned Mac;
 - `mise run check:contracts`: lint schemas, regenerate clients, and assert that generated output is unchanged;
-- `mise run check:ts`: run Biome and `tsc --noEmit`;
+- `mise run check:ts`: run `oxfmt --check`, Oxlint, and `tsc --noEmit` over handwritten TypeScript/JSON; generated TypeScript source remains out of scope while `gen/ts/package.json` is included;
 - `mise run check:go`: check formatting, run `go vet`, and run `go test`;
-- `mise run check:swift`: build the tvOS simulator target with code signing disabled; and
+- `mise run check:swift`: strictly lint handwritten Swift with the built-in `swift format`, then build the tvOS simulator target with code signing disabled; generated Swift under `gen/swift/Sources` remains excluded because Buf owns it; and
 - `mise run check:docker`: validate the Compose model.
 
 On a fully provisioned Mac, fresh-checkout bootstrap is exactly `mise install`, then `mise run setup`, then `mise run check`. Setup delegates to `pnpm install --frozen-lockfile`, `go mod download`, and Xcode package resolution with `-onlyUsePackageVersionsFromResolvedFile`. It neither updates nor creates lock state.
@@ -168,9 +169,9 @@ The baseline is complete when:
 1. a fresh checkout on a fully provisioned Mac completes `mise install`, `mise run setup`, and `mise run check` without changing lockfiles;
 2. `mise run generate` deterministically recreates all committed clients;
 3. server, Jellyfin plugin, Go CLI, and tvOS app compile against the intended generated packages;
-4. TypeScript formatting and type checks pass;
-5. Go formatting, vet, and tests pass;
-6. the tvOS 17-or-later simulator target builds without signing;
+4. Oxfmt formatting, Oxlint, and TypeScript type checks pass;
+5. `gofmt`, Go vet, and Go tests pass;
+6. built-in `swift format` lint passes and the tvOS 17-or-later simulator target builds without signing;
 7. Compose validates the PostgreSQL 18 development service;
 8. regeneration leaves no tracked or untracked change under `gen`;
 9. a disposable deliberate `v1` method removal makes `buf breaking` fail;

@@ -5,9 +5,9 @@ private let healthClientInterface = (any Nama_Api_V1_HealthServiceClientInterfac
 
 @main
 struct NamaApp: App {
-    var body: some Scene {
-        WindowGroup {
-            Text("Nama")
-        }
+  var body: some Scene {
+    WindowGroup {
+      Text("Nama")
     }
+  }
 }

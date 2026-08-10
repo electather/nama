@@ -2,14 +2,16 @@
   "name": "nama",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.20.0",
   "scripts": {
-    "check:format": "biome check package.json biome.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
-    "check:ts": "pnpm run check:format && pnpm run check:type",
+    "check:format": "oxfmt --check package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
+    "check:lint": "oxlint apps/server plugins/jellyfin",
+    "check:ts": "pnpm run check:format && pnpm run check:lint && pnpm run check:type",
     "check:type": "pnpm --filter @nama/server --fail-if-no-match run check:type && pnpm --filter @nama/jellyfin --fail-if-no-match run check:type"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.7",
+    "oxfmt": "0.62.0",
+    "oxlint": "1.77.0",
     "typescript": "7.0.2"
-  }
+  },
+  "packageManager": "pnpm@11.20.0"
 }

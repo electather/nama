@@ -20,6 +20,14 @@ run = [
 description = "Generate committed clients from Protobuf schemas"
 run = "buf generate"
 
+[tasks.format]
+description = "Format handwritten source files"
+run = [
+  "pnpm exec oxfmt package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
+  "gofmt -w apps/cli gen/go",
+  "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer swift format format --in-place --recursive apps/tvos gen/swift/Package.swift",
+]
+
 [tasks."check:contracts"]
 description = "Lint contracts and reject generated drift"
 run = """
@@ -52,10 +60,11 @@ git diff --exit-code -- go.mod go.sum
 """
 
 [tasks."check:swift"]
-description = "Build the tvOS simulator target from locked packages"
+description = "Check Swift formatting and build the tvOS simulator target from locked packages"
 run = """
 set -eu
 export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
+swift format lint --strict --recursive apps/tvos gen/swift/Package.swift
 xcodebuild -project apps/tvos/Nama.xcodeproj -scheme Nama -destination 'generic/platform=tvOS Simulator' -derivedDataPath .derived-data -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO build
 git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 """
