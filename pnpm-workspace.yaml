@@ -1,0 +1,4 @@
+packages:
+  - apps/server
+  - gen/ts
+  - plugins/jellyfin

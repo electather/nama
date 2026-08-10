@@ -1,0 +1,75 @@
+min_version = { hard = "2026.8.3" }
+
+[tools]
+buf = "1.72.0"
+go = "1.26.5"
+node = "24.19.0"
+pnpm = "11.20.0"
+
+[tasks.setup]
+description = "Resolve dependencies from committed lock state"
+run = [
+  "pnpm install --frozen-lockfile",
+  "go mod download",
+  "git diff --exit-code -- go.mod go.sum",
+  "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer xcodebuild -resolvePackageDependencies -project apps/tvos/Nama.xcodeproj -scheme Nama -onlyUsePackageVersionsFromResolvedFile",
+  "git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+]
+
+[tasks.generate]
+description = "Generate committed clients from Protobuf schemas"
+run = "buf generate"
+
+[tasks."check:contracts"]
+description = "Lint contracts and reject generated drift"
+run = """
+set -eu
+buf lint
+buf generate
+status="$(git status --porcelain=v1 -- gen)"
+if [ -n "$status" ]; then
+  printf '%s\n' "$status"
+  exit 1
+fi
+"""
+
+[tasks."check:ts"]
+description = "Check handwritten TypeScript"
+run = "pnpm run check:ts"
+
+[tasks."check:go"]
+description = "Check Go formatting, vet, and tests"
+run = """
+set -eu
+unformatted="$(gofmt -l apps/cli gen/go)"
+if [ -n "$unformatted" ]; then
+  printf '%s\n' "$unformatted"
+  exit 1
+fi
+go vet ./...
+go test ./...
+git diff --exit-code -- go.mod go.sum
+"""
+
+[tasks."check:swift"]
+description = "Build the tvOS simulator target from locked packages"
+run = """
+set -eu
+export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
+xcodebuild -project apps/tvos/Nama.xcodeproj -scheme Nama -destination 'generic/platform=tvOS Simulator' -derivedDataPath .derived-data -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO build
+git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+"""
+
+[tasks."check:docker"]
+description = "Validate the Docker Compose model"
+run = "docker compose config --quiet"
+
+[tasks.check]
+description = "Run every repository check sequentially"
+run = [
+  { task = "check:contracts" },
+  { task = "check:ts" },
+  { task = "check:go" },
+  { task = "check:swift" },
+  { task = "check:docker" },
+]

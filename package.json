@@ -1,0 +1,15 @@
+{
+  "name": "nama",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "scripts": {
+    "check:format": "biome check package.json biome.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
+    "check:ts": "pnpm run check:format && pnpm run check:type",
+    "check:type": "pnpm --filter @nama/server run check:type && pnpm --filter @nama/jellyfin run check:type"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.7",
+    "typescript": "7.0.2"
+  }
+}
