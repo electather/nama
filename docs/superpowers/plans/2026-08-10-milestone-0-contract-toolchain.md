@@ -4,7 +4,7 @@
 
 **Goal:** Establish the deterministic dependency, generation, validation, and native round-trip test foundation required by the complete Milestone 0 contracts.
 
-**Architecture:** Buf remains the only schema and generation owner. The local module imports pinned Protovalidate and Google API schemas; TypeScript generates both Nama packages, while Go and Swift generate only the public package. Handwritten manifests and tests stay outside Buf-cleaned leaves.
+**Architecture:** Buf remains the only schema and generation owner. The local module imports pinned Protovalidate and Google API schemas; TypeScript generates both Nama packages, Go generates public Nama only, and Swift generates public Nama plus selected dependency-owned Google RPC details and required imported support. Handwritten manifests and tests stay outside Buf-cleaned leaves.
 
 **Tech Stack:** Buf 1.72.0, Protobuf, Protovalidate v1 annotations, protoc-gen-es 2.13.0, protoc-gen-go 1.36.11, Connect-Go 1.20.0, SwiftProtobuf 1.38.1, Connect-Swift 1.2.3, Node.js 24, Go 1.26, Swift 6/Xcode 26.6, mise.
 
@@ -19,7 +19,7 @@
 - Required enum fields exclude only zero with `(buf.validate.field).enum = { not_in: [0] }`. Never use `defined_only`: unknown future numeric enum values must remain valid for forward-compatible clients.
 - Preserve `ServingStatus` values 0, 1, and 2, `CheckResponse.status = 1`, and `HealthService.Check` exactly.
 - Generated-only leaves are `gen/ts/src`, `gen/go`, and `gen/swift/Sources/NamaAPI`. Never place manifests or handwritten tests inside them and never hand-edit generated code.
-- Generated TypeScript contains both public and plugin packages. Generated Go and Swift contain `nama.api.v1` only.
+- Generated TypeScript contains both public and plugin packages. Generated Go and Swift exclude `nama.plugin.v1`; Swift additionally contains selected `google.rpc` details and required imported support.
 - Use `optional` only when absence differs from a present zero value. Use Protovalidate for structural constraints; leave state-dependent validation to later handlers.
 - Annotate every present `google.protobuf.Timestamp` with `(buf.validate.field).timestamp = {}`. Annotate every present `google.protobuf.Duration` with a duration rule; later plans add the exact non-negative, positive, or bounded range.
 - Use these uniform structural bounds unless a contract method has a smaller explicit limit: opaque IDs/revisions 1–256 UTF-8 characters, secrets/tokens 1–4096, short human text 1–256, long human text at most 16,384, URLs/header values at most 8,192, headers at most 32, redirect origins at most 16, and ordinary repeated collections at most 100.
@@ -271,13 +271,13 @@ Replace the two-file export list in `gen/ts/package.json` with one native subpat
 }
 ```
 
-Keep `@bufbuild/protobuf` exact-pinned. Run `pnpm --filter @nama/api add --save-exact @bufbuild/protovalidate@1.2.0`; this records the reviewed release in the manifest and lockfile.
+Keep `@bufbuild/protobuf` exact-pinned. Do not add `@bufbuild/protovalidate` to `@nama/api`: the generated TypeScript imports only Protobuf and local generated files. Task 3 adds its direct server test dependency.
 
 - [ ] **Step 4: Generate every configured client**
 
 Run: `mise run generate`
 
-Expected: ES generates both Nama packages plus transitive validation/date and selected error-detail types; Go and Swift contain public Nama types only.
+Expected: ES generates both Nama packages plus transitive validation/date and selected error-detail types; Go excludes the plugin package, and Swift excludes it while generating selected Google RPC details and required imported support.
 
 - [ ] **Step 5: Let native manifests follow actual imports**
 
