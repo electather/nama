@@ -1,0 +1,4 @@
+interface:
+  display_name: "Distill Implementation Docs"
+  short_description: "Keep durable guidance after implementation"
+  default_prompt: "Use $distilling-implementation-docs to clean up documentation after verified implementation."
