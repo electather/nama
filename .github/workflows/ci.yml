@@ -47,13 +47,15 @@ jobs:
       - name: Resolve locked Swift packages
         run: xcodebuild -resolvePackageDependencies -project apps/tvos/Nama.xcodeproj -scheme Nama -onlyUsePackageVersionsFromResolvedFile
       - name: Reject Swift lock drift
-        run: git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+        run: git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved gen/swift/Package.resolved
       - name: Check Swift formatting
-        run: swift format lint --strict --recursive apps/tvos gen/swift/Package.swift
+        run: swift format lint --strict --recursive apps/tvos gen/swift/Package.swift gen/swift/Tests
+      - name: Test generated Swift package
+        run: swift test --package-path gen/swift
       - name: Build tvOS simulator target
         run: xcodebuild -project apps/tvos/Nama.xcodeproj -scheme Nama -destination 'generic/platform=tvOS Simulator' -derivedDataPath .derived-data -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO build
       - name: Recheck Swift lock
-        run: git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+        run: git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved gen/swift/Package.resolved
 
   buf-breaking:
     if: github.event_name == 'pull_request'

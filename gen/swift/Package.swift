@@ -28,6 +28,13 @@ let package = Package(
         .product(name: "Connect", package: "connect-swift"),
         .product(name: "SwiftProtobuf", package: "swift-protobuf"),
       ]
-    )
+    ),
+    .testTarget(
+      name: "NamaAPITests",
+      dependencies: [
+        "NamaAPI",
+        .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+      ]
+    ),
   ]
 )

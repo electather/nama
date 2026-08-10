@@ -13,7 +13,8 @@ run = [
   "go mod download",
   "git diff --exit-code -- go.mod go.sum",
   "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer xcodebuild -resolvePackageDependencies -project apps/tvos/Nama.xcodeproj -scheme Nama -onlyUsePackageVersionsFromResolvedFile",
-  "git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+  "swift package resolve --package-path gen/swift",
+  "git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved gen/swift/Package.resolved",
 ]
 
 [tasks.generate]
@@ -28,7 +29,7 @@ description = "Format handwritten source files"
 run = [
   "pnpm exec oxfmt .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
   "gofmt -w apps/cli gen/go",
-  "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer swift format format --in-place --recursive apps/tvos gen/swift/Package.swift",
+  "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer swift format format --in-place --recursive apps/tvos gen/swift/Package.swift gen/swift/Tests",
 ]
 
 [tasks."check:contracts"]
@@ -57,9 +58,10 @@ if [ -n "$unformatted" ]; then
   printf '%s\n' "$unformatted"
   exit 1
 fi
+lock_state="$(cksum go.mod go.sum)"
 go vet ./...
 go test ./...
-git diff --exit-code -- go.mod go.sum
+test "$lock_state" = "$(cksum go.mod go.sum)"
 """
 
 [tasks."check:swift"]
@@ -67,9 +69,11 @@ description = "Check Swift formatting and build the tvOS simulator target from l
 run = """
 set -eu
 export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
-swift format lint --strict --recursive apps/tvos gen/swift/Package.swift
+lock_state="$(cksum apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved gen/swift/Package.resolved)"
+swift format lint --strict --recursive apps/tvos gen/swift/Package.swift gen/swift/Tests
+swift test --package-path gen/swift
 xcodebuild -project apps/tvos/Nama.xcodeproj -scheme Nama -destination 'generic/platform=tvOS Simulator' -derivedDataPath .derived-data -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO build
-git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+test "$lock_state" = "$(cksum apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved gen/swift/Package.resolved)"
 """
 
 [tasks."check:docker"]
