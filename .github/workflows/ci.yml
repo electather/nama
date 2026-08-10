@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install locked tools
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+        with:
+          version: 2026.8.3
+          install: true
+          cache: true
+      - name: Resolve locked Node and Go dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          go mod download
+          git diff --exit-code -- go.mod go.sum
+      - name: Check contracts
+        run: mise run check:contracts
+      - name: Check TypeScript
+        run: mise run check:ts
+      - name: Check Go
+        run: mise run check:go
+      - name: Check Compose
+        run: mise run check:docker
+
+  tvos:
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Resolve locked Swift packages
+        run: xcodebuild -resolvePackageDependencies -project apps/tvos/Nama.xcodeproj -scheme Nama -onlyUsePackageVersionsFromResolvedFile
+      - name: Reject Swift lock drift
+        run: git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+      - name: Build tvOS simulator target
+        run: xcodebuild -project apps/tvos/Nama.xcodeproj -scheme Nama -destination 'generic/platform=tvOS Simulator' -derivedDataPath .derived-data -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO build
+      - name: Recheck Swift lock
+        run: git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+
+  buf-breaking:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install locked Buf
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+        with:
+          version: 2026.8.3
+          install: true
+          install_args: buf
+          cache: true
+      - name: Fetch pull request base
+        run: git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
+      - name: Reject breaking Protobuf changes
+        run: buf breaking proto --against ".git#ref=refs/remotes/origin/${{ github.event.pull_request.base.ref }},subdir=proto"
