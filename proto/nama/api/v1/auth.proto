@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package nama.api.v1;
+
+import "buf/validate/validate.proto";
+import "nama/api/v1/common.proto";
+import "nama/api/v1/setup.proto";
+
+message SignInRequest {
+  string email = 1 [
+    (buf.validate.field).string.email = true,
+    (buf.validate.field).string.max_len = 320
+  ];
+  string password = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 1024
+  ];
+}
+
+message SignInResponse {
+  Administrator administrator = 1 [(buf.validate.field).required = true];
+  BearerCredential credential = 2 [(buf.validate.field).required = true];
+}
+
+message GetCurrentUserRequest {}
+
+message GetCurrentUserResponse {
+  Administrator administrator = 1 [(buf.validate.field).required = true];
+}
+
+message SignOutRequest {}
+
+message SignOutResponse {}
+
+service AuthService {
+  rpc SignIn(SignInRequest) returns (SignInResponse);
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (GetCurrentUserResponse);
+  rpc SignOut(SignOutRequest) returns (SignOutResponse);
+}

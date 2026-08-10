@@ -66,4 +66,43 @@ final class ContractTests: XCTestCase {
     _ = Nama_Api_V1_HealthServiceClient.Metadata.Methods.check
     _ = Nama_Api_V1_HealthServiceClient.Metadata.Methods.getDiagnostics
   }
+
+  func testSetupAndAuthenticationContractRoundTrips() throws {
+    var administrator = Nama_Api_V1_Administrator()
+    administrator.id = "administrator-1"
+    administrator.displayName = "Admin"
+    administrator.email = "admin@example.com"
+
+    let encodedAdministrator = try administrator.serializedData()
+    let decodedAdministrator = try Nama_Api_V1_Administrator(
+      serializedBytes: encodedAdministrator)
+    XCTAssertEqual(decodedAdministrator, administrator)
+
+    var created = Nama_Api_V1_CreateAdministratorResponse()
+    created.administrator = administrator
+    let encodedCreated = try created.serializedData()
+    let decodedCreated = try Nama_Api_V1_CreateAdministratorResponse(
+      serializedBytes: encodedCreated)
+    XCTAssertEqual(decodedCreated, created)
+
+    var credential = Nama_Api_V1_BearerCredential()
+    credential.token = "opaque"
+    credential.expiresAt.seconds = 60
+    var signedIn = Nama_Api_V1_SignInResponse()
+    signedIn.administrator = administrator
+    signedIn.credential = credential
+    let encodedSignedIn = try signedIn.serializedData()
+    let decodedSignedIn = try Nama_Api_V1_SignInResponse(serializedBytes: encodedSignedIn)
+    XCTAssertEqual(decodedSignedIn, signedIn)
+
+    _ = Nama_Api_V1_GetStatusRequest()
+    _ = Nama_Api_V1_GetCurrentUserRequest()
+    _ = Nama_Api_V1_SignOutRequest()
+    _ = Nama_Api_V1_SignOutResponse()
+    _ = Nama_Api_V1_SetupServiceClient.Metadata.Methods.getStatus
+    _ = Nama_Api_V1_SetupServiceClient.Metadata.Methods.createAdministrator
+    _ = Nama_Api_V1_AuthServiceClient.Metadata.Methods.signIn
+    _ = Nama_Api_V1_AuthServiceClient.Metadata.Methods.getCurrentUser
+    _ = Nama_Api_V1_AuthServiceClient.Metadata.Methods.signOut
+  }
 }

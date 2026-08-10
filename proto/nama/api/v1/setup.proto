@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package nama.api.v1;
+
+import "buf/validate/validate.proto";
+
+message Administrator {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string display_name = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string email = 3 [
+    (buf.validate.field).string.email = true,
+    (buf.validate.field).string.max_len = 320
+  ];
+}
+
+message GetStatusRequest {}
+
+message GetStatusResponse {
+  bool initialized = 1;
+}
+
+message CreateAdministratorRequest {
+  string bootstrap_token = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 4096
+  ];
+  string display_name = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string email = 3 [
+    (buf.validate.field).string.email = true,
+    (buf.validate.field).string.max_len = 320
+  ];
+  string password = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 1024
+  ];
+}
+
+message CreateAdministratorResponse {
+  Administrator administrator = 1 [(buf.validate.field).required = true];
+}
+
+service SetupService {
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  rpc CreateAdministrator(CreateAdministratorRequest) returns (CreateAdministratorResponse);
+}

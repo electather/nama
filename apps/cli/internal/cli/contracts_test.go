@@ -90,3 +90,47 @@ func TestOperatorHealthContractRoundTrips(t *testing.T) {
 		t.Fatal("health service method descriptors are incomplete")
 	}
 }
+
+func TestSetupAndAuthenticationContractRoundTrips(t *testing.T) {
+	administrator := &apiv1.Administrator{
+		Id:          "administrator-1",
+		DisplayName: "Admin",
+		Email:       "admin@example.com",
+	}
+	fixtures := []proto.Message{
+		administrator,
+		&apiv1.CreateAdministratorResponse{Administrator: administrator},
+		&apiv1.SignInResponse{
+			Administrator: administrator,
+			Credential: &apiv1.BearerCredential{
+				Token: "opaque", ExpiresAt: timestamppb.New(time.Unix(60, 0)),
+			},
+		},
+	}
+	for _, want := range fixtures {
+		encoded, err := proto.Marshal(want)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := want.ProtoReflect().Type().New().Interface()
+		if err := proto.Unmarshal(encoded, got); err != nil {
+			t.Fatal(err)
+		}
+		if !proto.Equal(got, want) {
+			t.Fatalf("round trip mismatch for %s", want.ProtoReflect().Descriptor().FullName())
+		}
+	}
+
+	_ = &apiv1.GetStatusRequest{}
+	_ = &apiv1.GetCurrentUserRequest{}
+	_ = &apiv1.SignOutRequest{}
+	_ = &apiv1.SignOutResponse{}
+	setupMethods := apiv1.File_nama_api_v1_setup_proto.Services().ByName("SetupService").Methods()
+	if setupMethods.ByName("GetStatus") == nil || setupMethods.ByName("CreateAdministrator") == nil {
+		t.Fatal("setup service method descriptors are incomplete")
+	}
+	authMethods := apiv1.File_nama_api_v1_auth_proto.Services().ByName("AuthService").Methods()
+	if authMethods.ByName("SignIn") == nil || authMethods.ByName("GetCurrentUser") == nil || authMethods.ByName("SignOut") == nil {
+		t.Fatal("auth service method descriptors are incomplete")
+	}
+}

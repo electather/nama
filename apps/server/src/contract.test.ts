@@ -10,6 +10,14 @@ import {
   RequestInfoSchema,
   RetryInfoSchema,
 } from "@nama/api/google/rpc/error_details_pb.js";
+// Authentication schemas.
+import {
+  AuthService,
+  GetCurrentUserRequestSchema,
+  SignInResponseSchema,
+  SignOutRequestSchema,
+  SignOutResponseSchema,
+} from "@nama/api/nama/api/v1/auth_pb.js";
 import {
   BearerCredentialSchema,
   HttpHeaderSchema as PublicHttpHeaderSchema,
@@ -20,6 +28,13 @@ import {
   HealthService,
   ServingStatus,
 } from "@nama/api/nama/api/v1/health_pb.js";
+// Setup schemas.
+import {
+  AdministratorSchema,
+  CreateAdministratorResponseSchema,
+  GetStatusRequestSchema,
+  SetupService,
+} from "@nama/api/nama/api/v1/setup_pb.js";
 import { HttpHeaderSchema as PluginHttpHeaderSchema } from "@nama/api/nama/plugin/v1/common_pb.js";
 
 const assertRoundTrip = <Desc extends DescMessage>(
@@ -108,4 +123,43 @@ void test("operator health and ordered diagnostics round-trip", () => {
   assert.deepEqual(componentNames, ["core", "database", "provider_instance/opaque-id"]);
   assert.equal(HealthService.method.check.name, "Check");
   assert.equal(HealthService.method.getDiagnostics.name, "GetDiagnostics");
+});
+
+void test("setup contracts round-trip", () => {
+  const administrator = create(AdministratorSchema, {
+    displayName: "Admin",
+    email: "admin@example.com",
+    id: "administrator-1",
+  });
+  assertRoundTrip(AdministratorSchema, administrator);
+  assertRoundTrip(
+    CreateAdministratorResponseSchema,
+    create(CreateAdministratorResponseSchema, { administrator }),
+  );
+
+  create(GetStatusRequestSchema);
+  assert.equal(SetupService.method.getStatus.name, "GetStatus");
+  assert.equal(SetupService.method.createAdministrator.name, "CreateAdministrator");
+});
+
+void test("authentication contracts round-trip", () => {
+  const administrator = create(AdministratorSchema, {
+    displayName: "Admin",
+    email: "admin@example.com",
+    id: "administrator-1",
+  });
+  assertRoundTrip(
+    SignInResponseSchema,
+    create(SignInResponseSchema, {
+      administrator,
+      credential: { expiresAt: { nanos: 0, seconds: 60n }, token: "opaque" },
+    }),
+  );
+
+  create(GetCurrentUserRequestSchema);
+  create(SignOutRequestSchema);
+  create(SignOutResponseSchema);
+  assert.equal(AuthService.method.signIn.name, "SignIn");
+  assert.equal(AuthService.method.getCurrentUser.name, "GetCurrentUser");
+  assert.equal(AuthService.method.signOut.name, "SignOut");
 });
