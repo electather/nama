@@ -3,6 +3,7 @@ import test from "node:test";
 
 import type { DescMessage, MessageShape } from "@bufbuild/protobuf";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+// Generated schemas.
 import {
   BadRequestSchema,
   ErrorInfoSchema,
