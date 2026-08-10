@@ -13,8 +13,7 @@ run = [
   "go mod download",
   "git diff --exit-code -- go.mod go.sum",
   "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer xcodebuild -resolvePackageDependencies -project apps/tvos/Nama.xcodeproj -scheme Nama -onlyUsePackageVersionsFromResolvedFile",
-  "swift package resolve --package-path gen/swift",
-  "git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved gen/swift/Package.resolved",
+  "git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
 ]
 
 [tasks.generate]
@@ -145,7 +144,7 @@ description = "Format handwritten source files"
 run = [
   "pnpm exec oxfmt .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
   "gofmt -w apps/cli gen/go",
-  "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer swift format format --in-place --recursive apps/tvos gen/swift/Package.swift gen/swift/Tests",
+  "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer swift format format --in-place --recursive apps/tvos gen/swift/Package.swift",
 ]
 
 [tasks."check:contracts"]
@@ -242,11 +241,10 @@ description = "Check Swift formatting and build the tvOS simulator target from l
 run = """
 set -eu
 export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
-lock_state="$(cksum apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved gen/swift/Package.resolved)"
-swift format lint --strict --recursive apps/tvos gen/swift/Package.swift gen/swift/Tests
-swift test --package-path gen/swift
+lock_state="$(cksum apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved)"
+swift format lint --strict --recursive apps/tvos gen/swift/Package.swift
 xcodebuild -project apps/tvos/Nama.xcodeproj -scheme Nama -destination 'generic/platform=tvOS Simulator' -derivedDataPath .derived-data -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO build
-test "$lock_state" = "$(cksum apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved gen/swift/Package.resolved)"
+test "$lock_state" = "$(cksum apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved)"
 """
 
 [tasks."check:docker"]

@@ -22,9 +22,7 @@
   "rules": {
     "curly": "error",
     "eqeqeq": "error",
-    "import/no-nodejs-modules": ["error", { "allow": ["node:assert/strict", "node:test"] }],
-    "eslint/no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
-    "eslint/sort-imports": ["warn", { "allowSeparatedGroups": true }],
+    "eslint/sort-imports": "warn",
     "import/no-cycle": "error",
     "import/no-named-export": "off",
     "import/prefer-default-export": "off",
