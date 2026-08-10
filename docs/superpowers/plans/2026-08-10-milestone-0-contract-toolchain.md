@@ -412,7 +412,7 @@ pnpm's strict package boundary must not rely on `@nama/api` exposing its runtime
 
 - [ ] **Step 4: Add the server contract-test script**
 
-Add `"check:contract": "node --experimental-transform-types --test src/contract.test.ts"` to `apps/server/package.json`. Generated Protobuf-ES files contain TypeScript enums that Node 24's default strip-only loader cannot execute; do not add a separate TypeScript runner.
+Add `"check:contract": "node --test src/contract.test.ts"` to `apps/server/package.json`. Node 24's built-in type stripping executes the erasable handwritten test syntax, while generated runtime files are JavaScript; do not add a separate TypeScript runner.
 
 - [ ] **Step 5: Wire the contract script into the root TypeScript check**
 
