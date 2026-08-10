@@ -857,7 +857,7 @@ Provider configuration schema changes follow the schema compatibility rules abov
 
 `buf.yaml` adds pinned dependencies for Protovalidate annotations and the Google APIs definitions used by `google.rpc` and `google.type`, then commits `buf.lock`. A Buf module dependency supplies schemas to the compiler; it is not by itself a language runtime dependency. Connect error details are also out-of-band and therefore do not become normal imports merely because the server attaches them. `buf.gen.yaml` and the native package manifests own packaging explicitly:
 
-- `buf.gen.yaml` is the cleaning local-module template; `buf.gen.googleapis.yaml` is the additive selected-googleapis template; and `mise run generate` runs them in that order;
+- `buf.gen.yaml` is the cleaning local-module template and `buf.gen.googleapis.yaml` is the additive selected-googleapis template; generation stages both in that order and replaces the three committed generated leaves only after both succeed;
 - TypeScript generates both `nama.api.v1` and `nama.plugin.v1` messages and clients, includes transitive non-WKT imports such as `google.type` and validation options, generates the selected `google.rpc` messages, and pins the Protobuf/Protovalidate runtime packages in the workspace lockfile;
 - Go generates public messages and Connect clients only, excludes dependency-owned message generation, and pins the Google RPC/type and Protovalidate Go modules named by generated imports in `go.mod`; and
 - Swift generates public messages and Connect clients only, uses per-plugin `include_imports: true` for transitive non-WKT definitions, generates the selected `google.rpc` messages, and continues to obtain WKTs from SwiftProtobuf.
@@ -868,8 +868,8 @@ Generated code stays committed. Milestone 0 repository checks run:
 
 1. Buf format and lint;
 2. module build;
-3. pinned deterministic generation;
-4. a clean generated-tree and untracked-file check;
+3. pinned deterministic generation into disposable staging;
+4. direct comparison of the three staged generated leaves with their committed counterparts;
 5. TypeScript, Go, and Swift compile probes against generated clients;
 6. Buf breaking comparison against the pull request base; and
 7. a one-time automated proof that a deliberate field removal is rejected.

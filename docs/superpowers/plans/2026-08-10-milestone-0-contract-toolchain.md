@@ -248,18 +248,46 @@ disable:
     module: buf.build/bufbuild/protovalidate
 ```
 
-Change `mise` generation ownership to run the cleaning local template first and the additive selected-googleapis template second:
+Change `mise` generation ownership to create a fresh validated staging root, run the cleaning local template first and the additive selected-googleapis template second with that root as Buf's `--output`, validate the three staged and committed generated leaves, and only then replace the committed leaves from the staged copies. A failure from either Buf command must leave committed output untouched. The validated staging root is the only variable recursive-cleanup target.
 
 ```toml
 [tasks.generate]
 description = "Generate committed clients from Protobuf schemas"
-run = [
-  "buf generate --template buf.gen.yaml",
-  "buf generate --template buf.gen.googleapis.yaml",
-]
+run = """
+set -eu
+generation_dir="$(mktemp -d "${TMPDIR:-/tmp}/nama-generate.XXXXXX")"
+test -n "$generation_dir"
+test -d "$generation_dir"
+test ! -L "$generation_dir"
+generation_dir="$(cd "$generation_dir" && pwd -P)"
+test -n "$generation_dir"
+test -d "$generation_dir"
+test ! -L "$generation_dir"
+trap 'rm -rf -- "${generation_dir:?}"' EXIT
+
+buf generate --template buf.gen.yaml --output "$generation_dir"
+buf generate --template buf.gen.googleapis.yaml --output "$generation_dir"
+
+repo_dir="$(pwd -P)"
+for path in gen/ts/src gen/go gen/swift/Sources/NamaAPI; do
+  staged_path="$generation_dir/$path"
+  test -d "$staged_path"
+  test ! -L "$staged_path"
+  test "$(cd "$staged_path" && pwd -P)" = "$staged_path"
+  test -d "$path"
+  test ! -L "$path"
+  test "$(cd "$path" && pwd -P)" = "$repo_dir/$path"
+done
+
+rm -rf -- gen/ts/src gen/go gen/swift/Sources/NamaAPI
+mkdir -p gen/ts gen/swift/Sources
+cp -R "$generation_dir/gen/ts/src" gen/ts/src
+cp -R "$generation_dir/gen/go" gen/go
+cp -R "$generation_dir/gen/swift/Sources/NamaAPI" gen/swift/Sources/NamaAPI
+"""
 ```
 
-Change the existing `check:contracts` generation line from `buf generate` to `mise run generate`; Task 4 later hardens the rest of that gate.
+Change the existing `check:contracts` generation to use the same two commands against its own staging root. It compares staged output directly with committed output and never calls the mutating `generate` task; Task 4 hardens the complete gate.
 
 - [ ] **Step 3: Simplify generated TypeScript exports**
 
@@ -584,29 +612,43 @@ Make a whitespace-only change in a temporary copy of one schema and run the curr
 
 - [ ] **Step 2: Harden `check:contracts` without adding another wrapper**
 
-The task body must run, in order:
+The task body must run format, lint, and build first, then generate both templates into one fresh validated staging root in local-then-googleapis order. It must validate the same three staged and committed generated leaves and compare them directly without invoking the mutating `generate` task:
 
 ```bash
 set -eu
 buf format --diff --exit-code
 buf lint
 buf build
-snapshot_dir="$(mktemp -d "${TMPDIR:-/tmp}/nama-contracts.XXXXXX")"
-test -n "$snapshot_dir"
-test -d "$snapshot_dir"
-test ! -L "$snapshot_dir"
-trap 'rm -rf -- "${snapshot_dir:?}"' EXIT
-mkdir -p "$snapshot_dir/gen/ts" "$snapshot_dir/gen/swift/Sources"
-cp -R gen/ts/src "$snapshot_dir/gen/ts/src"
-cp -R gen/go "$snapshot_dir/gen/go"
-cp -R gen/swift/Sources/NamaAPI "$snapshot_dir/gen/swift/Sources/NamaAPI"
-mise run generate
-diff -ru "$snapshot_dir/gen/ts/src" gen/ts/src
-diff -ru "$snapshot_dir/gen/go" gen/go
-diff -ru "$snapshot_dir/gen/swift/Sources/NamaAPI" gen/swift/Sources/NamaAPI
+generation_dir="$(mktemp -d "${TMPDIR:-/tmp}/nama-contracts.XXXXXX")"
+test -n "$generation_dir"
+test -d "$generation_dir"
+test ! -L "$generation_dir"
+generation_dir="$(cd "$generation_dir" && pwd -P)"
+test -n "$generation_dir"
+test -d "$generation_dir"
+test ! -L "$generation_dir"
+trap 'rm -rf -- "${generation_dir:?}"' EXIT
+
+buf generate --template buf.gen.yaml --output "$generation_dir"
+buf generate --template buf.gen.googleapis.yaml --output "$generation_dir"
+
+repo_dir="$(pwd -P)"
+for path in gen/ts/src gen/go gen/swift/Sources/NamaAPI; do
+  staged_path="$generation_dir/$path"
+  test -d "$staged_path"
+  test ! -L "$staged_path"
+  test "$(cd "$staged_path" && pwd -P)" = "$staged_path"
+  test -d "$path"
+  test ! -L "$path"
+  test "$(cd "$path" && pwd -P)" = "$repo_dir/$path"
+done
+
+diff -ru gen/ts/src "$generation_dir/gen/ts/src"
+diff -ru gen/go "$generation_dir/gen/go"
+diff -ru gen/swift/Sources/NamaAPI "$generation_dir/gen/swift/Sources/NamaAPI"
 ```
 
-The before/after comparisons cover only Buf-owned leaves, so local `node_modules`, Swift `.build`, manifests, locks, and handwritten tests are never copied. They detect changed, added, and removed generated files and pass when an implementation task has already regenerated an intentional uncommitted schema change, while CI still fails when checked-in output is stale. The validated `mktemp` directory is the only recursive cleanup target.
+The direct comparisons cover only Buf-owned leaves, so local `node_modules`, Swift `.build`, manifests, locks, and handwritten tests are never copied or mutated. They detect changed, added, and removed generated files and pass when an implementation task has already regenerated an intentional uncommitted schema change, while CI still fails when checked-in output is stale. A remote generation failure affects only the validated staging directory, which is the only recursive cleanup target.
 
 - [ ] **Step 3: Confirm CI ownership remains thin**
 
