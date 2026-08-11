@@ -147,7 +147,7 @@ The public package is domain-oriented rather than split into separate consumer a
 
 `CheckResponse` contains the existing `status`, then `server_version`, `initialized`, `ready`, and `database_status`. Both status fields use `ServingStatus`.
 
-`DiagnosticComponent` contains `name`, `status`, `summary`, and `checked_at`. `status` uses `ServingStatus`. `name` is globally unique and stable for the component: initial keys are `core`, `database`, and `provider_instance/<opaque-id>`. Clients compare a name but do not parse an opaque provider ID from it. `summary` is a short redacted operator message.
+`DiagnosticComponent` contains `name`, `status`, `summary`, and `checked_at`. `status` uses `ServingStatus`. `name` is globally unique and stable for the component: initial keys are `core`, `database`, and `provider_instance/<opaque-id>`. It is bounded to 274 characters so the 18-character provider-instance prefix can contain a maximum-length 256-character opaque ID. Clients compare a name but do not parse an opaque provider ID from it. `summary` is a short redacted operator message.
 
 `GetDiagnosticsResponse` contains `server_version`, `request_id`, and repeated `components` in deterministic order: core, database, then provider instances by opaque ID. It is complete rather than paginated or truncated. The MVP limit of 100 configured provider instances bounds the response at 102 components. It never contains configuration values, URLs, credentials, raw database messages, provider errors, or stack traces.
 

@@ -17,7 +17,7 @@
 - All identifiers are opaque strings. Public messages may expose `provider_type_id` and `provider_instance_id` as Nama-managed resources, but never remote provider item IDs, stream indexes, SDK types, raw errors, or reusable provider credentials.
 - Provider configuration is `google.protobuf.Struct` conforming to the restricted profile in `docs/architecture/api-contracts.md`; do not encode a Jellyfin or Plex field in Protobuf.
 - Write-only provider secrets are accepted in configuration writes and returned only as configured markers.
-- Use the structural bounds established in plan 1. Apply method-specific limits of 100 to page sizes, provider-instance count, and ordinary returned collections; diagnostics are the one complete bounded response of at most 102 components.
+- Use the structural bounds established in plan 1. `DiagnosticComponent.name` is the sole string-bound exception: its maximum is 274 characters, covering the 18-character `provider_instance/` prefix plus a maximum-length 256-character opaque provider-instance ID. Apply method-specific limits of 100 to page sizes, provider-instance count, and ordinary returned collections; diagnostics are the one complete bounded response of at most 102 components.
 - Structural validation belongs in Protovalidate. State, ownership, revision, idempotency, provider-schema, and cross-resource rules remain documented semantics for later handlers.
 - Required enum fields use `(buf.validate.field).enum = { not_in: [0] }`; never use `defined_only`, because unknown future numeric values must remain valid.
 - Every present Timestamp carries `(buf.validate.field).timestamp = {}`. Every present Duration is non-negative with `(buf.validate.field).duration.gte = {}`; pairing `poll_interval` is required, strictly positive with `.duration.gt = {}`, and at most 60 seconds with `.duration.lte = { seconds: 60 }`.
@@ -97,7 +97,7 @@ service HealthService {
 }
 ```
 
-Import Timestamp and Protovalidate. Attach `(buf.validate.field).enum = { not_in: [0] }` to `CheckResponse.status`, `CheckResponse.database_status`, and `DiagnosticComponent.status`. Require non-empty bounded version, component name, summary, and request ID; require timestamps; constrain components to 2–102 because core and database are always present.
+Import Timestamp and Protovalidate. Attach `(buf.validate.field).enum = { not_in: [0] }` to `CheckResponse.status`, `CheckResponse.database_status`, and `DiagnosticComponent.status`. Require non-empty server version, summary, and request ID bounded to 256 characters. Require a non-empty component name bounded to 274 characters so `provider_instance/` can prefix a maximum-length 256-character opaque provider ID. Require timestamps; constrain components to 2–102 because core and database are always present.
 
 - [ ] **Step 2: Generate the additive health clients**
 
