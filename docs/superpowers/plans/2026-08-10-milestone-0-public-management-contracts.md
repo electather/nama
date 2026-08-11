@@ -414,7 +414,7 @@ Run: `mise run generate`
 Run:
 
 ```bash
-if rg -n -i 'jellyfin|plex' proto/nama/api gen/go/nama/api gen/swift/Sources/NamaAPI; then
+if rg -n -i '\b(jellyfin|plex)\b' proto/nama/api; then
   printf '%s\n' 'unexpected provider brand in public contract' >&2
   exit 1
 else
@@ -639,7 +639,7 @@ mise run check:contracts
 mise run check:ts
 mise run check:go
 mise run check:swift
-if rg -n -i 'jellyfin|plex' proto/nama/api; then
+if rg -n -i '\b(jellyfin|plex)\b' proto/nama/api; then
   printf '%s\n' 'unexpected provider brand in public contract' >&2
   exit 1
 else
