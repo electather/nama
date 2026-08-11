@@ -1,0 +1,168 @@
+syntax = "proto3";
+
+package nama.api.v1;
+
+import "buf/validate/validate.proto";
+import "nama/api/v1/media.proto";
+
+enum HomeSectionKind {
+  HOME_SECTION_KIND_UNSPECIFIED = 0;
+  HOME_SECTION_KIND_CONTINUE_WATCHING = 1;
+  HOME_SECTION_KIND_MOVIES = 2;
+  HOME_SECTION_KIND_SHOWS = 3;
+}
+
+enum WatchFilter {
+  WATCH_FILTER_UNSPECIFIED = 0;
+  WATCH_FILTER_ANY = 1;
+  WATCH_FILTER_WATCHED = 2;
+  WATCH_FILTER_UNWATCHED = 3;
+  WATCH_FILTER_IN_PROGRESS = 4;
+}
+
+enum LibrarySort {
+  LIBRARY_SORT_UNSPECIFIED = 0;
+  LIBRARY_SORT_TITLE_ASC = 1;
+  LIBRARY_SORT_RELEASE_DATE_DESC = 2;
+  LIBRARY_SORT_DATE_ADDED_DESC = 3;
+}
+
+message HomeSection {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string title = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  HomeSectionKind kind = 3 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  repeated MediaSummary items = 4 [(buf.validate.field).repeated.max_items = 50];
+}
+
+message LibraryFilter {
+  repeated MediaKind kinds = 1 [(buf.validate.field).repeated = {
+    max_items: 100
+    unique: true
+    items: {
+      enum: {not_in: 0}
+    }
+  }];
+  optional string genre = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 release_year = 3;
+  WatchFilter watch_filter = 4 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  bool playable_only = 5;
+}
+
+message GetHomeRequest {
+  optional uint32 section_size = 1 [(buf.validate.field).uint32.lte = 50];
+}
+
+message GetHomeResponse {
+  repeated HomeSection sections = 1 [(buf.validate.field).repeated.max_items = 3];
+}
+
+message ListLibraryRequest {
+  LibraryFilter filter = 1;
+  LibrarySort sort = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  uint32 page_size = 3 [(buf.validate.field).uint32.lte = 100];
+  string page_token = 4 [(buf.validate.field).string.max_len = 4096];
+}
+
+message ListLibraryResponse {
+  repeated MediaSummary items = 1 [(buf.validate.field).repeated.max_items = 100];
+  string next_page_token = 2 [(buf.validate.field).string.max_len = 4096];
+}
+
+message SearchRequest {
+  string query = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  repeated MediaKind kinds = 2 [(buf.validate.field).repeated = {
+    max_items: 100
+    unique: true
+    items: {
+      enum: {not_in: 0}
+    }
+  }];
+  uint32 page_size = 3 [(buf.validate.field).uint32.lte = 100];
+  string page_token = 4 [(buf.validate.field).string.max_len = 4096];
+}
+
+message SearchResponse {
+  repeated MediaSummary items = 1 [(buf.validate.field).repeated.max_items = 100];
+  string next_page_token = 2 [(buf.validate.field).string.max_len = 4096];
+}
+
+message GetMediaRequest {
+  string media_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message GetMediaResponse {
+  MediaDetails media = 1 [(buf.validate.field).required = true];
+}
+
+message ListChildrenRequest {
+  string parent_media_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  uint32 page_size = 2 [(buf.validate.field).uint32.lte = 100];
+  string page_token = 3 [(buf.validate.field).string.max_len = 4096];
+}
+
+message ListChildrenResponse {
+  repeated MediaSummary items = 1 [(buf.validate.field).repeated.max_items = 100];
+  string next_page_token = 2 [(buf.validate.field).string.max_len = 4096];
+}
+
+message GetMediaSourceRequest {
+  string media_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string source_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message GetMediaSourceResponse {
+  MediaSource source = 1 [(buf.validate.field).required = true];
+}
+
+message ResolveArtworkRequest {
+  string artwork_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 max_width = 2 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 max_height = 3 [(buf.validate.field).uint32.gt = 0];
+}
+
+message ResolveArtworkResponse {
+  ArtworkLocator locator = 1 [(buf.validate.field).required = true];
+}
+
+service LibraryService {
+  rpc GetHome(GetHomeRequest) returns (GetHomeResponse);
+  rpc ListLibrary(ListLibraryRequest) returns (ListLibraryResponse);
+  rpc Search(SearchRequest) returns (SearchResponse);
+  rpc GetMedia(GetMediaRequest) returns (GetMediaResponse);
+  rpc ListChildren(ListChildrenRequest) returns (ListChildrenResponse);
+  rpc GetMediaSource(GetMediaSourceRequest) returns (GetMediaSourceResponse);
+  rpc ResolveArtwork(ResolveArtworkRequest) returns (ResolveArtworkResponse);
+}
