@@ -207,7 +207,7 @@ inputs:
   - directory: proto
 ```
 
-Configure the local ES plugin and both local Swift plugins with `include_imports: true`. Keep `nama.plugin.v1` excluded from Go and Swift. Keep the existing Nama Go package-prefix override and the Protovalidate managed-mode disable; no googleapis input or `google.rpc` exclusion belongs in this local template.
+Configure the local ES plugin and both local Swift plugins with `include_imports: true`. Keep `nama.plugin.v1` excluded from Go and Swift. Keep the existing Nama Go package-prefix override and managed-mode disables for Protovalidate and googleapis; no googleapis input or `google.rpc` exclusion belongs in this local template.
 
 Create `buf.gen.googleapis.yaml` as a non-cleaning second template:
 
@@ -238,14 +238,16 @@ plugins:
       - FileNaming=PathToUnderscores
 ```
 
-Do not add Go or Connect-Swift plugins to the selected-googleapis template: Go consumes dependency-owned error details from `google.golang.org/genproto`, and the selected messages define no services. Keep WKT generation disabled.
+Do not add Go or Connect-Swift plugins to the selected-googleapis template: Go consumes dependency-owned Google messages from `google.golang.org/genproto`, and the selected messages define no services. Keep WKT generation disabled.
 
-Keep this managed-mode disable in the local template so it never rewrites dependency-owned Protovalidate `go_package` options:
+Keep these managed-mode disables in the local template so it never rewrites dependency-owned Protovalidate or googleapis `go_package` options:
 
 ```yaml
 disable:
   - file_option: go_package_prefix
     module: buf.build/bufbuild/protovalidate
+  - file_option: go_package_prefix
+    module: buf.build/googleapis/googleapis
 ```
 
 Change `mise` generation ownership to create a fresh validated staging root as a unique sibling of the canonical repository, never under a caller-controlled temporary directory. Before Buf runs, use BSD/macOS or GNU `stat` syntax to fail closed unless staging, the repository root, and all three generated-leaf parents report one device ID. Run the cleaning local template first and the additive selected-googleapis template second with that root as Buf's `--output`, then validate the three staged and committed generated leaves. Publish each leaf with same-filesystem renames: move the committed leaf to a backup under staging, then move its staged replacement into place. EXIT and signal handling must roll back every backup after any partial failure, moving partial new output back under staging before restoring the committed leaf. Only after all three replacements succeed may cleanup discard the backups. The validated staging root is the only variable recursive-cleanup target.
