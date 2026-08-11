@@ -18,3 +18,4 @@ xcuserdata/
 .env
 .env.*
 !.env.example
+/gen/swift/Package.resolved
