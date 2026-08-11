@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package nama.api.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+enum SyncStatus {
+  SYNC_STATUS_UNSPECIFIED = 0;
+  SYNC_STATUS_IDLE = 1;
+  SYNC_STATUS_QUEUED = 2;
+  SYNC_STATUS_RUNNING = 3;
+  SYNC_STATUS_FAILED = 4;
+  SYNC_STATUS_DISABLED = 5;
+}
+
+enum SyncPhase {
+  SYNC_PHASE_UNSPECIFIED = 0;
+  SYNC_PHASE_QUEUED = 1;
+  SYNC_PHASE_RUNNING = 2;
+  SYNC_PHASE_PULLING = 3;
+  SYNC_PHASE_RECONCILING = 4;
+  SYNC_PHASE_PUSHING = 5;
+  SYNC_PHASE_COMPLETED = 6;
+  SYNC_PHASE_FAILED = 7;
+}
+
+message SyncCounts {
+  uint64 items_scanned = 1;
+  uint64 canonical_states_reconciled = 2;
+  uint64 mutations_attempted = 3;
+  uint64 mutations_applied = 4;
+  uint64 mutations_failed = 5;
+}
+
+message SyncChildRunReference {
+  string sync_run_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string provider_instance_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message SyncRun {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string provider_instance_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  SyncPhase phase = 3 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  google.protobuf.Timestamp created_at = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+  optional google.protobuf.Timestamp started_at = 5 [(buf.validate.field).timestamp = {}];
+  optional google.protobuf.Timestamp finished_at = 6 [(buf.validate.field).timestamp = {}];
+  SyncCounts counts = 7 [(buf.validate.field).required = true];
+  optional string failure_summary = 8 [(buf.validate.field).string.max_len = 1024];
+  repeated SyncChildRunReference child_runs = 9 [(buf.validate.field).repeated.max_items = 100];
+}
+
+message ProviderSyncStatus {
+  string provider_instance_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  SyncStatus status = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  SyncRun active_run = 3;
+  optional google.protobuf.Timestamp last_success_at = 4 [(buf.validate.field).timestamp = {}];
+  optional google.protobuf.Timestamp next_attempt_at = 5 [(buf.validate.field).timestamp = {}];
+  optional string failure_summary = 6 [(buf.validate.field).string.max_len = 1024];
+}
+
+message GetSyncStatusRequest {
+  optional string provider_instance_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  uint32 page_size = 2 [(buf.validate.field).uint32.lte = 100];
+  string page_token = 3 [(buf.validate.field).string.max_len = 4096];
+}
+
+message GetSyncStatusResponse {
+  SyncStatus aggregate_status = 1 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  repeated ProviderSyncStatus provider_statuses = 2 [(buf.validate.field).repeated.max_items = 100];
+  string next_page_token = 3 [(buf.validate.field).string.max_len = 4096];
+}
+
+message TriggerSyncRequest {
+  string operation_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string provider_instance_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message TriggerSyncResponse {
+  SyncRun run = 1 [(buf.validate.field).required = true];
+}
+
+message GetSyncRunRequest {
+  string sync_run_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message GetSyncRunResponse {
+  SyncRun run = 1 [(buf.validate.field).required = true];
+}
+
+service SyncService {
+  rpc GetSyncStatus(GetSyncStatusRequest) returns (GetSyncStatusResponse);
+  rpc TriggerSync(TriggerSyncRequest) returns (TriggerSyncResponse);
+  rpc GetSyncRun(GetSyncRunRequest) returns (GetSyncRunResponse);
+}
