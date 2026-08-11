@@ -1,0 +1,414 @@
+syntax = "proto3";
+
+package nama.api.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "google/type/date.proto";
+import "nama/api/v1/common.proto";
+
+enum MediaKind {
+  MEDIA_KIND_UNSPECIFIED = 0;
+  MEDIA_KIND_MOVIE = 1;
+  MEDIA_KIND_SHOW = 2;
+  MEDIA_KIND_SEASON = 3;
+  MEDIA_KIND_EPISODE = 4;
+}
+
+enum Playability {
+  PLAYABILITY_UNSPECIFIED = 0;
+  PLAYABILITY_PLAYABLE = 1;
+  PLAYABILITY_TEMPORARILY_UNAVAILABLE = 2;
+  PLAYABILITY_NO_AVAILABLE_SOURCE = 3;
+}
+
+enum SourceAvailability {
+  SOURCE_AVAILABILITY_UNSPECIFIED = 0;
+  SOURCE_AVAILABILITY_AVAILABLE = 1;
+  SOURCE_AVAILABILITY_PROVIDER_UNAVAILABLE = 2;
+  SOURCE_AVAILABILITY_UNSUPPORTED = 3;
+}
+
+enum DynamicRange {
+  DYNAMIC_RANGE_UNSPECIFIED = 0;
+  DYNAMIC_RANGE_SDR = 1;
+  DYNAMIC_RANGE_HDR10 = 2;
+  DYNAMIC_RANGE_HDR10_PLUS = 3;
+  DYNAMIC_RANGE_HLG = 4;
+  DYNAMIC_RANGE_DOLBY_VISION = 5;
+}
+
+enum SpatialAudioFormat {
+  SPATIAL_AUDIO_FORMAT_UNSPECIFIED = 0;
+  SPATIAL_AUDIO_FORMAT_NONE = 1;
+  SPATIAL_AUDIO_FORMAT_DOLBY_ATMOS = 2;
+  SPATIAL_AUDIO_FORMAT_DTS_X = 3;
+}
+
+enum SubtitleRepresentation {
+  SUBTITLE_REPRESENTATION_UNSPECIFIED = 0;
+  SUBTITLE_REPRESENTATION_TEXT = 1;
+  SUBTITLE_REPRESENTATION_IMAGE = 2;
+}
+
+enum ArtworkRole {
+  ARTWORK_ROLE_UNSPECIFIED = 0;
+  ARTWORK_ROLE_POSTER = 1;
+  ARTWORK_ROLE_BACKDROP = 2;
+  ARTWORK_ROLE_LOGO = 3;
+  ARTWORK_ROLE_THUMBNAIL = 4;
+  ARTWORK_ROLE_PORTRAIT = 5;
+}
+
+enum ArtworkTextPresence {
+  ARTWORK_TEXT_PRESENCE_UNSPECIFIED = 0;
+  ARTWORK_TEXT_PRESENCE_UNKNOWN = 1;
+  ARTWORK_TEXT_PRESENCE_TEXTLESS = 2;
+  ARTWORK_TEXT_PRESENCE_CONTAINS_TEXT = 3;
+}
+
+enum MediaCreditRole {
+  MEDIA_CREDIT_ROLE_UNSPECIFIED = 0;
+  MEDIA_CREDIT_ROLE_ACTOR = 1;
+  MEDIA_CREDIT_ROLE_DIRECTOR = 2;
+  MEDIA_CREDIT_ROLE_WRITER = 3;
+}
+
+message EpisodePosition {
+  uint32 season_number = 1 [(buf.validate.field).uint32.gt = 0];
+  uint32 episode_number = 2 [(buf.validate.field).uint32.gt = 0];
+}
+
+message MediaUserState {
+  bool watched = 1;
+  google.protobuf.Duration position = 2 [(buf.validate.field).duration.gte = {}];
+  google.protobuf.Duration duration = 3 [(buf.validate.field).duration.gte = {}];
+  google.protobuf.Timestamp updated_at = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+}
+
+message VideoQuality {
+  string codec = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 width = 2 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 height = 3 [(buf.validate.field).uint32.gt = 0];
+  optional DynamicRange dynamic_range = 4 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message AudioQuality {
+  string codec = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 channel_count = 2;
+  optional SpatialAudioFormat spatial_format = 3 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message MediaSourceSummary {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string label = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  bool is_default = 3;
+  SourceAvailability availability = 4 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  optional string container = 5 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  VideoQuality video_quality = 6;
+  AudioQuality audio_quality = 7;
+}
+
+message ArtworkReference {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  ArtworkRole role = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  optional uint32 width = 3 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 height = 4 [(buf.validate.field).uint32.gt = 0];
+  optional string locale = 5 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256,
+    (buf.validate.field).string.pattern = "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$"
+  ];
+  ArtworkTextPresence text_presence = 6 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message MediaSummary {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  MediaKind kind = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  string title = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 release_year = 4;
+  google.protobuf.Duration runtime = 5 [(buf.validate.field).duration.gte = {}];
+  optional string content_rating = 6 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string primary_genre = 7 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  EpisodePosition episode_position = 8;
+  repeated ArtworkReference artwork = 9 [(buf.validate.field).repeated.max_items = 20];
+  MediaUserState user_state = 10;
+  Playability playability = 11 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  MediaSourceSummary default_source = 12;
+}
+
+message MediaParent {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  MediaKind kind = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  string title = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message MediaCredit {
+  string name = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  MediaCreditRole role = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  optional string character_name = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  ArtworkReference portrait_artwork = 4;
+}
+
+message MovieDetails {
+  google.type.Date release_date = 1;
+}
+
+message ShowDetails {
+  google.type.Date first_release_date = 1;
+  google.type.Date last_release_date = 2;
+  optional uint32 season_count = 3;
+  optional uint32 episode_count = 4;
+}
+
+message SeasonDetails {
+  uint32 season_number = 1 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 episode_count = 2;
+}
+
+message EpisodeDetails {
+  uint32 season_number = 1 [(buf.validate.field).uint32.gt = 0];
+  uint32 episode_number = 2 [(buf.validate.field).uint32.gt = 0];
+  google.type.Date release_date = 3;
+}
+
+message MediaDetails {
+  MediaSummary summary = 1 [(buf.validate.field).required = true];
+  optional string original_title = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string synopsis = 3 [(buf.validate.field).string.max_len = 16384];
+  optional string tagline = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  repeated string genres = 5 [(buf.validate.field).repeated = {
+    max_items: 50
+    items: {
+      string: {
+        min_len: 1
+        max_len: 256
+      }
+    }
+  }];
+  repeated string studios = 6 [(buf.validate.field).repeated = {
+    max_items: 50
+    items: {
+      string: {
+        min_len: 1
+        max_len: 256
+      }
+    }
+  }];
+  repeated MediaCredit credits = 7 [(buf.validate.field).repeated.max_items = 100];
+  repeated ArtworkReference artwork = 8 [(buf.validate.field).repeated.max_items = 20];
+  repeated MediaParent parents = 9 [(buf.validate.field).repeated.max_items = 3];
+  repeated MediaSourceSummary source_summaries = 10 [(buf.validate.field).repeated.max_items = 100];
+  oneof kind_details {
+    option (buf.validate.oneof).required = true;
+    MovieDetails movie = 11;
+    ShowDetails show = 12;
+    SeasonDetails season = 13;
+    EpisodeDetails episode = 14;
+  }
+}
+
+message ArtworkLocator {
+  string url = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 8192,
+    (buf.validate.field).string.pattern = "^[Hh][Tt][Tt][Pp][Ss]?://",
+    (buf.validate.field).string.uri = true
+  ];
+  repeated HttpHeader headers = 2 [(buf.validate.field).repeated.max_items = 32];
+  repeated string allowed_redirect_origins = 3 [(buf.validate.field).repeated = {
+    max_items: 16
+    items: {
+      string: {
+        min_len: 1
+        max_len: 8192
+      }
+    }
+  }];
+  google.protobuf.Timestamp refresh_at = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+  google.protobuf.Timestamp access_expires_at = 5 [(buf.validate.field).timestamp = {}];
+  optional uint32 width = 6 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 height = 7 [(buf.validate.field).uint32.gt = 0];
+}
+
+message MediaSource {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string media_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string label = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  SourceAvailability availability = 4 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  google.protobuf.Duration runtime = 5 [(buf.validate.field).duration.gte = {}];
+  optional uint64 bit_rate_bps = 6 [(buf.validate.field).uint64.gt = 0];
+  repeated MediaPart parts = 7 [(buf.validate.field).repeated.max_items = 100];
+}
+
+message MediaPart {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  uint32 order = 2;
+  string container = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  google.protobuf.Duration runtime = 4 [(buf.validate.field).duration.gte = {}];
+  optional uint64 size_bytes = 5;
+  optional uint64 bit_rate_bps = 6 [(buf.validate.field).uint64.gt = 0];
+  repeated MediaTrack tracks = 7 [(buf.validate.field).repeated.max_items = 100];
+}
+
+message VideoTrack {
+  string codec = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 width = 2 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 height = 3 [(buf.validate.field).uint32.gt = 0];
+  optional double frame_rate = 4 [(buf.validate.field).double.gt = 0];
+  optional uint32 bit_depth = 5 [(buf.validate.field).uint32.gt = 0];
+  optional DynamicRange dynamic_range = 6 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message AudioTrack {
+  string codec = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string title = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string language = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 channel_count = 4;
+  optional string channel_layout = 5 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 sample_rate_hz = 6 [(buf.validate.field).uint32.gt = 0];
+  optional SpatialAudioFormat spatial_format = 7 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  bool is_default = 8;
+  bool is_commentary = 9;
+}
+
+message SubtitleTrack {
+  string codec = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string title = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string language = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  SubtitleRepresentation representation = 4 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  bool is_default = 5;
+  bool is_forced = 6;
+  bool is_hearing_impaired = 7;
+  bool is_commentary = 8;
+}
+
+message MediaTrack {
+  uint32 order = 1;
+  oneof details {
+    option (buf.validate.oneof).required = true;
+    VideoTrack video = 2;
+    AudioTrack audio = 3;
+    SubtitleTrack subtitle = 4;
+  }
+}

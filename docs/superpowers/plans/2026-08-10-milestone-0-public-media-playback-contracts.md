@@ -51,6 +51,7 @@ An `optional` marker means proto3 explicit presence for a scalar/enum. Message f
 **Files:**
 
 - Create: `proto/nama/api/v1/media.proto`
+- Modify: `apps/server/src/contract-probe.ts`
 - Regenerate: `gen/ts/src/nama/api/v1/**`
 - Regenerate: `gen/go/nama/api/v1/**`
 - Regenerate: `gen/swift/Sources/NamaAPI/**`
@@ -232,6 +233,8 @@ Declare `MediaTrack` as `order = 1` plus required oneof group `details`: `video 
 
 Run: `mise run generate`
 
+Add the generated media file descriptor to the TypeScript server's compile-only contract namespace. This must remain a real application import, not a generated-code behavior test or fixture, so the `google.type.Date` dependency is checked by TypeScript alongside Go and Swift compilation.
+
 - [ ] **Step 12: Run the public media schema and application checks**
 
 Run:
@@ -243,12 +246,12 @@ mise run check:go
 mise run check:swift
 ```
 
-Expected: PASS, including `google.type.Date` compilation in every real public application.
+Expected: PASS, including the TypeScript server's compile-only media descriptor import and `google.type.Date` compilation in every real public application.
 
 - [ ] **Step 13: Commit the canonical media model**
 
 ```bash
-git add proto/nama/api/v1/media.proto gen/ts gen/go gen/swift/Sources/NamaAPI go.mod go.sum
+git add proto/nama/api/v1/media.proto apps/server/src/contract-probe.ts gen/ts gen/go gen/swift/Sources/NamaAPI go.mod go.sum docs/superpowers/plans/2026-08-10-milestone-0-public-media-playback-contracts.md
 git commit -m "feat(api): add canonical media contract"
 ```
 
