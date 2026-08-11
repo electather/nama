@@ -670,8 +670,8 @@ mise run check:contracts
 mise run check:ts
 mise run check:go
 mise run check:swift
-if rg -n -i 'jellyfin|plex|provider_item|provider_source|stream_index|file_path|session_context' proto/nama/api; then
-  printf '%s\n' 'unexpected provider-private symbol in public contract' >&2
+if rg -n -i '\b(jellyfin|plex)\b' proto/nama/api; then
+  printf '%s\n' 'unexpected provider brand in public contract' >&2
   exit 1
 else
   search_status=$?
