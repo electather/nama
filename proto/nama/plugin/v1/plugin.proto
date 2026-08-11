@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package nama.plugin.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/struct.proto";
+
+enum ProviderCapability {
+  PROVIDER_CAPABILITY_UNSPECIFIED = 0;
+  PROVIDER_CAPABILITY_LIBRARY_READ = 1;
+  PROVIDER_CAPABILITY_ARTWORK_RESOLVE = 2;
+  PROVIDER_CAPABILITY_PLAYBACK_PLAN = 3;
+  PROVIDER_CAPABILITY_PLAYBACK_OPEN = 4;
+  PROVIDER_CAPABILITY_PLAYBACK_REPORT = 5;
+  PROVIDER_CAPABILITY_PLAYBACK_REPORTS_USER_STATE = 6;
+  PROVIDER_CAPABILITY_WATCH_STATE_READ = 7;
+  PROVIDER_CAPABILITY_WATCHED_WRITE = 8;
+  PROVIDER_CAPABILITY_PROGRESS_WRITE = 9;
+}
+
+enum PluginConnectionStatus {
+  PLUGIN_CONNECTION_STATUS_UNSPECIFIED = 0;
+  PLUGIN_CONNECTION_STATUS_CONNECTED = 1;
+  PLUGIN_CONNECTION_STATUS_AUTHENTICATION_FAILED = 2;
+  PLUGIN_CONNECTION_STATUS_UNREACHABLE = 3;
+  PLUGIN_CONNECTION_STATUS_INCOMPATIBLE = 4;
+}
+
+message PluginInfo {
+  string provider_type_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string display_name = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string description = 3 [(buf.validate.field).string.max_len = 1024];
+  string build_version = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  uint32 contract_major = 5 [(buf.validate.field).uint32.gt = 0];
+  repeated ProviderCapability capabilities = 6 [(buf.validate.field).repeated = {
+    max_items: 32
+    unique: true
+    items: {
+      enum: {not_in: 0}
+    }
+  }];
+  google.protobuf.Struct configuration_schema = 7 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).cel = {
+      id: "plugin_info.configuration_schema.fields"
+      message: "configuration_schema must contain at most 100 fields"
+      expression: "this.fields.size() <= 100"
+    }
+  ];
+  uint32 schema_profile_version = 8 [(buf.validate.field).uint32.gt = 0];
+  string schema_revision = 9 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message PluginConnection {
+  PluginConnectionStatus status = 1 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  optional string remote_name = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string remote_version = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string provider_user_reference = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  repeated ProviderCapability capabilities = 5 [(buf.validate.field).repeated = {
+    max_items: 32
+    unique: true
+    items: {
+      enum: {not_in: 0}
+    }
+  }];
+}
+
+message GetInfoRequest {}
+
+message GetInfoResponse {
+  PluginInfo plugin_info = 1 [(buf.validate.field).required = true];
+}
+
+message GetConnectionRequest {}
+
+message GetConnectionResponse {
+  PluginConnection connection = 1 [(buf.validate.field).required = true];
+}
+
+service PluginService {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc GetConnection(GetConnectionRequest) returns (GetConnectionResponse);
+}

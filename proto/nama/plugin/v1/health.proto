@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package nama.plugin.v1;
 
+import "buf/validate/validate.proto";
+
 enum ServingStatus {
   SERVING_STATUS_UNSPECIFIED = 0;
   SERVING_STATUS_SERVING = 1;
@@ -11,7 +13,9 @@ enum ServingStatus {
 message CheckRequest {}
 
 message CheckResponse {
-  ServingStatus status = 1;
+  ServingStatus status = 1 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
 }
 
 service HealthService {
