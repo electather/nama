@@ -1,0 +1,301 @@
+syntax = "proto3";
+
+package nama.api.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+enum ProviderCapability {
+  PROVIDER_CAPABILITY_UNSPECIFIED = 0;
+  PROVIDER_CAPABILITY_LIBRARY_READ = 1;
+  PROVIDER_CAPABILITY_ARTWORK_RESOLVE = 2;
+  PROVIDER_CAPABILITY_PLAYBACK_PLAN = 3;
+  PROVIDER_CAPABILITY_PLAYBACK_OPEN = 4;
+  PROVIDER_CAPABILITY_PLAYBACK_REPORT = 5;
+  PROVIDER_CAPABILITY_PLAYBACK_REPORTS_USER_STATE = 6;
+  PROVIDER_CAPABILITY_WATCH_STATE_READ = 7;
+  PROVIDER_CAPABILITY_WATCHED_WRITE = 8;
+  PROVIDER_CAPABILITY_PROGRESS_WRITE = 9;
+}
+
+enum ProviderInstanceStatus {
+  PROVIDER_INSTANCE_STATUS_UNSPECIFIED = 0;
+  PROVIDER_INSTANCE_STATUS_HEALTHY = 1;
+  PROVIDER_INSTANCE_STATUS_UNAVAILABLE = 2;
+  PROVIDER_INSTANCE_STATUS_AUTHENTICATION_FAILED = 3;
+  PROVIDER_INSTANCE_STATUS_DISABLED = 4;
+}
+
+enum ProviderConnectionStatus {
+  PROVIDER_CONNECTION_STATUS_UNSPECIFIED = 0;
+  PROVIDER_CONNECTION_STATUS_CONNECTED = 1;
+  PROVIDER_CONNECTION_STATUS_AUTHENTICATION_FAILED = 2;
+  PROVIDER_CONNECTION_STATUS_UNREACHABLE = 3;
+  PROVIDER_CONNECTION_STATUS_INCOMPATIBLE = 4;
+}
+
+message ProviderType {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string display_name = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string description = 3 [(buf.validate.field).string.max_len = 1024];
+  repeated ProviderCapability capabilities = 4 [(buf.validate.field).repeated = {
+    max_items: 32
+    unique: true
+    items: {
+      enum: {not_in: 0}
+    }
+  }];
+  google.protobuf.Struct configuration_schema = 5 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).cel = {
+      id: "provider_type.configuration_schema.fields"
+      message: "configuration_schema must contain at most 100 fields"
+      expression: "this.fields.size() <= 100"
+    }
+  ];
+  uint32 schema_profile_version = 6 [(buf.validate.field).uint32.gt = 0];
+  string schema_revision = 7 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message ConfiguredSecret {
+  string key = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  bool configured = 2;
+}
+
+message ProviderInstance {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string provider_type_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string display_name = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  bool enabled = 4;
+  uint32 sync_priority = 5 [(buf.validate.field).uint32.gt = 0];
+  ProviderInstanceStatus status = 6 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  google.protobuf.Struct configuration = 7 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).cel = {
+      id: "provider_instance.configuration.fields"
+      message: "configuration must contain at most 100 fields"
+      expression: "this.fields.size() <= 100"
+    }
+  ];
+  repeated ConfiguredSecret configured_secrets = 8 [(buf.validate.field).repeated.max_items = 100];
+  string revision = 9 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  google.protobuf.Timestamp created_at = 10 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+  google.protobuf.Timestamp updated_at = 11 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+}
+
+message ProviderConnectionTest {
+  ProviderConnectionStatus status = 1 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  string summary = 2 [(buf.validate.field).string.max_len = 1024];
+  optional string remote_name = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string remote_version = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  repeated ProviderCapability capabilities = 5 [(buf.validate.field).repeated = {
+    max_items: 32
+    unique: true
+    items: {
+      enum: {not_in: 0}
+    }
+  }];
+}
+
+message ListProviderTypesRequest {
+  uint32 page_size = 1 [(buf.validate.field).uint32.lte = 100];
+  string page_token = 2 [(buf.validate.field).string.max_len = 4096];
+}
+
+message ListProviderTypesResponse {
+  repeated ProviderType provider_types = 1 [(buf.validate.field).repeated.max_items = 100];
+  string next_page_token = 2 [(buf.validate.field).string.max_len = 4096];
+}
+
+message ListProviderInstancesRequest {
+  uint32 page_size = 1 [(buf.validate.field).uint32.lte = 100];
+  string page_token = 2 [(buf.validate.field).string.max_len = 4096];
+}
+
+message ListProviderInstancesResponse {
+  repeated ProviderInstance provider_instances = 1 [(buf.validate.field).repeated.max_items = 100];
+  string next_page_token = 2 [(buf.validate.field).string.max_len = 4096];
+}
+
+message GetProviderInstanceRequest {
+  string provider_instance_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message GetProviderInstanceResponse {
+  ProviderInstance provider_instance = 1 [(buf.validate.field).required = true];
+}
+
+message TestProviderConfigurationRequest {
+  string provider_type_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  google.protobuf.Struct configuration = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).cel = {
+      id: "test_provider_configuration_request.configuration.fields"
+      message: "configuration must contain at most 100 fields"
+      expression: "this.fields.size() <= 100"
+    }
+  ];
+}
+
+message TestProviderConfigurationResponse {
+  ProviderConnectionTest result = 1 [(buf.validate.field).required = true];
+}
+
+message TestProviderInstanceRequest {
+  string provider_instance_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message TestProviderInstanceResponse {
+  ProviderConnectionTest result = 1 [(buf.validate.field).required = true];
+}
+
+message CreateProviderInstanceRequest {
+  string operation_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string provider_type_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string display_name = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  google.protobuf.Struct configuration = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).cel = {
+      id: "create_provider_instance_request.configuration.fields"
+      message: "configuration must contain at most 100 fields"
+      expression: "this.fields.size() <= 100"
+    }
+  ];
+  bool enabled = 5;
+  optional uint32 sync_priority = 6 [(buf.validate.field).uint32.gt = 0];
+}
+
+message CreateProviderInstanceResponse {
+  ProviderInstance provider_instance = 1 [(buf.validate.field).required = true];
+}
+
+message UpdateProviderInstanceRequest {
+  string operation_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string provider_instance_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string expected_revision = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string display_name = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional bool enabled = 5;
+  optional uint32 sync_priority = 6 [(buf.validate.field).uint32.gt = 0];
+  google.protobuf.Struct configuration_patch = 7 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).cel = {
+      id: "update_provider_instance_request.configuration_patch.fields"
+      message: "configuration_patch must contain at most 100 fields"
+      expression: "this.fields.size() <= 100"
+    }
+  ];
+  repeated string clear_configuration_fields = 8 [(buf.validate.field).repeated = {
+    max_items: 100
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 256
+        pattern: "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
+      }
+    }
+  }];
+}
+
+message UpdateProviderInstanceResponse {
+  ProviderInstance provider_instance = 1 [(buf.validate.field).required = true];
+}
+
+message DeleteProviderInstanceRequest {
+  string operation_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string provider_instance_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string expected_revision = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message DeleteProviderInstanceResponse {}
+
+service ProviderService {
+  rpc ListProviderTypes(ListProviderTypesRequest) returns (ListProviderTypesResponse);
+  rpc ListProviderInstances(ListProviderInstancesRequest) returns (ListProviderInstancesResponse);
+  rpc GetProviderInstance(GetProviderInstanceRequest) returns (GetProviderInstanceResponse);
+  rpc TestProviderConfiguration(TestProviderConfigurationRequest) returns (TestProviderConfigurationResponse);
+  rpc CreateProviderInstance(CreateProviderInstanceRequest) returns (CreateProviderInstanceResponse);
+  rpc UpdateProviderInstance(UpdateProviderInstanceRequest) returns (UpdateProviderInstanceResponse);
+  rpc TestProviderInstance(TestProviderInstanceRequest) returns (TestProviderInstanceResponse);
+  rpc DeleteProviderInstance(DeleteProviderInstanceRequest) returns (DeleteProviderInstanceResponse);
+}
