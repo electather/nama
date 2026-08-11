@@ -845,7 +845,14 @@ else
   search_status=$?
   test "$search_status" -eq 1
 fi
-if rg -n -i 'jellyfin|plex|provider_item|provider_source|stream_index|file_path|session_context' proto/nama/api; then
+if rg -n -i '\b(jellyfin|plex)\b' proto/nama/api; then
+  printf '%s\n' 'unexpected provider brand in public contract' >&2
+  exit 1
+else
+  search_status=$?
+  test "$search_status" -eq 1
+fi
+if rg -n 'provider_item|provider_source|stream_index|file_path|session_context' proto/nama/api; then
   printf '%s\n' 'unexpected provider-private symbol in public contract' >&2
   exit 1
 else
@@ -879,7 +886,14 @@ else
   search_status=$?
   test "$search_status" -eq 1
 fi
-if rg -n -i 'jellyfin|plex|provider_item|provider_source|stream_index|file_path|session_context' proto/nama/api; then
+if rg -n -i '\b(jellyfin|plex)\b' proto/nama/api; then
+  printf '%s\n' 'unexpected provider brand in public contract' >&2
+  exit 1
+else
+  search_status=$?
+  test "$search_status" -eq 1
+fi
+if rg -n 'provider_item|provider_source|stream_index|file_path|session_context' proto/nama/api; then
   printf '%s\n' 'unexpected provider-private symbol in public contract' >&2
   exit 1
 else
@@ -934,7 +948,10 @@ cp -R proto "$proof_dir/proto"
 -  ServingStatus status = 1 [(buf.validate.field).enum = {
 -    not_in: [0]
 -  }];
-   string server_version = 2;
+  string server_version = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
 *** End Patch
 PATCH
 )
@@ -967,7 +984,14 @@ else
   search_status=$?
   test "$search_status" -eq 1
 fi
-if rg -n -i 'jellyfin|plex|provider_item|provider_source|stream_index|file_path|session_context' proto/nama/api; then
+if rg -n -i '\b(jellyfin|plex)\b' proto/nama/api; then
+  printf '%s\n' 'unexpected provider brand in public contract' >&2
+  exit 1
+else
+  search_status=$?
+  test "$search_status" -eq 1
+fi
+if rg -n 'provider_item|provider_source|stream_index|file_path|session_context' proto/nama/api; then
   printf '%s\n' 'unexpected provider-private symbol in public contract' >&2
   exit 1
 else
