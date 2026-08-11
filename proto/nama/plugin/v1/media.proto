@@ -1,0 +1,291 @@
+syntax = "proto3";
+
+package nama.plugin.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+import "google/type/date.proto";
+import "nama/plugin/v1/common.proto";
+
+enum MediaKind {
+  MEDIA_KIND_UNSPECIFIED = 0;
+  MEDIA_KIND_MOVIE = 1;
+  MEDIA_KIND_SHOW = 2;
+  MEDIA_KIND_SEASON = 3;
+  MEDIA_KIND_EPISODE = 4;
+}
+
+enum SourceAvailability {
+  SOURCE_AVAILABILITY_UNSPECIFIED = 0;
+  SOURCE_AVAILABILITY_AVAILABLE = 1;
+  SOURCE_AVAILABILITY_PROVIDER_UNAVAILABLE = 2;
+  SOURCE_AVAILABILITY_UNSUPPORTED = 3;
+}
+
+enum DynamicRange {
+  DYNAMIC_RANGE_UNSPECIFIED = 0;
+  DYNAMIC_RANGE_SDR = 1;
+  DYNAMIC_RANGE_HDR10 = 2;
+  DYNAMIC_RANGE_HDR10_PLUS = 3;
+  DYNAMIC_RANGE_HLG = 4;
+  DYNAMIC_RANGE_DOLBY_VISION = 5;
+}
+
+enum SpatialAudioFormat {
+  SPATIAL_AUDIO_FORMAT_UNSPECIFIED = 0;
+  SPATIAL_AUDIO_FORMAT_NONE = 1;
+  SPATIAL_AUDIO_FORMAT_DOLBY_ATMOS = 2;
+  SPATIAL_AUDIO_FORMAT_DTS_X = 3;
+}
+
+enum SubtitleRepresentation {
+  SUBTITLE_REPRESENTATION_UNSPECIFIED = 0;
+  SUBTITLE_REPRESENTATION_TEXT = 1;
+  SUBTITLE_REPRESENTATION_IMAGE = 2;
+}
+
+enum ArtworkRole {
+  ARTWORK_ROLE_UNSPECIFIED = 0;
+  ARTWORK_ROLE_POSTER = 1;
+  ARTWORK_ROLE_BACKDROP = 2;
+  ARTWORK_ROLE_LOGO = 3;
+  ARTWORK_ROLE_THUMBNAIL = 4;
+  ARTWORK_ROLE_PORTRAIT = 5;
+}
+
+enum ArtworkTextPresence {
+  ARTWORK_TEXT_PRESENCE_UNSPECIFIED = 0;
+  ARTWORK_TEXT_PRESENCE_UNKNOWN = 1;
+  ARTWORK_TEXT_PRESENCE_TEXTLESS = 2;
+  ARTWORK_TEXT_PRESENCE_CONTAINS_TEXT = 3;
+}
+
+enum MediaCreditRole {
+  MEDIA_CREDIT_ROLE_UNSPECIFIED = 0;
+  MEDIA_CREDIT_ROLE_ACTOR = 1;
+  MEDIA_CREDIT_ROLE_DIRECTOR = 2;
+  MEDIA_CREDIT_ROLE_WRITER = 3;
+}
+
+message ExternalIdentifier {
+  string namespace = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string value = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message ProviderMediaCredit {
+  string name = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  MediaCreditRole role = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  optional string character_name = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  ProviderArtworkReference portrait_artwork_reference = 4;
+}
+
+message ProviderMovieDetails {
+  google.type.Date release_date = 1;
+}
+
+message ProviderShowDetails {
+  google.type.Date first_release_date = 1;
+  google.type.Date last_release_date = 2;
+  optional uint32 season_count = 3;
+  optional uint32 episode_count = 4;
+}
+
+message ProviderSeasonDetails {
+  ProviderItemReference show_reference = 1;
+  uint32 season_number = 2 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 episode_count = 3;
+}
+
+message ProviderEpisodeDetails {
+  ProviderItemReference show_reference = 1;
+  ProviderItemReference season_reference = 2;
+  uint32 season_number = 3 [(buf.validate.field).uint32.gt = 0];
+  uint32 episode_number = 4 [(buf.validate.field).uint32.gt = 0];
+  google.type.Date release_date = 5;
+}
+
+message ProviderArtwork {
+  ProviderArtworkReference artwork_reference = 1 [(buf.validate.field).required = true];
+  ArtworkRole role = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  optional uint32 width = 3 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 height = 4 [(buf.validate.field).uint32.gt = 0];
+  optional string locale = 5 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256,
+    (buf.validate.field).string.pattern = "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$"
+  ];
+  ArtworkTextPresence text_presence = 6 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message ProviderVideoTrack {
+  string codec = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 width = 2 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 height = 3 [(buf.validate.field).uint32.gt = 0];
+  optional double frame_rate = 4 [(buf.validate.field).double.gt = 0];
+  optional uint32 bit_depth = 5 [(buf.validate.field).uint32.gt = 0];
+  optional DynamicRange dynamic_range = 6 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message ProviderAudioTrack {
+  string codec = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string title = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string language = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 channel_count = 4;
+  optional string channel_layout = 5 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 sample_rate_hz = 6 [(buf.validate.field).uint32.gt = 0];
+  optional SpatialAudioFormat spatial_format = 7 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  bool is_default = 8;
+  bool is_commentary = 9;
+}
+
+message ProviderSubtitleTrack {
+  string codec = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string title = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string language = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  SubtitleRepresentation representation = 4 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  bool is_default = 5;
+  bool is_forced = 6;
+  bool is_hearing_impaired = 7;
+  bool is_commentary = 8;
+}
+
+message ProviderMediaTrack {
+  ProviderTrackReference track_reference = 1 [(buf.validate.field).required = true];
+  uint32 order = 2;
+  oneof details {
+    option (buf.validate.oneof).required = true;
+    ProviderVideoTrack video = 3;
+    ProviderAudioTrack audio = 4;
+    ProviderSubtitleTrack subtitle = 5;
+  }
+}
+
+message ProviderMediaPart {
+  ProviderPartReference part_reference = 1 [(buf.validate.field).required = true];
+  uint32 order = 2;
+  string container = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  google.protobuf.Duration runtime = 4 [(buf.validate.field).duration.gte = {}];
+  optional uint64 size_bytes = 5;
+  optional uint64 bit_rate_bps = 6 [(buf.validate.field).uint64.gt = 0];
+  repeated ProviderMediaTrack tracks = 7 [(buf.validate.field).repeated.max_items = 100];
+}
+
+message ProviderMediaSource {
+  ProviderSourceReference source_reference = 1 [(buf.validate.field).required = true];
+  optional string label = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  SourceAvailability availability = 3 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  google.protobuf.Duration runtime = 4 [(buf.validate.field).duration.gte = {}];
+  optional uint64 bit_rate_bps = 5 [(buf.validate.field).uint64.gt = 0];
+  repeated ProviderMediaPart parts = 6 [(buf.validate.field).repeated.max_items = 100];
+}
+
+message ProviderMediaItem {
+  ProviderItemReference item_reference = 1 [(buf.validate.field).required = true];
+  MediaKind kind = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  string title = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string original_title = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string synopsis = 5 [(buf.validate.field).string.max_len = 16384];
+  optional string tagline = 6 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 release_year = 7;
+  google.protobuf.Duration runtime = 8 [(buf.validate.field).duration.gte = {}];
+  optional string content_rating = 9 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  repeated string genres = 10 [(buf.validate.field).repeated = {
+    max_items: 50
+    items: {
+      string: {
+        min_len: 1
+        max_len: 256
+      }
+    }
+  }];
+  repeated string studios = 11 [(buf.validate.field).repeated = {
+    max_items: 50
+    items: {
+      string: {
+        min_len: 1
+        max_len: 256
+      }
+    }
+  }];
+  repeated ProviderMediaCredit credits = 12 [(buf.validate.field).repeated.max_items = 100];
+  repeated ExternalIdentifier external_identifiers = 13 [(buf.validate.field).repeated.max_items = 100];
+  repeated ProviderArtwork artwork = 14 [(buf.validate.field).repeated.max_items = 20];
+  repeated ProviderMediaSource sources = 15 [(buf.validate.field).repeated.max_items = 100];
+  oneof kind_details {
+    option (buf.validate.oneof).required = true;
+    ProviderMovieDetails movie = 16;
+    ProviderShowDetails show = 17;
+    ProviderSeasonDetails season = 18;
+    ProviderEpisodeDetails episode = 19;
+  }
+}
