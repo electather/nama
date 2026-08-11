@@ -9,6 +9,7 @@ import { PlaybackService } from "@nama/api/nama/api/v1/playback_pb.js";
 import { ProviderService } from "@nama/api/nama/api/v1/provider_pb.js";
 import { SetupService } from "@nama/api/nama/api/v1/setup_pb.js";
 import { SyncService } from "@nama/api/nama/api/v1/sync_pb.js";
+import { UserStateService } from "@nama/api/nama/api/v1/user_state_pb.js";
 import { file_nama_plugin_v1_common as V1PluginCommonNamespace } from "@nama/api/nama/plugin/v1/common_pb.js";
 import { HealthService as V1PluginHealthService } from "@nama/api/nama/plugin/v1/health_pb.js";
 
@@ -28,5 +29,6 @@ export const contractNamespaces = {
     provider: ProviderService,
     setup: SetupService,
     sync: SyncService,
+    userState: UserStateService,
   },
 } as const;

@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package nama.api.v1;
+
+import "buf/validate/validate.proto";
+import "nama/api/v1/media.proto";
+
+message GetUserStateRequest {
+  string media_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message GetUserStateResponse {
+  MediaUserState user_state = 1 [(buf.validate.field).required = true];
+}
+
+message SetWatchedRequest {
+  string operation_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string media_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  bool watched = 3;
+}
+
+message SetWatchedResponse {
+  MediaUserState user_state = 1 [(buf.validate.field).required = true];
+}
+
+service UserStateService {
+  rpc GetUserState(GetUserStateRequest) returns (GetUserStateResponse);
+  rpc SetWatched(SetWatchedRequest) returns (SetWatchedResponse);
+}
