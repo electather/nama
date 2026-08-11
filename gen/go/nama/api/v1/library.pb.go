@@ -1118,14 +1118,14 @@ const file_nama_api_v1_library_proto_rawDesc = "" +
 	"\tsource_id\x18\x02 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\bsourceId\"R\n" +
 	"\x16GetMediaSourceResponse\x128\n" +
-	"\x06source\x18\x01 \x01(\v2\x18.nama.api.v1.MediaSourceB\x06\xbaH\x03\xc8\x01\x01R\x06source\"\xb7\x01\n" +
+	"\x06source\x18\x01 \x01(\v2\x18.nama.api.v1.MediaSourceB\x06\xbaH\x03\xc8\x01\x01R\x06source\"\xa5\x01\n" +
 	"\x15ResolveArtworkRequest\x12)\n" +
 	"\n" +
 	"artwork_id\x18\x01 \x01(\tB\n" +
-	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\tartworkId\x12)\n" +
-	"\tmax_width\x18\x02 \x01(\rB\a\xbaH\x04*\x02 \x00H\x00R\bmaxWidth\x88\x01\x01\x12+\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\tartworkId\x12 \n" +
+	"\tmax_width\x18\x02 \x01(\rH\x00R\bmaxWidth\x88\x01\x01\x12\"\n" +
 	"\n" +
-	"max_height\x18\x03 \x01(\rB\a\xbaH\x04*\x02 \x00H\x01R\tmaxHeight\x88\x01\x01B\f\n" +
+	"max_height\x18\x03 \x01(\rH\x01R\tmaxHeight\x88\x01\x01B\f\n" +
 	"\n" +
 	"_max_widthB\r\n" +
 	"\v_max_height\"W\n" +

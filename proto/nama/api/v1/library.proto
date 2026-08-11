@@ -149,8 +149,8 @@ message ResolveArtworkRequest {
     (buf.validate.field).string.min_len = 1,
     (buf.validate.field).string.max_len = 256
   ];
-  optional uint32 max_width = 2 [(buf.validate.field).uint32.gt = 0];
-  optional uint32 max_height = 3 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 max_width = 2;
+  optional uint32 max_height = 3;
 }
 
 message ResolveArtworkResponse {
