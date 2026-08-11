@@ -45,8 +45,8 @@ Create the smallest buildable monorepo skeleton and establish the two contracts 
 
 - pnpm workspace for the TypeScript core, generated TypeScript code, and JavaScript tooling.
 - Independent native tooling for Go, Swift/Xcode, Protobuf/Buf, and Docker; no universal build system.
-- `api.v1` packages for health, setup, authentication, device pairing, library, playback, and user media state.
-- `plugin.v1` capabilities for plugin information/health, library reads, playback negotiation, and watch-state pull/push.
+- `api.v1` services: `HealthService`, `SetupService`, `AuthService`, `DeviceService`, `ProviderService`, `LibraryService`, `PlaybackService`, `UserStateService`, and `SyncService`.
+- `plugin.v1` services: `HealthService`, `PluginService`, `LibraryService`, `PlaybackService`, and `WatchStateService`.
 - Provider-independent identifiers and minimal movie/show/season/episode, source, artwork, track, playback descriptor, and user-state messages.
 - Buf linting, deterministic generation, and breaking-change checks in CI.
 - A single development command for contract generation and repository checks.
@@ -60,7 +60,7 @@ Create the smallest buildable monorepo skeleton and establish the two contracts 
 
 - TypeScript, Go, and Swift generated clients compile from the same committed schemas.
 - Buf rejects a deliberate breaking `v1` contract change.
-- Public messages contain no Jellyfin IDs or types except opaque provider references held by the core.
+- Of provider identifiers, public messages may expose only Nama-managed provider type and instance IDs; remote provider resource references exist only in `plugin.v1`.
 
 ## Milestone 1: Retire the highest risks with disposable spikes
 

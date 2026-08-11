@@ -1,10 +1,10 @@
 # API contracts
 
-Status: approved design for the Milestone 0 contract implementation.
+Status: implemented Milestone 0 contract.
 
-This document defines the public and plugin wire contracts that Milestone 0 must build. The files under `proto/` become the source of truth for field numbers and generated APIs once this design is implemented; this document remains the source of truth for boundary ownership and semantics.
+This document defines the public and plugin wire-contract semantics established in Milestone 0. The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
-Milestone 0 defines the complete MVP contract surface so later milestones do not grow behavior around provider-specific payloads. It does not implement handlers, database tables, provider clients, or fake runtime behavior. When later architecture notes say that pairing, plugin, media, playback, or synchronization schemas arrive with the milestone that exercises them, that means persistence schemas and implementations. Their Protobuf wire schemas are established here in Milestone 0.
+Milestone 0 establishes the complete MVP contract surface so later milestones do not grow behavior around provider-specific payloads. It contains no handlers, database tables, provider clients, or fake runtime behavior. Later milestones implement the persistence, handlers, and provider behavior that exercise these existing wire schemas and services.
 
 ## Scope
 
@@ -23,16 +23,6 @@ The contract covers:
 
 The MVP remains single-administrator and single-user. User administration, invitations, roles, and per-user permissions are intentionally absent. They become additive `UserService` and `InvitationService` contracts only when Milestone 8 designs their actual authorization model. No empty services are reserved for them.
 
-### Normative refinements to companion summaries
-
-This approved subsystem design is later and more specific than three broad sentences in companion documents. Until those summaries are mechanically reconciled during implementation, these exact interpretations govern the API boundary:
-
-- the provider-boundary invariant in `architecture.md` permits installed provider type and configuration data in authenticated management RPCs, while remote provider resource IDs, errors, credentials, SDK types, and consumer shapes remain private;
-- the deferred “provider-user mapping” in `release-plan.md` means mapping multiple Nama users to provider users, not the one immutable provider principal required to configure an MVP instance; and
-- the older numbered request flow in `core-server.md` is superseded only in interceptor precedence: request correlation is assigned first, protected methods authenticate next, and field validation follows so unauthenticated callers receive no validation oracle.
-
-No other companion-document decision is changed by this specification.
-
 ## Boundary invariants
 
 1. `nama.api.v1` is the public contract consumed by the TypeScript core, Go CLI, and Swift tvOS application.
@@ -48,7 +38,7 @@ No other companion-document decision is changed by this specification.
 
 ## Package and file layout
 
-Milestone 0 adds the following public files under `proto/nama/api/v1/`:
+The public contract is split across these files under `proto/nama/api/v1/`:
 
 | File | Ownership |
 | --- | --- |
@@ -64,7 +54,7 @@ Milestone 0 adds the following public files under `proto/nama/api/v1/`:
 | `user_state.proto` | Current principal's watched and resume state |
 | `sync.proto` | Operator synchronization status and manual trigger |
 
-Milestone 0 adds the following private files under `proto/nama/plugin/v1/`:
+The private contract is split across these files under `proto/nama/plugin/v1/`:
 
 | File | Ownership |
 | --- | --- |
@@ -76,7 +66,7 @@ Milestone 0 adds the following private files under `proto/nama/plugin/v1/`:
 | `playback.proto` | Provider playback planning, lease creation, telemetry, and cleanup |
 | `watch_state.proto` | Best-effort state scans, targeted reads, and explicit mutations |
 
-Service and message names below are normative. Field numbers live only in the `.proto` files and must never be renumbered or reused after merge.
+The `.proto` files are authoritative for service and message names, field numbers, validation, and generated APIs. The summaries below explain their durable semantics. Existing field numbers must never be renumbered or reused.
 
 ## Shared conventions
 
@@ -102,7 +92,7 @@ Service and message names below are normative. Field numbers live only in the `.
 
 ### Pagination
 
-List and search requests use `page_size` and `page_token` unless a method explicitly has a bounded, non-pageable result. The default page size is 50 and the maximum is 100. Responses return `next_page_token`; an absent or empty token means the scan is complete.
+List and search requests use `page_size` and `page_token` unless a method explicitly has a bounded, non-pageable result. A `page_size` of zero selects the default of 50; the maximum is 100. Responses return `next_page_token`; an absent or empty token means the scan is complete.
 
 Tokens are opaque, short-lived, and bound to the principal, query, filters, sort, page size, and server-side position that created them. A continuation cannot change those inputs. Invalid, expired, or mismatched tokens fail with `INVALID_ARGUMENT` and reason `PAGE_TOKEN_INVALID`. Totals are not returned because providers and reconciliation cannot supply them consistently.
 
@@ -723,7 +713,7 @@ Before initialization, only the two operational HTTP health endpoints and setup 
 
 Administrator sessions cannot be manufactured from device credentials. Device credentials cannot call provider, device-management, sync, health, setup, or administrator-auth methods. A plugin bearer is accepted only on its process socket and never on the public listener.
 
-Authentication and correlation run before handler validation so unauthenticated protected requests do not receive field-level oracle details. Public and bootstrap methods still receive complete field validation. The request ID is assigned at Node dispatch, before decoding, authentication, and validation, so every reachable failure has a correlation value. This ordering deliberately refines the older numbered transport flow in `core-server.md`; implementation follows this document and that note must be reconciled when the server flow is changed.
+Authentication and correlation run before handler validation so unauthenticated protected requests do not receive field-level oracle details. Public and bootstrap methods still receive complete field validation. The request ID is assigned at Node dispatch, before decoding, authentication, and validation, so every reachable failure has a correlation value. This is the shared transport ordering for the core.
 
 ## Validation and form errors
 

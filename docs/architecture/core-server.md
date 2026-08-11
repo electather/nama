@@ -6,7 +6,7 @@ Status: approved on 2026-08-09.
 
 This specification defines the Milestone 2 Nama server foundation: process lifecycle, configuration, PostgreSQL access and migrations, one-time administrator setup, authentication, health reporting, error handling, observability, and verification.
 
-It does not design plugin supervision, Jellyfin configuration, media models, pairing, playback selection, or watch-state synchronization. Those capabilities receive schemas and services only in the milestones that exercise them.
+Milestone 0 already defines the related plugin, provider-management, media, pairing, playback, and watch-state wire schemas and services. Milestone 2 does not implement their handlers, persistence, plugin supervision, or provider behavior; those arrive only in the milestones that exercise them.
 
 ## Accepted architecture changes
 

@@ -78,10 +78,7 @@ message ProviderWatchState {
 }
 
 message BeginWatchStateList {
-  uint32 page_size = 1 [
-    (buf.validate.field).uint32.gt = 0,
-    (buf.validate.field).uint32.lte = 100
-  ];
+  uint32 page_size = 1 [(buf.validate.field).uint32.lte = 100];
 }
 
 message ListWatchStatesRequest {
