@@ -1,0 +1,502 @@
+syntax = "proto3";
+
+package nama.api.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "nama/api/v1/common.proto";
+import "nama/api/v1/media.proto";
+
+enum DeliveryProtocol {
+  DELIVERY_PROTOCOL_UNSPECIFIED = 0;
+  DELIVERY_PROTOCOL_HTTP_PROGRESSIVE = 1;
+  DELIVERY_PROTOCOL_HLS = 2;
+}
+
+enum SubtitleDeliveryMode {
+  SUBTITLE_DELIVERY_MODE_UNSPECIFIED = 0;
+  SUBTITLE_DELIVERY_MODE_EMBEDDED = 1;
+  SUBTITLE_DELIVERY_MODE_EXTERNAL = 2;
+  SUBTITLE_DELIVERY_MODE_BURNED_IN = 3;
+}
+
+enum PlaybackQuality {
+  PLAYBACK_QUALITY_UNSPECIFIED = 0;
+  PLAYBACK_QUALITY_AUTO = 1;
+  PLAYBACK_QUALITY_ORIGINAL = 2;
+  PLAYBACK_QUALITY_CAPPED = 3;
+}
+
+enum SubtitlePreference {
+  SUBTITLE_PREFERENCE_UNSPECIFIED = 0;
+  SUBTITLE_PREFERENCE_AUTO = 1;
+  SUBTITLE_PREFERENCE_OFF = 2;
+  SUBTITLE_PREFERENCE_FORCED_ONLY = 3;
+  SUBTITLE_PREFERENCE_ALWAYS = 4;
+}
+
+enum PlaybackStrategy {
+  PLAYBACK_STRATEGY_UNSPECIFIED = 0;
+  PLAYBACK_STRATEGY_DIRECT = 1;
+  PLAYBACK_STRATEGY_REMUX = 2;
+  PLAYBACK_STRATEGY_TRANSCODE_AUDIO = 3;
+  PLAYBACK_STRATEGY_TRANSCODE_VIDEO = 4;
+}
+
+enum PlaybackTrackType {
+  PLAYBACK_TRACK_TYPE_UNSPECIFIED = 0;
+  PLAYBACK_TRACK_TYPE_AUDIO = 1;
+  PLAYBACK_TRACK_TYPE_SUBTITLE = 2;
+}
+
+enum TrackActionKind {
+  TRACK_ACTION_KIND_UNSPECIFIED = 0;
+  TRACK_ACTION_KIND_COPY = 1;
+  TRACK_ACTION_KIND_TRANSCODE = 2;
+  TRACK_ACTION_KIND_BURN = 3;
+  TRACK_ACTION_KIND_EXTERNAL = 4;
+  TRACK_ACTION_KIND_OMIT = 5;
+}
+
+enum PlaybackState {
+  PLAYBACK_STATE_UNSPECIFIED = 0;
+  PLAYBACK_STATE_PLAYING = 1;
+  PLAYBACK_STATE_PAUSED = 2;
+  PLAYBACK_STATE_BUFFERING = 3;
+}
+
+enum PlaybackCloseReason {
+  PLAYBACK_CLOSE_REASON_UNSPECIFIED = 0;
+  PLAYBACK_CLOSE_REASON_STOPPED = 1;
+  PLAYBACK_CLOSE_REASON_COMPLETED = 2;
+  PLAYBACK_CLOSE_REASON_FAILED = 3;
+  PLAYBACK_CLOSE_REASON_CANCELLED = 4;
+}
+
+message DirectPlayProfile {
+  string container = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string video_codec = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  repeated string audio_codecs = 3 [(buf.validate.field).repeated = {
+    max_items: 100
+    unique: true
+    items: {
+      string: {
+        min_len: 1
+        max_len: 256
+      }
+    }
+  }];
+}
+
+message SubtitleCapability {
+  string format = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  repeated SubtitleDeliveryMode delivery_modes = 2 [(buf.validate.field).repeated = {
+    max_items: 100
+    unique: true
+    items: {
+      enum: {not_in: 0}
+    }
+  }];
+}
+
+message PlaybackCapabilities {
+  repeated DirectPlayProfile direct_play_profiles = 1 [(buf.validate.field).repeated.max_items = 100];
+  repeated DeliveryProtocol protocols = 2 [(buf.validate.field).repeated = {
+    max_items: 100
+    unique: true
+    items: {
+      enum: {not_in: 0}
+    }
+  }];
+  repeated SubtitleCapability subtitle_capabilities = 3 [(buf.validate.field).repeated.max_items = 100];
+  optional uint32 max_width = 4 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 max_height = 5 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 max_video_bit_depth = 6 [(buf.validate.field).uint32.gt = 0];
+  optional uint32 max_audio_channels = 7 [(buf.validate.field).uint32.gt = 0];
+  repeated DynamicRange dynamic_ranges = 8 [(buf.validate.field).repeated = {
+    max_items: 100
+    unique: true
+    items: {
+      enum: {not_in: 0}
+    }
+  }];
+}
+
+message PlaybackPreferences {
+  option (buf.validate.message).cel = {
+    id: "playback_preferences.capped_bit_rate"
+    message: "max_bit_rate_bps must be positive exactly when quality is CAPPED"
+    expression: "(this.quality == 3 && has(this.max_bit_rate_bps) && this.max_bit_rate_bps > 0u) || (this.quality != 3 && !has(this.max_bit_rate_bps))"
+  };
+
+  PlaybackQuality quality = 1 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  optional uint64 max_bit_rate_bps = 2;
+  repeated string preferred_audio_languages = 3 [(buf.validate.field).repeated = {
+    max_items: 100
+    items: {
+      string: {
+        min_len: 1
+        max_len: 256
+      }
+    }
+  }];
+  repeated string preferred_subtitle_languages = 4 [(buf.validate.field).repeated = {
+    max_items: 100
+    items: {
+      string: {
+        min_len: 1
+        max_len: 256
+      }
+    }
+  }];
+  SubtitlePreference subtitle_preference = 5 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message PlaybackAudioTrackDetails {
+  string codec = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional uint32 channel_count = 2;
+  optional SpatialAudioFormat spatial_format = 3 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message PlaybackSubtitleTrackDetails {
+  string codec = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  SubtitleRepresentation representation = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message PlaybackTrack {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  PlaybackTrackType type = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  optional string label = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string language = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  bool is_default = 5;
+  bool is_forced = 6;
+  oneof details {
+    option (buf.validate.oneof).required = true;
+    PlaybackAudioTrackDetails audio = 7;
+    PlaybackSubtitleTrackDetails subtitle = 8;
+  }
+}
+
+message SubtitleSelection {
+  oneof selection {
+    option (buf.validate.oneof).required = true;
+    string track_id = 1 [
+      (buf.validate.field).string.min_len = 1,
+      (buf.validate.field).string.max_len = 256
+    ];
+    bool disabled = 2;
+  }
+}
+
+message TrackAction {
+  string track_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  TrackActionKind action = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message PlaybackPlan {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string media_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string source_id = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  google.protobuf.Timestamp expires_at = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+  PlaybackStrategy strategy = 5 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  string container = 6 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string video_codec = 7 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string audio_codec = 8 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  DeliveryProtocol protocol = 9 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  repeated PlaybackTrack tracks = 10 [(buf.validate.field).repeated.max_items = 100];
+  optional string default_audio_track_id = 11 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  SubtitleSelection default_subtitle = 12 [(buf.validate.field).required = true];
+  repeated TrackAction actions = 13 [(buf.validate.field).repeated.max_items = 100];
+}
+
+message PlanPlaybackRequest {
+  string media_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string source_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  PlaybackCapabilities capabilities = 3 [(buf.validate.field).required = true];
+  google.protobuf.Duration start_position = 4 [(buf.validate.field).duration.gte = {}];
+  PlaybackPreferences preferences = 5 [(buf.validate.field).required = true];
+}
+
+message PlanPlaybackResponse {
+  PlaybackPlan plan = 1 [(buf.validate.field).required = true];
+}
+
+message OpenPlaybackRequest {
+  string operation_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string plan_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string audio_track_id = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  SubtitleSelection subtitle = 4 [(buf.validate.field).required = true];
+}
+
+message PlaybackLocator {
+  string url = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 8192,
+    (buf.validate.field).string.pattern = "^[Hh][Tt][Tt][Pp][Ss]?://",
+    (buf.validate.field).string.uri = true
+  ];
+  repeated HttpHeader headers = 2 [(buf.validate.field).repeated.max_items = 32];
+  repeated string allowed_redirect_origins = 3 [(buf.validate.field).repeated = {
+    max_items: 16
+    items: {
+      string: {
+        min_len: 1
+        max_len: 8192
+      }
+    }
+  }];
+  string mime_type = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  google.protobuf.Timestamp expires_at = 5 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+}
+
+message PlaybackSessionTrack {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  PlaybackTrackType type = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  optional string label = 3 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string language = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  bool is_default = 5;
+  bool is_forced = 6;
+  oneof details {
+    option (buf.validate.oneof).required = true;
+    PlaybackAudioTrackDetails audio = 7;
+    PlaybackSubtitleTrackDetails subtitle = 8;
+  }
+  bool switchable_without_reopen = 9;
+}
+
+message ExternalSubtitleLocator {
+  string track_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string url = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 8192,
+    (buf.validate.field).string.pattern = "^[Hh][Tt][Tt][Pp][Ss]?://",
+    (buf.validate.field).string.uri = true
+  ];
+  repeated HttpHeader headers = 3 [(buf.validate.field).repeated.max_items = 32];
+  repeated string allowed_redirect_origins = 4 [(buf.validate.field).repeated = {
+    max_items: 16
+    items: {
+      string: {
+        min_len: 1
+        max_len: 8192
+      }
+    }
+  }];
+  string mime_type = 5 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  google.protobuf.Timestamp expires_at = 6 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+}
+
+message PlaybackSession {
+  string id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  PlaybackStrategy strategy = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  DeliveryProtocol protocol = 3 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  string container = 4 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string video_codec = 5 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string audio_codec = 6 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  PlaybackLocator locator = 7 [(buf.validate.field).required = true];
+  google.protobuf.Duration report_interval = 8 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).duration.gt = {}
+  ];
+  repeated PlaybackSessionTrack tracks = 9 [(buf.validate.field).repeated.max_items = 100];
+  optional string selected_audio_track_id = 10 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  SubtitleSelection selected_subtitle = 11 [(buf.validate.field).required = true];
+  repeated ExternalSubtitleLocator external_subtitles = 12 [(buf.validate.field).repeated.max_items = 100];
+}
+
+message OpenPlaybackResponse {
+  PlaybackSession session = 1 [(buf.validate.field).required = true];
+}
+
+message ReportPlaybackRequest {
+  string event_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string playback_session_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  uint64 sequence = 3 [(buf.validate.field).uint64.gt = 0];
+  PlaybackState state = 4 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  google.protobuf.Duration position = 5 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).duration.gte = {}
+  ];
+  google.protobuf.Duration duration = 6 [(buf.validate.field).duration.gte = {}];
+  google.protobuf.Timestamp client_observed_at = 7 [(buf.validate.field).timestamp = {}];
+  optional string selected_audio_track_id = 8 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  optional string selected_subtitle_track_id = 9 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message ReportPlaybackResponse {
+  uint64 accepted_sequence = 1 [(buf.validate.field).uint64.gt = 0];
+  MediaUserState user_state = 2 [(buf.validate.field).required = true];
+}
+
+message ClosePlaybackRequest {
+  string operation_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  string playback_session_id = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  google.protobuf.Duration final_position = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).duration.gte = {}
+  ];
+  google.protobuf.Duration duration = 4 [(buf.validate.field).duration.gte = {}];
+  PlaybackCloseReason reason = 5 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  google.protobuf.Timestamp client_observed_at = 6 [(buf.validate.field).timestamp = {}];
+}
+
+message ClosePlaybackResponse {
+  MediaUserState user_state = 1 [(buf.validate.field).required = true];
+}
+
+service PlaybackService {
+  rpc PlanPlayback(PlanPlaybackRequest) returns (PlanPlaybackResponse);
+  rpc OpenPlayback(OpenPlaybackRequest) returns (OpenPlaybackResponse);
+  rpc ReportPlayback(ReportPlaybackRequest) returns (ReportPlaybackResponse);
+  rpc ClosePlayback(ClosePlaybackRequest) returns (ClosePlaybackResponse);
+}
