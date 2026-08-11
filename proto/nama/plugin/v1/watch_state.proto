@@ -1,0 +1,185 @@
+syntax = "proto3";
+
+package nama.plugin.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "nama/plugin/v1/common.proto";
+
+enum WatchStateConsistency {
+  WATCH_STATE_CONSISTENCY_UNSPECIFIED = 0;
+  WATCH_STATE_CONSISTENCY_BEST_EFFORT_SCAN = 1;
+}
+
+enum ProviderActivitySemantics {
+  PROVIDER_ACTIVITY_SEMANTICS_UNSPECIFIED = 0;
+  PROVIDER_ACTIVITY_SEMANTICS_UNKNOWN = 1;
+  PROVIDER_ACTIVITY_SEMANTICS_PLAYBACK_STARTED = 2;
+  PROVIDER_ACTIVITY_SEMANTICS_PLAYBACK_COMPLETED = 3;
+  PROVIDER_ACTIVITY_SEMANTICS_STATE_CHANGED = 4;
+}
+
+enum ProviderActivityReliability {
+  PROVIDER_ACTIVITY_RELIABILITY_UNSPECIFIED = 0;
+  PROVIDER_ACTIVITY_RELIABILITY_RELIABLE = 1;
+  PROVIDER_ACTIVITY_RELIABILITY_HEURISTIC = 2;
+}
+
+enum WatchStateReadStatus {
+  WATCH_STATE_READ_STATUS_UNSPECIFIED = 0;
+  WATCH_STATE_READ_STATUS_FOUND = 1;
+  WATCH_STATE_READ_STATUS_NOT_FOUND = 2;
+  WATCH_STATE_READ_STATUS_FORBIDDEN = 3;
+  WATCH_STATE_READ_STATUS_RETRYABLE_FAILURE = 4;
+  WATCH_STATE_READ_STATUS_PERMANENT_FAILURE = 5;
+}
+
+enum WatchStateMutationStatus {
+  WATCH_STATE_MUTATION_STATUS_UNSPECIFIED = 0;
+  WATCH_STATE_MUTATION_STATUS_APPLIED = 1;
+  WATCH_STATE_MUTATION_STATUS_ALREADY_APPLIED = 2;
+  WATCH_STATE_MUTATION_STATUS_UNSUPPORTED = 3;
+  WATCH_STATE_MUTATION_STATUS_NOT_FOUND = 4;
+  WATCH_STATE_MUTATION_STATUS_FORBIDDEN = 5;
+  WATCH_STATE_MUTATION_STATUS_INVALID = 6;
+  WATCH_STATE_MUTATION_STATUS_RETRYABLE_FAILURE = 7;
+  WATCH_STATE_MUTATION_STATUS_RETRYABLE_AMBIGUOUS = 8;
+  WATCH_STATE_MUTATION_STATUS_PERMANENT_FAILURE = 9;
+}
+
+message ProviderActivity {
+  google.protobuf.Timestamp occurred_at = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+  ProviderActivitySemantics semantics = 2 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+  ProviderActivityReliability reliability = 3 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message ProviderWatchState {
+  ProviderItemReference item_reference = 1 [(buf.validate.field).required = true];
+  bool watched = 2;
+  google.protobuf.Duration position = 3 [(buf.validate.field).duration.gte = {}];
+  google.protobuf.Duration duration = 4 [(buf.validate.field).duration.gte = {}];
+  google.protobuf.Timestamp observed_at = 5 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).timestamp = {}
+  ];
+  ProviderActivity provider_activity = 6;
+  optional string revision = 7 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+}
+
+message BeginWatchStateList {
+  uint32 page_size = 1 [
+    (buf.validate.field).uint32.gt = 0,
+    (buf.validate.field).uint32.lte = 100
+  ];
+}
+
+message ListWatchStatesRequest {
+  oneof scan {
+    option (buf.validate.oneof).required = true;
+    BeginWatchStateList begin = 1;
+    string continuation = 2 [
+      (buf.validate.field).string.min_len = 1,
+      (buf.validate.field).string.max_len = 4096
+    ];
+  }
+}
+
+message ListWatchStatesResponse {
+  repeated ProviderWatchState states = 1 [(buf.validate.field).repeated.max_items = 100];
+  optional string next_page_token = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 4096
+  ];
+  bool complete = 3;
+  WatchStateConsistency consistency = 4 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message GetWatchStatesRequest {
+  repeated ProviderItemReference item_references = 1 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 100
+  }];
+}
+
+message WatchStateReadResult {
+  ProviderItemReference item_reference = 1 [(buf.validate.field).required = true];
+  ProviderWatchState state = 2;
+  WatchStateReadStatus status = 3 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message GetWatchStatesResponse {
+  repeated WatchStateReadResult results = 1 [(buf.validate.field).repeated.max_items = 100];
+}
+
+message SetWatched {
+  bool watched = 1;
+}
+
+message SetProgress {
+  bool watched = 1;
+  google.protobuf.Duration position = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).duration.gte = {}
+  ];
+  google.protobuf.Duration duration = 3 [(buf.validate.field).duration.gte = {}];
+}
+
+message WatchStateMutation {
+  string mutation_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  ProviderItemReference item_reference = 2 [(buf.validate.field).required = true];
+  oneof target {
+    option (buf.validate.oneof).required = true;
+    SetWatched set_watched = 3;
+    SetProgress set_progress = 4;
+  }
+}
+
+message WatchStateMutationResult {
+  string mutation_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  ProviderWatchState observed_state = 2;
+  WatchStateMutationStatus status = 3 [(buf.validate.field).enum = {
+    not_in: [0]
+  }];
+}
+
+message PushWatchStatesRequest {
+  string batch_id = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 256
+  ];
+  repeated WatchStateMutation mutations = 2 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 100
+  }];
+}
+
+message PushWatchStatesResponse {
+  repeated WatchStateMutationResult results = 1 [(buf.validate.field).repeated.max_items = 100];
+}
+
+service WatchStateService {
+  rpc ListWatchStates(ListWatchStatesRequest) returns (ListWatchStatesResponse);
+  rpc GetWatchStates(GetWatchStatesRequest) returns (GetWatchStatesResponse);
+  rpc PushWatchStates(PushWatchStatesRequest) returns (PushWatchStatesResponse);
+}
