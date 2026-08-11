@@ -251,9 +251,9 @@ One managed runtime bridges callback-based transport into the Effect service gra
 A protected unary request flows through:
 
 1. Node request dispatch;
-2. Connect/Protobuf validation;
-3. request ID and structured logging interceptor;
-4. bearer authentication interceptor;
+2. request ID and structured logging interceptor;
+3. bearer authentication interceptor for protected methods;
+4. Connect/Protobuf validation;
 5. generated service handler;
 6. `ManagedRuntime.runPromise` using Connect's abort signal;
 7. an Effect application service;

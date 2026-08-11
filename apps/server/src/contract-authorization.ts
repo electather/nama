@@ -3,7 +3,8 @@ export type ContractAuthority =
   | "bootstrap-token"
   | "polling-token"
   | "administrator"
-  | "administrator-or-device";
+  | "administrator-or-device"
+  | "plugin-bearer";
 
 export const contractAuthorityByMethod = {
   "nama.api.v1.AuthService.GetCurrentUser": "administrator",
@@ -42,4 +43,17 @@ export const contractAuthorityByMethod = {
   "nama.api.v1.SyncService.TriggerSync": "administrator",
   "nama.api.v1.UserStateService.GetUserState": "administrator-or-device",
   "nama.api.v1.UserStateService.SetWatched": "administrator-or-device",
+  "nama.plugin.v1.HealthService.Check": "plugin-bearer",
+  "nama.plugin.v1.LibraryService.GetItem": "plugin-bearer",
+  "nama.plugin.v1.LibraryService.ListItems": "plugin-bearer",
+  "nama.plugin.v1.LibraryService.ResolveArtwork": "plugin-bearer",
+  "nama.plugin.v1.PlaybackService.ClosePlayback": "plugin-bearer",
+  "nama.plugin.v1.PlaybackService.OpenPlayback": "plugin-bearer",
+  "nama.plugin.v1.PlaybackService.PlanPlayback": "plugin-bearer",
+  "nama.plugin.v1.PlaybackService.ReportPlayback": "plugin-bearer",
+  "nama.plugin.v1.PluginService.GetConnection": "plugin-bearer",
+  "nama.plugin.v1.PluginService.GetInfo": "plugin-bearer",
+  "nama.plugin.v1.WatchStateService.GetWatchStates": "plugin-bearer",
+  "nama.plugin.v1.WatchStateService.ListWatchStates": "plugin-bearer",
+  "nama.plugin.v1.WatchStateService.PushWatchStates": "plugin-bearer",
 } as const satisfies Record<string, ContractAuthority>;

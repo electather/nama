@@ -182,7 +182,7 @@ Make Nama, rather than Jellyfin, own reliable resume and watched state while rem
 
 ### Explicit non-goals
 
-- Favourites, playlists, recommendation signals, provider-user mapping, real-time webhook infrastructure, or conflict-resolution UI.
+- Favourites, playlists, recommendation signals, mapping multiple Nama users to provider users, real-time webhook infrastructure, or conflict-resolution UI. The immutable single provider principal configured for an MVP instance is not deferred.
 
 ### Exit criteria
 

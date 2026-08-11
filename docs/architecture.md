@@ -46,7 +46,7 @@ Exact dependency versions are lockfile decisions, not promises in this document.
 ## Invariants
 
 1. The core is the source of truth for Nama-owned user and watch state; plugins never become hidden databases.
-2. Provider names, identifiers, errors, and SDK types stop at plugin boundaries. Public clients see Nama concepts.
+2. Remote provider resource IDs, errors, SDK types, and provider-specific consumer shapes stop at plugin boundaries. Installed provider type IDs and schema-driven configuration are authenticated Nama management resources; public consumers otherwise see Nama concepts.
 3. Protobuf is the source of truth for every supported client, CLI, and plugin RPC; auth is not a second client SDK.
 4. Media bytes do not pass through the core in normal playback.
 5. A plugin may be restarted or replaced without losing correctness; schedules, credentials, cursors, and reconciliation state belong to the core.
