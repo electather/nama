@@ -177,17 +177,32 @@ class FixtureHandler(BaseHTTPRequestHandler):
 
 
 class FixtureServers:
+    @staticmethod
+    def _open_root(root):
+        descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            for component in root.parts[1:]:
+                child = os.open(
+                    component,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=descriptor,
+                )
+                os.close(descriptor)
+                descriptor = child
+            return descriptor
+        except OSError:
+            os.close(descriptor)
+            raise
+
     def __init__(self, fixture_root, bind_address, primary_port, secondary_port=None):
         root = Path(fixture_root).resolve(strict=True)
-        if not root.is_dir():
-            raise ValueError("fixture root must be a directory")
         secondary_port = primary_port + 1 if secondary_port is None else secondary_port
         if not 0 <= primary_port <= 65535 or not 0 <= secondary_port <= 65535:
             raise ValueError("ports must be between 0 and 65535")
 
         self._servers = []
         self._threads = []
-        self._fixture_root_descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        self._fixture_root_descriptor = self._open_root(root)
         try:
             for port in (primary_port, secondary_port):
                 server = FixtureHTTPServer((bind_address, port), FixtureHandler)

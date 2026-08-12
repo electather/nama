@@ -186,3 +186,32 @@ Pinned Xcode `26.6`, simulator/device, playback, linked-artifact, and legal
 obligation gates remain exactly as unverified above. `mise run check:swift`
 was attempted again after the strict format fix and still stopped at the same
 missing `DEVELOPER_DIR` path before build or tests.
+
+## Fix Round 2
+
+The remaining root-open race was reproduced with a deterministic self-check
+hook. Immediately before the old `os.open(resolved_root, O_DIRECTORY)`, the
+canonical fixture-root directory was renamed and its former path replaced by an
+outside-directory symlink. RED showed the old open followed the replacement:
+
+```text
+$ python3 apps/tvos/fixture_server_check.py
+AssertionError: a fixture root swapped to an outside symlink was opened
+exit 1
+```
+
+The server now opens `/` and walks every component of the already-resolved
+absolute fixture root using `os.open(component, O_RDONLY | O_DIRECTORY |
+O_NOFOLLOW, dir_fd=parent)`. Each prior descriptor is closed as the next is
+acquired; the current descriptor is closed on failure. The deterministic swap
+now fails at the final component without following the symlink, and the full
+expanded check remains GREEN:
+
+```text
+$ python3 apps/tvos/fixture_server_check.py
+fixture server self-check: OK
+exit 0
+```
+
+CLI behavior and all unverified Xcode, device, playback, linked-artifact, and
+distribution obligations remain unchanged.

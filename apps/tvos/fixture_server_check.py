@@ -96,6 +96,34 @@ def main():
         (outside_directory / "secret.bin").write_bytes(b"secret")
         (fixtures / "swapped-component").symlink_to(outside_directory, target_is_directory=True)
 
+        resolved_fixtures = fixtures.resolve()
+        original_open = os.open
+        root_open_calls = 0
+
+        def swap_root_before_open(path, flags, mode=0o777, *, dir_fd=None):
+            nonlocal root_open_calls
+            if (Path(path) == resolved_fixtures and dir_fd is None) or (
+                path == resolved_fixtures.name and dir_fd is not None
+            ):
+                root_open_calls += 1
+                fixtures.rename(temporary / "original-fixtures")
+                fixtures.symlink_to(outside_directory, target_is_directory=True)
+            return original_open(path, flags, mode, dir_fd=dir_fd)
+
+        os.open = swap_root_before_open
+        try:
+            try:
+                FixtureServers(fixtures, "127.0.0.1", 0, 0)
+            except OSError:
+                pass
+            else:
+                raise AssertionError("a fixture root swapped to an outside symlink was opened")
+        finally:
+            os.open = original_open
+        assert root_open_calls == 1
+        fixtures.unlink()
+        (temporary / "original-fixtures").rename(fixtures)
+
         with FixtureServers(fixtures, "127.0.0.1", 0, 0) as servers:
             media_url = f"{servers.primary_origin}/media/sample.bin"
 
