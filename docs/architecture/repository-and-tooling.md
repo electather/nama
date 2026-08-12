@@ -5,9 +5,9 @@
 This note records the Milestone 0 repository decisions: a buildable polyglot
 workspace, deterministic contract generation, native verification, and CI. It
 establishes tooling and deployable boundaries only. Contract boundary rules and
-compatibility policy live in [API contracts](api-contracts.md); concrete
-service and message semantics remain separate design work. Server runtime
-behavior is later work.
+compatibility policy live in [API contracts](api-contracts.md); the Protobuf
+schemas own concrete service and message definitions. Server runtime behavior
+is later work.
 
 ## Orchestration and ownership
 
