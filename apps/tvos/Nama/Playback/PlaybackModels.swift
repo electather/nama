@@ -200,7 +200,7 @@ enum PlaybackSubtitleGeometry {
   }
 }
 
-enum PlaybackState: Sendable, Equatable {
+enum NamaPlaybackState: Sendable, Equatable {
   case idle
   case loading
   case playing
@@ -215,6 +215,10 @@ struct PlaybackClockState: Sendable, Equatable {
   var duration: TimeInterval = 0
   var bufferedPosition: TimeInterval = 0
   var seekTarget: TimeInterval?
+
+  func seekTarget(offsetBy offset: TimeInterval) -> TimeInterval {
+    min(max((seekTarget ?? currentTime) + offset, 0), max(duration, 0))
+  }
 }
 
 @MainActor

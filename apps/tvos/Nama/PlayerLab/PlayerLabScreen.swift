@@ -4,7 +4,11 @@
   struct PlayerLabScreen: View {
     let baseURL: URL
 
-    @State private var state: State = .loading
+    @SwiftUI.State private var state: State = .loading
+
+    init(baseURL: URL) {
+      self.baseURL = baseURL
+    }
 
     var body: some View {
       Group {

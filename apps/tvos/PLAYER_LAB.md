@@ -152,7 +152,9 @@ The project selects the `AetherEngine` product, whose manifest selects
 SwiftPM still resolves packages needed by other products, so lock presence is
 not proof that an artifact was linked. `NamaAPI` separately selects its
 Connect/Protobuf dependencies. The final app linked graph and artifact inventory
-are UNVERIFIED because pinned Xcode `26.6` and a built app were unavailable.
+remain UNVERIFIED for a signed physical-device or distribution build. Xcode
+`26.6` (`17F113`) produced the locked arm64 tvOS Simulator build on 2026-08-12,
+and all 30 focused tests passed; that is simulator build evidence only.
 
 Locally inspected source evidence at the revisions above:
 
@@ -173,14 +175,14 @@ Locally inspected source evidence at the revisions above:
 - LibDovi's `LICENSE` licenses its packaging as MIT and identifies compiled
   libdovi/dovi_tool under the MIT option of MIT OR Apache-2.0.
 
-Before adoption, Xcode `26.6` must produce the locked build and tests; the review
-must retain the resolved product graph, build/link map, embedded frameworks,
-architectures, and artifact hashes; and the actual FFmpeg binary configuration
-must prove no GPL/nonfree components. A competent distribution review must then
-settle notices, modification disclosures, Minimal Corresponding Source and
-relinking/application-code obligations. The planned user-facing location is an
-in-app Settings > Acknowledgements screen with durable release-specific source
-and relinking materials; neither that UI nor release materials exist yet.
+Before any future engine adoption, the review must retain the resolved product
+graph, build/link map, embedded frameworks, architectures, and artifact hashes;
+and the actual FFmpeg binary configuration must prove no GPL/nonfree components.
+A competent distribution review must then settle notices, modification
+disclosures, Minimal Corresponding Source and relinking/application-code
+obligations. The planned user-facing location is an in-app Settings >
+Acknowledgements screen with durable release-specific source and relinking
+materials; neither that UI nor release materials exist yet.
 
 Distribution status: **BLOCKED / UNRESOLVED**. Do not claim GPL/nonfree clearance
 or ship AetherEngine until the linked-artifact and obligation evidence closes.

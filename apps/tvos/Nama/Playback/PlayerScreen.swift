@@ -192,18 +192,21 @@ private struct PlaybackClockControls: View {
   let seek: (TimeInterval) -> Void
 
   var body: some View {
-    VStack {
-      Slider(
-        value: Binding(
-          get: { clock.state.seekTarget ?? clock.state.currentTime },
-          set: seek
-        ),
-        in: 0...max(clock.state.duration, 1)
+    VStack(spacing: 12) {
+      ProgressView(
+        value: clock.state.seekTarget ?? clock.state.currentTime,
+        total: max(clock.state.duration, 1)
       )
       HStack {
+        Button("Back 10 Seconds", systemImage: "gobackward.10") {
+          seek(clock.state.seekTarget(offsetBy: -10))
+        }
         Text(duration(clock.state.currentTime))
         Spacer()
         Text(duration(clock.state.duration))
+        Button("Forward 10 Seconds", systemImage: "goforward.10") {
+          seek(clock.state.seekTarget(offsetBy: 10))
+        }
       }
       .monospacedDigit()
     }
@@ -320,7 +323,7 @@ private struct DiagnosticsPanel: View {
     player.subtitleTracks.first { $0.id == player.activeSubtitleTrackID }?.label ?? "Off"
   }
 
-  private func stateLabel(_ state: PlaybackState) -> String {
+  private func stateLabel(_ state: NamaPlaybackState) -> String {
     switch state {
     case .idle: "Idle"
     case .loading: "Loading"

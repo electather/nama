@@ -6,7 +6,7 @@ import Observation
 @MainActor
 @Observable
 final class NamaPlayer {
-  private(set) var state: PlaybackState = .idle
+  private(set) var state: NamaPlaybackState = .idle
   private(set) var audioTracks: [PlaybackAudioTrack] = []
   private(set) var subtitleTracks: [PlaybackSubtitleTrack] = []
   private(set) var activeAudioTrackID: String?

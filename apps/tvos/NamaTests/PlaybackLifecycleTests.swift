@@ -58,6 +58,18 @@ final class PlaybackLifecycleTests: XCTestCase {
     XCTAssertFalse(gate.acceptsEngineObservations)
   }
 
+  func testSeekButtonsClampToPlayableRange() {
+    let clock = PlaybackClockState(currentTime: 5, duration: 100, seekTarget: nil)
+
+    XCTAssertEqual(clock.seekTarget(offsetBy: -10), 0)
+    XCTAssertEqual(clock.seekTarget(offsetBy: 10), 15)
+    XCTAssertEqual(
+      PlaybackClockState(currentTime: 98, duration: 100, seekTarget: nil)
+        .seekTarget(offsetBy: 10),
+      100
+    )
+  }
+
   func testAspectFitRectLetterboxesWideVideo() {
     let rect = PlaybackPresentationGeometry.aspectFitRect(
       presentationSize: CGSize(width: 1_920, height: 1_080),

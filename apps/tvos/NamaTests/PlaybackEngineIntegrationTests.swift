@@ -7,7 +7,7 @@ import XCTest
 
 final class PlaybackEngineIntegrationTests: XCTestCase {
   func testMapsEveryStableEngineStateWithoutLeakingErrorText() {
-    let states: [(AetherEngine.PlaybackState, Nama.PlaybackState)] = [
+    let states: [(PlaybackState, NamaPlaybackState)] = [
       (.idle, .idle),
       (.loading, .loading),
       (.playing, .playing),
@@ -200,7 +200,8 @@ final class PlaybackEngineIntegrationTests: XCTestCase {
     )
     XCTAssertNil(AetherPlaybackMapping.presentationSize(.zero))
     XCTAssertNil(
-      AetherPlaybackMapping.presentationSize(CGSize(width: .infinity, height: 1_080)))
+      AetherPlaybackMapping.presentationSize(
+        CGSize(width: CGFloat.infinity, height: 1_080)))
   }
 
   func testClassifiesTypedEngineErrorsWithoutLeakingDetails() {

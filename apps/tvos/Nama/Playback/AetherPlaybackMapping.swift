@@ -2,7 +2,7 @@ import AetherEngine
 import Foundation
 
 enum AetherPlaybackMapping {
-  static func state(_ state: AetherEngine.PlaybackState) -> PlaybackState {
+  static func state(_ state: PlaybackState) -> NamaPlaybackState {
     switch state {
     case .idle: .idle
     case .loading: .loading
@@ -40,7 +40,7 @@ enum AetherPlaybackMapping {
     )
   }
 
-  static func subtitleCue(_ cue: AetherEngine.SubtitleCue) -> PlaybackSubtitleCue {
+  static func subtitleCue(_ cue: SubtitleCue) -> PlaybackSubtitleCue {
     let body: PlaybackSubtitleCue.Body =
       switch cue.body {
       case .text(let text): .text(text)
