@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import Observation
 
 struct PlaybackMediaLocator: Sendable {
   let url: URL
@@ -23,6 +24,23 @@ struct PlaybackRequest: Sendable {
   let resumePosition: TimeInterval?
 }
 
+struct PlaybackLoadFence {
+  private var generation: UInt64 = 0
+
+  mutating func begin() -> UInt64 {
+    generation &+= 1
+    return generation
+  }
+
+  mutating func invalidate() {
+    generation &+= 1
+  }
+
+  func isCurrent(_ candidate: UInt64) -> Bool {
+    generation == candidate
+  }
+}
+
 enum PlaybackState: Sendable, Equatable {
   case idle
   case loading
@@ -38,6 +56,16 @@ struct PlaybackClockState: Sendable, Equatable {
   var duration: TimeInterval = 0
   var bufferedPosition: TimeInterval = 0
   var seekTarget: TimeInterval?
+}
+
+@MainActor
+@Observable
+final class NamaPlaybackClock {
+  var state = PlaybackClockState()
+
+  func reset() {
+    state = PlaybackClockState()
+  }
 }
 
 struct PlaybackAudioTrack: Sendable, Equatable, Identifiable {
