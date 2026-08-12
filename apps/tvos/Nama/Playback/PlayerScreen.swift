@@ -1,6 +1,56 @@
 import Foundation
 import SwiftUI
 
+struct PlayerScreenBoundary: View {
+  let request: PlaybackRequest
+  let backToFixtures: () -> Void
+
+  @State private var player: NamaPlayer?
+  @State private var initializationFailure: PlaybackFailure?
+
+  var body: some View {
+    Group {
+      if let player {
+        PlayerScreen(player: player, backToFixtures: backToFixtures)
+      } else if let initializationFailure {
+        initializationFailureControls(initializationFailure)
+      } else {
+        ProgressView()
+      }
+    }
+    .task {
+      guard player == nil, initializationFailure == nil else { return }
+      initializePlayer()
+    }
+  }
+
+  private func initializePlayer() {
+    do {
+      let player = try NamaPlayer()
+      self.player = player
+      player.load(request)
+    } catch {
+      initializationFailure = AetherPlaybackMapping.failure(error)
+    }
+  }
+
+  private func initializationFailureControls(_ failure: PlaybackFailure) -> some View {
+    VStack(spacing: 22) {
+      Text(failure.summary).font(.title2)
+      HStack(spacing: 24) {
+        Button("Retry") {
+          initializationFailure = nil
+          initializePlayer()
+        }
+        Button("Back to Fixtures", action: backToFixtures)
+      }
+      .buttonStyle(.borderedProminent)
+    }
+    .padding(36)
+    .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 24))
+  }
+}
+
 struct PlayerScreen: View {
   let player: NamaPlayer
   let backToFixtures: () -> Void
@@ -17,7 +67,7 @@ struct PlayerScreen: View {
         }
         Spacer()
         if case .failed(let failure) = player.state {
-          failureControls(failure)
+          failureControls(failure, showingDiagnostics: $showingDiagnostics)
         } else {
           VStack(spacing: 18) {
             PlaybackClockControls(clock: player.clock, seek: player.seek)
@@ -37,7 +87,10 @@ struct PlayerScreen: View {
     .onDisappear(perform: player.stop)
   }
 
-  private func failureControls(_ failure: PlaybackFailure) -> some View {
+  private func failureControls(
+    _ failure: PlaybackFailure,
+    showingDiagnostics: Binding<Bool>
+  ) -> some View {
     VStack(spacing: 22) {
       Text(failure.summary).font(.title2)
       HStack(spacing: 24) {
@@ -45,6 +98,10 @@ struct PlayerScreen: View {
         Button("Back to Fixtures", action: backToFixtures)
       }
       .buttonStyle(.borderedProminent)
+      Button(showingDiagnostics.wrappedValue ? "Hide Diagnostics" : "Diagnostics") {
+        showingDiagnostics.wrappedValue.toggle()
+      }
+      .buttonStyle(.bordered)
     }
     .padding(36)
     .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 24))
@@ -72,14 +129,15 @@ private struct SubtitleOverlay: View {
             .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 10))
             .position(textPosition(cue, in: geometry.size))
         case .image(let image, let position, let canvasSize):
+          let rect = PlaybackSubtitleGeometry.imageRect(
+            position: position,
+            canvasSize: canvasSize,
+            displaySize: geometry.size
+          )
           Image(decorative: image, scale: 1)
             .resizable()
-            .aspectRatio(contentMode: .fit)
-            .frame(
-              width: geometry.size.width * position.width,
-              height: geometry.size.height * position.height
-            )
-            .position(imagePosition(position, canvasSize: canvasSize, in: geometry.size))
+            .frame(width: rect.width, height: rect.height)
+            .position(x: rect.midX, y: rect.midY)
         }
       }
     }
@@ -91,13 +149,6 @@ private struct SubtitleOverlay: View {
       return CGPoint(x: size.width / 2, y: size.height * 0.82)
     }
     return CGPoint(x: size.width * placement.x, y: size.height * placement.y)
-  }
-
-  private func imagePosition(_ rect: CGRect, canvasSize: CGSize, in size: CGSize) -> CGPoint {
-    let normalized = canvasSize.width > 1 || canvasSize.height > 1
-    let x = normalized ? (rect.midX / canvasSize.width) : rect.midX
-    let y = normalized ? (rect.midY / canvasSize.height) : rect.midY
-    return CGPoint(x: size.width * x, y: size.height * y)
   }
 }
 

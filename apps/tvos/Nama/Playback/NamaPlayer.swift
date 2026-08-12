@@ -36,6 +36,7 @@ final class NamaPlayer {
 
     loadTask = Task { @MainActor [weak self] in
       guard let self else { return }
+      defer { clearLoadTask(for: generation) }
       do {
         let probe = try await engine.load(
           url: request.media.url,
@@ -45,12 +46,12 @@ final class NamaPlayer {
             externalSubtitles: request.externalSubtitles.map(Self.externalSubtitle)
           )
         )
-        guard !Task.isCancelled, fence.isCurrent(generation) else { return }
+        guard !Task.isCancelled, fence.permitsTerminalPublication(for: generation) else { return }
         publishStableState(probe: probe, mimeType: request.media.mimeType)
       } catch is CancellationError {
         return
       } catch {
-        guard !Task.isCancelled, fence.isCurrent(generation) else { return }
+        guard !Task.isCancelled, fence.permitsTerminalPublication(for: generation) else { return }
         state = .failed(AetherPlaybackMapping.failure(error))
       }
     }
@@ -73,7 +74,8 @@ final class NamaPlayer {
   func togglePlayPause() {
     switch state {
     case .playing, .seeking: engine.pause()
-    case .paused, .ended: engine.play()
+    case .paused: engine.play()
+    case .ended: retry()
     default: break
     }
   }
@@ -102,22 +104,28 @@ final class NamaPlayer {
 
   private func observeEngine() {
     engine.$state.sink { [weak self] state in
-      self?.state = AetherPlaybackMapping.state(state)
+      guard let self, acceptsEngineObservations else { return }
+      self.state = AetherPlaybackMapping.state(state)
     }.store(in: &observations)
     engine.$audioTracks.sink { [weak self] tracks in
-      self?.audioTracks = tracks.map(AetherPlaybackMapping.audioTrack)
+      guard let self, acceptsEngineObservations else { return }
+      self.audioTracks = tracks.map(AetherPlaybackMapping.audioTrack)
     }.store(in: &observations)
     engine.$subtitleTracks.sink { [weak self] tracks in
-      self?.subtitleTracks = tracks.map(AetherPlaybackMapping.subtitleTrack)
+      guard let self, acceptsEngineObservations else { return }
+      self.subtitleTracks = tracks.map(AetherPlaybackMapping.subtitleTrack)
     }.store(in: &observations)
     engine.$activeAudioTrackIndex.sink { [weak self] id in
-      self?.activeAudioTrackID = id.map { String($0) }
+      guard let self, acceptsEngineObservations else { return }
+      self.activeAudioTrackID = id.map { String($0) }
     }.store(in: &observations)
     engine.$activeSubtitleTrackIndex.sink { [weak self] id in
-      self?.activeSubtitleTrackID = id.map { String($0) }
+      guard let self, acceptsEngineObservations else { return }
+      self.activeSubtitleTrackID = id.map { String($0) }
     }.store(in: &observations)
     engine.$subtitleCues.sink { [weak self] cues in
-      self?.subtitleCues = cues.map(AetherPlaybackMapping.subtitleCue)
+      guard let self, acceptsEngineObservations else { return }
+      self.subtitleCues = cues.map(AetherPlaybackMapping.subtitleCue)
     }.store(in: &observations)
     engine.clock.$currentTime.combineLatest(
       engine.$duration,
@@ -125,7 +133,8 @@ final class NamaPlayer {
       engine.$seekTarget
     ).sink { [weak self] values in
       let (currentTime, duration, bufferedPosition, seekTarget) = values
-      self?.clock.state = PlaybackClockState(
+      guard let self, acceptsEngineObservations else { return }
+      self.clock.state = PlaybackClockState(
         currentTime: currentTime,
         duration: duration,
         bufferedPosition: bufferedPosition,
@@ -135,16 +144,33 @@ final class NamaPlayer {
   }
 
   private func publishStableState(probe: SourceProbe?, mimeType: String?) {
+    state = AetherPlaybackMapping.state(engine.state)
     audioTracks = engine.audioTracks.map(AetherPlaybackMapping.audioTrack)
     subtitleTracks = engine.subtitleTracks.map(AetherPlaybackMapping.subtitleTrack)
     activeAudioTrackID = engine.activeAudioTrackIndex.map { String($0) }
     activeSubtitleTrackID = engine.activeSubtitleTrackIndex.map { String($0) }
+    subtitleCues = engine.subtitleCues.map(AetherPlaybackMapping.subtitleCue)
+    clock.state = PlaybackClockState(
+      currentTime: engine.clock.currentTime,
+      duration: engine.duration,
+      bufferedPosition: engine.clock.bufferedPosition,
+      seekTarget: engine.seekTarget
+    )
     guard let probe else { return }
     videoDiagnostics = AetherPlaybackMapping.videoDiagnostics(
       probe: probe,
       container: Self.container(from: mimeType),
       outputDynamicRange: engine.videoFormat
     )
+  }
+
+  private var acceptsEngineObservations: Bool {
+    loadTask == nil && request != nil
+  }
+
+  private func clearLoadTask(for generation: UInt64) {
+    guard fence.permitsTerminalPublication(for: generation) else { return }
+    loadTask = nil
   }
 
   private func reset(for request: PlaybackRequest?) {

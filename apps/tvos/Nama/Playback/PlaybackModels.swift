@@ -36,8 +36,34 @@ struct PlaybackLoadFence {
     generation &+= 1
   }
 
-  func isCurrent(_ candidate: UInt64) -> Bool {
+  func permitsTerminalPublication(for candidate: UInt64) -> Bool {
     generation == candidate
+  }
+}
+
+enum PlaybackSubtitleGeometry {
+  static func imageRect(
+    position: CGRect,
+    canvasSize: CGSize,
+    displaySize: CGSize
+  ) -> CGRect {
+    guard canvasSize != .zero, canvasSize.width > 0 else {
+      return CGRect(
+        x: position.minX * displaySize.width,
+        y: position.minY * displaySize.height,
+        width: position.width * displaySize.width,
+        height: position.height * displaySize.height
+      )
+    }
+
+    let scale = displaySize.width / canvasSize.width
+    return CGRect(
+      x: position.minX * canvasSize.width * scale,
+      y: displaySize.height / 2
+        + (position.minY * canvasSize.height - canvasSize.height / 2) * scale,
+      width: position.width * canvasSize.width * scale,
+      height: position.height * canvasSize.height * scale
+    )
   }
 }
 
