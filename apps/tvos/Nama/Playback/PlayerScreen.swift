@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PlayerScreenBoundary: View {
   let request: PlaybackRequest
+  var diagnosticsLabel: String? = nil
   let backToFixtures: () -> Void
 
   @State private var player: NamaPlayer?
@@ -11,7 +12,11 @@ struct PlayerScreenBoundary: View {
   var body: some View {
     Group {
       if let player {
-        PlayerScreen(player: player, backToFixtures: backToFixtures)
+        PlayerScreen(
+          player: player,
+          diagnosticsLabel: diagnosticsLabel,
+          backToFixtures: backToFixtures
+        )
       } else if let initializationFailure {
         initializationFailureControls(initializationFailure)
       } else {
@@ -53,6 +58,7 @@ struct PlayerScreenBoundary: View {
 
 struct PlayerScreen: View {
   let player: NamaPlayer
+  var diagnosticsLabel: String? = nil
   let backToFixtures: () -> Void
 
   @State private var showingDiagnostics = false
@@ -63,7 +69,7 @@ struct PlayerScreen: View {
       SubtitleOverlay(cues: player.subtitleCues, clock: player.clock)
       VStack {
         if showingDiagnostics {
-          DiagnosticsPanel(player: player)
+          DiagnosticsPanel(player: player, label: diagnosticsLabel)
         }
         Spacer()
         if case .failed(let failure) = player.state {
@@ -246,9 +252,13 @@ private struct StablePlaybackControls: View {
 
 private struct DiagnosticsPanel: View {
   let player: NamaPlayer
+  let label: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
+      if let label {
+        Text(label)
+      }
       Text("State: \(stateLabel(player.state))")
       Text(
         "Time: \(player.clock.state.currentTime, format: .number.precision(.fractionLength(1))) s")

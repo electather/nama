@@ -18,6 +18,10 @@
 		A1A1A1A1A1A1A1A1A1A1A21B /* NamaPlayerSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1A1A1A1A1A1A1A1A1A21C /* NamaPlayerSurface.swift */; };
 		A1A1A1A1A1A1A1A1A1A1A21D /* PlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1A1A1A1A1A1A1A1A1A21E /* PlayerScreen.swift */; };
 		A1A1A1A1A1A1A1A1A1A1A21F /* PlaybackLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1A1A1A1A1A1A1A1A1A220 /* PlaybackLifecycleTests.swift */; };
+		A1A1A1A1A1A1A1A1A1A1A301 /* PlayerLabModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1A1A1A1A1A1A1A1A1A302 /* PlayerLabModels.swift */; };
+		A1A1A1A1A1A1A1A1A1A1A303 /* PlayerLabScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1A1A1A1A1A1A1A1A1A304 /* PlayerLabScreen.swift */; };
+		A1A1A1A1A1A1A1A1A1A1A305 /* player-lab-fixtures.json in Resources */ = {isa = PBXBuildFile; fileRef = A1A1A1A1A1A1A1A1A1A1A306 /* player-lab-fixtures.json */; };
+		A1A1A1A1A1A1A1A1A1A1A307 /* PlayerLabTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A1A1A1A1A1A1A1A1A1A308 /* PlayerLabTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +46,10 @@
 		A1A1A1A1A1A1A1A1A1A1A21C /* NamaPlayerSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaPlayerSurface.swift; sourceTree = "<group>"; };
 		A1A1A1A1A1A1A1A1A1A1A21E /* PlayerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerScreen.swift; sourceTree = "<group>"; };
 		A1A1A1A1A1A1A1A1A1A1A220 /* PlaybackLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackLifecycleTests.swift; sourceTree = "<group>"; };
+		A1A1A1A1A1A1A1A1A1A1A302 /* PlayerLabModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerLabModels.swift; sourceTree = "<group>"; };
+		A1A1A1A1A1A1A1A1A1A1A304 /* PlayerLabScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerLabScreen.swift; sourceTree = "<group>"; };
+		A1A1A1A1A1A1A1A1A1A1A306 /* player-lab-fixtures.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "player-lab-fixtures.json"; sourceTree = "<group>"; };
+		A1A1A1A1A1A1A1A1A1A1A308 /* PlayerLabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerLabTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,6 +97,7 @@
 				A1A1A1A1A1A1A1A1A1A1A217 /* Debug-Info.plist */,
 				A1A1A1A1A1A1A1A1A1A1A104 /* NamaApp.swift */,
 				A1A1A1A1A1A1A1A1A1A1A20E /* Playback */,
+				A1A1A1A1A1A1A1A1A1A1A309 /* PlayerLab */,
 			);
 			path = Nama;
 			sourceTree = "<group>";
@@ -96,6 +105,7 @@
 		A1A1A1A1A1A1A1A1A1A1A20D /* NamaTests */ = {
 			isa = PBXGroup;
 			children = (
+				A1A1A1A1A1A1A1A1A1A1A308 /* PlayerLabTests.swift */,
 				A1A1A1A1A1A1A1A1A1A1A220 /* PlaybackLifecycleTests.swift */,
 				A1A1A1A1A1A1A1A1A1A1A208 /* PlaybackEngineIntegrationTests.swift */,
 			);
@@ -112,6 +122,16 @@
 				A1A1A1A1A1A1A1A1A1A1A21E /* PlayerScreen.swift */,
 			);
 			path = Playback;
+			sourceTree = "<group>";
+		};
+		A1A1A1A1A1A1A1A1A1A1A309 /* PlayerLab */ = {
+			isa = PBXGroup;
+			children = (
+				A1A1A1A1A1A1A1A1A1A1A302 /* PlayerLabModels.swift */,
+				A1A1A1A1A1A1A1A1A1A1A304 /* PlayerLabScreen.swift */,
+				A1A1A1A1A1A1A1A1A1A1A306 /* player-lab-fixtures.json */,
+			);
+			path = PlayerLab;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -207,6 +227,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1A1A1A1A1A1A1A1A1A1A305 /* player-lab-fixtures.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -224,6 +245,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1A1A1A1A1A1A1A1A1A1A303 /* PlayerLabScreen.swift in Sources */,
+				A1A1A1A1A1A1A1A1A1A1A301 /* PlayerLabModels.swift in Sources */,
 				A1A1A1A1A1A1A1A1A1A1A203 /* AetherPlaybackMapping.swift in Sources */,
 				A1A1A1A1A1A1A1A1A1A1A219 /* NamaPlayer.swift in Sources */,
 				A1A1A1A1A1A1A1A1A1A1A21B /* NamaPlayerSurface.swift in Sources */,
@@ -237,6 +260,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1A1A1A1A1A1A1A1A1A1A307 /* PlayerLabTests.swift in Sources */,
 				A1A1A1A1A1A1A1A1A1A1A21F /* PlaybackLifecycleTests.swift in Sources */,
 				A1A1A1A1A1A1A1A1A1A1A207 /* PlaybackEngineIntegrationTests.swift in Sources */,
 			);

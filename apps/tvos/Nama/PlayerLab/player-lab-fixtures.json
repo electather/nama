@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "id": "h264-sdr",
+      "title": "H.264 SDR",
+      "mediaPath": "media/h264-sdr.mp4",
+      "sidecars": [],
+      "headerScenario": "none",
+      "expected": {
+        "container": "mp4",
+        "videoCodec": "h264",
+        "dynamicRange": "sdr",
+        "audio": [{ "codec": "aac", "channels": 2, "label": "Stereo" }],
+        "subtitles": []
+      }
+    },
+    {
+      "id": "hevc-sdr",
+      "title": "HEVC SDR",
+      "mediaPath": "media/hevc-sdr.mp4",
+      "sidecars": [],
+      "headerScenario": "none",
+      "expected": {
+        "container": "mp4",
+        "videoCodec": "hevc",
+        "dynamicRange": "sdr",
+        "audio": [{ "codec": "aac", "channels": 2, "label": "Stereo" }],
+        "subtitles": []
+      }
+    },
+    {
+      "id": "hevc-hdr10",
+      "title": "HEVC HDR10",
+      "mediaPath": "media/hevc-hdr10.mp4",
+      "sidecars": [],
+      "headerScenario": "none",
+      "expected": {
+        "container": "mp4",
+        "videoCodec": "hevc",
+        "dynamicRange": "hdr10",
+        "audio": [{ "codec": "aac", "channels": 2, "label": "Stereo" }],
+        "subtitles": []
+      }
+    },
+    {
+      "id": "hevc-dolby-vision",
+      "title": "HEVC Dolby Vision",
+      "mediaPath": "media/hevc-dolby-vision.mp4",
+      "sidecars": [],
+      "headerScenario": "none",
+      "expected": {
+        "container": "mp4",
+        "videoCodec": "hevc",
+        "dynamicRange": "dolbyVision",
+        "audio": [{ "codec": "aac", "channels": 2, "label": "Stereo" }],
+        "subtitles": []
+      }
+    },
+    {
+      "id": "mkv-selectable-audio-text",
+      "title": "MKV Selectable Audio and Text Subtitles",
+      "mediaPath": "media/mkv-selectable-audio-text.mkv",
+      "sidecars": [
+        {
+          "id": "english-srt",
+          "label": "English",
+          "language": "eng",
+          "mimeType": "application/x-subrip",
+          "path": "subtitles/mkv-selectable-audio-text.en.srt"
+        }
+      ],
+      "headerScenario": "none",
+      "expected": {
+        "container": "matroska",
+        "videoCodec": "hevc",
+        "dynamicRange": "sdr",
+        "audio": [
+          { "codec": "aac", "channels": 2, "label": "English Stereo" },
+          { "codec": "aac", "channels": 6, "label": "English 5.1" }
+        ],
+        "subtitles": [{ "representation": "text", "language": "eng" }]
+      }
+    },
+    {
+      "id": "image-subtitles",
+      "title": "Image Subtitles",
+      "mediaPath": "media/image-subtitles.mkv",
+      "sidecars": [],
+      "headerScenario": "none",
+      "expected": {
+        "container": "matroska",
+        "videoCodec": "hevc",
+        "dynamicRange": "sdr",
+        "audio": [{ "codec": "aac", "channels": 2, "label": "Stereo" }],
+        "subtitles": [{ "representation": "image", "language": "eng" }]
+      }
+    },
+    {
+      "id": "direct-dummy-credentials",
+      "title": "Direct Request with Dummy Credentials",
+      "mediaPath": "media/h264-sdr.mp4",
+      "sidecars": [],
+      "headerScenario": "dummyCredentials",
+      "expected": {
+        "container": "mp4",
+        "videoCodec": "h264",
+        "dynamicRange": "sdr",
+        "audio": [{ "codec": "aac", "channels": 2, "label": "Stereo" }],
+        "subtitles": []
+      }
+    },
+    {
+      "id": "same-origin-redirect",
+      "title": "Same-Origin Redirect with Dummy Credentials",
+      "mediaPath": "redirect/same/media/h264-sdr.mp4",
+      "sidecars": [],
+      "headerScenario": "dummyCredentials",
+      "expected": {
+        "container": "mp4",
+        "videoCodec": "h264",
+        "dynamicRange": "sdr",
+        "audio": [{ "codec": "aac", "channels": 2, "label": "Stereo" }],
+        "subtitles": []
+      }
+    },
+    {
+      "id": "cross-origin-redirect",
+      "title": "Cross-Origin Redirect with Dummy Credentials",
+      "mediaPath": "redirect/cross/media/h264-sdr.mp4",
+      "sidecars": [],
+      "headerScenario": "dummyCredentials",
+      "expected": {
+        "container": "mp4",
+        "videoCodec": "h264",
+        "dynamicRange": "sdr",
+        "audio": [{ "codec": "aac", "channels": 2, "label": "Stereo" }],
+        "subtitles": []
+      }
+    }
+  ]
+}
