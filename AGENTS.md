@@ -64,6 +64,7 @@ gen/
   go/                     # generated Go bindings
   swift/Sources/NamaAPI/  # generated Swift bindings
 docs/architecture/        # canonical technical decisions
+scripts/                  # multi-step implementations of Mise tasks
 .agents/skills/           # project-specific workflows
 ```
 

@@ -12,7 +12,7 @@ run = [
   "pnpm install --frozen-lockfile",
   "go mod download",
   "git diff --exit-code -- go.mod go.sum",
-  "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer xcodebuild -resolvePackageDependencies -project apps/tvos/Nama.xcodeproj -scheme Nama -onlyUsePackageVersionsFromResolvedFile",
+  "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -resolvePackageDependencies -project apps/tvos/Nama.xcodeproj -scheme Nama -onlyUsePackageVersionsFromResolvedFile",
   "git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
 ]
 
@@ -25,7 +25,7 @@ description = "Format handwritten source files"
 run = [
   "pnpm exec oxfmt .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
   "gofmt -w apps/cli gen/go",
-  "DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer swift format format --in-place --recursive apps/tvos gen/swift/Package.swift",
+  "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift format format --in-place --recursive apps/tvos gen/swift/Package.swift",
 ]
 
 [tasks."check:contracts"]
