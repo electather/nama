@@ -43,9 +43,11 @@ consumers depend on only the boundary they need.
 
 ## Change and verification workflow
 
-For the current root command surface, future agents use `mise tasks` and then
-inspect the owning native manifest or configuration; this note is not a command
-reference.
+Mise exposes the root task surface. Multi-step Bash task implementations live
+in `scripts/` and are invoked by thin Mise task definitions; the scripts do
+not add tasks or change native-tool ownership. Use `mise tasks` to inspect the
+current surface, then inspect the owning native manifest or configuration. This
+note is not a command reference.
 
 Before changing a dependency, generator, or check, inspect its owning manifest
 and use that ecosystem's native tool to update its dependencies and lock state.
