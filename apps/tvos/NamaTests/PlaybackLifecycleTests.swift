@@ -6,29 +6,56 @@ import XCTest
 #endif
 
 final class PlaybackLifecycleTests: XCTestCase {
-  func testCurrentLoadCanPublishTerminalState() {
-    var fence = PlaybackLoadFence()
+  func testLoadingSuppressesEngineObservations() {
+    var gate = PlaybackLifecycleGate()
 
-    let current = fence.begin()
+    _ = gate.beginLoad()
 
-    XCTAssertTrue(fence.permitsTerminalPublication(for: current))
+    XCTAssertFalse(gate.acceptsEngineObservations)
   }
 
-  func testReplacedLoadCannotPublishTerminalState() {
-    var fence = PlaybackLoadFence()
-    let stale = fence.begin()
-    _ = fence.begin()
+  func testActiveSessionAcceptsEngineObservationsAfterCurrentLoadCompletes() {
+    var gate = PlaybackLifecycleGate()
+    let current = gate.beginLoad()
 
-    XCTAssertFalse(fence.permitsTerminalPublication(for: stale))
+    XCTAssertTrue(gate.finishLoad(for: current))
+    XCTAssertTrue(gate.acceptsEngineObservations)
   }
 
-  func testNavigationCancellationCannotPublishTerminalState() {
-    var fence = PlaybackLoadFence()
-    let stale = fence.begin()
+  func testNoRequestRejectsEngineObservations() {
+    var gate = PlaybackLifecycleGate()
 
-    fence.invalidate()
+    XCTAssertFalse(gate.acceptsEngineObservations)
+  }
 
-    XCTAssertFalse(fence.permitsTerminalPublication(for: stale))
+  func testNavigationRejectsObservationsAndStaleCompletion() {
+    var gate = PlaybackLifecycleGate()
+
+    let stale = gate.beginLoad()
+
+    gate.cancel()
+
+    XCTAssertFalse(gate.permitsTerminalPublication(for: stale))
+    XCTAssertFalse(gate.acceptsEngineObservations)
+    XCTAssertFalse(gate.finishLoad(for: stale))
+  }
+
+  func testCurrentLoadCompletionPermitsTaskCleanup() {
+    var gate = PlaybackLifecycleGate()
+    let current = gate.beginLoad()
+
+    XCTAssertTrue(gate.permitsTerminalPublication(for: current))
+    XCTAssertTrue(gate.finishLoad(for: current))
+  }
+
+  func testStaleLoadCompletionCannotClearCurrentTask() {
+    var gate = PlaybackLifecycleGate()
+    let stale = gate.beginLoad()
+    _ = gate.beginLoad()
+
+    XCTAssertFalse(gate.permitsTerminalPublication(for: stale))
+    XCTAssertFalse(gate.finishLoad(for: stale))
+    XCTAssertFalse(gate.acceptsEngineObservations)
   }
 
   func testMapsImageSubtitlePixelCanvasToScreenGeometry() {

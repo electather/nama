@@ -18,7 +18,7 @@ final class NamaPlayer {
 
   @ObservationIgnored private let engine: AetherEngine
   @ObservationIgnored private var loadTask: Task<Void, Never>?
-  @ObservationIgnored private var fence = PlaybackLoadFence()
+  @ObservationIgnored private var lifecycle = PlaybackLifecycleGate()
   @ObservationIgnored private var observations: Set<AnyCancellable> = []
   @ObservationIgnored private var request: PlaybackRequest?
 
@@ -29,8 +29,8 @@ final class NamaPlayer {
 
   func load(_ request: PlaybackRequest) {
     loadTask?.cancel()
+    let generation = lifecycle.beginLoad()
     engine.stop(resetDisplayCriteria: false, finalTeardown: false)
-    let generation = fence.begin()
     self.request = request
     reset(for: request)
 
@@ -46,12 +46,16 @@ final class NamaPlayer {
             externalSubtitles: request.externalSubtitles.map(Self.externalSubtitle)
           )
         )
-        guard !Task.isCancelled, fence.permitsTerminalPublication(for: generation) else { return }
+        guard !Task.isCancelled, lifecycle.permitsTerminalPublication(for: generation) else {
+          return
+        }
         publishStableState(probe: probe, mimeType: request.media.mimeType)
       } catch is CancellationError {
         return
       } catch {
-        guard !Task.isCancelled, fence.permitsTerminalPublication(for: generation) else { return }
+        guard !Task.isCancelled, lifecycle.permitsTerminalPublication(for: generation) else {
+          return
+        }
         state = .failed(AetherPlaybackMapping.failure(error))
       }
     }
@@ -65,7 +69,7 @@ final class NamaPlayer {
   func stop() {
     loadTask?.cancel()
     loadTask = nil
-    fence.invalidate()
+    lifecycle.cancel()
     request = nil
     engine.stop()
     reset(for: nil)
@@ -165,11 +169,11 @@ final class NamaPlayer {
   }
 
   private var acceptsEngineObservations: Bool {
-    loadTask == nil && request != nil
+    lifecycle.acceptsEngineObservations
   }
 
   private func clearLoadTask(for generation: UInt64) {
-    guard fence.permitsTerminalPublication(for: generation) else { return }
+    guard lifecycle.finishLoad(for: generation) else { return }
     loadTask = nil
   }
 

@@ -85,3 +85,44 @@ pinned Xcode 26.6 app required by this repository is absent.
 | `git diff --check` | passed |
 | `SWIFT_MODULECACHE_PATH=/private/tmp/nama-swift-module-cache CLANG_MODULE_CACHE_PATH=/private/tmp/nama-clang-module-cache swiftc -typecheck ...PlaybackLifecycleTests.swift` | blocked: `no such module 'XCTest'` under Command Line Tools |
 | tvOS `xcodebuild` / XCTest | blocked: `/Applications/Xcode_26.6.app` is not installed; active developer directory is CommandLineTools |
+
+## Fix Round 2
+
+- Replaced the generation-only fence with the pure app-owned
+  `PlaybackLifecycleGate`. `NamaPlayer` now routes terminal publication,
+  engine-observation acceptance, and current-task cleanup through that gate.
+  Beginning the gate before stopping the old engine also suppresses synchronous
+  stop observations during replacement.
+- Added focused coverage in `PlaybackLifecycleTests`:
+  `testLoadingSuppressesEngineObservations`,
+  `testActiveSessionAcceptsEngineObservationsAfterCurrentLoadCompletes`,
+  `testNoRequestRejectsEngineObservations`,
+  `testNavigationRejectsObservationsAndStaleCompletion`,
+  `testCurrentLoadCompletionPermitsTaskCleanup`, and
+  `testStaleLoadCompletionCannotClearCurrentTask`.
+
+### TDD evidence
+
+The lifecycle tests and production edits were already present as an unstaged
+working-tree diff when this fix-round pass began, so no pre-implementation RED
+run can be claimed. XCTest execution is unavailable under Command Line Tools;
+the focused typecheck stops at `no such module 'XCTest'`. The test and app
+sources do parse successfully, which is syntax evidence only, not a test pass.
+
+### Verification
+
+| Command | Result |
+| --- | --- |
+| `SWIFT_MODULECACHE_PATH=/private/tmp/nama-swift-module-cache swift format lint --strict --recursive apps/tvos` | passed |
+| `swiftc -parse ...PlaybackModels.swift ...AetherPlaybackMapping.swift ...NamaPlayer.swift ...NamaPlayerSurface.swift ...PlayerScreen.swift ...PlaybackLifecycleTests.swift ...PlaybackEngineIntegrationTests.swift` | passed |
+| `plutil -lint apps/tvos/Nama.xcodeproj/project.pbxproj` | passed: `OK` |
+| `rg -l 'AetherEngine\|AetherPlayerSurface\|SourceProbe\|LoadOptions\|ExternalSubtitleTrack' apps/tvos/Nama apps/tvos/NamaTests` | passed: matches only the four Playback integration files and the existing integration test |
+| `rg -n -i 'url\|header\|authorization\|token\|credential' apps/tvos/Nama/Playback/PlayerScreen.swift` | passed: no matches |
+| `git diff --check` | passed |
+| `SWIFT_MODULECACHE_PATH=/private/tmp/nama-swift-module-cache CLANG_MODULE_CACHE_PATH=/private/tmp/nama-clang-module-cache swiftc -typecheck apps/tvos/Nama/Playback/PlaybackModels.swift apps/tvos/NamaTests/PlaybackLifecycleTests.swift` | blocked: `no such module 'XCTest'` under Command Line Tools |
+| `xcodebuild -version` | blocked: active developer directory is CommandLineTools, not Xcode |
+
+### Concerns
+
+- The focused XCTest suite and app-level Aether integration still require the
+  repository's pinned Xcode 26.6 toolchain; no XCTest pass is claimed locally.

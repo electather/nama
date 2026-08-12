@@ -24,20 +24,36 @@ struct PlaybackRequest: Sendable {
   let resumePosition: TimeInterval?
 }
 
-struct PlaybackLoadFence {
+struct PlaybackLifecycleGate {
   private var generation: UInt64 = 0
+  private var hasRequest = false
+  private var isLoading = false
 
-  mutating func begin() -> UInt64 {
+  mutating func beginLoad() -> UInt64 {
     generation &+= 1
+    hasRequest = true
+    isLoading = true
     return generation
   }
 
-  mutating func invalidate() {
+  mutating func cancel() {
     generation &+= 1
+    hasRequest = false
+    isLoading = false
   }
 
   func permitsTerminalPublication(for candidate: UInt64) -> Bool {
     generation == candidate
+  }
+
+  var acceptsEngineObservations: Bool {
+    hasRequest && !isLoading
+  }
+
+  mutating func finishLoad(for candidate: UInt64) -> Bool {
+    guard permitsTerminalPublication(for: candidate) else { return false }
+    isLoading = false
+    return true
   }
 }
 
