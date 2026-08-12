@@ -101,12 +101,17 @@ import XCTest
         "media/movie.mkv#secret",
       ]
       for path in unsafePaths {
-        let data = try replacing(
-          in: validManifestData(),
-          from: "media/movie.mkv",
-          to: path
-        )
-        XCTAssertThrowsError(try PlayerLabManifest.decode(data))
+        var unsafeFixture = try fixtureObject()
+        unsafeFixture["mediaPath"] = path
+        let data = try JSONSerialization.data(withJSONObject: [
+          "version": 1,
+          "fixtures": [unsafeFixture],
+        ])
+        XCTAssertThrowsError(try PlayerLabManifest.decode(data)) { error in
+          guard let labError = error as? PlayerLabError, case .unsafeRelativePath = labError else {
+            return XCTFail("Expected unsafeRelativePath for \(path), got \(error)")
+          }
+        }
       }
     }
 
@@ -143,6 +148,7 @@ import XCTest
         [
           "Authorization": "Bearer nama-player-lab-dummy-authorization",
           "X-Emby-Token": "nama-player-lab-dummy-jellyfin",
+          "X-Nama-Player-Lab-Marker": "nama-player-lab-dummy-marker",
         ])
       XCTAssertEqual(request.externalSubtitles.count, 1)
       XCTAssertEqual(request.externalSubtitles[0].id, "english-srt")

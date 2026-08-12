@@ -54,9 +54,20 @@ enum AetherPlaybackMapping {
       startTime: cue.startTime,
       endTime: cue.endTime,
       body: body,
-      textPlacement: cue.placement?.position,
+      textPlacement: cue.placement.map {
+        PlaybackSubtitleTextPlacement(alignment: $0.alignment, position: $0.position)
+      },
       isForced: cue.isForced
     )
+  }
+
+  static func presentationSize(_ size: CGSize?) -> CGSize? {
+    guard let size, size.width > 0, size.height > 0,
+      size.width.isFinite, size.height.isFinite
+    else {
+      return nil
+    }
+    return size
   }
 
   static func dynamicRange(_ format: VideoFormat) -> PlaybackDynamicRange {

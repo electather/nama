@@ -12,8 +12,9 @@ final class NamaPlayer {
   private(set) var activeAudioTrackID: String?
   private(set) var activeSubtitleTrackID: String?
   private(set) var subtitleCues: [PlaybackSubtitleCue] = []
+  private(set) var videoPresentationSize: CGSize?
   private(set) var videoDiagnostics: PlaybackVideoDiagnostics?
-  private(set) var advisoryRedirectOriginCount = 0
+  private(set) var allowedRedirectOriginCount = 0
   let clock = NamaPlaybackClock()
 
   @ObservationIgnored private let engine: AetherEngine
@@ -131,6 +132,16 @@ final class NamaPlayer {
       guard let self, acceptsEngineObservations else { return }
       self.subtitleCues = cues.map(AetherPlaybackMapping.subtitleCue)
     }.store(in: &observations)
+    engine.$softwareDisplaySize.sink { [weak self] size in
+      guard let self, acceptsEngineObservations,
+        let size = AetherPlaybackMapping.presentationSize(size)
+      else { return }
+      videoPresentationSize = size
+    }.store(in: &observations)
+    engine.$hasFirstFrameReadyForDisplay.sink { [weak self] isReady in
+      guard let self, acceptsEngineObservations, isReady else { return }
+      publishVideoPresentationSize()
+    }.store(in: &observations)
     engine.clock.$currentTime.combineLatest(
       engine.$duration,
       engine.clock.$bufferedPosition,
@@ -160,6 +171,7 @@ final class NamaPlayer {
       bufferedPosition: engine.clock.bufferedPosition,
       seekTarget: engine.seekTarget
     )
+    publishVideoPresentationSize()
     guard let probe else { return }
     videoDiagnostics = AetherPlaybackMapping.videoDiagnostics(
       probe: probe,
@@ -170,6 +182,13 @@ final class NamaPlayer {
 
   private var acceptsEngineObservations: Bool {
     lifecycle.acceptsEngineObservations
+  }
+
+  private func publishVideoPresentationSize() {
+    videoPresentationSize =
+      AetherPlaybackMapping.presentationSize(engine.softwareDisplaySize)
+      ?? AetherPlaybackMapping.presentationSize(engine.currentAVPlayerItem?.presentationSize)
+      ?? AetherPlaybackMapping.presentationSize(engine.nativePlayerLayer?.videoRect.size)
   }
 
   private func clearLoadTask(for generation: UInt64) {
@@ -184,8 +203,9 @@ final class NamaPlayer {
     activeAudioTrackID = nil
     activeSubtitleTrackID = nil
     subtitleCues = []
+    videoPresentationSize = nil
     videoDiagnostics = nil
-    advisoryRedirectOriginCount = request?.media.allowedRedirectOrigins.count ?? 0
+    allowedRedirectOriginCount = request?.media.allowedRedirectOrigins.count ?? 0
     clock.reset()
   }
 

@@ -15,8 +15,10 @@ from urllib.parse import quote, unquote, urlsplit
 DUMMY_CREDENTIALS = {
     "Authorization": "Bearer nama-player-lab-dummy-authorization",
     "X-Emby-Token": "nama-player-lab-dummy-jellyfin",
+    "X-Nama-Player-Lab-Marker": "nama-player-lab-dummy-marker",
 }
 RANGE_PATTERN = re.compile(r"bytes=(\d*)-(\d*)")
+MAX_RANGE_DIGITS = 20
 
 
 class FixtureHTTPServer(ThreadingHTTPServer):
@@ -149,13 +151,18 @@ class FixtureHandler(BaseHTTPRequestHandler):
         first, last = match.groups()
         if not first and not last:
             return None
-        if not first:
-            suffix_length = int(last)
-            if suffix_length == 0:
-                return None
-            return max(0, size - suffix_length), size - 1
-        start = int(first)
-        end = min(int(last), size - 1) if last else size - 1
+        if len(first) > MAX_RANGE_DIGITS or len(last) > MAX_RANGE_DIGITS:
+            return None
+        try:
+            if not first:
+                suffix_length = int(last)
+                if suffix_length == 0:
+                    return None
+                return max(0, size - suffix_length), size - 1
+            start = int(first)
+            end = min(int(last), size - 1) if last else size - 1
+        except (OverflowError, ValueError):
+            return None
         return (start, end) if start < size and start <= end else None
 
     def _json(self, value, send_body):

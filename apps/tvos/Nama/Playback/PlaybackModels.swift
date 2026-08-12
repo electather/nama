@@ -57,28 +57,145 @@ struct PlaybackLifecycleGate {
   }
 }
 
+enum PlaybackPresentationGeometry {
+  static func aspectFitRect(presentationSize: CGSize, in bounds: CGRect) -> CGRect {
+    guard presentationSize.width > 0, presentationSize.height > 0,
+      presentationSize.width.isFinite, presentationSize.height.isFinite,
+      bounds.width > 0, bounds.height > 0
+    else {
+      return bounds
+    }
+
+    let scale = min(
+      bounds.width / presentationSize.width,
+      bounds.height / presentationSize.height
+    )
+    let size = CGSize(
+      width: presentationSize.width * scale,
+      height: presentationSize.height * scale
+    )
+    return CGRect(
+      x: bounds.midX - size.width / 2,
+      y: bounds.midY - size.height / 2,
+      width: size.width,
+      height: size.height
+    )
+  }
+}
+
+enum PlaybackSubtitleHorizontalAnchor: Sendable, Equatable {
+  case leading
+  case center
+  case trailing
+}
+
+enum PlaybackSubtitleVerticalAnchor: Sendable, Equatable {
+  case top
+  case center
+  case bottom
+}
+
+struct PlaybackSubtitleTextPlacement: Sendable, Equatable {
+  let alignment: Int?
+  let position: CGPoint?
+}
+
+struct PlaybackSubtitleTextLayout: Sendable, Equatable {
+  let point: CGPoint
+  let horizontalAnchor: PlaybackSubtitleHorizontalAnchor
+  let verticalAnchor: PlaybackSubtitleVerticalAnchor
+
+  func offset(in contentRect: CGRect) -> CGSize {
+    let anchorX =
+      switch horizontalAnchor {
+      case .leading: contentRect.minX
+      case .center: contentRect.midX
+      case .trailing: contentRect.maxX
+      }
+    let anchorY =
+      switch verticalAnchor {
+      case .top: contentRect.minY
+      case .center: contentRect.midY
+      case .bottom: contentRect.maxY
+      }
+    return CGSize(width: point.x - anchorX, height: point.y - anchorY)
+  }
+}
+
 enum PlaybackSubtitleGeometry {
   static func imageRect(
     position: CGRect,
     canvasSize: CGSize,
-    displaySize: CGSize
+    contentRect: CGRect
   ) -> CGRect {
     guard canvasSize != .zero, canvasSize.width > 0 else {
       return CGRect(
-        x: position.minX * displaySize.width,
-        y: position.minY * displaySize.height,
-        width: position.width * displaySize.width,
-        height: position.height * displaySize.height
+        x: contentRect.minX + position.minX * contentRect.width,
+        y: contentRect.minY + position.minY * contentRect.height,
+        width: position.width * contentRect.width,
+        height: position.height * contentRect.height
       )
     }
 
-    let scale = displaySize.width / canvasSize.width
+    let scale = contentRect.width / canvasSize.width
     return CGRect(
-      x: position.minX * canvasSize.width * scale,
-      y: displaySize.height / 2
+      x: contentRect.minX + position.minX * canvasSize.width * scale,
+      y: contentRect.midY
         + (position.minY * canvasSize.height - canvasSize.height / 2) * scale,
       width: position.width * canvasSize.width * scale,
       height: position.height * canvasSize.height * scale
+    )
+  }
+
+  static func textLayout(
+    placement: PlaybackSubtitleTextPlacement?,
+    contentRect: CGRect
+  ) -> PlaybackSubtitleTextLayout {
+    let requestedAlignment = placement?.alignment ?? 2
+    let alignment = (1...9).contains(requestedAlignment) ? requestedAlignment : 2
+    let column = (alignment - 1) % 3
+    let row = (alignment - 1) / 3
+    let horizontalAnchor: PlaybackSubtitleHorizontalAnchor =
+      switch column {
+      case 0: .leading
+      case 2: .trailing
+      default: .center
+      }
+    let verticalAnchor: PlaybackSubtitleVerticalAnchor =
+      switch row {
+      case 0: .bottom
+      case 2: .top
+      default: .center
+      }
+
+    let point: CGPoint
+    if let position = placement?.position {
+      point = CGPoint(
+        x: contentRect.minX + min(max(position.x, 0), 1) * contentRect.width,
+        y: contentRect.minY + min(max(position.y, 0), 1) * contentRect.height
+      )
+    } else {
+      let horizontalMargin = contentRect.width * 0.05
+      let verticalMargin = contentRect.height * 0.08
+      let x: CGFloat =
+        switch horizontalAnchor {
+        case .leading: contentRect.minX + horizontalMargin
+        case .center: contentRect.midX
+        case .trailing: contentRect.maxX - horizontalMargin
+        }
+      let y: CGFloat =
+        switch verticalAnchor {
+        case .top: contentRect.minY + verticalMargin
+        case .center: contentRect.midY
+        case .bottom: contentRect.maxY - verticalMargin
+        }
+      point = CGPoint(x: x, y: y)
+    }
+
+    return PlaybackSubtitleTextLayout(
+      point: point,
+      horizontalAnchor: horizontalAnchor,
+      verticalAnchor: verticalAnchor
     )
   }
 }
@@ -147,7 +264,7 @@ struct PlaybackSubtitleCue: @unchecked Sendable, Identifiable {
   let startTime: TimeInterval
   let endTime: TimeInterval
   let body: Body
-  let textPlacement: CGPoint?
+  let textPlacement: PlaybackSubtitleTextPlacement?
   let isForced: Bool
 }
 

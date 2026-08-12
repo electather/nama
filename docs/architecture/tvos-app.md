@@ -1,6 +1,6 @@
 # tvOS Player Architecture and POC Design
 
-Status: approved on 2026-08-12.
+Status: stopped on 2026-08-12; AetherEngine `6.21.0` rejected for Nama adoption.
 
 ## Decision
 
@@ -14,13 +14,17 @@ Use SwiftUI, Observation, and structured concurrency from Apple frameworks. Do
 not add a state-management framework, a second app target, a player protocol with
 one implementation, or empty scaffolding for future features.
 
-Pin AetherEngine `6.21.0` exactly for the spike. That tag currently resolves to
+Pin AetherEngine `6.21.0` exactly for the evaluated spike. That tag resolves to
 commit `87868c1c88ca4ae613180c4cfb5d68c07dde0298`; the application lockfile is the
-authoritative record of all resolved transitive revisions used by the tested
-build.
+authoritative record of the resolved source inspected by this spike. The pin is
+retained as the linked dependency and failed evidence on this branch, not as an
+approved product engine.
 
-This design closes only the AetherEngine physical-device and distribution-risk
-item in Milestone 1. Jellyfin negotiation, plugin IPC, authentication, and sync
+The implementation reached the architecture stop condition during exact-source
+review, before physical-device acceptance. AetherEngine `6.21.0` violates Nama's
+locator header-origin and logging rules, so this design does not close the
+Milestone 1 engine decision. No successor is selected; the choice has returned
+to design review. Jellyfin negotiation, plugin IPC, authentication, and sync
 semantics remain separate spikes.
 
 ## Goals
@@ -92,7 +96,7 @@ common by the two implementations.
 
 The Playback feature exposes only Nama-owned values:
 
-- A request containing the media locator, permitted HTTP headers, advisory
+- A request containing the media locator, permitted HTTP headers, allowed
   redirect origins, MIME type, optional resume position, and external subtitle
   locators.
 - Stable state: idle, loading, playing, paused, seeking, ended, or failed.
@@ -204,22 +208,34 @@ production hardening to this disposable LAN tool.
 ## Redirect and header policy
 
 `api.v1.PlaybackLocator.allowed_redirect_origins` remains represented in the
-Nama-owned request so a future engine or AetherEngine hook can enforce it.
-AetherEngine `6.21.0` currently strips known credential headers on cross-origin
-redirects but does not expose the per-locator redirect allowlist required by the
-current contract documentation.
+Nama-owned request. The canonical contract remains strict: every custom locator
+header is scoped to the initial origin, and redirects are limited to the
+validated allowlist.
 
-The lab tests direct, same-origin redirect, and cross-origin redirect cases with
-dummy `Authorization` and Jellyfin-style token headers. Credential leakage to a
-cross-origin target is a blocker. Following a redirect outside the advisory
-allowlist without forwarding credentials is recorded as a known non-blocking
-gap for this engine decision.
+Exact AetherEngine `6.21.0` source fails that contract in three independent
+ways:
 
-This is an intentional relaxation of the stricter client requirement currently
-described in `docs/architecture/api-contracts.md`. Implementation must update
-that canonical note to distinguish required credential containment from
-best-effort redirect allowlist enforcement; the Protobuf field remains additive
-and available to capable clients.
+- `RedirectHeaderPolicy` removes only a fixed list of recognized credential
+  names. It deliberately replays every unrecognized custom header when the
+  origin changes. The lab's fixed `X-Nama-Player-Lab-Marker` therefore reaches
+  the different-port target according to the pinned implementation.
+- `credentialsAllowed` accepts every same-host HTTP-to-HTTPS redirect without
+  comparing ports, retaining recognized credentials even though scheme and port
+  identify a different origin. The upstream test fixes the concrete
+  `http:8096` to `https:8920` behavior.
+- `EngineLog` is active in Release, marks messages public in OSLog, and call
+  sites interpolate complete `url.absoluteString` locator values.
+
+The app adapter cannot intercept the engine's internal redirect requests or
+redact its internal Release logging. Removing all headers before calling the
+engine would instead break sources that require their scoped locator headers.
+Adoption therefore requires a separately reviewed safe upstream pin or hook, or
+a different engine selected in design review; no app-side sanitization is
+accepted as a substitute.
+
+The plain-HTTP two-port lab exercises the unconditional unknown-header replay.
+TLS remains an explicit non-goal, so the same-host HTTP-to-HTTPS failure is
+source- and upstream-test evidence rather than a device-lab observation.
 
 ## Verification
 
@@ -305,9 +321,8 @@ The slice passes when all of the following are true:
    Atmos and passthrough remain clearly marked unverified.
 5. Failures are visible and actionable, and diagnostics contain no URLs,
    headers, or credentials.
-6. Redirect behavior is recorded and dummy credentials never reach a
-   cross-origin target. Lack of strict allowlist rejection alone does not fail
-   the spike.
+6. Redirect behavior is recorded; no custom locator header reaches a changed
+   origin, and redirects stay within the allowed-origin set.
 7. The dependency/distribution review finds no GPL/nonfree component and no
    unresolved obligation that prevents the intended distribution.
 8. AetherEngine types remain confined to the Playback engine-integration files.
@@ -316,10 +331,18 @@ If playback, HDR/Dolby Vision output, credential containment, adapter isolation,
 or distribution viability fails, stop before building product features around
 AetherEngine and return the engine choice to design review.
 
+That stop condition is active. AetherEngine `6.21.0` is **FAILED / REJECTED**
+for adoption because credential containment and locator logging fail source
+review. Physical playback, display, audio, redirect, and distribution rows are
+still **UNRUN / UNVERIFIED**; distribution remains blocked. No replacement
+engine has been selected.
+
 ## Evidence references
 
 - [AetherEngine 6.21.0](https://github.com/superuser404notfound/AetherEngine/releases/tag/6.21.0)
 - [AetherEngine license at 6.21.0](https://github.com/superuser404notfound/AetherEngine/blob/6.21.0/LICENSE)
 - [AetherEngine package manifest at 6.21.0](https://github.com/superuser404notfound/AetherEngine/blob/6.21.0/Package.swift)
 - [AetherEngine redirect-header policy at 6.21.0](https://github.com/superuser404notfound/AetherEngine/blob/6.21.0/Sources/AetherEngine/Demuxer/RedirectHeaderPolicy.swift)
+- [AetherEngine redirect-header tests at 6.21.0](https://github.com/superuser404notfound/AetherEngine/blob/6.21.0/Tests/AetherEngineTests/RedirectHeaderPolicyTests.swift)
+- [AetherEngine public Release logging at 6.21.0](https://github.com/superuser404notfound/AetherEngine/blob/6.21.0/Sources/AetherEngine/Diagnostics/EngineLog.swift)
 - [FFmpegBuild 2.4.2 license inventory](https://github.com/superuser404notfound/FFmpegBuild/blob/2.4.2/LICENSES/README.md)

@@ -50,6 +50,8 @@ jobs:
         run: git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
       - name: Check Swift formatting
         run: swift format lint --strict --recursive apps/tvos gen/swift/Package.swift
+      - name: Check Player Lab fixture server
+        run: python3 apps/tvos/fixture_server_check.py
       - name: Build tvOS simulator target
         run: xcodebuild -project apps/tvos/Nama.xcodeproj -scheme Nama -destination 'generic/platform=tvOS Simulator' -derivedDataPath .derived-data -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO build
       - name: Test tvOS simulator target

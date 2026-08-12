@@ -139,6 +139,7 @@
         [
           "Authorization": "Bearer nama-player-lab-dummy-authorization",
           "X-Emby-Token": "nama-player-lab-dummy-jellyfin",
+          "X-Nama-Player-Lab-Marker": "nama-player-lab-dummy-marker",
         ]
       }
     }

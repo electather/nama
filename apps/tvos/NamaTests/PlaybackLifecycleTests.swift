@@ -58,13 +58,76 @@ final class PlaybackLifecycleTests: XCTestCase {
     XCTAssertFalse(gate.acceptsEngineObservations)
   }
 
-  func testMapsImageSubtitlePixelCanvasToScreenGeometry() {
+  func testAspectFitRectLetterboxesWideVideo() {
+    let rect = PlaybackPresentationGeometry.aspectFitRect(
+      presentationSize: CGSize(width: 1_920, height: 1_080),
+      in: CGRect(x: 0, y: 0, width: 1_200, height: 900)
+    )
+
+    XCTAssertEqual(rect, CGRect(x: 0, y: 112.5, width: 1_200, height: 675))
+  }
+
+  func testAspectFitRectPillarboxesNarrowVideo() {
+    let rect = PlaybackPresentationGeometry.aspectFitRect(
+      presentationSize: CGSize(width: 1_440, height: 1_080),
+      in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080)
+    )
+
+    XCTAssertEqual(rect, CGRect(x: 240, y: 0, width: 1_440, height: 1_080))
+  }
+
+  func testMapsImageSubtitleCanvasInsideOffsetVideoRect() {
     let rect = PlaybackSubtitleGeometry.imageRect(
       position: CGRect(x: 0.1, y: 0.7, width: 0.8, height: 0.2),
       canvasSize: CGSize(width: 1_920, height: 2_160),
-      displaySize: CGSize(width: 960, height: 540)
+      contentRect: CGRect(x: 100, y: 50, width: 800, height: 450)
     )
 
-    XCTAssertEqual(rect, CGRect(x: 96, y: 486, width: 768, height: 216))
+    XCTAssertEqual(rect, CGRect(x: 180, y: 455, width: 640, height: 180))
+  }
+
+  func testTextPlacementPreservesEveryASSAnchor() {
+    let expected:
+      [(
+        Int, PlaybackSubtitleHorizontalAnchor, PlaybackSubtitleVerticalAnchor,
+        CGSize
+      )] = [
+        (1, .leading, .bottom, CGSize(width: 200, height: -100)),
+        (2, .center, .bottom, CGSize(width: -200, height: -100)),
+        (3, .trailing, .bottom, CGSize(width: -600, height: -100)),
+        (4, .leading, .center, CGSize(width: 200, height: 100)),
+        (5, .center, .center, CGSize(width: -200, height: 100)),
+        (6, .trailing, .center, CGSize(width: -600, height: 100)),
+        (7, .leading, .top, CGSize(width: 200, height: 300)),
+        (8, .center, .top, CGSize(width: -200, height: 300)),
+        (9, .trailing, .top, CGSize(width: -600, height: 300)),
+      ]
+    let contentRect = CGRect(x: 100, y: 50, width: 800, height: 400)
+
+    for (alignment, horizontal, vertical, offset) in expected {
+      let layout = PlaybackSubtitleGeometry.textLayout(
+        placement: PlaybackSubtitleTextPlacement(
+          alignment: alignment,
+          position: CGPoint(x: 0.25, y: 0.75)
+        ),
+        contentRect: contentRect
+      )
+
+      XCTAssertEqual(layout.point, CGPoint(x: 300, y: 350))
+      XCTAssertEqual(layout.horizontalAnchor, horizontal)
+      XCTAssertEqual(layout.verticalAnchor, vertical)
+      XCTAssertEqual(layout.offset(in: contentRect), offset)
+    }
+  }
+
+  func testDefaultTextPlacementUsesBottomCenterOfVideoRect() {
+    let layout = PlaybackSubtitleGeometry.textLayout(
+      placement: nil,
+      contentRect: CGRect(x: 100, y: 50, width: 800, height: 400)
+    )
+
+    XCTAssertEqual(layout.point, CGPoint(x: 500, y: 418))
+    XCTAssertEqual(layout.horizontalAnchor, .center)
+    XCTAssertEqual(layout.verticalAnchor, .bottom)
   }
 }

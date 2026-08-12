@@ -66,7 +66,11 @@ struct PlayerScreen: View {
   var body: some View {
     ZStack {
       NamaPlayerSurface(player: player)
-      SubtitleOverlay(cues: player.subtitleCues, clock: player.clock)
+      SubtitleOverlay(
+        cues: player.subtitleCues,
+        clock: player.clock,
+        presentationSize: player.videoPresentationSize
+      )
       VStack {
         if showingDiagnostics {
           DiagnosticsPanel(player: player, label: diagnosticsLabel)
@@ -118,9 +122,15 @@ struct PlayerScreen: View {
 private struct SubtitleOverlay: View {
   let cues: [PlaybackSubtitleCue]
   let clock: NamaPlaybackClock
+  let presentationSize: CGSize?
 
   var body: some View {
     GeometryReader { geometry in
+      let bounds = CGRect(origin: .zero, size: geometry.size)
+      let contentRect = PlaybackPresentationGeometry.aspectFitRect(
+        presentationSize: presentationSize ?? geometry.size,
+        in: bounds
+      )
       ForEach(
         cues.filter {
           $0.startTime <= clock.state.currentTime && clock.state.currentTime <= $0.endTime
@@ -128,17 +138,27 @@ private struct SubtitleOverlay: View {
       ) { cue in
         switch cue.body {
         case .text(let text):
+          let layout = PlaybackSubtitleGeometry.textLayout(
+            placement: cue.textPlacement,
+            contentRect: contentRect
+          )
           Text(text)
             .font(.title2.weight(.semibold))
             .multilineTextAlignment(.center)
             .padding(14)
             .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 10))
-            .position(textPosition(cue, in: geometry.size))
+            .frame(
+              width: contentRect.width,
+              height: contentRect.height,
+              alignment: alignment(for: layout)
+            )
+            .position(x: contentRect.midX, y: contentRect.midY)
+            .offset(layout.offset(in: contentRect))
         case .image(let image, let position, let canvasSize):
           let rect = PlaybackSubtitleGeometry.imageRect(
             position: position,
             canvasSize: canvasSize,
-            displaySize: geometry.size
+            contentRect: contentRect
           )
           Image(decorative: image, scale: 1)
             .resizable()
@@ -150,11 +170,20 @@ private struct SubtitleOverlay: View {
     .allowsHitTesting(false)
   }
 
-  private func textPosition(_ cue: PlaybackSubtitleCue, in size: CGSize) -> CGPoint {
-    guard let placement = cue.textPlacement else {
-      return CGPoint(x: size.width / 2, y: size.height * 0.82)
-    }
-    return CGPoint(x: size.width * placement.x, y: size.height * placement.y)
+  private func alignment(for layout: PlaybackSubtitleTextLayout) -> Alignment {
+    let horizontal: HorizontalAlignment =
+      switch layout.horizontalAnchor {
+      case .leading: .leading
+      case .center: .center
+      case .trailing: .trailing
+      }
+    let vertical: VerticalAlignment =
+      switch layout.verticalAnchor {
+      case .top: .top
+      case .center: .center
+      case .bottom: .bottom
+      }
+    return Alignment(horizontal: horizontal, vertical: vertical)
   }
 }
 
@@ -272,7 +301,7 @@ private struct DiagnosticsPanel: View {
       }
       Text("Audio: \(activeAudioLabel)")
       Text("Subtitles: \(activeSubtitleLabel)")
-      Text("Advisory redirect origins: \(player.advisoryRedirectOriginCount)")
+      Text("Allowed redirect origins: \(player.allowedRedirectOriginCount)")
       if case .failed(let failure) = player.state {
         Text("Failure: \(failure.summary)")
       }

@@ -126,7 +126,12 @@ final class PlaybackEngineIntegrationTests: XCTestCase {
     XCTAssertEqual(mapped.id, "7")
     XCTAssertEqual(mapped.startTime, 1.25)
     XCTAssertEqual(mapped.endTime, 3.5)
-    XCTAssertEqual(mapped.textPlacement, CGPoint(x: 0.5, y: 0.25))
+    XCTAssertEqual(
+      mapped.textPlacement,
+      PlaybackSubtitleTextPlacement(
+        alignment: 5,
+        position: CGPoint(x: 0.5, y: 0.25)
+      ))
     XCTAssertFalse(mapped.isForced)
     guard case .text(let text) = mapped.body else {
       return XCTFail("Expected a text cue")
@@ -186,6 +191,16 @@ final class PlaybackEngineIntegrationTests: XCTestCase {
     XCTAssertEqual(mappedImage.height, 1)
     XCTAssertEqual(mappedPosition, position)
     XCTAssertEqual(mappedCanvasSize, canvasSize)
+  }
+
+  func testNormalizesPresentationSizeBeforePublishingIt() {
+    XCTAssertEqual(
+      AetherPlaybackMapping.presentationSize(CGSize(width: 1_920, height: 1_080)),
+      CGSize(width: 1_920, height: 1_080)
+    )
+    XCTAssertNil(AetherPlaybackMapping.presentationSize(.zero))
+    XCTAssertNil(
+      AetherPlaybackMapping.presentationSize(CGSize(width: .infinity, height: 1_080)))
   }
 
   func testClassifiesTypedEngineErrorsWithoutLeakingDetails() {

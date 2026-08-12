@@ -5,6 +5,12 @@ The fixture server is disposable, unauthenticated HTTP for a trusted LAN; stop i
 after testing. Do not use real credentials. No physical-device run has been
 performed for this record.
 
+Adoption verdict: **FAILED / REJECTED** for AetherEngine `6.21.0`. Exact-source
+review found violations of Nama's header-origin and logging requirements, so the
+engine choice has returned to design review with no successor selected. Every
+physical/device observation below remains **UNRUN / UNVERIFIED**, and
+distribution remains blocked.
+
 ## Fixture setup
 
 Supply media you are permitted to use. Do not commit it. The fixture root must
@@ -28,7 +34,7 @@ run. Then run from the repository root, replacing only `fixture_root`:
 fixture_root="/absolute/path/to/player-lab-fixtures"
 test -d "$fixture_root"
 find "$fixture_root" -type f -exec shasum -a 256 {} + | sort
-python3 apps/tvos/fixture_server_check.py
+mise run check:tvos-fixtures
 lan_address="$(ipconfig getifaddr en0)"
 test -n "$lan_address"
 python3 apps/tvos/fixture_server.py --fixtures "$fixture_root" --bind "$lan_address" --port 8080
@@ -84,7 +90,10 @@ is UNVERIFIED and remains deferred to the Jellyfin-negotiation spike.
 
 ## Redirect and dummy-credential observations
 
-`GET /credential-check` returns and clears only
+The `dummyCredentials` scenario sends fixed dummy `Authorization`,
+`X-Emby-Token`, and nonstandard `X-Nama-Player-Lab-Marker` headers. Receipt of
+any one sets the same lock-protected boolean. `GET /credential-check` returns
+and clears only
 `{"dummy_credentials_received":true|false}`. It never returns the marker value.
 Clear both origins before each row, play the fixture once, then query both again:
 
@@ -93,17 +102,31 @@ curl --fail --silent "http://<primary-host>:8080/credential-check"
 curl --fail --silent "http://<primary-host>:8081/credential-check"
 ```
 
-| Fixture | Expected primary | Expected secondary | Actual observation |
+| Fixture | Source-predicted primary | Source-predicted secondary | Actual observation |
 | --- | --- | --- | --- |
 | `direct-dummy-credentials` | `true` | `false` | UNRUN — UNVERIFIED |
 | `same-origin-redirect` | `true` | `false` | UNRUN — UNVERIFIED |
-| `cross-origin-redirect` | `true` | `false`; any `true` is a blocker | UNRUN — UNVERIFIED |
+| `cross-origin-redirect` | `true` | `true` from the nonstandard marker; this is a blocker | UNRUN — UNVERIFIED |
 
-AetherEngine `6.21.0` source strips known credentials, including
-`Authorization` and `X-Emby-Token`, when an HTTP redirect changes port/origin.
-It exposes no per-locator `allowed_redirect_origins` hook. Header containment is
-mandatory; rejecting a credential-free redirect outside the advisory allowlist
-is a known non-blocking gap for this pinned slice. Device evidence remains UNRUN.
+AetherEngine `6.21.0` has a finite recognized-credential list. It strips
+`Authorization` and `X-Emby-Token` for the lab's different-port HTTP redirect,
+but deliberately replays every unrecognized custom header, including the fixed
+Nama marker. The redacted aggregate therefore predicts `true` at the secondary
+origin and exposes the contract failure without a real credential.
+The Python self-check separately follows the redirect once with that marker and
+asserts the secondary server can observe it, then repeats with an explicit
+strip-on-origin-change opener and asserts non-receipt. This proves only the
+harness plumbing; the AetherEngine prediction comes from its pinned source and
+upstream test, not from Python's redirect behavior.
+
+The same source treats every same-host HTTP-to-HTTPS redirect as credential-safe
+regardless of port, and its upstream test explicitly retains `Authorization`
+from `http:8096` to `https:8920`. This lab intentionally does not add TLS, so
+that second failure is source/test evidence rather than a lab-emulated result.
+AetherEngine also emits complete locator URLs through always-on public OSLog in
+Release. Nama cannot intercept the internal redirect or logging paths; removing
+headers at the app boundary would break header-authenticated media instead of
+fixing the engine. Device evidence remains UNRUN.
 
 ## Dependency and distribution evidence
 
@@ -161,3 +184,6 @@ and relinking materials; neither that UI nor release materials exist yet.
 
 Distribution status: **BLOCKED / UNRESOLVED**. Do not claim GPL/nonfree clearance
 or ship AetherEngine until the linked-artifact and obligation evidence closes.
+Even if that review later clears, the independent header-origin and Release-log
+failures reject `6.21.0`; adoption needs a safe reviewed upstream pin/hook or a
+new engine decision.

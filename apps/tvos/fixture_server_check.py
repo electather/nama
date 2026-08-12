@@ -17,6 +17,7 @@ from fixture_server import FixtureServers
 DUMMY_HEADERS = {
     "Authorization": "Bearer nama-player-lab-dummy-authorization",
     "X-Emby-Token": "nama-player-lab-dummy-jellyfin",
+    "X-Nama-Player-Lab-Marker": "nama-player-lab-dummy-marker",
 }
 
 
@@ -167,6 +168,7 @@ def main():
 
             for bad_range in ("bytes=8-3", "bytes=20-", "bytes=0-1,4-5", "bytes=abc"):
                 _expect_416(media_url, bad_range)
+            _expect_416(media_url, "bytes=" + "9" * 5_001 + "-")
 
             empty_url = f"{servers.primary_origin}/media/empty.bin"
             with _request(empty_url) as response:
@@ -221,6 +223,11 @@ def main():
             with _request(media_url, headers=DUMMY_HEADERS) as response:
                 assert response.read() == b"0123456789"
             assert _credential_status(servers.primary_origin) is True
+
+            for marker_name, marker_value in DUMMY_HEADERS.items():
+                with _request(media_url, headers={marker_name: marker_value}) as response:
+                    assert response.read() == b"0123456789"
+                assert _credential_status(servers.primary_origin) is True
             assert _credential_status(servers.primary_origin) is False
 
             same_url = f"{servers.primary_origin}/redirect/same/media/sample.bin"
@@ -237,6 +244,15 @@ def main():
 
             cross_url = f"{servers.primary_origin}/redirect/cross/media/sample.bin"
             _expect_redirect(cross_url, f"{servers.secondary_origin}/media/sample.bin")
+            marker_name = "X-Nama-Player-Lab-Marker"
+            with _request(
+                cross_url,
+                headers={marker_name: DUMMY_HEADERS[marker_name]},
+            ) as response:
+                assert response.read() == b"0123456789"
+            assert _credential_status(servers.primary_origin) is True
+            assert _credential_status(servers.secondary_origin) is True
+
             opener = urllib.request.build_opener(StripCrossOriginCredentials())
             with _request(cross_url, headers=DUMMY_HEADERS, opener=opener) as response:
                 assert response.url == f"{servers.secondary_origin}/media/sample.bin"
