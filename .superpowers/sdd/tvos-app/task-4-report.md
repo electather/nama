@@ -125,3 +125,64 @@ embedded artifacts, binary hashes/architectures, final GPL/nonfree status,
 notices, modification disclosures, corresponding-source/relinking materials,
 and competent legal review are UNVERIFIED. These unresolved obligations block
 AetherEngine distribution adoption; no result was fabricated.
+
+## Fix Round 1
+
+Addressed all Important review findings without adding dependencies or server
+features.
+
+### TDD RED / GREEN
+
+The expanded real-HTTP self-check installed a deterministic hook at the old
+path-open boundary: after validation, `media/race.bin` was replaced by an
+outside-root symlink. RED proved the race was exploitable:
+
+```text
+$ python3 apps/tvos/fixture_server_check.py
+AssertionError: a component swapped to a symlink was served
+exit 1
+```
+
+Production now opens the fixture root once, opens every directory and final
+file component relative to that descriptor with `O_NOFOLLOW` (and
+`O_DIRECTORY` for intermediate components), verifies the opened descriptor is
+a regular file, and uses that same descriptor for `fstat`, ranges, and response
+bytes. GREEN:
+
+```text
+$ python3 apps/tvos/fixture_server_check.py
+fixture server self-check: OK
+exit 0
+```
+
+The same check now independently asserts:
+
+- full and HEAD responses; `bytes=2-5`, suffix `bytes=-3`, open-ended
+  `bytes=6-`, explicit `bytes=0-3`, and ranged HEAD;
+- malformed, reversed, unsatisfiable, and multi-range `416` results;
+- zero-byte full response and zero-byte range `416` with `bytes */0`;
+- direct, single-encoded, double-encoded, encoded-separator, encoded-backslash,
+  final symlink, and symlinked-intermediate containment;
+- deterministic swap of the final component to an outside symlink is refused;
+- raw same-origin and cross-origin `307`, exact `Location`, empty body, then
+  followed redirect behavior;
+- primary marker receipt during cross-origin redirect, secondary non-receipt
+  after stripping, and marker-value redaction.
+
+Credential state is now one lock-protected boolean. Marker arrival and
+consume-and-clear each occur under that lock, so status cannot lose an arrival
+between separate `is_set()` and `clear()` operations. Only the boolean is
+returned.
+
+The single blocking Swift format defect was corrected in
+`gen/swift/Package.swift`; the strict full-root command now passes:
+
+```text
+$ swift format lint --strict --recursive apps/tvos gen/swift/Package.swift
+exit 0
+```
+
+Pinned Xcode `26.6`, simulator/device, playback, linked-artifact, and legal
+obligation gates remain exactly as unverified above. `mise run check:swift`
+was attempted again after the strict format fix and still stopped at the same
+missing `DEVELOPER_DIR` path before build or tests.

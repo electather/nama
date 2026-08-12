@@ -3,7 +3,9 @@
 import argparse
 import json
 import mimetypes
+import os
 import re
+import stat
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -34,21 +36,25 @@ class FixtureHandler(BaseHTTPRequestHandler):
     def _serve(self, *, send_body):
         server = self.server
         if any(self.headers.get(name) == value for name, value in DUMMY_CREDENTIALS.items()):
-            server.dummy_credentials_received.set()
+            with server.credential_lock:
+                server.dummy_credentials_received = True
 
         path = self._request_path()
         if path == "/credential-check":
-            received = server.dummy_credentials_received.is_set()
-            server.dummy_credentials_received.clear()
+            with server.credential_lock:
+                received = server.dummy_credentials_received
+                server.dummy_credentials_received = False
             self._json({"dummy_credentials_received": received}, send_body)
             return
 
         for prefix, cross_origin in (("/redirect/same/", None), ("/redirect/cross/", server.cross_origin)):
             if path and path.startswith(prefix):
                 relative_path = path.removeprefix(prefix)
-                if self._resolve_file(relative_path) is None:
+                file_descriptor = self._open_file(relative_path)
+                if file_descriptor is None:
                     self._empty_error(404)
                     return
+                os.close(file_descriptor)
                 target = "/" + quote(relative_path, safe="/")
                 self.send_response(307)
                 self.send_header("Location", target if cross_origin is None else cross_origin + target)
@@ -56,11 +62,12 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
 
-        file_path = self._resolve_file(path.lstrip("/") if path else "")
-        if file_path is None:
+        relative_path = path.lstrip("/") if path else ""
+        file_descriptor = self._open_file(relative_path)
+        if file_descriptor is None:
             self._empty_error(404)
             return
-        self._file(file_path, send_body)
+        self._file(file_descriptor, relative_path, send_body)
 
     def _request_path(self):
         parts = urlsplit(self.path)
@@ -73,42 +80,58 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 return path
             path = decoded
 
-    def _resolve_file(self, relative_path):
+    def _open_file(self, relative_path):
         if not relative_path or "\\" in relative_path or "\0" in relative_path:
             return None
         parts = relative_path.split("/")
         if any(part in ("", ".", "..") for part in parts):
             return None
+        descriptor = os.dup(self.server.fixture_root_descriptor)
         try:
-            candidate = (self.server.fixture_root / relative_path).resolve(strict=True)
-            candidate.relative_to(self.server.fixture_root)
-        except (OSError, RuntimeError, ValueError):
+            for component in parts[:-1]:
+                child = os.open(
+                    component,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=descriptor,
+                )
+                os.close(descriptor)
+                descriptor = child
+            file_descriptor = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = None
+            if not stat.S_ISREG(os.fstat(file_descriptor).st_mode):
+                os.close(file_descriptor)
+                return None
+            return file_descriptor
+        except OSError:
             return None
-        return candidate if candidate.is_file() else None
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
 
-    def _file(self, file_path, send_body):
-        size = file_path.stat().st_size
-        range_header = self.headers.get("Range")
-        byte_range = self._parse_range(range_header, size) if range_header else None
-        if range_header and byte_range is None:
-            self.send_response(416)
-            self.send_header("Content-Range", f"bytes */{size}")
-            self.send_header("Content-Length", "0")
+    def _file(self, file_descriptor, relative_path, send_body):
+        with os.fdopen(file_descriptor, "rb") as fixture:
+            size = os.fstat(file_descriptor).st_size
+            range_header = self.headers.get("Range")
+            byte_range = self._parse_range(range_header, size) if range_header else None
+            if range_header and byte_range is None:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+
+            start, end = byte_range if byte_range else (0, size - 1)
+            length = end - start + 1 if size else 0
+            self.send_response(206 if byte_range else 200)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Type", mimetypes.guess_type(relative_path)[0] or "application/octet-stream")
+            self.send_header("Content-Length", str(length))
+            if byte_range:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
             self.end_headers()
-            return
-
-        start, end = byte_range if byte_range else (0, size - 1)
-        length = end - start + 1 if size else 0
-        self.send_response(206 if byte_range else 200)
-        self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Content-Type", mimetypes.guess_type(file_path.name)[0] or "application/octet-stream")
-        self.send_header("Content-Length", str(length))
-        if byte_range:
-            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
-        self.end_headers()
-        if not send_body or not length:
-            return
-        with file_path.open("rb") as fixture:
+            if not send_body or not length:
+                return
             fixture.seek(start)
             remaining = length
             while remaining:
@@ -164,12 +187,14 @@ class FixtureServers:
 
         self._servers = []
         self._threads = []
+        self._fixture_root_descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
         try:
             for port in (primary_port, secondary_port):
                 server = FixtureHTTPServer((bind_address, port), FixtureHandler)
-                server.fixture_root = root
-                # ponytail: one lab-wide flag; add request IDs only if concurrent runs matter.
-                server.dummy_credentials_received = threading.Event()
+                server.fixture_root_descriptor = self._fixture_root_descriptor
+                # ponytail: one lock-protected lab-wide flag; add request IDs only if concurrent runs matter.
+                server.credential_lock = threading.Lock()
+                server.dummy_credentials_received = False
                 self._servers.append(server)
             self.primary_origin = self._origin(bind_address, self._servers[0].server_port)
             self.secondary_origin = self._origin(bind_address, self._servers[1].server_port)
@@ -178,6 +203,7 @@ class FixtureServers:
         except Exception:
             for server in self._servers:
                 server.server_close()
+            os.close(self._fixture_root_descriptor)
             raise
 
     @staticmethod
@@ -198,6 +224,7 @@ class FixtureServers:
             thread.join()
         for server in self._servers:
             server.server_close()
+        os.close(self._fixture_root_descriptor)
 
 
 def main():

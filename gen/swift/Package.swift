@@ -28,6 +28,6 @@ let package = Package(
         .product(name: "Connect", package: "connect-swift"),
         .product(name: "SwiftProtobuf", package: "swift-protobuf"),
       ]
-    ),
+    )
   ]
 )
