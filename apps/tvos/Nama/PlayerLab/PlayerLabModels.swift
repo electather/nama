@@ -186,7 +186,7 @@
       while let decoded = path.removingPercentEncoding, decoded != path {
         path = decoded
       }
-      return !path.hasPrefix("/")
+      return !path.hasPrefix("/") && !path.contains("\\")
         && !path.split(separator: "/", omittingEmptySubsequences: false).contains {
           $0 == "." || $0 == ".." || $0.isEmpty
         }

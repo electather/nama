@@ -29,6 +29,11 @@ import XCTest
           "http://media.test:8080",
         ],
         [
+          "Nama", "--player-lab", "--player-lab-base-url", "http://media.test:8080",
+          "--player-lab-base-url", "http://media.test:8081",
+        ],
+        ["Nama", "--player-lab", "--player-lab-base-url"],
+        [
           "Nama", "--player-lab", "--player-lab-base-url",
           "http://user:secret@media.test:8080",
         ],
@@ -86,8 +91,11 @@ import XCTest
       let unsafePaths = [
         "/private/movie.mkv",
         "../private/movie.mkv",
+        "media\\..\\private\\movie.mkv",
         "media/%2e%2e/private/movie.mkv",
         "media/%252e%252e/private/movie.mkv",
+        "media/%5c../private/movie.mkv",
+        "media/%255c../private/movie.mkv",
         "http://media.test/movie.mkv",
         "media/movie.mkv?token=secret",
         "media/movie.mkv#secret",
