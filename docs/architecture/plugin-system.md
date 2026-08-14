@@ -1,3 +1,13 @@
 # Plugin system
 
 The first Jellyfin integration is a separate first-party TypeScript executable bundled in the application image, launched and supervised by the core, and called through `nama.plugin.v1` ConnectRPC over an HTTP/1.1 Unix domain socket inside a mode-0700 runtime directory; the core supplies configuration and credentials at launch and owns timeouts, restarts, logging, schedules, cursors, retries, and all durable state. Plugins advertise the small capabilities they actually implement and translate provider APIs into Nama messages, but receive no database, queue, migration system, marketplace, installer, WASM host, or stable third-party SDK in the MVP; Windows transport and persistent/background native-media plugins are deferred until a real plugin requires them.
+
+## Milestone 1 IPC spike evidence
+
+On 2026-08-14, a disposable behavioral spike exercised generated `nama.plugin.v1.HealthService.Check` and `nama.plugin.v1.LibraryService.GetItem` through ConnectRPC 2.1.2 over an HTTP/1.1 Unix domain socket. It passed with Node.js 24.19.0 on Darwin 25.6.0 arm64 and in the `node:24.19.0-bookworm-slim` Linux image (`sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03`).
+
+The core created and verified a mode-`0700` runtime directory. Each launch received a new 32-byte bearer and the socket path through stdin, inherited no parent environment values, and emitted no stdout or stderr. Every registered RPC required the launch bearer; invalid and previous-launch bearers returned `UNAUTHENTICATED`. A shorter deadline on a delayed generated provider call returned `DEADLINE_EXCEEDED`, cancelled the handler through its Connect context signal, and left the subprocess healthy. The Linux proof also established that an abort-aware handler must preserve a Connect deadline signal reason instead of allowing the platform `AbortError` to become `INTERNAL`.
+
+After `SIGTERM`, the child closed cleanly, removed its socket, and exited zero. A new process rebound the same socket path with a new bearer, completed health and provider calls, and left the runtime directory empty after termination. The fixture used only compiled and per-launch input, so the exercised behavior required no plugin-owned durable state.
+
+This result validates the selected transport and lifecycle primitives on the MVP production and development operating systems. It does not implement or validate the Milestone 3 supervisor, bounded restart policy, crash-loop handling, resource limits, stderr integration, provider connectivity, Jellyfin behavior, credential persistence, schedules, or container packaging. The spike executable, test, and temporary ConnectRPC dependencies were retired after recording this evidence.
