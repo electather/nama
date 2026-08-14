@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Materialize the approved M0–M5 and MVP roadmap as repository milestones, labeled native issue hierarchies, and correctly statused items in the `nama` GitHub Project.
+**Goal:** Materialize the approved M0–M5 and MVP roadmap as repository milestones, labeled native issue hierarchies, and correctly statused items in the `Nama` GitHub Project.
 
 **Architecture:** `docs/release-plan.md` remains the product source of truth and `docs/superpowers/specs/2026-08-14-github-roadmap-design.md` is the exact GitHub artifact manifest. Mutations use GitHub REST/GraphQL through authenticated `gh`, query exact names before creation, and finish with independent read-back verification.
 
@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Repository: `electather/nama`; project owner and title: `electather` / `nama`.
+- Repository: `electather/nama`; project owner and title: `electather` / `Nama`.
 - Create seven milestones, 13 labels, seven parent issues, and 47 native sub-issues exactly as named in the approved specification.
 - The universal app lives conceptually under `apps/ios`, targets iOS 17+, tvOS 17+, and macOS 14+, and uses label `area: ios`.
 - Preserve existing labels, project fields, project views, and workflows.
@@ -27,7 +27,7 @@
 
 **Interfaces:**
 - Consumes: authenticated `electather` GitHub CLI session.
-- Produces: repository node ID, project number/ID, Status field ID, and option IDs for `Todo`, `In Progress`, and `Done`.
+- Produces: repository node ID, project number/ID, Status field ID, and option IDs for `Backlog`, `Ready`, `In progress`, and `Done`.
 
 - [ ] **Step 1: Grant project access**
 
@@ -47,7 +47,7 @@ Run:
 gh project list --owner electather --format json
 ```
 
-Expected: exactly one project titled `nama`.
+Expected: exactly one project titled `Nama`.
 
 - [ ] **Step 3: Resolve project fields**
 
@@ -57,7 +57,7 @@ Run:
 gh project field-list PROJECT_NUMBER --owner electather --format json
 ```
 
-Expected: one single-select field named `Status` containing `Todo`, `In Progress`, and `Done`.
+Expected: one single-select field named `Status` containing `Backlog`, `Ready`, `In progress`, `In review`, and `Done`.
 
 ### Task 2: Create repository milestones and labels
 
@@ -148,13 +148,17 @@ gh project item-add PROJECT_NUMBER --owner electather --url ISSUE_URL --format j
 
 Set M0 parent/children and the completed Apple TV spike to `Done` using `gh project item-edit` with the project ID, item ID, Status field ID, and Done option ID.
 
-- [ ] **Step 3: Set the current gate to In Progress**
+- [ ] **Step 3: Set the current gate to In progress**
 
-Set only the M1 parent to `In Progress`.
+Set only the M1 parent to `In progress`.
 
-- [ ] **Step 4: Set every other issue to Todo**
+- [ ] **Step 4: Set actionable M1 spikes to Ready**
 
-Set the remaining 44 open items to `Todo`.
+Set the four unresolved M1 spike sub-issues to `Ready`.
+
+- [ ] **Step 5: Keep future milestones in Backlog**
+
+Set every M2–M5 and MVP parent and sub-issue to `Backlog`.
 
 ### Task 5: Verify the complete GitHub graph
 
@@ -175,7 +179,7 @@ Expected: 54 issues total; seven parent issues; 47 native children; nine closed 
 
 - [ ] **Step 3: Verify project membership and statuses**
 
-Expected: all 54 issues in project `nama`; nine `Done`, one `In Progress`, and 44 `Todo`.
+Expected: all 54 issues in project `Nama`; nine `Done`, one `In progress`, four `Ready`, and 40 `Backlog`.
 
 - [ ] **Step 4: Verify excluded mutations**
 

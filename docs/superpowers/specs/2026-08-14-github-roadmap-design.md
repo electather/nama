@@ -14,7 +14,7 @@ Do not create Milestones 6–9 or v1 issues yet. Do not assign people, invent da
 
 - Repository: `electather/nama`
 - Project owner: `electather`
-- Project title: `nama`
+- Project title: `Nama`
 - Source of truth: `docs/release-plan.md`
 
 The GitHub repository currently exists but has no pushed content. Issue bodies therefore contain the applicable release-plan requirements directly and name the source path without depending on a resolvable branch link.
@@ -55,7 +55,7 @@ Keep all existing repository labels. Reuse `enhancement`, `documentation`, and `
 | `area: sync` | `FBCA04` | Canonical user state, reconciliation, imports, and exports. |
 | `area: deployment` | `BFD4F2` | Container packaging, installation, backup, restore, and recovery. |
 
-Milestones carry release phase and the project Status field carries workflow state. Do not create milestone, priority, Todo, In Progress, Done, or release-blocker labels.
+Milestones carry release phase and the project Status field carries workflow state. Do not create milestone, priority, Backlog, Ready, In progress, Done, or release-blocker labels.
 
 ## Issue hierarchy
 
@@ -102,7 +102,7 @@ Parent: `M1 — Retire the highest risks`
 4. `Prove Better Auth behind Nama Connect RPCs`
 5. `Prove watch-state reconciliation semantics`
 
-The parent is open with project status `In Progress`. The four unresolved spikes are open with status `Todo`. Every sub-issue receives `spike`; security-sensitive spikes also receive `security`.
+The parent is open with project status `In progress`. The four unresolved spikes are open with status `Ready`. Every sub-issue receives `spike`; security-sensitive spikes also receive `security`.
 
 ### M2 parent and sub-issues
 
@@ -116,7 +116,7 @@ Parent: `M2 — Bootable core, administrator setup, and CLI`
 6. `Complete the CLI help, JSON, completion, and exit-code contract`
 7. `Add the repository skill for safe CLI operation`
 
-The parent and all sub-issues are open with status `Todo`.
+The parent and all sub-issues are open with status `Backlog`.
 
 ### M3 parent and sub-issues
 
@@ -129,7 +129,7 @@ Parent: `M3 — Plugin runtime and Jellyfin connection`
 5. `Add provider connection and capability CLI commands`
 6. `Package the core and Jellyfin plugin in one image`
 
-The parent and all sub-issues are open with status `Todo`.
+The parent and all sub-issues are open with status `Backlog`.
 
 ### M4 parent and sub-issues
 
@@ -145,7 +145,7 @@ Parent: `M4 — iOS app pairing, browsing, and direct playback`
 8. `Implement playback controls, track selection, failure, and recovery`
 9. `Meet iOS, tvOS, and macOS accessibility and input requirements`
 
-The parent and all sub-issues are open with status `Todo`.
+The parent and all sub-issues are open with status `Backlog`.
 
 ### M5 parent and sub-issues
 
@@ -159,7 +159,7 @@ Parent: `M5 — Canonical progress and two-way Jellyfin sync`
 6. `Prevent sync echoes and expose retry health`
 7. `Implement initial import and conservative polling`
 
-The parent and all sub-issues are open with status `Todo`.
+The parent and all sub-issues are open with status `Backlog`.
 
 ### MVP parent and sub-issues
 
@@ -172,17 +172,18 @@ Parent: `MVP — Release private single-user iOS app`
 5. `Pass contract, core, CLI, and universal Apple app release checks`
 6. `Verify install, upgrade, outage, and restart recovery scenarios`
 
-The parent and all sub-issues are open with status `Todo`. The parent depends on completion of M0–M5; the dependency is stated in its body rather than represented as a duplicated status label.
+The parent and all sub-issues are open with status `Backlog`. The parent depends on completion of M0–M5; the dependency is stated in its body rather than represented as a duplicated status label.
 
 ## Project assignment
 
-Add all 54 issues—seven parents and 47 sub-issues—to the `nama` project.
+Add all 54 issues—seven parents and 47 sub-issues—to the `Nama` project.
 
 Use the existing project `Status` field:
 
 - `Done`: M0 parent and sub-issues; completed Apple TV feasibility sub-issue.
-- `In Progress`: M1 parent only.
-- `Todo`: every other open parent and sub-issue.
+- `In progress`: M1 parent only.
+- `Ready`: the four unresolved M1 spikes.
+- `Backlog`: every M2–M5 and MVP parent and sub-issue.
 
 Preserve existing project fields, views, options, and workflows. Do not create estimates, dates, priorities, iterations, or assignee fields.
 
@@ -211,7 +212,7 @@ The conversion is complete when:
 - seven milestone parent issues and 47 native sub-issues exist;
 - every issue has the correct repository milestone and project membership;
 - M0 history and the playback feasibility spike are closed without marking unresolved work complete;
-- the M1 parent is the only `In Progress` item;
-- all future work is `Todo`;
+- the M1 parent is the only `In progress` item, and the four unresolved M1 spikes are `Ready`;
+- all M2–M5 and MVP work is `Backlog`;
 - no Milestone 6–9, v1, explicit non-goal, due date, estimate, personal assignment, source push, or remote configuration was added; and
 - a final read-back confirms GitHub state instead of relying on successful mutation responses.
