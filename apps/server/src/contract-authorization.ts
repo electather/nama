@@ -1,4 +1,4 @@
-export type ContractAuthority =
+type ContractAuthority =
   | "public"
   | "bootstrap-token"
   | "polling-token"
