@@ -91,6 +91,7 @@ apps/server/
     database.integration.test.ts
     server.test.ts
     server.integration.test.ts
+  .fallowrc.json
   package.json
   tsconfig.json
   vitest.config.ts
@@ -108,6 +109,7 @@ apps/server/
 | `apps/server/test/` | Vitest unit and integration suites plus migration fixtures |
 | `apps/server/test/compose.yaml` | Isolated PostgreSQL 18 integration service |
 | `apps/server/vitest.config.ts` | Serial integration-test and test-environment configuration |
+| `apps/server/.fallowrc.json` | Runtime entries, complete source-zone coverage, dependency direction, and maintainability thresholds |
 | `scripts/check-server-tests.sh` | Start and tear down the isolated Compose project around serial integration tests |
 
 Tagged errors stay beside their owner: configuration errors in `config.ts`, connection and migration errors in `database.ts`, and bind and shutdown errors in `server.ts`. Pure validation, overlay, dispatch, and normalization helpers remain beside the feature that uses them.
@@ -115,6 +117,79 @@ Tagged errors stay beside their owner: configuration errors in `config.ts`, conn
 Do not add `core/`, `utils/`, `repositories/`, `interfaces/`, or premature subsystem directories. Convert a module into a directory only after it contains multiple coherent files. Later issues perform that conversion when needed.
 
 Move `apps/server/src/contract.test.ts` to `apps/server/test/contract.test.ts` and convert it from `node:test` to Vitest. Replace the server-local contract-only test script with one complete `check:test` script. The root TypeScript check must execute it. Do not add a root Mise task.
+
+## Maintainability and growth
+
+Apply Clean Code principles as ownership and review rules, not as abstraction quotas or mechanical fragmentation rules.
+
+### Dependency direction
+
+Keep runtime imports acyclic:
+
+```text
+main -> app
+main -> logging
+app -> config + logging + database + server
+logging -> config
+database -> config
+server -> config + database
+```
+
+Lower modules never import `app.ts` or `main.ts`. `config.ts` imports no application module. Contract-probe files remain independent from runtime files in issue #20.
+
+Update Fallow with both graph entrypoints: `src/main.ts` and `src/contract-probe.ts`. Define zones for entry, composition, configuration, logging, database, transport, and contracts. Cover every source file. Permit only the dependency direction above; contract files may depend on their own zone but not runtime zones.
+
+Keep these existing Fallow gates enabled:
+
+- circular dependencies are errors;
+- boundary coverage is complete;
+- unused files, exports, types, and dependencies are errors;
+- semantic duplicate detection remains enabled;
+- maximum cyclomatic complexity is 20;
+- maximum cognitive complexity is 15;
+- maximum unit size is 60; and
+- suppressions require reasons and cannot become stale.
+
+Oxlint, strict TypeScript, Vitest, and Fallow remain mandatory through `mise run check:ts`.
+
+### Ownership and readability
+
+One module owns each policy:
+
+- configuration validation belongs to `config.ts`;
+- log shape and secret-safe emission belong to `logging.ts`;
+- pool, migration, probe, and database failure policy belong to `database.ts`;
+- admission, operational routes, and shutdown policy belong to `server.ts`;
+- construction belongs to `app.ts`; and
+- process launch belongs to `main.ts`.
+
+Do not duplicate a policy in another module for convenience.
+
+Functions use intention-revealing names, operate at one abstraction level, and keep side effects at module edges. Validation, overlay mapping, dispatch decisions, and state transitions remain pure. Inputs are explicit. Avoid mutable globals, boolean control parameters, hidden environment reads, sentinel values, and ambiguous `null`.
+
+Tagged errors represent expected failure. Comments explain security invariants or non-obvious decisions; they do not restate syntax.
+
+Export only values required by another module. Parser output, `pg.Pool`, sockets, migration internals, and feature-local helpers remain private. Tests exercise observable behavior through the owning service instead of widening production exports.
+
+### Evidence-driven extraction
+
+Split a module when it develops multiple independent reasons to change. Do not split only because of an arbitrary file length. Introduce an interface only when a second real implementation exists. Extract duplication only after repeated code proves it represents one policy.
+
+Do not add trivial wrappers solely to make functions shorter. Prefer a readable cohesive function over fragmented indirection.
+
+### Review checklist
+
+Every server change must answer:
+
+1. Which module owns this behavior?
+2. Do names and types explain its purpose?
+3. Are side effects confined to a boundary?
+4. Is dependency direction still acyclic?
+5. Is the exported surface minimal?
+6. Are expected failures typed and safely normalized?
+7. Does verification defend observable behavior rather than implementation shape?
+8. Is each new abstraction justified by a current second use?
+9. Can obsolete code, comments, or exports be deleted?
 
 ## Configuration
 
