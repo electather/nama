@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: fallow-server
+        name: Fallow server changed-file audit
+        entry: pnpm --filter @nama/server run audit:fallow
+        language: system
+        pass_filenames: false
+        files: ^(apps/server/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|tsconfig\.base\.json$)
+        stages: [pre-commit]
