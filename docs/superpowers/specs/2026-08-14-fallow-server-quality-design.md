@@ -38,7 +38,7 @@ No baseline, warning downgrade, blanket handwritten-source ignore, or inline sup
 
 ## Architecture boundary policy
 
-The current `src/contract-*.ts` files form one `contracts` zone. The zone has an explicit empty cross-zone allowlist; same-zone imports remain allowed by Fallow. Boundary coverage requires every analyzed source file to belong to a zone.
+The current contract files form one `contracts` zone through the `src/contract*.ts` pattern, which includes both hyphenated modules and `contract.test.ts`. The zone has an explicit empty cross-zone allowlist; same-zone imports remain allowed by Fallow. Boundary coverage requires every analyzed source file to belong to a zone.
 
 This gives the current compile-only contract boundary an accurate home without guessing the future runtime's directory structure. When runtime modules arrive, unzoned files fail until the Fallow boundary configuration is extended to match the accepted modular-monolith architecture.
 
