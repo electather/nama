@@ -46,6 +46,7 @@ Issue #21 adds production schema definitions and reviewed migrations. Issue #23 
 8. Startup performs no write or migration retry.
 9. Readiness may recover after transient database loss without restarting.
 10. Finalizers release only acquired resources and are safe after partial startup.
+11. Effect-local spans remain process-internal diagnostics, not an exported or propagated tracing contract.
 
 ## Dependencies
 
@@ -58,7 +59,7 @@ Add exact-pinned native dependencies through pnpm.
 | Runtime | `smol-toml` | ESM TOML parser with no runtime dependencies |
 | Development | `@types/pg`, `vitest`, `@effect/vitest` | Strict types and one server test runner |
 
-Do not add Connect, Better Auth, a second dependency-injection system, Testcontainers, a retry library, or an observability backend.
+Do not add Connect, Better Auth, `@effect/opentelemetry`, a second dependency-injection system, Testcontainers, a retry library, or an observability backend.
 
 ## File ownership
 
@@ -247,6 +248,20 @@ Do not log health probes at info level. Log database readiness only when the obs
 Before configured logging exists, a minimal bootstrap writer emits one JSON object to stderr. It contains only timestamp, fatal level, `server.start_failed`, and a normalized error tag.
 
 Expected failures do not log arbitrary exception messages or causes. Unexpected defects may include sanitized stack frames with the exception message line removed. Stack sanitation must never serialize enumerable exception fields.
+
+### Tracing boundary
+
+Effect-local spans produced by named `Effect.fn` functions are permitted for in-process diagnostics and improved stack traces. They are not a public or operational tracing contract.
+
+Issue #20 does not:
+
+- add OpenTelemetry, OTLP logging, or another exporter;
+- configure resource attributes, sampling, or export endpoints;
+- accept or propagate trace headers;
+- add trace or span IDs to the stable log fields; or
+- expose span data.
+
+Issue #23 introduces Nama request and correlation IDs for RPC logs independently. Exported tracing remains deferred to operational hardening after observed need.
 
 ## Shutdown
 
