@@ -102,6 +102,7 @@ Fail early, fail clearly, and never swallow a failure.
 
 - At every trust boundary, validate input and return the documented Connect code plus stable Nama reason and safe field details where applicable.
 - Normalize external failures at the adapter boundary. Unexpected defects remain internal and expose only a correlation ID to clients.
+- When an abort-aware plugin operation stops on `HandlerContext.signal`, preserve a Connect signal reason; never let the platform `AbortError` turn a deadline into `INTERNAL`.
 - Use structured, allowlisted log fields. Never log request bodies, arbitrary headers, passwords, tokens, database URLs, configuration values, provider credentials, locator URLs, or locator headers.
 - The API p95 budget is 200ms. Once runnable server traffic exists, propose and implement a concrete latency-monitoring path before claiming the budget is met; do not add a metrics backend speculatively today.
 - Filter, sort, aggregate, and paginate in PostgreSQL when persistence exists. Avoid unbounded reads, `select *`, and N+1 request paths.

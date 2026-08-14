@@ -128,7 +128,14 @@ async function main(): Promise<void> {
           if (request.itemReference?.itemId !== FIXTURE_ITEM_REFERENCE) {
             throw new ConnectError("provider item not found", Code.NotFound);
           }
-          await delay(bootstrap.getItemDelayMs, undefined, { signal: context.signal });
+          try {
+            await delay(bootstrap.getItemDelayMs, undefined, { signal: context.signal });
+          } catch {
+            if (context.signal.reason instanceof ConnectError) {
+              throw context.signal.reason;
+            }
+            throw new ConnectError("plugin operation cancelled", Code.Canceled);
+          }
           return {
             item: {
               itemReference: { itemId: FIXTURE_ITEM_REFERENCE },

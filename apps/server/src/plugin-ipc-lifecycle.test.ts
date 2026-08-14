@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-statements -- One disposable end-to-end assertion block mirrors the issue acceptance criteria.
+// oxlint-disable eslint/max-statements, eslint/sort-imports -- One disposable end-to-end assertion block mirrors the issue acceptance criteria.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
