@@ -7,8 +7,6 @@
     "check:type": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@connectrpc/connect": "2.1.2",
-    "@connectrpc/connect-node": "2.1.2",
     "@nama/api": "workspace:*"
   },
   "devDependencies": {
