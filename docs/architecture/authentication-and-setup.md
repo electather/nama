@@ -14,7 +14,7 @@ The focused proof is:
 pnpm --filter @nama/server exec node --test src/auth-spike.test.ts
 ```
 
-It creates the administrator, signs in, authenticates `GetCurrentUser`, forces session deletion to fail, observes failed sign-out while the same bearer remains valid, removes the fault, signs out, and observes that the bearer is then rejected. The test also confirms that Better Auth's sign-in endpoint is not mounted and that public revocation errors contain none of the issued secrets.
+It creates the administrator, signs in, authenticates `GetCurrentUser`, forces session deletion to fail, observes failed sign-out while the same bearer remains valid, removes the fault, signs out, and observes that the bearer is then rejected. A concurrent setup case also proves that one bootstrap token creates exactly one administrator. The tests confirm that Better Auth's sign-in endpoint is not mounted and that public revocation errors contain none of the issued secrets.
 
 The spike uses Better Auth's official stateful memory adapter. It proves RPC translation and failure semantics only; it does not prove PostgreSQL migrations, durable initialization, restart repair, production logging, or server lifecycle. Those remain Milestone 2 work.
 

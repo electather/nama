@@ -11,6 +11,7 @@ import { SetupService } from "@nama/api/nama/api/v1/setup_pb.js";
 import { startAuthSpikeServer } from "./auth-spike.ts";
 
 const HTTP_NOT_FOUND = 404;
+const SINGLE_ADMINISTRATOR = 1;
 
 void test("Nama confirms Better Auth session revocation", async (context) => {
   const bootstrapToken = "bootstrap-secret-not-for-logs";
@@ -87,4 +88,65 @@ void test("Nama confirms Better Auth session revocation", async (context) => {
     );
     return true;
   });
+});
+
+void test("bootstrap token creates only one administrator", async (context) => {
+  const password = "administrator-password-not-for-logs";
+  const server = await startAuthSpikeServer({
+    authSecret: "fedcba9876543210fedcba9876543210",
+    bootstrapToken: "single-use-bootstrap-token",
+    failSessionDeletion: () => false,
+  });
+  context.after(() => server.close());
+
+  const transport = createConnectTransport({
+    baseUrl: server.baseUrl,
+    httpVersion: "1.1",
+  });
+  const setup = createClient(SetupService, transport);
+  const auth = createClient(AuthService, transport);
+  const attempts = [
+    {
+      bootstrapToken: "single-use-bootstrap-token",
+      displayName: "First Administrator",
+      email: "first@example.com",
+      password,
+    },
+    {
+      bootstrapToken: "single-use-bootstrap-token",
+      displayName: "Second Administrator",
+      email: "second@example.com",
+      password,
+    },
+  ] as const;
+
+  const results = await Promise.allSettled(
+    attempts.map((attempt) => setup.createAdministrator(attempt)),
+  );
+  const fulfilled = results.filter((result) => result.status === "fulfilled");
+  const rejected = results.filter((result) => result.status === "rejected");
+  assert.equal(fulfilled.length, SINGLE_ADMINISTRATOR);
+  assert.equal(rejected.length, SINGLE_ADMINISTRATOR);
+
+  const [failedSetup] = rejected;
+  assert.ok(failedSetup);
+  const setupError = ConnectError.from(failedSetup.reason);
+  assert.equal(setupError.code, Code.FailedPrecondition);
+  assert.deepEqual(
+    setupError.findDetails(ErrorInfoSchema).map((detail) => detail.reason),
+    ["ALREADY_INITIALIZED"],
+  );
+
+  const [successfulSetup] = fulfilled;
+  assert.ok(successfulSetup);
+  const winningEmail = successfulSetup.value.administrator?.email;
+  if (winningEmail === undefined) {
+    assert.fail("successful setup did not return an administrator email");
+  }
+  const losingAttempt = attempts.find((attempt) => attempt.email !== winningEmail);
+  assert.ok(losingAttempt);
+  await assert.rejects(
+    auth.signIn({ email: losingAttempt.email, password }),
+    (failure: unknown) => ConnectError.from(failure).code === Code.Unauthenticated,
+  );
 });

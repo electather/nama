@@ -181,6 +181,7 @@ const startAuthSpikeServer = async ({
   });
 
   let initialized = false;
+  let setupInProgress = false;
 
   const resolveSession = async (headers: Headers) => {
     const session = await auth.api.getSession({ headers }).catch(() => {
@@ -212,7 +213,7 @@ const startAuthSpikeServer = async ({
     routes(router) {
       router.service(SetupService, {
         async createAdministrator(request) {
-          if (initialized) {
+          if (initialized || setupInProgress) {
             throw publicError(
               Code.FailedPrecondition,
               "ALREADY_INITIALIZED",
@@ -227,6 +228,7 @@ const startAuthSpikeServer = async ({
             );
           }
 
+          setupInProgress = true;
           const result = await auth.api
             .signUpEmail({
               body: {
@@ -236,9 +238,11 @@ const startAuthSpikeServer = async ({
               },
             })
             .catch(() => {
+              setupInProgress = false;
               throw publicError(Code.Internal, "INTERNAL", "Administrator creation failed");
             });
           initialized = true;
+          setupInProgress = false;
           return { administrator: toAdministrator(result.user) };
         },
         getStatus() {
