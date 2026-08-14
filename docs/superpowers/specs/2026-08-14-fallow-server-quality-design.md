@@ -32,7 +32,7 @@ Duplication analysis is enabled in semantic mode with near-duplicate detection, 
 
 Health analysis keeps Fallow's documented SIG-aligned ceilings: cyclomatic complexity 20, cognitive complexity 15, CRAP 30, and unit size 60 lines. `*.test.ts` files are excluded only from health analysis because Fallow's static coverage estimate cannot meaningfully assign coverage to test callbacks; dead-code, dependency, duplicate, type-aware, and other applicable checks still inspect tests.
 
-The default Fallow pipeline gates dead code, dependencies, cycles, duplication, and health. A second explicit `fallow security --fail-on-issues` invocation gates the separate security-candidate analyzer. Ordinary security categories and the two include-required categories, `hardcoded-secret` and `secret-to-network`, are enabled. Findings are treated as review-blocking candidates, not automatically as confirmed vulnerabilities.
+The default Fallow pipeline gates dead code, dependencies, cycles, duplication, and health. Separate fatal invocations run `fallow flags --fail-on-issues` for feature-flag detection and `fallow security --fail-on-issues` for security candidates. Ordinary security categories and the two include-required categories, `hardcoded-secret` and `secret-to-network`, are enabled. Findings are treated as review-blocking candidates, not automatically as confirmed vulnerabilities.
 
 No baseline, warning downgrade, blanket handwritten-source ignore, or inline suppression is part of initial adoption.
 
@@ -46,7 +46,7 @@ This gives the current compile-only contract boundary an accurate home without g
 
 The server manifest exposes:
 
-- `check:fallow`: full Fallow pipeline with all findings fatal, followed by the separate fatal security scan;
+- `check:fallow`: full Fallow pipeline with all findings fatal, followed by the separate fatal feature-flag and security scans;
 - `audit:fallow`: Fallow's changed-file audit against `HEAD`, quiet enough for pre-commit use.
 
 The root `check:ts` command invokes the server Fallow check alongside the existing formatter, Oxlint, TypeScript, and contract checks. Existing `mise run check:ts`, `mise run check`, and the Linux CI TypeScript job therefore gain Fallow without a new CI workflow or orchestration layer.
