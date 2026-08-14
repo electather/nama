@@ -4,18 +4,10 @@ Better Auth manages the one MVP administrator's credentials and sessions but is 
 
 ## Milestone 1 Better Auth Connect spike
 
-GitHub issue #18 exercised Better Auth `1.6.26` only through generated Nama `SetupService` and `AuthService` clients. The loopback spike mounted no Better Auth HTTP route. Administrator creation kept automatic sign-in disabled; `AuthService.SignIn` extracted the bearer plugin's signed `set-auth-token` header and returned it only as `BearerCredential.token`.
+The spike proved the administrator lifecycle through generated Nama `SetupService` and `AuthService` clients without mounting a Better Auth HTTP route. Administrator creation keeps automatic sign-in disabled and single-flight, and `AuthService.SignIn` exposes only the bearer plugin's signed token as `BearerCredential.token`. Public errors and logs must not expose issued secrets or private Better Auth failures.
 
-Source review and the forced-failure flow confirmed that Better Auth `1.6.26` catches a failed `deleteSession()` call, clears client cookie state, and still returns `{ success: true }`. Nama must therefore treat that result as non-authoritative. `AuthService.SignOut` re-resolves the presented bearer against the session store and succeeds only when no session remains. A still-valid bearer or a failed confirmation returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the client retains the bearer and resolves the ambiguity through `GetCurrentUser`.
+The pinned Better Auth release can report successful sign-out after its session deletion fails. Nama therefore treats Better Auth's result as non-authoritative: `AuthService.SignOut` succeeds only after the presented bearer no longer resolves in the session store. A still-valid bearer or failed confirmation returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the client retains the bearer and resolves ambiguity through `GetCurrentUser`.
 
-The focused proof is:
+The disposable spike uses Better Auth's official stateful memory adapter. It proves RPC translation and failure semantics, not PostgreSQL migrations, durable initialization, restart repair, production logging, or server lifecycle. Those remain Milestone 2 work.
 
-```bash
-pnpm --filter @nama/server exec node --test src/auth-spike.test.ts
-```
-
-It creates the administrator, signs in, authenticates `GetCurrentUser`, forces session deletion to fail, observes failed sign-out while the same bearer remains valid, removes the fault, signs out, and observes that the bearer is then rejected. A concurrent setup case also proves that one bootstrap token creates exactly one administrator. The tests confirm that Better Auth's sign-in endpoint is not mounted and that public revocation errors contain none of the issued secrets.
-
-The spike uses Better Auth's official stateful memory adapter. It proves RPC translation and failure semantics only; it does not prove PostgreSQL migrations, durable initialization, restart repair, production logging, or server lifecycle. Those remain Milestone 2 work.
-
-Better Auth `1.6.26` and its transitive `@better-fetch/fetch` declarations do not compile under this repository's TypeScript `7.0.2`, `exactOptionalPropertyTypes: true`, and `skipLibCheck: false` settings: they reference optional Bun and Cloudflare types and contain incompatible optional-property declarations. The disposable spike loads the pinned runtime behind a private, structurally typed boundary instead of weakening repository type checks. Milestone 2 must resolve this upstream compatibility risk before adopting a normal static Better Auth import; it must not enable `skipLibCheck` or add unused runtime packages to hide it.
+The pinned Better Auth and transitive fetch declarations are incompatible with the repository's strict TypeScript settings because they reference optional runtime types and contain incompatible optional properties. The spike isolates the runtime behind a private, structurally typed boundary instead of weakening repository checks. Milestone 2 must resolve this upstream compatibility risk before adopting a normal static import; it must not enable `skipLibCheck` or add unused runtime packages to hide it.
