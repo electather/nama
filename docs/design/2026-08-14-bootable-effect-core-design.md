@@ -61,7 +61,40 @@ Add exact-pinned native dependencies through pnpm.
 
 Do not add Connect, Better Auth, `@effect/opentelemetry`, a second dependency-injection system, Testcontainers, a retry library, or an observability backend.
 
-## File ownership
+## Directory and file ownership
+
+Keep the initial server flat by responsibility:
+
+```text
+apps/server/
+  src/
+    main.ts
+    app.ts
+    config.ts
+    logging.ts
+    database.ts
+    server.ts
+    contract-authorization.ts
+    contract-errors.ts
+    contract-probe.ts
+  drizzle/
+    meta/
+      _journal.json
+  test/
+    fixtures/
+      migrations/
+        upgrade/
+        failure/
+    compose.yaml
+    contract.test.ts
+    config.test.ts
+    database.integration.test.ts
+    server.test.ts
+    server.integration.test.ts
+  package.json
+  tsconfig.json
+  vitest.config.ts
+```
 
 | Path | Responsibility |
 | --- | --- |
@@ -71,11 +104,15 @@ Do not add Connect, Better Auth, `@effect/opentelemetry`, a second dependency-in
 | `apps/server/src/logging.ts` | Build the configured Effect JSON logger and the pre-configuration fatal writer |
 | `apps/server/src/database.ts` | Own pool, Drizzle, migration execution, readiness probes, and database failure normalization |
 | `apps/server/src/server.ts` | Own readiness state, health dispatch, request runtime, listener, drain, and connection closure |
-| `apps/server/src/errors.ts` | Define the small tagged startup and shutdown error set |
 | `apps/server/drizzle/meta/_journal.json` | Valid zero-entry production migration journal; issue #21 adds entries and SQL |
 | `apps/server/test/` | Vitest unit and integration suites plus migration fixtures |
 | `apps/server/test/compose.yaml` | Isolated PostgreSQL 18 integration service |
+| `apps/server/vitest.config.ts` | Serial integration-test and test-environment configuration |
 | `scripts/check-server-tests.sh` | Start and tear down the isolated Compose project around serial integration tests |
+
+Tagged errors stay beside their owner: configuration errors in `config.ts`, connection and migration errors in `database.ts`, and bind and shutdown errors in `server.ts`. Pure validation, overlay, dispatch, and normalization helpers remain beside the feature that uses them.
+
+Do not add `core/`, `utils/`, `repositories/`, `interfaces/`, or premature subsystem directories. Convert a module into a directory only after it contains multiple coherent files. Later issues perform that conversion when needed.
 
 Move `apps/server/src/contract.test.ts` to `apps/server/test/contract.test.ts` and convert it from `node:test` to Vitest. Replace the server-local contract-only test script with one complete `check:test` script. The root TypeScript check must execute it. Do not add a root Mise task.
 
@@ -209,6 +246,8 @@ Normalize expected failures at the boundary that owns them:
 - `MigrationError`;
 - `ServerBindError`; and
 - `ShutdownError`.
+
+`config.ts` owns the three configuration errors. `database.ts` owns connection and migration errors. `server.ts` owns bind and shutdown errors. There is no central error module.
 
 Safe error data is limited to the tag, an optional configuration field path, and optional TOML line and column. Never retain arbitrary parser or PostgreSQL messages in tagged errors.
 
