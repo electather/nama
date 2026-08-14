@@ -1,10 +1,9 @@
 # Nama agent guidance
 
-Nama is a self-hosted, tvOS-first Jellyfin control plane. It has a TypeScript/Node core, a Go CLI, a Swift/tvOS app, and a first-party Jellyfin plugin. The core is not a media relay: media travels directly from a provider to the client through safe, short-lived locators.
+Nama is a self-hosted, iOS-first Jellyfin control plane. It has a TypeScript/Node core, a Go CLI, generated Swift bindings for a future universal app targeting iOS, tvOS, and macOS, and a first-party Jellyfin plugin; no Apple client application is currently checked in. The core is not a media relay: media travels directly from a provider to the client through safe, short-lived locators.
 
 - `apps/server/` — TypeScript core; the Milestone 0 contract boundary is present, but a server runtime is not.
 - `apps/cli/` — Go CLI, a thin client of the public API.
-- `apps/tvos/` — SwiftUI tvOS app and Debug-only Player Lab.
 - `plugins/jellyfin/` — first-party TypeScript provider adapter.
 - `proto/` — authoritative Protobuf schemas and generation configuration.
 - `gen/` — committed, Buf-owned generated bindings.
@@ -24,7 +23,7 @@ Architecture records in `docs/architecture/` and scoped rules in nested `AGENTS.
 - Do not claim a server, plugin runtime, authentication, or Jellyfin integration exists because generated clients and contract tests compile. Verify an executable entrypoint, handlers, persistence, and startup behavior.
 - Do not treat generated Protobuf or Connect round trips as Nama behavior tests. Verify schema format/lint/build, generation drift, consumer compilation, and handwritten Nama policy or adapter behavior.
 - Do not build product playback on AetherEngine `6.21.0`: source review rejected it because it leaks locator headers across origins and logs locator URLs in Release.
-- Do not weaken or skip an Apple check because the pinned Xcode is absent locally. Use the narrow checks available locally; hosted macOS CI is authoritative for the tvOS check.
+- Do not claim the generated Swift bindings prove iOS, tvOS, or macOS compilation or runtime behavior while no universal client application is checked in.
 - Do not expose provider resource IDs, SDK types, raw provider errors, configuration secrets, reusable credentials, locator URLs, or locator headers across the public boundary or in logs.
 
 ## The loop
@@ -33,16 +32,15 @@ Every change runs through its owning native check. A task is not done until its 
 
 ```bash
 mise tasks                 # inspect the current task surface
-mise run check:contracts       # schema format, lint, build, and generated drift
-mise run check:ts              # handwritten TypeScript
-mise run check:go              # Go formatting, vet, and tests
-mise run check:tvos-fixtures   # Player Lab fixture server
-mise run check:docker          # Compose model
-mise run check                 # all checks; requires the pinned macOS/Xcode toolchain
+mise run check:contracts   # schema format, lint, build, and generated drift
+mise run check:ts          # handwritten TypeScript
+mise run check:go          # Go formatting, vet, and tests
+mise run check:docker      # Compose model
+mise run check             # all current repository checks
 ```
 
 - Write the focused failing test first for new behavior; see it fail for the intended reason, then make it pass.
-- Run the narrow check after each meaningful edit. Run `mise run check` on a fully provisioned Mac before calling a cross-workspace change complete.
+- Run the narrow check after each meaningful edit. Run `mise run check` before calling a cross-workspace change complete.
 - Never disable, skip, or focus-only a test to make a result green. If a test is wrong, explain why before changing it.
 - Do not use a long-running process as verification. It does not provide a completed result.
 - A local prerequisite limitation is evidence to report, not permission to weaken a required check.
@@ -53,7 +51,6 @@ mise run check                 # all checks; requires the pinned macOS/Xcode too
 apps/
   server/                 # Node 24, strict TypeScript, Effect, ConnectRPC
   cli/                    # Go 1.26 Cobra client of nama.api.v1
-  tvos/                   # SwiftUI app; Playback and Debug-only Player Lab
 plugins/
   jellyfin/               # stateless nama.plugin.v1 adapter
 proto/
@@ -70,8 +67,8 @@ scripts/                  # multi-step implementations of Mise tasks
 
 - Put new behavior in the owner that already has responsibility for it. Do not add root-level application code or create empty future packages.
 - The core owns identity, configuration, durable state, authorization, schedules, retries, and reconciliation. Plugins are stateless adapters and do not own a database.
-- Public `nama.api.v1` is for the core, CLI, and tvOS app. Private `nama.plugin.v1` is only for the core and plugins. The packages do not import each other.
-- Keep AetherEngine types inside the single Nama-owned tvOS playback adapter. Do not add an interface until a second engine proves one is needed.
+- Public `nama.api.v1` is for the core, CLI, and future universal app rooted in `apps/ios`. Private `nama.plugin.v1` is only for the core and plugins. The packages do not import each other.
+- Keep selected playback-engine types inside the universal Apple app's single Nama-owned playback adapter. Do not add an interface until a second engine proves one is needed.
 
 ## Dependencies
 
@@ -112,7 +109,7 @@ Fail early, fail clearly, and never swallow a failure.
 ## End-to-end and UI verification
 
 - A feature that crosses client, core, plugin, or database boundaries needs an exercised real flow when those runtime pieces exist; unit or compile checks alone are not enough.
-- For tvOS work, inspect every changed screen visually. On real playback changes, exercise the Player Lab on physical Apple TV hardware and record actual device/display results; a simulator build is not playback proof.
+- For universal Apple app work, inspect every changed screen on each affected platform. Real playback changes require representative physical iPhone or iPad, Apple TV, and Mac hardware with recorded device/display results; simulator builds are not playback proof.
 - Check loading, empty, failure, focus, accessibility, and long-content states. No critical action may exist only as an undiscoverable gesture.
 - Never report an unrun hardware, provider, or security row as passing. Keep the limitation and its evidence in the final summary.
 

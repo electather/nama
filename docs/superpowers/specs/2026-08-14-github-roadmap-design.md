@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Convert the accepted MVP portion of `docs/release-plan.md` into GitHub planning artifacts for `electather/nama` and the user-owned GitHub Project named `nama`. The GitHub model must preserve the release plan's dependency gates without replacing the release plan as the architecture source of truth.
+Convert the accepted MVP portion of `docs/release-plan.md` into GitHub planning artifacts for `electather/nama` and the user-owned GitHub Project named `Nama`. The GitHub model must preserve the release plan's dependency gates without replacing the release plan as the architecture source of truth.
 
 ## Scope
 
-Create repository milestones for Milestones 0–5 and the private single-user iOS MVP release. Create one parent issue per milestone and native GitHub sub-issues for each included deliverable. Add every issue to the `nama` project and set its project status from current repository evidence.
+Create repository milestones for Milestones 0–5 and the private single-user iOS MVP release. Create one parent issue per milestone and native GitHub sub-issues for each included deliverable. Add every issue to the `Nama` project and set its project status from current repository evidence.
 
 Do not create Milestones 6–9 or v1 issues yet. Do not assign people, invent dates or estimates, push the local repository, configure a Git remote, or change source code. Do not turn explicit non-goals into backlog issues.
 

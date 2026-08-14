@@ -2,18 +2,18 @@
 
 ## Purpose
 
-This roadmap turns Nama's architecture into the smallest sequence of releasable vertical slices. The first product is a private, single-user tvOS client for an existing Jellyfin server. Version 1 is a stable multi-user media aggregation and playback platform. Every milestone must exercise real contracts end to end; speculative marketplaces, runtimes, media processing, and social features wait for demonstrated demand.
+This roadmap turns Nama's architecture into the smallest sequence of releasable vertical slices. The first product is a private, single-user universal SwiftUI app for iOS, tvOS, and macOS connected to an existing Jellyfin server. Version 1 is a stable multi-user media aggregation and playback platform. Every milestone must exercise real contracts end to end; speculative marketplaces, runtimes, media processing, and social features wait for demonstrated demand.
 
 ## Fixed constraints
 
 - The core is TypeScript on Node.js 24 using pnpm, ESM, an exact-pinned Effect v4 beta, Drizzle ORM with PostgreSQL, Protobuf, ConnectRPC, and Buf.
 - `api.v1` is the public client contract. `plugin.v1` is the separate provider contract. Generated SDKs, not handwritten parallel clients, consume both contracts.
-- Better Auth is private to the core behind Nama-owned setup and authentication RPCs. Neither the Go CLI nor tvOS imports Better Auth types.
+- Better Auth is private to the core behind Nama-owned setup and authentication RPCs. Neither the Go CLI nor the universal Apple app imports Better Auth types.
 - The Go `nama` CLI is the MVP management interface. It supports complete help, generated shell completion, stable exit codes, non-interactive flags, JSON output, and a repository Codex `SKILL.md`.
-- The production target is Linux in Docker. Deployment is one Nama image containing the core and bundled plugin executables, plus PostgreSQL. macOS is a development target.
+- The production server target is Linux in Docker. Deployment is one Nama image containing the core and bundled plugin executables, plus PostgreSQL. macOS is both a server development target and a supported client platform.
 - Provider plugins are stateless, supervised subprocesses. They use ConnectRPC over Unix domain sockets and never access the database. The core owns configuration, secrets, cursors, retries, reconciliation, and all durable state.
-- Jellyfin is the first provider. Media bytes normally travel from Jellyfin directly to tvOS; Nama remains the control plane.
-- The first client is native Swift/SwiftUI on tvOS 17+. AetherEngine is version-pinned and contained by one thin Nama-owned player adapter with no AetherEngine types outside it.
+- Jellyfin is the first provider. Media bytes normally travel from Jellyfin directly to the Apple client; Nama remains the control plane.
+- The first client is one universal Swift/SwiftUI app rooted in `apps/ios`, targeting iOS 17+, tvOS 17+, and macOS 14+. One exact-pinned, security-reviewed playback engine is contained by a thin Nama-owned adapter with no engine types outside it.
 - Nama is not an ingress product. LAN/VPN and user-managed reverse proxies are supported; certificate issuance, tunnels, and port forwarding are not.
 - The core is canonical for user state. Synchronization is two-way, newest reliable activity wins, configured provider priority breaks ties or substitutes for missing timestamps, and a Nama-originated action wins before being propagated outward.
 
@@ -44,7 +44,7 @@ Create the smallest buildable monorepo skeleton and establish the two contracts 
 ### Included
 
 - pnpm workspace for the TypeScript core, generated TypeScript code, and JavaScript tooling.
-- Independent native tooling for Go, Swift/Xcode, Protobuf/Buf, and Docker; no universal build system.
+- Independent native tooling for Go, Protobuf/Buf, and Docker, plus committed generated Swift bindings for the future client; no application target is created only to make the boundary appear complete.
 - `api.v1` services: `HealthService`, `SetupService`, `AuthService`, `DeviceService`, `ProviderService`, `LibraryService`, `PlaybackService`, `UserStateService`, and `SyncService`.
 - `plugin.v1` services: `HealthService`, `PluginService`, `LibraryService`, `PlaybackService`, and `WatchStateService`.
 - Provider-independent identifiers and minimal movie/show/season/episode, source, artwork, track, playback descriptor, and user-state messages.
@@ -54,11 +54,11 @@ Create the smallest buildable monorepo skeleton and establish the two contracts 
 ### Explicit non-goals
 
 - A generic plugin SDK, marketplace manifest, permission language, WASM host, REST API, GraphQL, event bus, or generated clients for platforms not being built.
-- Exhaustive media metadata. Add fields only when the Jellyfin-to-tvOS slice consumes them.
+- Exhaustive media metadata. Add fields only when the Jellyfin-to-Apple-app slice consumes them.
 
 ### Exit criteria
 
-- TypeScript, Go, and Swift generated clients compile from the same committed schemas.
+- TypeScript and Go consumers compile from the same committed schemas; Swift bindings are generated deterministically, and the future iOS application restores their native compilation check across iOS, tvOS, and macOS.
 - Buf rejects a deliberate breaking `v1` contract change.
 - Of provider identifiers, public messages may expose only Nama-managed provider type and instance IDs; remote provider resource references exist only in `plugin.v1`.
 
@@ -66,12 +66,12 @@ Create the smallest buildable monorepo skeleton and establish the two contracts 
 
 ### Goal
 
-Prove the choices most likely to invalidate the design before building product layers on them. Spike code survives only when it is already production-shaped and tested.
+Prove the choices most likely to invalidate the design before building product layers on them. Spike code is disposable after its durable decisions and evidence are recorded.
 
 ### Included
 
-1. **AetherEngine on physical Apple TV:** play representative H.264, HEVC, MKV, HDR10, Dolby Vision, multichannel audio, text subtitles, and image subtitles. Record direct-play success, HDR/display-mode behavior, seeking, track switching, and failure signals. Confirm that the adapter can express only Nama-owned requests, state, tracks, and errors, and review AetherEngine plus bundled FFmpeg licensing and App Store obligations before relying on it for a distributable build.
-2. **Jellyfin negotiation:** submit actual device capabilities, obtain direct-play/direct-stream/transcode choices, and confirm that media URLs can be consumed directly by tvOS without routing bytes through Nama. Verify that unsupported audio/subtitles can be converted without forcing video transcoding when Jellyfin permits it.
+1. **Apple TV playback feasibility — passed and retired:** exercise representative H.264, HEVC, MKV, HDR10, Dolby Vision, multichannel audio, text subtitles, and image subtitles; inspect seeking, track switching, failure signals, adapter isolation, locator security, and distribution obligations. The feasibility pass records architecture knowledge, not physical-device or production-engine acceptance.
+2. **Jellyfin negotiation:** submit actual device capabilities, obtain direct-play/direct-stream/transcode choices, and confirm that media URLs can be consumed directly by the universal Apple app without routing bytes through Nama. Verify that unsupported audio/subtitles can be converted without forcing video transcoding when Jellyfin permits it.
 3. **Plugin IPC:** launch a disposable subprocess, create a socket inside a core-owned `0700` runtime directory, authenticate with a per-launch secret, call health and one provider operation, enforce a deadline, then terminate and restart cleanly.
 4. **Connect-wrapped Better Auth:** create an administrator, sign in, authenticate a protected RPC with the returned session credential, retrieve the current user, and sign out without exposing Better Auth types or endpoints to clients.
 5. **Sync semantics:** replay timestamped and untimestamped provider events through the reconciliation rules and prove idempotency, backward progress for a genuine rewatch, tie-breaking, and prevention of echo loops.
@@ -82,8 +82,8 @@ Prove the choices most likely to invalidate the design before building product l
 
 ### Exit criteria
 
-- All five spikes pass repeatably in local development; playback passes on physical tvOS 17+ hardware and an HDR-capable display.
-- Any unsupported sample has a documented Jellyfin direct-stream/transcode fallback. If Dolby Vision or HDR metadata is not preserved acceptably, the player choice returns to design review before the tvOS feature work starts.
+- All five spikes resolve their named risk with recorded evidence. The retired playback spike does not replace the physical-device, security, and distribution matrix required before product playback ships.
+- Any unsupported sample needs a documented Jellyfin direct-stream/transcode fallback. If Dolby Vision or HDR metadata is not preserved acceptably on physical hardware, the player choice returns to design review.
 
 ## Milestone 2: Bootable core, administrator setup, and CLI
 
@@ -136,32 +136,32 @@ Prove that Jellyfin is an implementation of capabilities, not part of the core.
 - Killing the plugin cannot crash the core or corrupt state; a later operation starts a clean process and succeeds within the retry policy.
 - Socket files are inaccessible outside the intended runtime user/directory, and the plugin has no PostgreSQL credentials.
 
-## Milestone 4: tvOS pairing, browsing, and direct playback
+## Milestone 4: iOS app pairing, browsing, and direct playback
 
 ### Goal
 
-Deliver the primary loop: discover/connect to Nama, pair, browse Jellyfin, open details, and watch media.
+Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect to Nama, pair, browse Jellyfin, open details, and watch media.
 
 ### Included
 
-- LAN discovery using mDNS/DNS-SD service `_nama._tcp`, plus manual server URL entry for LAN, VPN, and reverse-proxy deployments.
+- LAN discovery using mDNS/DNS-SD service `_nama._tcp`, plus manual server URL entry for LAN, VPN, and reverse-proxy deployments on every supported Apple platform.
 - Plain HTTP only for loopback, private/link-local addresses, or `.local` discovery names, with a clear warning. Public hostnames and addresses require HTTPS.
-- Netflix-style device flow: tvOS requests and displays a short-lived code; an authenticated administrator approves it with `nama devices approve`; tvOS receives a revocable device session. Codes are rate-limited, single-use, and contain no reusable secret.
+- Netflix-style device flow: the app requests and displays a short-lived code; an authenticated administrator approves it with `nama devices approve`; the app receives a revocable device session. Codes are rate-limited, single-use, and contain no reusable secret.
 - Persistence for pairing requests, device credentials, minimal canonical media, library membership, and provider-to-canonical mappings begins in this milestone.
 - Provider-neutral Home/library browsing for movies and shows, basic search of available media, media details, artwork, seasons, and episodes.
-- A thin `NamaPlayer` adapter around pinned AetherEngine. All UI and networking code consumes Nama-owned playback and state types.
-- tvOS reports its real playback capabilities. Selection order is direct play, direct stream/remux, selective stream conversion, then full transcode. User-selected quality may request transcoding explicitly.
+- A thin `NamaPlayer` adapter around one exact-pinned, security-reviewed engine. Shared UI and networking code consumes only Nama-owned playback and state types; platform-specific presentation or system adapters exist only where the supported Apple platforms differ.
+- The app reports the current device's real playback capabilities. Selection order is direct play, direct stream/remux, selective stream conversion, then full transcode. User-selected quality may request transcoding explicitly.
 - Playback from provider-issued URLs, play/pause, seek, audio/subtitle selection, visible loading/failure states, and recovery to the details screen.
-- Accessibility basics: focus order, readable labels, Dynamic Type where supported by tvOS, contrast, and no critical action available only through an undiscoverable gesture.
+- Accessibility and input basics for each platform: focus order, readable labels, Dynamic Type where supported, contrast, keyboard, pointer, touch, and remote interaction, with no critical action available only through an undiscoverable gesture.
 
 ### Explicit non-goals
 
-- iOS, Android, web UI, offline downloads, live TV, AirPlay-specific features, custom video rendering, a second playback engine, or Nama media proxying.
+- Android, web UI, separate Apple-platform codebases, offline downloads, live TV, AirPlay-specific features, custom video rendering, a second playback engine, or Nama media proxying.
 
 ### Exit criteria
 
-- On a fresh Apple TV, the user can discover a LAN server or enter its URL, approve the device in the CLI, browse, search, open a movie or episode, and begin playback.
-- Supported fixtures direct-play through AetherEngine; incompatible fixtures follow the expected Jellyfin fallback without sending media bytes through the core.
+- On a fresh iPhone or iPad, Apple TV, and Mac, the user can discover a LAN server or enter its URL, approve the device in the CLI, browse, search, open a movie or episode, and begin playback.
+- Supported fixtures direct-play through the selected engine on each platform; incompatible fixtures follow the expected Jellyfin fallback without sending media bytes through the core.
 - Device revocation immediately prevents new authenticated RPCs.
 
 ## Milestone 5: Canonical progress and continuous two-way Jellyfin sync
@@ -190,24 +190,24 @@ Make Nama, rather than Jellyfin, own reliable resume and watched state while rem
 - Restarting the core or plugin during import/export neither loses the last acknowledged state nor creates an infinite sync loop.
 - Automated reconciliation fixtures cover newer/older timestamps, missing timestamps, ties, rewatches, duplicates, retry, and echo suppression.
 
-## MVP release: private single-user tvOS
+## MVP release: private single-user iOS app
 
 ### Release contents
 
-Milestones 0-5 form the MVP. It supports one administrator, one or more configured Jellyfin instances, tvOS pairing, provider-neutral browse/search/details, broad direct playback with controlled fallback, and canonical two-way progress/watch-state synchronization.
+Milestones 0-5 form the MVP. It supports one administrator, one or more configured Jellyfin instances, universal iOS app pairing across iOS, tvOS, and macOS, provider-neutral browse/search/details, broad direct playback with controlled fallback, and canonical two-way progress/watch-state synchronization.
 
 ### Release acceptance
 
 - A documented Docker Compose deployment brings up the Nama image and PostgreSQL with persistent volumes, health checks, and no privileged container requirement.
-- The complete empty-install-to-playback journey works using the CLI and Apple TV without editing the database or calling provider APIs manually.
+- The complete empty-install-to-playback journey works using the CLI and the iOS app on iPhone or iPad, Apple TV, and Mac without editing the database or calling provider APIs manually.
 - Backup and restore of Nama's database/configuration is documented and exercised once; provider media is outside Nama's backup scope.
 - Authentication, setup, pairing, URL validation, secret handling, plugin IPC, and authorization have focused negative-path tests.
-- Public and plugin schemas pass lint/breaking checks; core, CLI, and tvOS builds pass; the representative physical-device playback matrix passes.
+- Public and plugin schemas pass lint/breaking checks; core and CLI checks pass; iOS, tvOS, and macOS app builds pass; and the representative physical-device playback matrix passes.
 - Fresh-install, upgrade-from-previous-migration, restart-during-sync, provider-unavailable, and database-unavailable scenarios fail visibly and recover without data corruption.
 
 ### MVP non-goals
 
-- Multiple users, invitations/RBAC, Plex, Sonarr/Radarr, discovery of unavailable media, web/iOS/Android clients, downloads, deletion, playlists, favourites, comments, recommendations, notifications, plugin marketplace/WASM, native media serving, scanning, or transcoding.
+- Multiple users, invitations/RBAC, Plex, Sonarr/Radarr, discovery of unavailable media, web/Android clients, separate Apple-platform clients, downloads, deletion, playlists, favourites, comments, recommendations, notifications, plugin marketplace/WASM, native media serving, scanning, or transcoding.
 
 ## Milestone 6: Operational hardening after MVP
 
@@ -254,7 +254,7 @@ Prove multi-provider aggregation and multi-input synchronization before declarin
 
 - The same title from Jellyfin and Plex appears once when reliable identity evidence matches and exposes both sources.
 - Conflicting progress from two configured providers resolves deterministically, propagates outward without loops, and remains stable after restart.
-- Adding Plex requires no Plex branch in the tvOS client or public API.
+- Adding Plex requires no Plex branch in the iOS app or public API.
 
 ## Milestone 8: Multi-user product model
 
@@ -293,7 +293,7 @@ Ship a coherent, supportable v1 centered on aggregation and excellent native pla
 - Stable documented `api.v1` and `plugin.v1` compatibility rules and upgrade path.
 - Jellyfin and Plex library/playback/watch-state integrations.
 - Multi-user invitation, authorization, device, and state isolation.
-- tvOS browse/search/details/playback/Continue Watching with direct-play-first negotiation and the verified HDR/Dolby playback matrix.
+- Universal iOS app browse/search/details/playback/Continue Watching across iOS, tvOS, and macOS with direct-play-first negotiation and the verified HDR/Dolby playback matrix.
 - Docker deployment, PostgreSQL backup/restore, upgrade documentation, CLI administration, and agent skill.
 - Security review of all trust boundaries and an end-to-end release test from fresh install through two-provider playback and synchronization.
 
@@ -309,7 +309,7 @@ Conditional work must pass the same architecture boundaries and may be cut witho
 
 ### Explicit v1 non-goals
 
-- Sonarr/Radarr acquisition, request workflows, offline downloads, deletion/media management, iOS/Android/web applications, playlists, comments, notifications, recommendation ML, plugin marketplace, WASM runtime, native media scanning/serving/transcoding, live TV, high availability, or cloud-hosted control services.
+- Sonarr/Radarr acquisition, request workflows, offline downloads, deletion/media management, Android/web applications, separate Apple-platform clients, playlists, comments, notifications, recommendation ML, plugin marketplace, WASM runtime, native media scanning/serving/transcoding, live TV, high availability, or cloud-hosted control services.
 
 ### v1 exit criteria
 
@@ -323,7 +323,7 @@ Conditional work must pass the same architecture boundaries and may be cut witho
 After v1, add one product loop at a time:
 
 1. **Discovery and acquisition:** TMDB discovery followed by stateless Radarr and Sonarr plugins, core-owned request records/approval/status, and the loop “find anything -> request it -> watch it.”
-2. **Additional native clients:** iOS or Android only when target-user demand justifies maintaining another native UI; share contracts, not UI code.
+2. **Additional native clients:** Android or another non-Apple platform only when target-user demand justifies maintaining another native UI; share contracts, not UI code.
 3. **Personal collections:** favourites, then playlists, using one proven core primitive rather than parallel models.
 4. **Offline and media management:** only after permissions, failure semantics, provider-specific deletion, and recovery behavior are designed and tested.
 5. **Plugin distribution/runtime:** a third-party SDK, manifests, permissions, marketplace, and WASM only when an external plugin author or unsafe distribution problem actually exists.
@@ -335,13 +335,13 @@ Comments, social features, and recommendation ML remain outside the roadmap unti
 
 | Risk | Earliest proof | Containment |
 | --- | --- | --- |
-| AetherEngine maturity, licensing, or HDR/Dolby regressions | Milestone 1 physical-device and license review | Pin an exact version, isolate it behind `NamaPlayer`, retain fixtures, meet AetherEngine/FFmpeg distribution obligations, and stop feature work if native output or a distributable license is not trustworthy. |
+| On-device playback-engine maturity, security, licensing, or HDR/Dolby regressions | Milestone 1 source review and Milestone 4 physical-device matrix | Pin and inspect an exact revision, isolate it behind `NamaPlayer`, reproduce the representative media and network matrix on iOS, tvOS, and macOS, meet linked-artifact distribution obligations, and stop feature work if locator safety, native output, or distribution viability is not trustworthy. |
 | Jellyfin capability negotiation forces avoidable transcodes | Milestone 1 provider spike | Send measured client capabilities, distinguish container/audio/subtitle incompatibility from video incompatibility, and inspect the selected delivery mode in tests. |
 | Plugin subprocess/UDS behavior becomes platform or lifecycle complexity | Milestones 1 and 3 | Support Linux production/macOS development only, keep plugins stateless/on-demand, use one authenticated socket per process, and defer other transports. |
 | Better Auth does not map cleanly behind Connect | Milestone 1 auth spike | Keep app-owned auth messages/session semantics and allow replacement without changing generated client contracts. |
 | Provider timestamps are missing or semantically different | Milestones 1 and 5 | Preserve source evidence, use explicit provider priority, make updates idempotent, and expose sync health instead of silently guessing. |
 | Canonical matching merges different titles | Milestone 7 | Prefer reliable external IDs, leave ambiguity unmerged, and avoid fuzzy automation until measured false-positive/negative data exists. |
-| Direct provider URLs expose credentials or are unreachable from tvOS | Milestones 1 and 4 | Return short-lived/minimal playback descriptors where supported, never log URLs/tokens, validate client reachability, and fail explicitly rather than proxying by default. |
+| Direct provider URLs expose credentials or are unreachable from an Apple client | Milestones 1 and 4 | Return short-lived/minimal playback descriptors where supported, never log URLs/tokens, validate reachability from iOS, tvOS, and macOS, and fail explicitly rather than proxying by default. |
 | Single image obscures plugin isolation | Milestone 3 | Preserve the process and contract boundary inside the image; packaging together never permits imports, shared memory state, or database access. |
 | Scope expands before the playback loop works | Every release gate | A milestone exits only on its acceptance criteria; conditional and post-v1 features cannot block the required vertical slice. |
 

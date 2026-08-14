@@ -11,17 +11,17 @@ The linked subsystem notes are concise decision records, not implementation spec
 Nama is a self-hosted control plane, not a media relay. A TypeScript core owns identity, configuration, the canonical media model, watch state, reconciliation, and authorization. Provider plugins translate between that model and external services. Native clients and the Go CLI use one versioned Protobuf/ConnectRPC contract. During playback the provider sends media directly to the client; the core only selects and authorizes the source.
 
 ```text
-tvOS app ───────────────┐
+Apple app ──────────────┐
 Go CLI ── Connect api.v1├──> Node core ───> Drizzle ORM ───> PostgreSQL
                         │        │
                         │        └── Connect plugin.v1 over Unix socket
                         │                         │
                         │                  Jellyfin plugin ───> Jellyfin API
                         │                         │
-tvOS player <───────────┴──────── playable URL ──┘
+Apple player <──────────┴──────── playable URL ──┘
 ```
 
-The installable MVP is intentionally narrow: one private deployment, one administrator, Jellyfin as the only provider type, and one tvOS client; more than one Jellyfin instance may be configured when the administrator needs multiple watch-state inputs. The architecture keeps the public and plugin contracts real from the first vertical slice, but does not build a marketplace, web console, generic workflow engine, distributed queue, or native media server in anticipation of later releases.
+The installable MVP is intentionally narrow: one private deployment, one administrator, Jellyfin as the only provider type, and one universal SwiftUI client targeting iOS, tvOS, and macOS; more than one Jellyfin instance may be configured when the administrator needs multiple watch-state inputs. The architecture keeps the public and plugin contracts real from the first vertical slice, but does not build a marketplace, web console, generic workflow engine, distributed queue, or native media server in anticipation of later releases.
 
 ## Decision index
 
@@ -34,14 +34,14 @@ The installable MVP is intentionally narrow: one private deployment, one adminis
 | Persistence | PostgreSQL 18 through Drizzle ORM over one shared `pg.Pool`, with Promise operations wrapped at Effect service boundaries and committed, reviewed SQL migrations. |
 | Background work | A core-owned scheduler with durable database cursors; no Redis or job framework for MVP. |
 | First plugin | A stateless Jellyfin adapter for catalog, playback negotiation, and two-way watch-state sync. |
-| First client | Swift/SwiftUI on tvOS 17+, Connect-Swift, Keychain, and native Bonjour discovery. |
-| Playback | AetherEngine at an exact tested version behind one Nama-owned adapter; direct play, then remux, then transcode. |
+| First client | One universal Swift/SwiftUI app in `apps/ios`, targeting iOS 17+, tvOS 17+, and macOS 14+, with Connect-Swift, Keychain, and native Bonjour discovery. |
+| Playback | An exact-pinned, security-reviewed on-device engine behind one Nama-owned adapter; direct play, then remux, then transcode. |
 | Administration | A thin Go 1.26 CLI using the generated Connect client; no management web app for MVP. |
 | Deployment | Linux-first Docker image containing core and first-party plugin executables, plus a separate PostgreSQL service. |
 | Exposure | Nama does not manage domains, certificates, tunnels, or reverse proxies; users choose LAN, VPN, or proxy access. |
 | Repository | One repository with native tooling for TypeScript, Go, Swift, and Protobuf; mise pins command-line tools and delegates common tasks without becoming a build framework. |
 
-Exact dependency versions are lockfile decisions, not promises in this document. Releases pin and test them; upgrades are deliberate, especially AetherEngine and pre-1.0 client libraries.
+Exact dependency versions are lockfile decisions, not promises in this document. Releases pin and test them; upgrades are deliberate, especially the playback engine and pre-1.0 client libraries.
 
 ## Invariants
 
@@ -50,7 +50,7 @@ Exact dependency versions are lockfile decisions, not promises in this document.
 3. Protobuf is the source of truth for every supported client, CLI, and plugin RPC; auth is not a second client SDK.
 4. Media bytes do not pass through the core in normal playback.
 5. A plugin may be restarted or replaced without losing correctness; schedules, credentials, cursors, and reconciliation state belong to the core.
-6. AetherEngine types do not escape the tvOS playback adapter.
+6. Playback-engine types do not escape the universal Apple app's playback adapter.
 7. New infrastructure or abstraction requires a current use case, not only a plausible future one.
 
 ## Subsystem decisions
@@ -62,7 +62,7 @@ Exact dependency versions are lockfile decisions, not promises in this document.
 - [Watch-state synchronization](architecture/state-sync.md)
 - [Authentication, setup, and pairing](architecture/authentication-and-setup.md)
 - [Management CLI](architecture/cli.md)
-- [tvOS application](architecture/tvos-app.md)
+- [iOS application](architecture/ios-app.md)
 - [Playback](architecture/playback.md)
 - [Deployment and exposure](architecture/deployment.md)
 - [Repository and tooling](architecture/repository-and-tooling.md)

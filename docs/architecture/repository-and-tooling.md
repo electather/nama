@@ -20,8 +20,9 @@ Native configuration is the source of truth:
 - JavaScript workspace manifests, lockfiles, and TypeScript quality
   configuration own Node packages and checks.
 - The Go module owns Go dependencies; native Go tools own its checks.
-- The checked-in Xcode project, Swift package manifest, and resolved-package
-  state own the tvOS application and Swift dependencies.
+- The committed Swift package manifest owns generated Swift binding
+  dependencies. No universal iOS application manifest or Xcode project is
+  currently present.
 - Buf module and generation configuration own Protobuf validation and
   generation.
 - Compose owns the local database service model.
@@ -55,9 +56,10 @@ Run the narrow native check first, then the aggregate repository check on a
 fully provisioned Mac. Root tasks coordinate this sequence but do not alter
 its ownership.
 
-Xcode and Docker are native prerequisites. When the pinned Xcode is unavailable
-locally, hosted macOS CI is authoritative for the Apple check. A machine
-limitation never justifies weakening or skipping a required check.
+Docker is a current native prerequisite. A future iOS implementation must add
+an owning multiplatform Xcode project and restore authoritative iOS, tvOS, and
+macOS checks; generated Swift bindings alone are not a client compilation
+boundary.
 
 CI runs the native checks and the contract-compatibility gate appropriate to
 the change. Compile-only boundaries prove compilation, not product or runtime

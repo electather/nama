@@ -12,8 +12,6 @@ run = [
   "pnpm install --frozen-lockfile",
   "go mod download",
   "git diff --exit-code -- go.mod go.sum",
-  "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -resolvePackageDependencies -project apps/tvos/Nama.xcodeproj -scheme Nama -onlyUsePackageVersionsFromResolvedFile",
-  "git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
 ]
 
 [tasks.generate]
@@ -25,7 +23,7 @@ description = "Format handwritten source files"
 run = [
   "pnpm exec oxfmt .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
   "gofmt -w apps/cli gen/go",
-  "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift format format --in-place --recursive apps/tvos gen/swift/Package.swift",
+  "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift format format --in-place gen/swift/Package.swift",
 ]
 
 [tasks."check:contracts"]
@@ -40,13 +38,6 @@ run = "pnpm run check:ts"
 description = "Check Go formatting, vet, and tests"
 run = "scripts/check-go.sh"
 
-[tasks."check:swift"]
-description = "Check Swift formatting, build the tvOS simulator target, and run focused tests from locked packages"
-run = "scripts/check-swift.sh"
-
-[tasks."check:tvos-fixtures"]
-description = "Check the tvOS Player Lab fixture server"
-run = "python3 apps/tvos/fixture_server_check.py"
 
 [tasks."check:docker"]
 description = "Validate the Docker Compose model"
@@ -58,6 +49,5 @@ run = [
   { task = "check:contracts" },
   { task = "check:ts" },
   { task = "check:go" },
-  { task = "check:swift" },
   { task = "check:docker" },
 ]

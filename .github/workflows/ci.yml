@@ -37,27 +37,6 @@ jobs:
       - name: Check Compose
         run: mise run check:docker
 
-  tvos:
-    runs-on: macos-26
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Resolve locked Swift packages
-        run: xcodebuild -resolvePackageDependencies -project apps/tvos/Nama.xcodeproj -scheme Nama -onlyUsePackageVersionsFromResolvedFile
-      - name: Reject Swift lock drift
-        run: git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
-      - name: Check Swift formatting
-        run: swift format lint --strict --recursive apps/tvos gen/swift/Package.swift
-      - name: Check Player Lab fixture server
-        run: python3 apps/tvos/fixture_server_check.py
-      - name: Build tvOS simulator target
-        run: xcodebuild -project apps/tvos/Nama.xcodeproj -scheme Nama -destination 'generic/platform=tvOS Simulator' -derivedDataPath .derived-data -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO build
-      - name: Test tvOS simulator target
-        run: xcodebuild -project apps/tvos/Nama.xcodeproj -scheme Nama -destination 'platform=tvOS Simulator,name=Apple TV,OS=latest' -derivedDataPath .derived-data -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile CODE_SIGNING_ALLOWED=NO test
-      - name: Recheck Swift lock
-        run: git diff --exit-code -- apps/tvos/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
   buf-breaking:
     if: github.event_name == 'pull_request'

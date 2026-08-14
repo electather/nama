@@ -4,15 +4,15 @@ Nama is a self-hosted media control plane. It keeps identity, configuration,
 catalog state, and watch state in one core while provider plugins talk to
 external media servers.
 
-This repository is in its foundation milestones; the current baseline proves
-the TypeScript, Go, Swift/tvOS, Protobuf, and Docker boundaries without adding
-product behavior.
+This repository is in its foundation milestones. The current baseline proves
+the TypeScript, Go, Protobuf, and Docker boundaries. The disposable Apple TV
+playback spike was retired after its decisions were recorded; no universal
+iOS application is currently checked in.
 
 ## Prerequisites
 
 - mise 2026.8.3 or newer
 - Docker with Docker Compose
-- macOS with Xcode 26.6 for the tvOS build
 
 ## Bootstrap
 
@@ -20,9 +20,9 @@ product behavior.
     mise run setup
     mise run check
 
-GitHub Actions runs the Linux checks and the authoritative tvOS simulator
-build. A machine without full Xcode can run the contract, TypeScript, Go, and
-Docker checks individually.
+GitHub Actions runs the Linux checks and Protobuf compatibility gate. Generated
+Swift bindings remain committed for the future universal app targeting iOS,
+tvOS, and macOS, but are not a compiled application boundary.
 
 ## Architecture
 
