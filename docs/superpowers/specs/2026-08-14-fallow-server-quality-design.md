@@ -4,7 +4,7 @@ Status: approved on 2026-08-14.
 
 ## Purpose
 
-Add Fallow as a strict, server-owned TypeScript codebase-intelligence gate. Run its complete static-analysis surface for `apps/server`, integrate it into the existing TypeScript and repository checks, and provide a fast changed-file pre-commit gate through a hook manager suitable for Nama's polyglot monorepo.
+Add Fallow as a strict, server-owned TypeScript codebase-intelligence gate. Run its complete supported gate surface for `apps/server`, integrate it into the existing TypeScript and repository checks, and provide a fast changed-file pre-commit gate through a hook manager suitable for Nama's polyglot monorepo.
 
 The setup must not analyze the Jellyfin plugin or generated TypeScript, establish a second root build graph, weaken findings through a baseline, or edit generated code.
 
@@ -24,7 +24,7 @@ Generated bindings, the Jellyfin plugin, and root-level non-TypeScript workspace
 
 ## Strict analysis policy
 
-Every rule key supported by Fallow 3.16.0 is explicit and set to `error`. This includes rules that otherwise default to `warn` or `off`: private type leaks, suppression hygiene, coverage gaps, styling drift, feature flags, security candidates, dependency placement, catalogue hygiene, component health, and framework boundary findings. Technology-specific rules remain dormant when their corresponding source forms or frameworks are absent.
+Every rule key exercised by Fallow's strict analysis commands is explicit and set to `error`. This includes rules that otherwise default to `warn` or `off`: private type leaks, suppression hygiene, coverage gaps, styling drift, security candidates, dependency placement, catalogue hygiene, component health, and framework boundary findings. Technology-specific rules remain dormant when their corresponding source forms or frameworks are absent.
 
 Type-aware analysis is enabled for `tsconfig.json` with completeness required. A missing, mismatched, or incomplete semantic companion is a hard failure rather than a syntactic fallback.
 
@@ -32,7 +32,7 @@ Duplication analysis is enabled in semantic mode with near-duplicate detection, 
 
 Health analysis keeps Fallow's documented SIG-aligned ceilings: cyclomatic complexity 20, cognitive complexity 15, CRAP 30, and unit size 60 lines. `*.test.ts` files are excluded only from health analysis because Fallow's static coverage estimate cannot meaningfully assign coverage to test callbacks; dead-code, dependency, duplicate, type-aware, and other applicable checks still inspect tests.
 
-The default Fallow pipeline gates dead code, dependencies, cycles, duplication, and health. Separate fatal invocations run `fallow flags --fail-on-issues` for feature-flag detection and `fallow security --fail-on-issues` for security candidates. Ordinary security categories and the two include-required categories, `hardcoded-secret` and `secret-to-network`, are enabled. Findings are treated as review-blocking candidates, not automatically as confirmed vulnerabilities.
+The default Fallow pipeline gates dead code, dependencies, cycles, duplication, and health. A separate `fallow security --fail-on-issues` invocation gates security candidates. Ordinary security categories and the two include-required categories, `hardcoded-secret` and `secret-to-network`, are enabled. Findings are treated as review-blocking candidates, not automatically as confirmed vulnerabilities. The separate `feature-flags` inventory remains explicitly off: Fallow 3.16.0 rejects `flags --fail-on-issues`, and Nama does not add a bespoke JSON-parsing gate around an unsupported CLI contract.
 
 No baseline, warning downgrade, blanket handwritten-source ignore, or inline suppression is part of initial adoption.
 
@@ -46,7 +46,7 @@ This gives the current compile-only contract boundary an accurate home without g
 
 The server manifest exposes:
 
-- `check:fallow`: full Fallow pipeline with all findings fatal, followed by the separate fatal feature-flag and security scans;
+- `check:fallow`: full Fallow pipeline with all findings fatal, followed by the separate fatal security scan;
 - `audit:fallow`: Fallow's changed-file audit against `HEAD`, quiet enough for pre-commit use.
 
 The root `check:ts` command invokes the server Fallow check alongside the existing formatter, Oxlint, TypeScript, and contract checks. Existing `mise run check:ts`, `mise run check`, and the Linux CI TypeScript job therefore gain Fallow without a new CI workflow or orchestration layer.
