@@ -1,3 +1,13 @@
 # Authentication, setup, and pairing
 
 Better Auth manages the one MVP administrator's credentials and sessions but is only called inside Nama's `SetupService`, `AuthService`, and `DeviceService`: on an unconfigured start the server prints a high-entropy bootstrap token valid for one successful admin creation or until restart, replaces it on each unconfigured restart, and disables setup permanently after the admin exists. The Go CLI exchanges that token to create and sign in the administrator; the universal Apple app discovers or accepts a server URL, displays a short-lived code, and waits for `nama devices approve CODE`, after which its bearer credential is stored in Keychain. Public signup, roles, invites, password recovery, OAuth/OIDC, email delivery, and a browser login flow are deferred; clients allow plain HTTP only for loopback, private/link-local addresses, or `.local` discovery names with an explicit warning, and require HTTPS for public names and addresses.
+
+## Milestone 1 Better Auth Connect spike
+
+The spike proved the administrator lifecycle through generated Nama `SetupService` and `AuthService` clients without mounting a Better Auth HTTP route. Administrator creation keeps automatic sign-in disabled and single-flight, and `AuthService.SignIn` exposes only the bearer plugin's signed token as `BearerCredential.token`. Public errors and logs must not expose issued secrets or private Better Auth failures.
+
+The pinned Better Auth release can report successful sign-out after its session deletion fails. Nama therefore treats Better Auth's result as non-authoritative: `AuthService.SignOut` succeeds only after the presented bearer no longer resolves in the session store. A still-valid bearer or failed confirmation returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the client retains the bearer and resolves ambiguity through `GetCurrentUser`.
+
+The disposable spike uses Better Auth's official stateful memory adapter. It proves RPC translation and failure semantics, not PostgreSQL migrations, durable initialization, restart repair, production logging, or server lifecycle. Those remain Milestone 2 work.
+
+The pinned Better Auth and transitive fetch declarations are incompatible with the repository's strict TypeScript settings because they reference optional runtime types and contain incompatible optional properties. The spike isolates the runtime behind a private, structurally typed boundary instead of weakening repository checks. Milestone 2 must resolve this upstream compatibility risk before adopting a normal static import; it must not enable `skipLibCheck` or add unused runtime packages to hide it.
