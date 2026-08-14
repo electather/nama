@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check:contract": "node --test src/contract.test.ts",
+    "check:test": "node --test src/*.test.ts",
     "check:type": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
