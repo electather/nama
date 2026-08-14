@@ -5,13 +5,15 @@ buf = "1.72.0"
 go = "1.26.5"
 node = "24.19.0"
 pnpm = "11.20.0"
+prek = "0.4.13"
 
 [tasks.setup]
-description = "Resolve dependencies from committed lock state"
+description = "Resolve dependencies and install Git hooks"
 run = [
   "pnpm install --frozen-lockfile",
   "go mod download",
   "git diff --exit-code -- go.mod go.sum",
+  "prek install --hook-type pre-commit",
 ]
 
 [tasks.generate]
@@ -21,7 +23,7 @@ run = "scripts/generate.sh"
 [tasks.format]
 description = "Format handwritten source files"
 run = [
-  "pnpm exec oxfmt .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
+  "pnpm exec oxfmt .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server/.fallowrc.json apps/server plugins/jellyfin gen/ts/package.json",
   "gofmt -w apps/cli gen/go",
   "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift format format --in-place gen/swift/Package.swift",
 ]

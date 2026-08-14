@@ -20,6 +20,10 @@ iOS application is currently checked in.
     mise run setup
     mise run check
 
+`mise run setup` resolves locked dependencies and installs the repository's
+pre-commit hook. The hook gates changed server quality; `mise run check` remains
+the complete repository verification command.
+
 GitHub Actions runs the Linux checks and Protobuf compatibility gate. Generated
 Swift bindings remain committed for the future universal app targeting iOS,
 tvOS, and macOS, but are not a compiled application boundary.

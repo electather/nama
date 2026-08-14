@@ -19,6 +19,11 @@ Native configuration is the source of truth:
 
 - JavaScript workspace manifests, lockfiles, and TypeScript quality
   configuration own Node packages and checks.
+- Server-local Fallow configuration owns graph-oriented checks for handwritten
+  server TypeScript; Oxlint and TypeScript remain the lint and type owners.
+- The root pre-commit configuration owns portable hooks, executed by the
+  Mise-pinned prek binary. Path-scoped hooks do not replace aggregate repository
+  verification.
 - The Go module owns Go dependencies; native Go tools own its checks.
 - The committed Swift package manifest owns generated Swift binding
   dependencies. No universal iOS application manifest or Xcode project is
