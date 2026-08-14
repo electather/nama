@@ -25,7 +25,7 @@ The MVP remains single-administrator and single-user. User administration, invit
 
 ## Boundary invariants
 
-1. `nama.api.v1` is the public contract consumed by the TypeScript core, Go CLI, and Swift tvOS application.
+1. `nama.api.v1` is the public contract consumed by the TypeScript core, Go CLI, and future universal Swift app rooted in `apps/ios`.
 2. `nama.plugin.v1` is a private subprocess contract consumed only by the TypeScript core and TypeScript plugins.
 3. The packages do not import each other and do not share a third Protobuf package. Similar public and plugin messages are deliberately separate because they have different trust and identity boundaries.
 4. Public consumer messages never expose provider item IDs, stream indexes, SDK objects, raw provider errors, configuration, or reusable provider credentials.
@@ -104,8 +104,8 @@ Every public RPC carries these Connect request headers through generated-client 
 
 | Header | Value |
 | --- | --- |
-| `nama-client-name` | Stable application name, such as `nama-cli` or `nama-tvos` |
-| `nama-client-platform` | Stable platform name, such as `go`, `tvos`, or `web` |
+| `nama-client-name` | Stable application name, such as `nama-cli` or `nama-ios` |
+| `nama-client-platform` | Stable platform name, such as `go`, `ios`, `tvos`, or `macos` |
 | `nama-client-version` | Released semantic version |
 
 They are untrusted compatibility claims, not credentials or attestation, and may be logged. Missing metadata is tolerated during local Milestone 0 development, but released clients send all three. A server may use the version for compatibility diagnostics or reject a version with a known correctness failure, using `FAILED_PRECONDITION` and reason `CLIENT_VERSION_UNSUPPORTED`; normal additive evolution does not require lock-step versions. No security property relies on the declared version, because a custom client can lie. Authorization, validation, and safe locator rules remain server-enforced for every version.
@@ -120,7 +120,7 @@ Each plugin returns its build version and contract major from `PluginService.Get
 - Request and response bodies, authorization headers, locator headers, passwords, bootstrap tokens, polling tokens, provider configuration, and opaque plugin session context are never logged.
 - Locators are absolute HTTP or HTTPS URLs. Any attached headers are allowlisted by the core and valid only for the referenced artwork or playback session.
 
-`nama.api.v1.HttpHeader` contains `name` and `value`. It is used only inside artwork, media, and external-subtitle locator responses and applies only to the locator URL's origin. Every locator also contains repeated `allowed_redirect_origins`, validated by the core. Each value is a normalized scheme/host/port origin with no credentials, path, query, or fragment. Clients check every redirect, reject an origin outside that list, and never forward custom locator headers when origin changes. A playback engine that cannot enforce these rules cannot advertise the corresponding direct-play capability. `nama.api.v1.BearerCredential` contains `token` and `expires_at`. Credential-bearing responses are sensitive in their entirety.
+`nama.api.v1.HttpHeader` contains `name` and `value`. It is used only inside artwork, media, and external-subtitle locator responses and applies only to the locator URL's origin. Every locator also contains repeated `allowed_redirect_origins`, validated by the core. Each value is a normalized scheme/host/port origin with no credentials, path, query, or fragment. Clients enforce that allowlist and never forward any custom locator header when the origin changes. A client or playback engine that cannot enforce both rules is ineligible for adoption; it does not turn either rule into advisory behavior. Exact-source review rejected tvOS AetherEngine `6.21.0`: it replays unrecognized custom headers across origins, preserves recognized credentials for same-host HTTP-to-HTTPS redirects without comparing ports, and publicly logs complete locator URLs in Release. `nama.api.v1.BearerCredential` contains `token` and `expires_at`. Credential-bearing responses are sensitive in their entirety.
 
 ## Public services
 
@@ -264,7 +264,7 @@ A provider type may change its schema additively. `schema_profile_version` ident
 
 ## Canonical media model
 
-The public media model serves an Apple TV interface without mirroring either Jellyfin or Plex. Lists stay lean; detail and technical requests are explicit. A duplicate title from multiple provider instances is one canonical item with multiple Nama-owned sources when identity reconciliation has enough evidence. Distinct cuts or editions remain distinct items; alternate encodes and resolutions of the same edition are sources.
+The public media model serves the universal Apple app without mirroring either Jellyfin or Plex. Lists stay lean; detail and technical requests are explicit. A duplicate title from multiple provider instances is one canonical item with multiple Nama-owned sources when identity reconciliation has enough evidence. Distinct cuts or editions remain distinct items; alternate encodes and resolutions of the same edition are sources.
 
 ### MediaSummary
 
@@ -457,9 +457,9 @@ On successful open, the core copies the materialized plan-to-provider track mapp
 
 Opening the same operation ID with the same request returns the same logical session while it remains valid. Opening with a different payload fails with `IDEMPOTENCY_KEY_REUSED`. A plan may be opened once logically; a second operation ID fails with `PLAYBACK_PLAN_ALREADY_OPENED`.
 
-The locator authorizes only the planned item/session and expires no earlier than the expected runtime plus a bounded grace period. It never contains an administrator, device, provider API-key, or reusable provider-account credential. Media bytes then flow provider to tvOS without traversing the core.
+The locator authorizes only the planned item/session and expires no earlier than the expected runtime plus a bounded grace period. It never contains an administrator, device, provider API-key, or reusable provider-account credential. Media bytes then flow from the provider to the Apple client without traversing the core.
 
-Milestone 1 must prove that Jellyfin can satisfy this security boundary on real hardware. Current documented Jellyfin APIs do not themselves promise an item- or session-scoped media credential, so this is a release-blocking proof rather than an assumed implementation detail. Jellyfin does not advertise usable `PLAYBACK_OPEN` to the core until that proof passes. The same rule applies to every later provider, including Plex. If a provider cannot safely constrain direct authorization, playback returns to security design review before product implementation; the contract does not quietly expose a reusable provider token or add an unreviewed media proxy.
+Milestone 1 must prove that Jellyfin can satisfy this security boundary on real hardware. Current documented Jellyfin APIs do not themselves promise an item- or session-scoped media credential, so this is a release-blocking proof rather than an assumed implementation detail. Jellyfin does not advertise usable `PLAYBACK_OPEN` to the core until that proof passes. Milestone 4 repeats the transport, logging, and redirect proof on iOS, tvOS, and macOS. The same rule applies to every later provider, including Plex. If a provider cannot safely constrain direct authorization, playback returns to security design; Nama does not ship a reusable provider credential or silently become a proxy.
 
 ### ReportPlayback
 
@@ -852,7 +852,7 @@ Provider configuration schema changes follow the schema compatibility rules abov
 - Go generates public messages and Connect clients only, excludes dependency-owned message generation, and pins the Google RPC/type and Protovalidate Go modules named by generated imports in `go.mod`; and
 - Swift generates public messages and Connect clients only, uses per-plugin `include_imports: true` for transitive non-WKT definitions, generates the selected `google.rpc` messages, and continues to obtain WKTs from SwiftProtobuf.
 
-The TypeScript and Swift imported-source strategy is restricted to transitive imports of Nama files plus the four selected error messages; it does not generate every file in the googleapis or Protovalidate modules. Connect client generation for imported files produces no extra clients because the selected inputs define messages/options, not services. The googleapis input is pinned to the same resolved module commit as `buf.lock`. The language compile probes are the acceptance test for this ownership; a schema is not complete while any generated target relies on an undeclared package.
+The TypeScript and Swift imported-source strategy is restricted to transitive imports of Nama files plus the four selected error messages; it does not generate every file in the googleapis or Protovalidate modules. Connect client generation for imported files produces no extra clients because the selected inputs define messages/options, not services. The googleapis input is pinned to the same resolved module commit as `buf.lock`. Present consumers compile as an ownership check; generated Swift remains drift-checked but is not a client compilation boundary while no universal iOS application exists.
 
 Generated code stays committed. Milestone 0 repository checks run:
 
@@ -860,11 +860,11 @@ Generated code stays committed. Milestone 0 repository checks run:
 2. module build;
 3. pinned deterministic generation into disposable staging;
 4. direct comparison of the three staged generated leaves with their committed counterparts;
-5. TypeScript, Go, and Swift compile probes against generated clients;
+5. TypeScript and Go compile probes against generated clients; the Swift client probe returns with the future universal iOS application;
 6. Buf breaking comparison against the pull request base; and
 7. a one-time automated proof that a deliberate field removal is rejected.
 
-Nama does not test generated Protobuf or Connect behavior. Buf and the pinned language generators/runtimes own serialization, descriptor construction, unknown-value preservation, and generated API shape. Generated-contract acceptance consists of schema format/lint/build, deterministic generated-leaf comparison, pull-request-base breaking checks, and compilation by the real TypeScript server/plugin, Go CLI, and tvOS applications.
+Nama does not test generated Protobuf or Connect behavior. Buf and the pinned language generators/runtimes own serialization, descriptor construction, unknown-value preservation, and generated API shape. Current generated-contract acceptance consists of schema format/lint/build, deterministic generated-leaf comparison, pull-request-base breaking checks, and compilation by the real TypeScript server/plugin and Go CLI. The future iOS application must restore native Swift consumer compilation for iOS, tvOS, and macOS before its contract boundary is accepted.
 
 Focused contract tests cover handwritten Nama behavior only:
 
@@ -896,24 +896,24 @@ These flows define how the services compose. They are not authorization shortcut
 4. It calls `CreateProviderInstance`; the core encrypts write-only values and returns only configured markers.
 5. Later edits use a patch plus clear list and the instance revision.
 
-### Pair a television
+### Pair an Apple device
 
-1. tvOS calls `BeginPairing`, retains the polling token, and displays the human code.
+1. The Apple app calls `BeginPairing`, retains the polling token, and displays the human code.
 2. The administrator approves the displayed human code through the CLI.
-3. tvOS polls no faster than instructed until it receives the single logical device credential.
-4. tvOS stores the credential in Keychain and uses it only for consumer RPCs.
+3. The app polls no faster than instructed until it receives the single logical device credential.
+4. The app stores the credential in Keychain and uses it only for consumer RPCs.
 5. Administrator revocation immediately blocks new calls made with that bearer.
 
 ### Browse and play
 
 1. Scheduled plugin catalog scans return normalized provider observations.
 2. The core reconciles and stores canonical items and source mappings.
-3. tvOS loads lean home/list summaries, then details and technical source data only as screens require them.
+3. The Apple app loads lean home/list summaries, then details and technical source data only as screens require them.
 4. Artwork references are separately resolved to safe refresh-bounded locators, with access expiry when authorization is present.
-5. tvOS sends real player capabilities and preferences to `PlanPlayback`.
+5. The app sends the current device's real player capabilities and preferences to `PlanPlayback`.
 6. The core calls the owning plugin plan method and maps provider track references to public plan IDs.
 7. `OpenPlayback` materializes a private provider lease and returns a safe direct descriptor with session-scoped tracks and any external subtitle locators.
-8. Media bytes flow from provider to tvOS. tvOS reports ordered telemetry, including observed session tracks, and closes the session.
+8. Media bytes flow from the provider to the app. The app reports ordered telemetry, including observed session tracks, and closes the session.
 9. The core commits canonical state, attempts lease cleanup, and schedules only provider exports not already performed by playback telemetry.
 
 ### Synchronize watch state
