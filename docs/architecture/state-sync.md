@@ -4,7 +4,7 @@ Nama is the canonical watch-state ledger while plugins expose source and sink op
 
 ## Milestone 1 reconciliation evidence
 
-The behavioral replay fixtures in `apps/server/src/watch-state-reconciliation.test.ts` preserve the accepted ordering rules:
+The disposable Milestone 1 replay established the accepted ordering rules:
 
 | Evidence | Proven result |
 | --- | --- |

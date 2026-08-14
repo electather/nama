@@ -5,7 +5,7 @@
   "scripts": {
     "check:format": "oxfmt --check .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server plugins/jellyfin gen/ts/package.json",
     "check:lint": "oxlint apps/server plugins/jellyfin",
-    "check:ts": "pnpm run check:format && pnpm run check:lint && pnpm run check:type && pnpm --filter @nama/server run check:test",
+    "check:ts": "pnpm run check:format && pnpm run check:lint && pnpm run check:type && pnpm --filter @nama/server run check:contract",
     "check:type": "pnpm --filter @nama/server --fail-if-no-match run check:type && pnpm --filter @nama/jellyfin --fail-if-no-match run check:type"
   },
   "devDependencies": {
