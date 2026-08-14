@@ -1,13 +1,16 @@
+// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/sort-imports, typescript/prefer-readonly-parameter-types -- One serialized integration flow must preserve the same bearer across the ambiguous sign-out boundary.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
-import { AuthService } from "@nama/api/nama/api/v1/auth_pb.js";
 import { ErrorInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
+import { AuthService } from "@nama/api/nama/api/v1/auth_pb.js";
 import { SetupService } from "@nama/api/nama/api/v1/setup_pb.js";
 
 import { startAuthSpikeServer } from "./auth-spike.ts";
+
+const HTTP_NOT_FOUND = 404;
 
 void test("Nama confirms Better Auth session revocation", async (context) => {
   const bootstrapToken = "bootstrap-secret-not-for-logs";
@@ -28,11 +31,11 @@ void test("Nama confirms Better Auth session revocation", async (context) => {
   const auth = createClient(AuthService, transport);
 
   const privateRoute = await fetch(`${server.baseUrl}/api/auth/sign-in/email`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: "admin@example.com", password }),
+    headers: { "content-type": "application/json" },
+    method: "POST",
   });
-  assert.equal(privateRoute.status, 404);
+  assert.equal(privateRoute.status, HTTP_NOT_FOUND);
 
   const created = await setup.createAdministrator({
     bootstrapToken,
@@ -50,7 +53,7 @@ void test("Nama confirms Better Auth session revocation", async (context) => {
   });
   assert.ok(signedIn.credential);
   assert.ok(signedIn.credential.expiresAt);
-  const token = signedIn.credential.token;
+  const { token } = signedIn.credential;
   const headers = { authorization: `Bearer ${token}` };
 
   const current = await auth.getCurrentUser({}, { headers });
