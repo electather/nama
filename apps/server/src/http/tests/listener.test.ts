@@ -2,7 +2,7 @@ import { expect, it } from "@effect/vitest";
 import { Deferred, Effect, Exit, Fiber, Layer, Ref, Scope } from "effect";
 import { TestClock } from "effect/testing";
 
-import { Database } from "../database/database.ts";
+import { Database } from "../../database/database.ts";
 import { SINGLE_CONNECTION, serverLayer, startServer } from "./http-server.test-support.ts";
 import {
   EPHEMERAL_PORT,

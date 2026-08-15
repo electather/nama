@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 
-import type { ContractFieldError, ContractFieldErrorInput } from "./field-errors.ts";
-import { normalizeContractFieldErrors } from "./field-errors.ts";
+import type { ContractFieldError, ContractFieldErrorInput } from "../field-errors.ts";
+import { normalizeContractFieldErrors } from "../field-errors.ts";
 
 const approvedViolations = [
   {

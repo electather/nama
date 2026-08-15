@@ -1,7 +1,7 @@
 import { expect, it } from "@effect/vitest";
 import { Effect, Exit, Layer, Scope } from "effect";
 
-import { Database } from "../database/database.ts";
+import { Database } from "../../database/database.ts";
 import {
   SINGLE_CONNECTION,
   serverLayerWithDatabase,

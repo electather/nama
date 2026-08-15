@@ -2,9 +2,9 @@ import type { RequestListener } from "node:http";
 
 import { Effect, Exit, Layer, Logger, Redacted, Scope } from "effect";
 
-import { Config } from "../config/config.ts";
-import { Database } from "../database/database.ts";
-import { HttpServer } from "./http-server.ts";
+import { Config } from "../../config/config.ts";
+import { Database } from "../../database/database.ts";
+import { HttpServer } from "../http-server.ts";
 import { HOST, reservePort } from "./network.test-support.ts";
 
 const SINGLE_CONNECTION = 1;

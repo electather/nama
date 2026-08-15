@@ -1,7 +1,7 @@
 import { expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 
-import { Database } from "../database/database.ts";
+import { Database } from "../../database/database.ts";
 import { startServer } from "./http-server.test-support.ts";
 import {
   EXPECTED_READINESS_TRANSITIONS,

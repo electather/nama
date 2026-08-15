@@ -5,8 +5,8 @@ import { expect, it } from "@effect/vitest";
 import { Clock, Effect, FileSystem, Redacted } from "effect";
 import { Pool } from "pg";
 
-import { Config } from "../src/config/config.ts";
-import { Database } from "../src/database/database.ts";
+import { Config } from "../../src/config/config.ts";
+import { Database } from "../../src/database/database.ts";
 import { integrationUrl, withIsolatedDatabase } from "./postgres.test-support.ts";
 
 const MASTER_KEY_BYTES = 32;
@@ -16,7 +16,7 @@ const ENCODED_MASTER_KEY = Buffer.alloc(MASTER_KEY_BYTES).toString("base64");
 const MASTER_KEY = `base64:${ENCODED_MASTER_KEY}`;
 
 const migrationPath = (relativePath: string): string => join(import.meta.dirname, relativePath);
-const productionMigrations = migrationPath("../drizzle/");
+const productionMigrations = migrationPath("../../drizzle/");
 const priorMigrations = migrationPath("fixtures/migrations/upgrade/prior/");
 const latestMigrations = migrationPath("fixtures/migrations/upgrade/latest/");
 const failingMigrations = migrationPath("fixtures/migrations/failure/");

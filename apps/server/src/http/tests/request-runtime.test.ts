@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import type { Layer, ManagedRuntime as ManagedRuntimeApi } from "effect";
 import { vi } from "vitest";
 
-import { Database } from "../database/database.ts";
+import { Database } from "../../database/database.ts";
 import { startServer } from "./http-server.test-support.ts";
 
 const FIRST_RUNTIME_INDEX = 0;
