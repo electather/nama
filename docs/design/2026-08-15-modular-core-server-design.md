@@ -96,7 +96,7 @@ apps/server/
     fixtures/migrations/...
 ```
 
-Test-support filenames may be split further only when separate resource lifecycles require it. Do not create generic `utils`, `shared`, `core`, `interfaces`, or repository directories.
+Use the listed test-support files. Do not create generic `utils`, `shared`, `core`, `interfaces`, or repository directories.
 
 ## Module ownership
 
@@ -260,7 +260,7 @@ Preserve every existing behavioral assertion. Do not delete, skip, focus, or wea
 ## Test support
 
 - Configuration support remains under `config/`.
-- HTTP server, socket, and port support remains under `http/` and may be split by resource lifecycle.
+- `http/http-server.test-support.ts` owns in-process server construction and layer wiring; `http/network.test-support.ts` owns port reservation, raw sockets, and wire-level request helpers.
 - `integration/postgres.test-support.ts` owns the isolated database helper shared by database and process integration suites.
 - `integration/process.test-support.ts` owns child spawning, output capture, status polling, signal delivery, and forced cleanup.
 - Compose and migration fixtures remain integration-only resources.
