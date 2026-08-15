@@ -3,18 +3,20 @@ import { Effect } from "effect";
 import { Pool } from "pg";
 
 import {
-  MASTER_KEY,
   SINGLE_CONNECTION,
+  integrationUrl,
+  withIsolatedDatabase,
+} from "./postgres.test-support.ts";
+import {
+  MASTER_KEY,
   eventsFrom,
   expectPortReleased,
-  integrationUrl,
   recordFromLine,
-  startProcess,
   startMigrationFailureProcess,
+  startProcess,
   stopProcess,
   waitForExit,
   waitForStatus,
-  withIsolatedDatabase,
 } from "./process.test-support.ts";
 import type { RunningProcess } from "./process.test-support.ts";
 

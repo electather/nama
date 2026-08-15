@@ -1,9 +1,9 @@
 import { NodeFileSystem, NodeRuntime } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 
-import { Config } from "../src/config.ts";
-import { Database } from "../src/database.ts";
-import { HttpServer } from "../src/server.ts";
+import { Config } from "../src/config/config.ts";
+import { Database } from "../src/database/database.ts";
+import { HttpServer } from "../src/http/http-server.ts";
 
 const FAILURE_MIGRATIONS = `${import.meta.dirname}/fixtures/migrations/failure/`;
 

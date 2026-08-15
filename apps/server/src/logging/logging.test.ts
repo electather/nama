@@ -1,13 +1,8 @@
 import { expect, it } from "@effect/vitest";
 import { Cause, Effect, Redacted } from "effect";
 
-import { Config } from "../src/config.ts";
-import {
-  configuredLoggingLayer,
-  logEvent,
-  logFailure,
-  writeBootstrapFailure,
-} from "../src/logging.ts";
+import { Config } from "../config/config.ts";
+import { configuredLoggingLayer, logEvent, logFailure, writeBootstrapFailure } from "./logging.ts";
 
 const config = Config.of({
   database: Object.freeze({ maxConnections: 1, url: Redacted.make("postgres://secret") }),

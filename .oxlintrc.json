@@ -47,35 +47,44 @@
   },
   "overrides": [
     {
-      "files": ["apps/server/src/config.ts"],
+      "files": ["apps/server/src/config/overlay.ts", "apps/server/src/config/schema.ts"],
       "rules": {
         "eslint/new-cap": [
           "error",
           {
             "capIsNewExceptions": ["Literals", "Record", "RedactedFromValue", "Struct"]
           }
-        ],
+        ]
+      }
+    },
+    {
+      "files": ["apps/server/src/config/schema.ts"],
+      "rules": {
         "import/no-nodejs-modules": ["error", { "allow": ["node:net"] }]
       }
     },
     {
       "files": [
-        "apps/server/src/config.ts",
-        "apps/server/src/database.ts",
-        "apps/server/src/server.ts"
+        "apps/server/src/config/config.ts",
+        "apps/server/src/database/database.ts",
+        "apps/server/src/http/listener.ts"
       ],
       "rules": {
         "unicorn/no-useless-undefined": "off"
       }
     },
     {
-      "files": ["apps/server/src/server.ts"],
+      "files": ["apps/server/src/http/http-server.ts", "apps/server/src/http/listener.ts"],
       "rules": {
         "import/no-nodejs-modules": ["error", { "allow": ["node:http"] }]
       }
     },
     {
-      "files": ["apps/server/test/**/*.ts"],
+      "files": [
+        "apps/server/src/**/*.test.ts",
+        "apps/server/src/**/*.test-support.ts",
+        "apps/server/integration/**/*.ts"
+      ],
       "rules": {
         "import/no-nodejs-modules": [
           "error",

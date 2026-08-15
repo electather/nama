@@ -1,27 +1,13 @@
-import { once } from "node:events";
 import type { RequestListener } from "node:http";
-import type { Socket } from "node:net";
-import { connect } from "node:net";
 
 import { Effect, Exit, Layer, Logger, Redacted, Scope } from "effect";
 
-import { Config } from "../src/config.ts";
-import { Database } from "../src/database.ts";
-import { HttpServer } from "../src/server.ts";
+import { Config } from "../config/config.ts";
+import { Database } from "../database/database.ts";
+import { HttpServer } from "./http-server.ts";
 import { HOST, reservePort } from "./network.test-support.ts";
 
 const SINGLE_CONNECTION = 1;
-const HTTP_OK = 200;
-const HTTP_NOT_FOUND = 404;
-const HTTP_UNAVAILABLE = 503;
-const SHORT_DELAY_MILLISECONDS = 25;
-const EXPECTED_READINESS_TRANSITIONS = 2;
-
-interface CapturedSocket {
-  readonly location: URL;
-  readonly read: () => string;
-  readonly socket: Socket;
-}
 
 const serverConfig = (port: number) =>
   Config.of({
@@ -89,53 +75,5 @@ const startServer = (
     };
   });
 
-const openCapturedSocket = (origin: string) =>
-  Effect.gen(function* capturedSocket() {
-    const location = new URL(origin);
-    const socket = yield* Effect.acquireRelease(
-      Effect.sync(() => connect(Number(location.port), location.hostname)),
-      (acquired) =>
-        Effect.sync(() => {
-          acquired.destroy();
-        }),
-    );
-    socket.setEncoding("utf8");
-    let received = "";
-    socket.on("data", (chunk: string) => {
-      received += chunk;
-    });
-    yield* Effect.promise(() => once(socket, "connect"));
-    return { location, read: () => received, socket };
-  });
-
-const sendReadyRequest = (client: CapturedSocket, connection: "close" | "keep-alive") =>
-  Effect.sync(() => {
-    client.socket.write(
-      `GET /health/ready HTTP/1.1\r\nHost: ${client.location.host}\r\nConnection: ${connection}\r\n\r\n`,
-    );
-  });
-
-const statusesFrom = (received: string): (string | undefined)[] =>
-  [...received.matchAll(/HTTP\/1\.1 (?<status>\d{3})/gu)].map((match) => match.groups?.["status"]);
-
-const waitForShortDelay = Effect.sleep(SHORT_DELAY_MILLISECONDS);
-
-const waitForSocketClose = (client: CapturedSocket) =>
-  Effect.promise(() => once(client.socket, "close"));
-
-export {
-  EXPECTED_READINESS_TRANSITIONS,
-  HTTP_NOT_FOUND,
-  HTTP_OK,
-  HTTP_UNAVAILABLE,
-  SINGLE_CONNECTION,
-  openCapturedSocket,
-  sendReadyRequest,
-  serverLayer,
-  serverLayerWithDatabase,
-  startServer,
-  statusesFrom,
-  waitForShortDelay,
-  waitForSocketClose,
-};
-export type { CapturedSocket, ServerLayerOptions };
+export { SINGLE_CONNECTION, serverLayer, serverLayerWithDatabase, startServer };
+export type { ServerLayerOptions };

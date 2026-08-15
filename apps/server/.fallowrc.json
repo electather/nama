@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
-  "entry": ["src/main.ts", "src/contract-probe.ts"],
+  "entry": ["src/main.ts", "src/contracts/probe.ts"],
   "rules": {
     "boundary-violation": "error",
     "circular-dependencies": "error",
@@ -139,12 +139,12 @@
     "zones": [
       { "name": "entry", "patterns": ["src/main.ts"] },
       { "name": "composition", "patterns": ["src/app.ts"] },
-      { "name": "configuration", "patterns": ["src/config.ts"] },
-      { "name": "logging", "patterns": ["src/logging.ts"] },
-      { "name": "database", "patterns": ["src/database.ts"] },
-      { "name": "transport", "patterns": ["src/server.ts"] },
-      { "name": "contracts", "patterns": ["src/contract*.ts"] },
-      { "name": "tests", "patterns": ["test/**/*.ts"] },
+      { "name": "configuration", "patterns": ["src/config/**/*.ts"] },
+      { "name": "logging", "patterns": ["src/logging/**/*.ts"] },
+      { "name": "database", "patterns": ["src/database/**/*.ts"] },
+      { "name": "transport", "patterns": ["src/http/**/*.ts"] },
+      { "name": "contracts", "patterns": ["src/contracts/**/*.ts"] },
+      { "name": "integration", "patterns": ["integration/**/*.ts"] },
       { "name": "tooling", "patterns": ["vitest.config.ts"] }
     ],
     "rules": [
@@ -158,10 +158,7 @@
       { "from": "database", "allow": ["configuration"] },
       { "from": "transport", "allow": ["configuration", "database"] },
       { "from": "contracts", "allow": [] },
-      {
-        "from": "tests",
-        "allow": ["configuration", "logging", "database", "transport", "contracts"]
-      },
+      { "from": "integration", "allow": ["configuration", "database", "transport"] },
       { "from": "tooling", "allow": [] }
     ],
     "coverage": {

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-compose_file="${repository_root}/apps/server/test/compose.yaml"
+compose_file="${repository_root}/apps/server/integration/compose.yaml"
 project="nama-server-tests-${PPID}-$$"
 compose=(docker compose --project-name "${project}" --file "${compose_file}")
 

@@ -1,7 +1,5 @@
-import { Cause, Effect, Layer, Logger, References } from "effect";
+import { Cause } from "effect";
 import type { LogLevel } from "effect";
-
-import type { Config } from "./config.ts";
 
 const MAXIMUM_STACK_FRAMES = 20;
 const FIRST_INDEX = 0;
@@ -15,17 +13,6 @@ const KNOWN_ERROR_TAGS: Readonly<Record<string, true>> = Object.freeze({
   ServerBindError: true,
   ShutdownError: true,
 });
-const MINIMUM_LEVEL: Readonly<Record<Config["Service"]["logging"]["level"], LogLevel.LogLevel>> =
-  Object.freeze({
-    debug: "Debug",
-    error: "Error",
-    fatal: "Fatal",
-    info: "Info",
-    trace: "Trace",
-    warn: "Warn",
-  });
-
-type LineWriter = (line: string) => void;
 
 interface EventMessage {
   readonly durationMs?: number;
@@ -42,14 +29,6 @@ interface LogRecord {
   sanitized_stack_frames?: readonly string[];
   timestamp: string;
 }
-
-const stdoutWriter: LineWriter = (line) => {
-  process.stdout.write(line);
-};
-
-const stderrWriter: LineWriter = (line) => {
-  process.stderr.write(line);
-};
 
 const taggedValue = (value: unknown): string | undefined => {
   if (typeof value !== "object" || value === null || !("_tag" in value)) {
@@ -100,6 +79,7 @@ const isEventMessage = (message: unknown): message is EventMessage =>
   message !== null &&
   "event" in message &&
   typeof message.event === "string";
+
 const firstMessage = (message: unknown): unknown => {
   if (Array.isArray(message) && message.length === SINGLE_MESSAGE_COUNT) {
     return message[FIRST_INDEX];
@@ -148,55 +128,5 @@ const recordFor = (
   return record;
 };
 
-const configuredLoggingLayer = (
-  config: Readonly<Config["Service"]>,
-  write: (line: string) => void = stdoutWriter,
-) => {
-  const jsonLogger = Logger.make<unknown, void>(
-    ({ date, logLevel, message }: Logger.Options<unknown>) => {
-      const record = recordFor(message, logLevel, date);
-      if (record !== undefined) {
-        write(`${JSON.stringify(record)}\n`);
-      }
-    },
-  );
-  return Layer.mergeAll(
-    Logger.layer([jsonLogger]),
-    Layer.succeed(References.MinimumLogLevel, MINIMUM_LEVEL[config.logging.level]),
-  );
-};
-
-const logEvent = (event: string, fields: { readonly durationMs?: number } = {}) =>
-  Effect.logInfo({ event, ...fields } satisfies EventMessage);
-
-const logFailure = (
-  cause: Readonly<Cause.Cause<unknown>>,
-  event: "server.shutdown_failed" | "server.start_failed",
-) => {
-  const tag = errorTag(cause);
-  const stackFrames = sanitizedStackFrames(cause);
-  if (stackFrames === undefined) {
-    return Effect.logFatal({ errorTag: tag, event } satisfies EventMessage);
-  }
-  return Effect.logFatal({
-    errorTag: tag,
-    event,
-    sanitizedStackFrames: stackFrames,
-  } satisfies EventMessage);
-};
-
-const writeBootstrapFailure = (
-  cause: Readonly<Cause.Cause<unknown>>,
-  write: (line: string) => void = stderrWriter,
-): void => {
-  write(
-    `${JSON.stringify({
-      error_tag: errorTag(cause),
-      event: "server.start_failed",
-      level: "fatal",
-      timestamp: new Date().toISOString(),
-    } satisfies LogRecord)}\n`,
-  );
-};
-
-export { configuredLoggingLayer, logEvent, logFailure, writeBootstrapFailure };
+export { errorTag, recordFor, sanitizedStackFrames };
+export type { EventMessage, LogRecord };

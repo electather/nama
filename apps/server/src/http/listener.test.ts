@@ -2,38 +2,22 @@ import { expect, it } from "@effect/vitest";
 import { Deferred, Effect, Exit, Fiber, Layer, Ref, Scope } from "effect";
 import { TestClock } from "effect/testing";
 
-import { Database } from "../src/database.ts";
-import { EPHEMERAL_PORT, HOST, reservePort, withReservedPort } from "./network.test-support.ts";
+import { Database } from "../database/database.ts";
+import { SINGLE_CONNECTION, serverLayer, startServer } from "./http-server.test-support.ts";
 import {
-  EXPECTED_READINESS_TRANSITIONS,
-  HTTP_NOT_FOUND,
+  EPHEMERAL_PORT,
+  HOST,
   HTTP_OK,
   HTTP_UNAVAILABLE,
-  SINGLE_CONNECTION,
   openCapturedSocket,
+  reservePort,
   sendReadyRequest,
-  serverLayer,
-  serverLayerWithDatabase,
-  startServer,
   statusesFrom,
   waitForShortDelay,
   waitForSocketClose,
-} from "./server.test-support.ts";
-import type { CapturedSocket } from "./server.test-support.ts";
-
-const HTTP_DELEGATED = 418;
-
-const expectEmptyResponse = (response: Response, status: number) =>
-  Effect.gen(function* emptyResponseAssertion() {
-    expect(response.status).toBe(status);
-    expect(response.headers.get("content-length")).toBe("0");
-    expect(yield* Effect.promise(() => response.text())).toBe("");
-  });
-
-const expectReadyResponse = (origin: string, status: number) =>
-  Effect.promise(() => fetch(`${origin}/health/ready`)).pipe(
-    Effect.flatMap((response) => expectEmptyResponse(response, status)),
-  );
+  withReservedPort,
+} from "./network.test-support.ts";
+import type { CapturedSocket } from "./network.test-support.ts";
 
 interface ShutdownSocketScenario {
   readonly assertBeforeRelease: () => void;
@@ -66,14 +50,6 @@ const runShutdownSocketScenario = ({
     return statusesFrom(client.read());
   });
 
-const exerciseReadinessTransitions = (origin: string) =>
-  Effect.gen(function* readinessTransitions() {
-    yield* expectReadyResponse(origin, HTTP_UNAVAILABLE);
-    yield* expectReadyResponse(origin, HTTP_UNAVAILABLE);
-    yield* expectReadyResponse(origin, HTTP_OK);
-    yield* expectReadyResponse(origin, HTTP_OK);
-  });
-
 interface DrainScenario {
   readonly close: Effect.Effect<void>;
   readonly origin: string;
@@ -95,82 +71,6 @@ const verifyGracefulDrain = ({ close, origin, probe, probeStarted }: DrainScenar
     expect((yield* Fiber.join(response)).status).toBe(HTTP_OK);
     yield* Fiber.join(shutdown);
   });
-
-it.live("matches only the exact health method and target", () =>
-  Effect.gen(function* exactHealthRoutesTest() {
-    let probes = EPHEMERAL_PORT;
-    const server = yield* startServer(
-      Database.of({
-        checkReadiness: Effect.sync(() => {
-          probes += SINGLE_CONNECTION;
-          return true;
-        }),
-      }),
-    );
-
-    const [live, ready, wrongMethod, query, trailingSlash, unknown] = yield* Effect.all([
-      Effect.promise(() => fetch(`${server.origin}/health/live`)),
-      Effect.promise(() => fetch(`${server.origin}/health/ready`)),
-      Effect.promise(() => fetch(`${server.origin}/health/live`, { method: "POST" })),
-      Effect.promise(() => fetch(`${server.origin}/health/live?check=true`)),
-      Effect.promise(() => fetch(`${server.origin}/health/ready/`)),
-      Effect.promise(() => fetch(`${server.origin}/unknown`)),
-    ] as const);
-    expect([live.status, ready.status]).toEqual([HTTP_OK, HTTP_OK]);
-    expect([wrongMethod.status, query.status, trailingSlash.status, unknown.status]).toEqual([
-      HTTP_NOT_FOUND,
-      HTTP_NOT_FOUND,
-      HTTP_NOT_FOUND,
-      HTTP_NOT_FOUND,
-    ]);
-    expect(probes).toBe(SINGLE_CONNECTION);
-  }),
-);
-
-it.live("delegates unmatched requests without probing database readiness", () =>
-  Effect.gen(function* unmatchedRequestDelegationTest() {
-    let probes = EPHEMERAL_PORT;
-    const server = yield* startServer(
-      Database.of({
-        checkReadiness: Effect.sync(() => {
-          probes += SINGLE_CONNECTION;
-          return true;
-        }),
-      }),
-      [],
-      (_request, response) => {
-        response.statusCode = HTTP_DELEGATED;
-        response.setHeader("Content-Length", "0");
-        response.end();
-      },
-    );
-
-    const response = yield* Effect.promise(() => fetch(`${server.origin}/delegated`));
-    yield* expectEmptyResponse(response, HTTP_DELEGATED);
-    expect(probes).toBe(EPHEMERAL_PORT);
-  }),
-);
-
-it.live("releases the listener before its database dependency", () =>
-  Effect.gen(function* reverseFinalizationTest() {
-    const messages: string[] = [];
-    const port = yield* reservePort;
-    const database = Database.of({ checkReadiness: Effect.succeed(true) });
-    const databaseLayer = Layer.effect(
-      Database,
-      Effect.acquireRelease(Effect.succeed(database), () =>
-        Effect.sync(() => {
-          messages.push("database.closed");
-        }),
-      ),
-    );
-    const scope = yield* Scope.make();
-    yield* Layer.buildWithScope(serverLayerWithDatabase(port, databaseLayer, { messages }), scope);
-    yield* Scope.close(scope, Exit.void);
-
-    expect(messages).toEqual(["server.stopping", "database.closed"]);
-  }),
-);
 
 it.live("allows port reuse after partial listener acquisition fails", () =>
   Effect.gen(function* partialListenerAcquisitionTest() {
@@ -223,24 +123,6 @@ it.live("short-circuits readiness after shutdown starts on an active connection"
     });
 
     expect(statuses).toEqual([String(HTTP_OK), String(HTTP_UNAVAILABLE)]);
-  }),
-);
-
-it.live("serves empty responses and logs only database readiness transitions", () =>
-  Effect.gen(function* readinessLoggingTest() {
-    const states = [false, false, true, true];
-    const messages: string[] = [];
-    const server = yield* startServer(
-      Database.of({ checkReadiness: Effect.sync(() => states.shift() ?? true) }),
-      messages,
-    );
-
-    const live = yield* Effect.promise(() => fetch(`${server.origin}/health/live`));
-    yield* expectEmptyResponse(live, HTTP_OK);
-    yield* exerciseReadinessTransitions(server.origin);
-    expect(messages.filter((message) => message === "database.readiness_changed")).toHaveLength(
-      EXPECTED_READINESS_TRANSITIONS,
-    );
   }),
 );
 

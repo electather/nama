@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     environment: "node",
     fileParallelism: false,
-    include: ["test/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "integration/**/*.test.ts"],
     maxWorkers: 1,
   },
 });

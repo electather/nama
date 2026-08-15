@@ -3,7 +3,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Context, Data, Effect, Layer, Redacted } from "effect";
 import { Pool } from "pg";
 
-import { Config } from "./config.ts";
+import { Config } from "../config/config.ts";
 
 const PROBE_TIMEOUT_MILLISECONDS = 2000;
 

@@ -1,10 +1,15 @@
 import { NodeFileSystem } from "@effect/platform-node";
 import { Cause, Clock, Effect, Exit, Layer } from "effect";
 
-import { Config } from "./config.ts";
-import { Database } from "./database.ts";
-import { configuredLoggingLayer, logEvent, logFailure, writeBootstrapFailure } from "./logging.ts";
-import { HttpServer } from "./server.ts";
+import { Config } from "./config/config.ts";
+import { Database } from "./database/database.ts";
+import { HttpServer } from "./http/http-server.ts";
+import {
+  configuredLoggingLayer,
+  logEvent,
+  logFailure,
+  writeBootstrapFailure,
+} from "./logging/logging.ts";
 
 const PRODUCTION_MIGRATIONS = `${import.meta.dirname}/../drizzle/`;
 

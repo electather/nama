@@ -1,17 +1,14 @@
 import type { ChildProcess } from "node:child_process";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
-import { createServer } from "node:http";
+import { fork } from "node:child_process";
+import { request as httpRequest } from "node:http";
 import { join } from "node:path";
 
 import { NodeFileSystem } from "@effect/platform-node";
 import { Clock, Effect, FileSystem, Option } from "effect";
-import { Pool } from "pg";
 
+import { HOST, reservePort, reserveSpecificPort } from "../src/http/network.test-support.ts";
 import { migrationFailureMainModule } from "./migration-failure-main.test-support.ts";
-import { HOST, reservePort } from "./network.test-support.ts";
 
-const SINGLE_CONNECTION = 1;
 const MASTER_KEY_BYTES = 32;
 const MASTER_KEY_FILL = 9;
 const STATUS_WAIT_MILLISECONDS = 6000;
@@ -19,14 +16,6 @@ const POLL_MILLISECONDS = 25;
 const SERVER_ROOT = join(import.meta.dirname, "../");
 const MAIN_MODULE = join(SERVER_ROOT, "src/main.ts");
 const MASTER_KEY = `base64:${Buffer.alloc(MASTER_KEY_BYTES, MASTER_KEY_FILL).toString("base64")}`;
-
-const integrationUrl = (() => {
-  const value = process.env["NAMA_TEST_DATABASE_URL"];
-  if (value === undefined) {
-    throw new Error("NAMA_TEST_DATABASE_URL is required for process integration tests");
-  }
-  return value;
-})();
 
 interface RunningProcess {
   readonly child: ChildProcess;
@@ -145,10 +134,10 @@ const startProcess = (databaseUrl: string, mainModule: string = MAIN_MODULE) =>
     const stderr = outputCapture();
     const child = yield* Effect.acquireRelease(
       Effect.sync(() =>
-        spawn(process.execPath, [mainModule], {
+        fork(mainModule, [], {
           cwd: SERVER_ROOT,
           env: { ...process.env, NAMA_CONFIG: configPath },
-          stdio: ["ignore", "pipe", "pipe"],
+          stdio: ["ignore", "pipe", "pipe", "ipc"],
         }),
       ),
       (acquired) =>
@@ -163,6 +152,44 @@ const startProcess = (databaseUrl: string, mainModule: string = MAIN_MODULE) =>
 const startMigrationFailureProcess = (databaseUrl: string) =>
   startProcess(databaseUrl, migrationFailureMainModule);
 
+const requestStatus = (target: StatusTarget) =>
+  Effect.callback<Response, unknown>((resume) => {
+    const location = new URL(target.path, target.origin);
+    const onError = (cause: Error): void => {
+      resume(Effect.fail(cause));
+    };
+    const request = httpRequest(
+      {
+        host: HOST,
+        method: "GET",
+        path: location.pathname,
+        port: Number(location.port),
+      },
+      (response) => {
+        const chunks: Uint8Array[] = [];
+        const status = response.statusCode;
+        response.on("data", (chunk: Uint8Array) => {
+          chunks.push(chunk);
+        });
+        response.once("error", onError);
+        response.once("end", () => {
+          if (status === undefined) {
+            resume(Effect.fail(new TypeError("expected an HTTP response status")));
+            return;
+          }
+          const body = Uint8Array.from(Buffer.concat(chunks));
+          resume(Effect.succeed(new Response(body, { status })));
+        });
+      },
+    );
+    request.once("error", onError);
+    request.end();
+
+    return Effect.sync(() => {
+      request.destroy();
+    });
+  });
+
 const pollStatus = (target: StatusTarget, deadline: number): Effect.Effect<Response> =>
   Effect.gen(function* statusPoll() {
     const now = yield* Clock.currentTimeMillis;
@@ -171,12 +198,7 @@ const pollStatus = (target: StatusTarget, deadline: number): Effect.Effect<Respo
         new Error(`timed out waiting for ${target.path} status ${target.status}`),
       );
     }
-    const response = yield* Effect.option(
-      Effect.tryPromise({
-        catch: (cause) => cause,
-        try: () => fetch(`${target.origin}${target.path}`),
-      }),
-    );
+    const response = yield* Effect.option(requestStatus(target));
     if (Option.isSome(response) && response.value.status === target.status) {
       return response.value;
     }
@@ -193,44 +215,7 @@ const stopProcess = (runningProcess: RunningProcess, signal: NodeJS.Signals) =>
     runningProcess.child.kill(signal);
   }).pipe(Effect.andThen(waitForExit(runningProcess.child)));
 
-const expectPortReleased = (origin: string) =>
-  Effect.acquireUseRelease(
-    Effect.sync(createServer),
-    (reservation) =>
-      Effect.promise(async () => {
-        reservation.listen(Number(new URL(origin).port), HOST);
-        await once(reservation, "listening");
-      }),
-    (reservation) => Effect.promise(() => reservation[Symbol.asyncDispose]()),
-  );
-
-const withIsolatedDatabase = <Result, Error, Requirements>(
-  use: (databaseUrl: string) => Effect.Effect<Result, Error, Requirements>,
-) => {
-  const databaseName = `nama_process_${crypto.randomUUID().replaceAll("-", "")}`;
-  const databaseUrl = new URL(integrationUrl);
-  databaseUrl.pathname = `/${databaseName}`;
-  return Effect.acquireUseRelease(
-    Effect.sync(() => new Pool({ connectionString: integrationUrl, max: SINGLE_CONNECTION })),
-    (admin) =>
-      Effect.acquireUseRelease(
-        Effect.promise(async () => {
-          await admin.query(`CREATE DATABASE "${databaseName}"`);
-          return databaseUrl.toString();
-        }),
-        (url) => Effect.scoped(use(url)),
-        () =>
-          Effect.promise(async () => {
-            await admin.query(
-              "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
-              [databaseName],
-            );
-            await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
-          }),
-      ),
-    (admin) => Effect.promise(() => admin.end()),
-  );
-};
+const expectPortReleased = (origin: string) => reserveSpecificPort(Number(new URL(origin).port));
 
 const eventsFrom = (runningProcess: RunningProcess): string[] =>
   runningProcess
@@ -242,16 +227,13 @@ const eventsFrom = (runningProcess: RunningProcess): string[] =>
 
 export {
   MASTER_KEY,
-  SINGLE_CONNECTION,
   eventsFrom,
   expectPortReleased,
-  integrationUrl,
   recordFromLine,
   startProcess,
   startMigrationFailureProcess,
   stopProcess,
   waitForExit,
   waitForStatus,
-  withIsolatedDatabase,
 };
 export type { RunningProcess };

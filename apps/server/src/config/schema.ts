@@ -1,10 +1,10 @@
 import { isIPv4, isIPv6 } from "node:net";
 
-import { Context, Data, Effect, FileSystem, Layer, Option, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import type { Redacted as RedactedValue } from "effect/Redacted";
-import { TomlError, parse } from "smol-toml";
 
-const DEFAULT_CONFIG_PATH = "/etc/nama/nama.toml";
+import { ConfigValidationError } from "./errors.ts";
+
 const DEFAULT_BIND = "0.0.0.0:8080";
 const DEFAULT_MAX_CONNECTIONS = 10;
 const DEFAULT_LOG_LEVEL = "info";
@@ -21,7 +21,6 @@ const NEXT_CHARACTER_OFFSET = 1;
 const LOG_LEVELS = ["trace", "debug", "info", "warn", "error", "fatal"] as const;
 
 type LogLevel = (typeof LOG_LEVELS)[number];
-type Environment = Readonly<Record<string, string | undefined>>;
 
 interface ConfigService {
   readonly server: Readonly<{
@@ -39,19 +38,6 @@ interface ConfigService {
     readonly level: LogLevel;
   }>;
 }
-
-const taggedError = Data.TaggedError;
-const contextService = Context.Service;
-const ConfigReadError = taggedError("ConfigReadError");
-const ConfigParseError = taggedError("ConfigParseError")<{
-  readonly column?: number;
-  readonly line?: number;
-}>;
-const ConfigValidationError = taggedError("ConfigValidationError")<{
-  readonly fieldPath?: string;
-}>;
-
-const decodeRecord = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown));
 
 const hasValidPort = (value: string): boolean => {
   if (!/^\d+$/u.test(value)) {
@@ -177,70 +163,6 @@ const ConfigurationSchema = Schema.Struct({
 
 type DecodedConfiguration = Schema.Schema.Type<typeof ConfigurationSchema>;
 
-type FieldOverride = readonly [field: string, value: string | undefined];
-
-const copySectionWithOverrides = (
-  root: Readonly<Record<string, unknown>>,
-  name: string,
-  overrides: readonly FieldOverride[],
-): unknown => {
-  const original = root[name];
-  const decoded = decodeRecord(original);
-  if (Option.isNone(decoded) && original !== undefined) {
-    return original;
-  }
-  const section: Record<string, unknown> = Option.match(decoded, {
-    onNone: () => ({}),
-    onSome: (value) => ({ ...value }),
-  });
-  for (const [field, value] of overrides) {
-    if (value !== undefined) {
-      section[field] = value;
-    }
-  }
-  return section;
-};
-
-const applyContentOverrides = (input: unknown, environment: Environment): unknown => {
-  const root = decodeRecord(input);
-  if (Option.isNone(root)) {
-    return input;
-  }
-  return {
-    ...root.value,
-    database: copySectionWithOverrides(root.value, "database", [
-      ["url", environment["NAMA_DATABASE_URL"]],
-    ]),
-    logging: copySectionWithOverrides(root.value, "logging", [
-      ["level", environment["NAMA_LOG_LEVEL"]],
-    ]),
-    security: copySectionWithOverrides(root.value, "security", [
-      ["master_key", environment["NAMA_MASTER_KEY"]],
-    ]),
-    server: copySectionWithOverrides(root.value, "server", [
-      ["bind", environment["NAMA_BIND"]],
-      ["public_url", environment["NAMA_PUBLIC_URL"]],
-    ]),
-  };
-};
-
-const parseConfiguration = (source: string) =>
-  Effect.try({
-    catch: (error) => {
-      if (error instanceof TomlError) {
-        return new ConfigParseError({ column: error.column, line: error.line });
-      }
-      return new ConfigParseError({});
-    },
-    try: () => parse(source) as unknown,
-  });
-
-const decodeConfiguration = (input: unknown) =>
-  Schema.decodeUnknownEffect(ConfigurationSchema, {
-    errors: "all",
-    onExcessProperty: "error",
-  })(input).pipe(Effect.mapError(() => new ConfigValidationError({})));
-
 const freezeConfiguration = (decoded: Readonly<DecodedConfiguration>): ConfigService => {
   const database = Object.freeze({
     maxConnections: decoded.database.max_connections,
@@ -255,26 +177,14 @@ const freezeConfiguration = (decoded: Readonly<DecodedConfiguration>): ConfigSer
   return Object.freeze({ database, logging, security, server });
 };
 
-const loadConfig = (environment: Environment) =>
-  Effect.gen(function* loadConfiguration() {
-    const path = environment["NAMA_CONFIG"] ?? DEFAULT_CONFIG_PATH;
-    if (path === "") {
-      return yield* new ConfigReadError(undefined);
-    }
+const decodeConfiguration = (input: unknown) =>
+  Schema.decodeUnknownEffect(ConfigurationSchema, {
+    errors: "all",
+    onExcessProperty: "error",
+  })(input).pipe(
+    Effect.mapError(() => new ConfigValidationError({})),
+    Effect.map(freezeConfiguration),
+  );
 
-    const fileSystem = yield* FileSystem.FileSystem;
-    const source = yield* fileSystem
-      .readFileString(path)
-      .pipe(Effect.mapError(() => new ConfigReadError(undefined)));
-    const parsed = yield* parseConfiguration(source);
-    const decoded = yield* decodeConfiguration(applyContentOverrides(parsed, environment));
-
-    return freezeConfiguration(decoded);
-  });
-
-class Config extends contextService<Config, ConfigService>()("@nama/server/Config") {
-  static readonly layer = (environment: Environment) =>
-    Layer.effect(Config, loadConfig(environment));
-}
-
-export { Config };
+export { decodeConfiguration };
+export type { ConfigService, LogLevel };

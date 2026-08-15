@@ -2,7 +2,7 @@ import { NodeFileSystem } from "@effect/platform-node";
 import { expect } from "@effect/vitest";
 import { Effect, FileSystem } from "effect";
 
-import { Config } from "../src/config.ts";
+import { Config } from "./config.ts";
 
 const MASTER_KEY_FILL = 7;
 

@@ -5,13 +5,9 @@ import { expect, it } from "@effect/vitest";
 import { Clock, Effect, FileSystem, Redacted } from "effect";
 import { Pool } from "pg";
 
-import { Config } from "../src/config.ts";
-import { Database } from "../src/database.ts";
-
-const integrationUrl = process.env["NAMA_TEST_DATABASE_URL"];
-if (integrationUrl === undefined) {
-  throw new Error("NAMA_TEST_DATABASE_URL is required for database integration tests");
-}
+import { Config } from "../src/config/config.ts";
+import { Database } from "../src/database/database.ts";
+import { integrationUrl, withIsolatedDatabase } from "./postgres.test-support.ts";
 
 const MASTER_KEY_BYTES = 32;
 const FIRST_ROW_INDEX = 0;
@@ -69,31 +65,6 @@ const withPool = <Result, Error, Requirements>(
     use,
     (pool) => Effect.promise(() => pool.end()),
   );
-
-const withIsolatedDatabase = <Result, Error, Requirements>(
-  use: (databaseUrl: string) => Effect.Effect<Result, Error, Requirements>,
-) => {
-  const databaseName = `nama_test_${crypto.randomUUID().replaceAll("-", "")}`;
-  const databaseUrl = new URL(integrationUrl);
-  databaseUrl.pathname = `/${databaseName}`;
-  return withPool(integrationUrl, (admin) =>
-    Effect.acquireUseRelease(
-      Effect.promise(async () => {
-        await admin.query(`CREATE DATABASE "${databaseName}"`);
-        return databaseUrl.toString();
-      }),
-      use,
-      () =>
-        Effect.promise(async () => {
-          await admin.query(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
-            [databaseName],
-          );
-          await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
-        }),
-    ),
-  );
-};
 
 const namaConnectionCount = (databaseUrl: string) =>
   withPool(databaseUrl, (observer) =>

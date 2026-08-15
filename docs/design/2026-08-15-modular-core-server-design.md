@@ -1,6 +1,6 @@
 # Modular Core Server Design
 
-Status: approved in chat; awaiting written review.
+Status: approved and implemented.
 
 ## Goal
 
@@ -12,7 +12,7 @@ This change owns:
 
 - splitting configuration, logging, and HTTP transport by independent reasons to change;
 - grouping database and contract code under concrete owners;
-- colocating unit and service tests with their production owner;
+- placing unit and service tests and their support files in each production owner's `tests/` subdirectory;
 - retaining one small integration area for disposable PostgreSQL and real-process behavior;
 - removing duplicated integration database setup;
 - updating TypeScript, Vitest, Fallow, and test-script paths required by the moves; and
@@ -52,14 +52,16 @@ apps/server/
       errors.ts
       overlay.ts
       schema.ts
-      config.test.ts
-      schema.test.ts
-      config.test-support.ts
+      tests/
+        config.test.ts
+        schema.test.ts
+        config.test-support.ts
 
     logging/
       logging.ts
       record.ts
-      logging.test.ts
+      tests/
+        logging.test.ts
 
     database/
       database.ts
@@ -69,31 +71,34 @@ apps/server/
       health.ts
       listener.ts
       request-runtime.ts
-      health.test.ts
-      http-server.test.ts
-      listener.test.ts
-      request-runtime.test.ts
-      http-server.test-support.ts
-      network.test-support.ts
+      tests/
+        health.test.ts
+        http-server.test.ts
+        listener.test.ts
+        request-runtime.test.ts
+        http-server.test-support.ts
+        network.test-support.ts
 
     contracts/
       authorization.ts
       field-errors.ts
       probe.ts
-      authorization.test.ts
-      field-errors.test.ts
-      playback.test.ts
-      public-services.test-support.ts
-      plugin-services.test-support.ts
+      tests/
+        authorization.test.ts
+        field-errors.test.ts
+        playback.test.ts
+        public-services.test-support.ts
+        plugin-services.test-support.ts
 
   integration/
-    compose.yaml
-    database.integration.test.ts
-    process.integration.test.ts
-    postgres.test-support.ts
-    process.test-support.ts
-    migration-failure-main.test-support.ts
-    fixtures/migrations/...
+    tests/
+      compose.yaml
+      database.integration.test.ts
+      process.integration.test.ts
+      postgres.test-support.ts
+      process.test-support.ts
+      migration-failure-main.test-support.ts
+      fixtures/migrations/...
 ```
 
 Use the listed test-support files. Do not create generic `utils`, `shared`, `core`, `interfaces`, or repository directories.
@@ -240,35 +245,35 @@ Normalize external failures where captured. Do not add a central error module, b
 
 ## Test ownership
 
-A test lives beside the smallest production owner whose observable contract it verifies. Only assembled-process and disposable-PostgreSQL behavior lives under `integration/`.
+A test lives in the `tests/` subdirectory of the smallest production owner whose observable contract it verifies. Only assembled-process and disposable-PostgreSQL behavior lives under `integration/tests/`.
 
 | Test owner | Observable coverage |
 | --- | --- |
-| `config/config.test.ts` | Selection, reads, TOML failure, defaults, overrides, immutability, redaction |
-| `config/schema.test.ts` | Bind, URL, connection count, key, log level, malformed sections |
-| `logging/logging.test.ts` | Filtering, fixed JSON shape, safe expected and unexpected failures, bootstrap output |
-| `http/health.test.ts` | Liveness/readiness policy and transition suppression |
-| `http/http-server.test.ts` | Exact routing, empty responses, delegation, readiness behavior, finalization order |
-| `http/listener.test.ts` | Partial bind cleanup, active sockets, graceful drain, forced shutdown |
-| `http/request-runtime.test.ts` | Runtime disposal and request-fiber interruption |
-| `contracts/*.test.ts` | Generated method coverage, authority, field errors, playback validation |
-| `integration/database.integration.test.ts` | Journals, upgrade, migration failure, unavailable startup, invalid metadata, pool closure |
-| `integration/process.integration.test.ts` | Real entrypoint, both signals, listener release, startup failure, database loss/recovery, safe output |
+| `config/tests/config.test.ts` | Selection, reads, TOML failure, defaults, overrides, immutability, redaction |
+| `config/tests/schema.test.ts` | Bind, URL, connection count, key, log level, malformed sections |
+| `logging/tests/logging.test.ts` | Filtering, fixed JSON shape, safe expected and unexpected failures, bootstrap output |
+| `http/tests/health.test.ts` | Liveness/readiness policy and transition suppression |
+| `http/tests/http-server.test.ts` | Exact routing, empty responses, delegation, readiness behavior, finalization order |
+| `http/tests/listener.test.ts` | Partial bind cleanup, active sockets, graceful drain, forced shutdown |
+| `http/tests/request-runtime.test.ts` | Runtime disposal and request-fiber interruption |
+| `contracts/tests/*.test.ts` | Generated method coverage, authority, field errors, playback validation |
+| `integration/tests/database.integration.test.ts` | Journals, upgrade, migration failure, unavailable startup, invalid metadata, pool closure |
+| `integration/tests/process.integration.test.ts` | Real entrypoint, both signals, listener release, startup failure, database loss/recovery, safe output |
 
 Preserve every existing behavioral assertion. Do not delete, skip, focus, or weaken tests to make moves pass. Split the current HTTP test suite by observable owner, not by individual function.
 
 ## Test support
 
-- Configuration support remains under `config/`.
-- `http/http-server.test-support.ts` owns in-process server construction and layer wiring; `http/network.test-support.ts` owns port reservation, raw sockets, and wire-level request helpers.
-- `integration/postgres.test-support.ts` owns the isolated database helper shared by database and process integration suites.
-- `integration/process.test-support.ts` owns child spawning, output capture, status polling, signal delivery, and forced cleanup.
-- Compose and migration fixtures remain integration-only resources.
+- Configuration support remains under `config/tests/`.
+- `http/tests/http-server.test-support.ts` owns in-process server construction and layer wiring; `http/tests/network.test-support.ts` owns port reservation, raw sockets, and wire-level request helpers.
+- `integration/tests/postgres.test-support.ts` owns the isolated database helper shared by database and process integration suites.
+- `integration/tests/process.test-support.ts` owns child spawning, output capture, status polling, signal delivery, and forced cleanup.
+- Compose and migration fixtures remain under `integration/tests/`.
 - Production files never import test support.
 
 ## Tooling changes
 
-- `vitest.config.ts` discovers colocated `src/**/*.test.ts` and `integration/**/*.test.ts`.
+- `vitest.config.ts` discovers `src/**/tests/**/*.test.ts` and `integration/tests/**/*.test.ts`.
 - Tests remain serial.
 - `scripts/check-server-tests.sh` keeps unique Compose project and disposable volume orchestration; only moved paths and discovery inputs change.
 - `tsconfig.json` includes `src/`, `integration/`, and Vitest configuration.
@@ -284,7 +289,7 @@ Preserve every existing behavioral assertion. Do not delete, skip, focus, or wea
 
 ## Implementation sequence
 
-1. Establish owner directories and colocated test discovery without changing behavior.
+1. Establish owner directories and `tests/` subdirectory discovery without changing behavior.
 2. Move contract and already-cohesive owner files; migrate every import and Fallow path.
 3. Split configuration into load, errors, overlay, and schema responsibilities.
 4. Split logging into Effect integration and pure record construction.

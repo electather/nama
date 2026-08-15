@@ -32,15 +32,19 @@ The implemented dependency graph is:
 
 ```text
 main -> app
-app -> config + logging + database + server
+app -> config + logging + database + http
 logging -> config
 database -> config
-server -> config + database
+http -> config + database
 ```
 
-`main.ts` launches the root Effect once and selects process exit status. `app.ts` owns construction and startup ordering. `config.ts`, `logging.ts`, `database.ts`, and `server.ts` each own their named policy. Contract probe files remain independent from runtime modules. Fallow must continue to cover every source file and enforce this acyclic direction as new modules are added.
+`src/main.ts` launches the root Effect once and selects process exit status. `src/app.ts` owns graph construction and startup ordering. Runtime responsibilities live under `src/config/`, `src/logging/`, `src/database/`, and `src/http/`; generated-contract policy lives independently under `src/contracts/`. Fallow covers every TypeScript file and enforces this acyclic direction.
 
-Keep validation, overlay mapping, route decisions, error classification, and state transitions as plain functions beside their owner. Do not create generic `core`, `utils`, `repositories`, `interfaces`, or central error modules. Split a module only after it gains multiple coherent reasons to change; introduce an interface only when a second real implementation exists.
+The internal owner splits are concrete. `config/config.ts` orchestrates selection, reading, parsing, overlay, and decoding; `errors.ts`, `overlay.ts`, and `schema.ts` own their respective configuration policy. `logging/logging.ts` integrates Effect logging and lifecycle/failure operations while `record.ts` owns safe record construction. `http/http-server.ts` composes exact dispatch and dependencies, `health.ts` owns health and readiness-transition policy, `request-runtime.ts` owns the single callback runtime and active request fibers, and `listener.ts` owns native Node binding, empty responses, drain, interruption, forced close, and transport failure normalization.
+
+Behavior tests and concrete test support live in the `tests/` subdirectory of the smallest `src/` owner. Only disposable-PostgreSQL and real-process behavior lives under `integration/tests/`; its shared PostgreSQL harness owns isolated database creation and cleanup. Production modules never import test support.
+
+Keep validation, overlay mapping, route decisions, error classification, and state transitions beside their concrete owner. Do not create generic `core`, `utils`, `repositories`, `interfaces`, or central error modules. Split an owner only after it gains multiple coherent reasons to change; introduce an interface only when a second real implementation exists.
 
 Exports stay minimal. Raw TOML, environment snapshots, parser errors, `pg.Pool`, Drizzle migration internals, request fibers, and sockets remain private. Tests use the owning service or the real process rather than widening production exports.
 
