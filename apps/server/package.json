@@ -5,8 +5,11 @@
   "scripts": {
     "audit:fallow": "fallow audit --base HEAD --quiet",
     "check:fallow": "concurrently --kill-others-on-fail --names audit,security \"fallow --fail-on-issues\" \"fallow security --fail-on-issues\"",
+    "check:auth-schema": "../../scripts/check-auth-schema.sh",
     "check:test": "../../scripts/check-server-tests.sh",
-    "check:type": "tsc --project tsconfig.json --noEmit"
+    "check:type": "tsc --project tsconfig.json --noEmit",
+    "generate:auth-schema": "auth generate --config ./better-auth.config.ts --output ./src/database/auth-schema.ts --adapter drizzle --dialect postgresql --yes",
+    "generate:migration": "pnpm run generate:auth-schema && drizzle-kit generate"
   },
   "dependencies": {
     "@effect/platform-node": "4.0.0-beta.100",
@@ -22,6 +25,9 @@
     "@effect/vitest": "4.0.0-beta.100",
     "@types/node": "24.13.3",
     "@types/pg": "8.21.0",
+    "auth": "1.6.26",
+    "better-auth": "1.6.26",
+    "drizzle-kit": "0.31.5",
     "fallow": "3.16.0",
     "vitest": "4.1.10"
   }
