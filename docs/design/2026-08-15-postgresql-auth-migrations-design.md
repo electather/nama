@@ -1,26 +1,26 @@
 # PostgreSQL Auth Migrations Design
 
-Status: approved in chat; pending written review.
+Status: revised ownership approved in chat; pending written review.
 Issue: #21.
 
 ## Outcome
 
-Add the reviewed Better Auth PostgreSQL tables and Nama's permanent server-initialization marker. Apply the generated migration before the listener binds. Reconcile initialization fail-closed on every start.
+Add the Better Auth-generated PostgreSQL schema and Nama's permanent server-initialization marker. Apply the committed Drizzle migration before the listener binds. Reconcile initialization fail-closed on every start.
 
 ## Scope
 
 Included:
 
-- Better Auth `1.6.26` core persistence for email/password users and durable sessions.
+- Better Auth `1.6.26` core persistence for email/password users and durable sessions, generated from Better Auth configuration.
 - One Nama-owned singleton initialization row.
-- Drizzle schema definitions and committed migration artifacts.
-- Package-local, exact-pinned Drizzle Kit generation tooling.
-- Startup integrity inspection and single-user marker repair.
+- Committed Better Auth-generated Drizzle schema and Drizzle migration artifacts.
+- Package-local, exact-pinned Better Auth CLI and Drizzle Kit generation tooling.
+- Generator drift enforcement.
 - Real PostgreSQL and process-level verification.
 
 Excluded:
 
-- Better Auth runtime integration or imports.
+- Better Auth production runtime integration or imports.
 - Setup tokens or administrator creation.
 - Connect handlers or public API changes.
 - Public signup, invitations, password reset, OAuth/OIDC, or additional roles.
@@ -32,27 +32,31 @@ Excluded:
 ## Decisions
 
 1. Keep persistence, migrations, and startup reconciliation inside the existing database owner.
-2. Keep Better Auth's default singular table names: `user`, `session`, `account`, and `verification`.
-3. Match the pinned Better Auth `1.6.26` core generator output. Preserve its default field names, nullability, defaults, indexes, unique constraints, and foreign-key actions.
-4. Do not add constraints unsupported by the pinned Better Auth schema. In particular, do not add a composite account provider/account unique constraint.
-5. Use `nama_server_state` for Nama-owned initialization state.
-6. Generate SQL with package-local Drizzle Kit. Commit and review the SQL, journal, and metadata snapshot.
-7. Add no root Mise task and no production Better Auth dependency in issue 21.
-8. Preserve the existing application dependency graph and readiness-only `Database` service surface.
+2. Make `better-auth.config.ts` the sole source for Better Auth models and fields.
+3. Generate `auth-schema.ts` with the exact-pinned Better Auth CLI. Never hand-edit Better Auth table definitions.
+4. Keep Better Auth's default singular table names: `user`, `session`, `account`, and `verification`.
+5. Preserve the pinned Better Auth `1.6.26` generator output without Nama-owned constraints or field changes. In particular, do not add a composite account provider/account unique constraint.
+6. Keep `nama_server_state` as the only Nama-owned schema definition in `schema.ts`.
+7. Generate reviewed SQL with package-local Drizzle Kit after regenerating the Better Auth schema. Commit the auth schema, SQL, journal, and metadata snapshot.
+8. Keep Drizzle as the single runtime migration authority. Do not add Better Auth's Kysely migration path or a second migration journal.
+9. Exact-pin `better-auth`, its `auth` CLI, and Drizzle Kit as package development dependencies. Add no production Better Auth runtime dependency in issue 21.
+10. Preserve the existing one-pool, one-Drizzle dependency graph and readiness-only `Database` service surface.
 
-Issue 23 must use Better Auth `1.6.26` against this schema or reopen schema and migration review before changing the version.
+Issue 23 must promote Better Auth `1.6.26` into the private production authentication adapter against the generated schema or reopen schema and migration review before changing the version.
 
 ## Components
 
 | Path | Responsibility |
 | --- | --- |
-| `apps/server/src/database/schema.ts` | Authoritative Drizzle definitions for the four Better Auth tables and `nama_server_state`. |
+| `apps/server/better-auth.config.ts` | Better Auth configuration loaded only by schema tooling; authoritative source for auth models and fields. |
+| `apps/server/src/database/auth-schema.ts` | Committed Better Auth CLI output; generated and never hand-edited. |
+| `apps/server/src/database/schema.ts` | Nama-owned `nama_server_state` definition and aggregate schema exports. |
 | `apps/server/src/database/initialization.ts` | Private startup transaction, state classification, repair, and integrity error. |
 | `apps/server/src/database/database.ts` | Pool ownership, schema-aware Drizzle construction, migration ordering, reconciliation call, probes, and finalization. |
 | `apps/server/drizzle.config.ts` | Package-local Drizzle generation input. |
 | `apps/server/drizzle/` | Reviewed SQL migration, journal entry, and Drizzle metadata. |
-| `apps/server/package.json` | Exact-pinned Drizzle Kit dev dependency and package-local generation command. |
-| `apps/server/integration/tests/database.integration.test.ts` | Production migration, upgrade, constraint, and failure coverage. |
+| `apps/server/package.json` | Exact-pinned Better Auth and Drizzle tooling plus generation and drift commands. |
+| `apps/server/integration/tests/database.integration.test.ts` | Production migration, complete auth catalog, upgrade, constraint, and failure coverage. |
 | `apps/server/integration/tests/initialization.integration.test.ts` | Startup state matrix and repair coverage. |
 | `apps/server/integration/tests/process.integration.test.ts` | Real-process pre-bind failure, redaction, exit, and readiness coverage. |
 
@@ -62,7 +66,7 @@ The database directory remains one owner. `initialization.ts` is a focused inter
 
 ### Better Auth tables
 
-- `user` owns administrator identity.
+- The table definitions are exact Better Auth CLI output from `better-auth.config.ts`; Nama does not edit them.
 - User email is unique.
 - `session` tokens are unique.
 - Session and account user references are indexed.
@@ -87,14 +91,17 @@ The database administrator remains outside the application security boundary and
 
 ## Migration workflow
 
-1. Define the reviewed persistence shape in `schema.ts`.
-2. Compare the Better Auth-owned definitions with the pinned `1.6.26` core schema and Drizzle generator output.
-3. Run the package-local Drizzle Kit generation command.
-4. Review the generated SQL directly.
-5. Commit the SQL, journal entry, and metadata snapshot with the schema change.
-6. Let the existing runtime migrator apply committed migrations before reconciliation and bind.
+1. Change Better Auth models or fields only in `better-auth.config.ts`.
+2. Run the exact-pinned Better Auth CLI to overwrite `auth-schema.ts`.
+3. Review the generated Drizzle schema directly.
+4. Run package-local Drizzle Kit against the aggregate schema.
+5. Review the generated SQL directly.
+6. Commit the Better Auth schema, SQL, journal entry, and metadata snapshot together.
+7. Let the existing runtime migrator apply committed Drizzle migrations before reconciliation and bind.
 
-The first production migration upgrades the existing zero-entry journal and initializes a fresh database identically. Runtime code never invokes Drizzle Kit. Existing unmanaged tables are neither adopted nor overwritten; a conflict fails migration and startup.
+`generate:migration` regenerates the Better Auth schema before invoking Drizzle Kit. The repository check independently generates the auth schema into a temporary file and compares it byte-for-byte with the committed output. Runtime code invokes neither generator and does not run Better Auth's Kysely migrations.
+
+The first production migration upgrades the existing zero-entry journal and initializes a fresh database identically. Existing unmanaged tables are neither adopted nor overwritten; a conflict fails migration and startup.
 
 ## Startup data flow
 
@@ -155,8 +162,8 @@ Do not change the stable log field allowlist. Do not log Better Auth table conte
 ## Security boundaries
 
 - Better Auth remains an implementation detail behind future Nama RPCs.
-- Issue 21 does not mount Better Auth routes or add a Better Auth runtime import.
-- The schema contains no bootstrap token.
+- Issue 21 does not mount Better Auth routes or add a production Better Auth runtime import.
+- `better-auth.config.ts` is tooling-only and contains no deployed secret or database connection.
 - The application exposes no reset or administrator-deletion operation.
 - Restrictive marker ownership prevents a normal Better Auth user deletion from reopening setup.
 - Startup repair handles the crash window where Better Auth committed one administrator before Nama committed its marker.
@@ -165,16 +172,17 @@ Do not change the stable log field allowlist. Do not log Better Auth table conte
 
 ## Verification
 
-Follow test-driven development. Add the focused PostgreSQL expectation first and confirm it fails against the zero-entry production journal. Add each reconciliation case before its implementation and confirm the intended failure.
+Follow test-driven development. First add generator-drift coverage and confirm it rejects the handwritten schema. Add each focused PostgreSQL expectation before its implementation and confirm it fails against the zero-entry production journal. Add each reconciliation case before its implementation and confirm the intended failure.
 
 ### Migration behavior
 
-1. A fresh database contains the four Better Auth tables, `nama_server_state`, and one uninitialized singleton after `Database` acquisition.
-2. A database with the prior zero-entry production journal upgrades exactly once.
-3. Reacquisition is idempotent and does not alter the initialized marker.
-4. Better Auth uniqueness, required values, user references, and delete actions match the pinned schema.
-5. Marker constraints reject half-initialized state and deletion of the referenced administrator.
-6. Migration conflicts remain normalized and close the partially acquired pool.
+1. The committed Better Auth schema is byte-identical to fresh `1.6.26` CLI output for `better-auth.config.ts`.
+2. A fresh database contains the four Better Auth tables, `nama_server_state`, and one uninitialized singleton after `Database` acquisition.
+3. A database with the prior zero-entry production journal upgrades exactly once.
+4. Reacquisition is idempotent and does not alter the initialized marker.
+5. Better Auth uniqueness, required values, user references, and delete actions match the pinned schema.
+6. Marker constraints reject half-initialized state and deletion of the referenced administrator.
+7. Migration conflicts remain normalized and close the partially acquired pool.
 
 ### Reconciliation behavior
 
@@ -201,6 +209,7 @@ The initialized-with-zero-users fixture may drop the administrator foreign key o
 
 ### Commands
 
+- Run the Better Auth schema drift check.
 - Run focused database, initialization, and process integration tests.
 - Run `pnpm --filter @nama/server run check:test`.
 - Run `mise run check`.
@@ -209,9 +218,10 @@ The initialized-with-zero-users fixture may drop the administrator foreign key o
 
 Update:
 
-- `docs/architecture.md` — production persistence and durable initialization are implemented; setup/auth handlers remain absent.
-- `docs/architecture/core-server.md` — issue 21 moves from approved extension to current boundary; issues 22–23 remain unfinished.
-- `docs/architecture/authentication-and-setup.md` — record durable schema compatibility and startup repair evidence.
+- `AGENTS.md` — prohibit hand edits to the Better Auth-generated schema and name the regeneration command.
+- `docs/architecture.md` — Better Auth owns auth schema generation; Drizzle owns reviewed SQL and runtime application.
+- `docs/architecture/core-server.md` — record the generated-schema/runtime-migration boundary.
+- `docs/architecture/authentication-and-setup.md` — record Better Auth generator ownership and drift evidence.
 
 Do not change Protobuf contracts or generated bindings.
 
