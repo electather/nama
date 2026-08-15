@@ -23,7 +23,7 @@
     "curly": "error",
     "eqeqeq": "error",
     "eslint/no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
-    "eslint/sort-imports": ["warn", { "allowSeparatedGroups": true }],
+    "eslint/sort-imports": "off",
     "import/no-cycle": "error",
     "import/no-named-export": "off",
     "import/prefer-default-export": "off",
@@ -41,7 +41,57 @@
     "typescript/no-unsafe-member-access": "error",
     "typescript/no-unsafe-return": "error",
     "typescript/only-throw-error": "error",
+    "typescript/prefer-readonly-parameter-types": "off",
     "typescript/switch-exhaustiveness-check": "error",
     "unicorn/prefer-export-from": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["apps/server/src/config.ts"],
+      "rules": {
+        "eslint/new-cap": [
+          "error",
+          {
+            "capIsNewExceptions": ["Literals", "Record", "RedactedFromValue", "Struct"]
+          }
+        ],
+        "import/no-nodejs-modules": ["error", { "allow": ["node:net"] }]
+      }
+    },
+    {
+      "files": [
+        "apps/server/src/config.ts",
+        "apps/server/src/database.ts",
+        "apps/server/src/server.ts"
+      ],
+      "rules": {
+        "unicorn/no-useless-undefined": "off"
+      }
+    },
+    {
+      "files": ["apps/server/src/server.ts"],
+      "rules": {
+        "import/no-nodejs-modules": ["error", { "allow": ["node:http"] }]
+      }
+    },
+    {
+      "files": ["apps/server/test/**/*.ts"],
+      "rules": {
+        "import/no-nodejs-modules": [
+          "error",
+          {
+            "allow": [
+              "node:assert/strict",
+              "node:child_process",
+              "node:events",
+              "node:http",
+              "node:net",
+              "node:path",
+              "node:test"
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

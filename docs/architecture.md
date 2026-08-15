@@ -8,7 +8,7 @@ The linked subsystem notes are concise decision records, not implementation spec
 
 ## System shape
 
-Nama is a self-hosted control plane, not a media relay. A TypeScript core owns identity, configuration, the canonical media model, watch state, reconciliation, and authorization. Provider plugins translate between that model and external services. Native clients and the Go CLI use one versioned Protobuf/ConnectRPC contract. During playback the provider sends media directly to the client; the core only selects and authorizes the source.
+Nama's target MVP is a self-hosted control plane, not a media relay. A TypeScript core owns identity, configuration, the canonical media model, watch state, reconciliation, and authorization. Provider plugins translate between that model and external services. Native clients and the Go CLI use one versioned Protobuf/ConnectRPC contract. During playback the provider sends media directly to the client; the core only selects and authorizes the source.
 
 ```text
 Apple app ──────────────┐
@@ -23,11 +23,13 @@ Apple player <──────────┴──────── playable
 
 The installable MVP is intentionally narrow: one private deployment, one administrator, Jellyfin as the only provider type, and one universal SwiftUI client targeting iOS, tvOS, and macOS; more than one Jellyfin instance may be configured when the administrator needs multiple watch-state inputs. The architecture keeps the public and plugin contracts real from the first vertical slice, but does not build a marketplace, web console, generic workflow engine, distributed queue, or native media server in anticipation of later releases.
 
+The implemented core baseline is narrower than the target topology: `@nama/server` now boots as one Effect application, decodes immutable configuration, applies Drizzle migrations over one PostgreSQL pool, serves exact liveness/readiness routes, emits safe structured logs, and shuts down deterministically. It does not yet register Connect handlers, mount Better Auth, create production tables, supervise plugins, or implement product RPC behavior; all non-health HTTP targets currently return 404. [Core server](architecture/core-server.md) owns this implementation boundary and the approved extension points.
+
 ## Decision index
 
 | Area | Decision |
 | --- | --- |
-| Core | Node.js 24 LTS, strict TypeScript, ESM, exact-pinned Effect v4 beta, and pnpm. |
+| Core | Node.js 24 LTS, strict TypeScript, ESM, exact-pinned Effect v4 beta, pnpm, one Effect application graph, and a scoped native Node HTTP listener. |
 | Public API | Protobuf managed by Buf; ConnectRPC `api.v1`; unary RPCs first. |
 | Plugin API | Separate ConnectRPC `plugin.v1`; supervised subprocesses over Unix domain sockets. |
 | Authentication | Better Auth is a server-side implementation detail behind Nama-owned Setup, Auth, and Device RPCs. |
@@ -52,6 +54,8 @@ Exact dependency versions are lockfile decisions, not promises in this document.
 5. A plugin may be restarted or replaced without losing correctness; schedules, credentials, cursors, and reconciliation state belong to the core.
 6. Playback-engine types do not escape the universal Apple app's playback adapter.
 7. New infrastructure or abstraction requires a current use case, not only a plausible future one.
+8. The core binds only after configuration, migrations, and its initial database probe succeed; Effect scope owns request interruption and resource shutdown.
+9. Exact operational health routes retain precedence when Connect delegation is added, and unmatched traffic must never imply an RPC handler exists.
 
 ## Subsystem decisions
 

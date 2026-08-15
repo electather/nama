@@ -5,13 +5,12 @@ type ContractFieldErrorInput = Readonly<{
   localizedMessage?: Readonly<{ locale: string; message: string }>;
 }>;
 
-// oxlint-disable-next-line typescript/consistent-type-definitions -- Public shape is specified as a type.
-type ContractFieldError = {
+type ContractFieldError = Readonly<{
   field: string;
   reason: string;
   description: string;
-  localizedMessage?: { locale: string; message: string };
-};
+  localizedMessage?: Readonly<{ locale: string; message: string }>;
+}>;
 
 const BEFORE = -1;
 const EQUAL = 0;
@@ -43,15 +42,19 @@ const normalizeContractFieldErrors = (
       return EQUAL;
     })
     .slice(FIRST_FIELD_ERROR_INDEX, FIELD_ERROR_LIMIT)
-    .map(({ description, field, localizedMessage, reason }) => {
-      const error: ContractFieldError = { description, field, reason };
-      if (localizedMessage) {
-        error.localizedMessage = {
+    .map(({ description, field, localizedMessage, reason }): ContractFieldError => {
+      if (localizedMessage === undefined) {
+        return { description, field, reason };
+      }
+      return {
+        description,
+        field,
+        localizedMessage: {
           locale: localizedMessage.locale,
           message: localizedMessage.message,
-        };
-      }
-      return error;
+        },
+        reason,
+      };
     });
 
 export { normalizeContractFieldErrors, type ContractFieldError, type ContractFieldErrorInput };

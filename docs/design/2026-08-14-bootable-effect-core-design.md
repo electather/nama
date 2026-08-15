@@ -1,6 +1,6 @@
 # Issue 20: Bootable Effect Core Design
 
-Status: approved in chat; awaiting written review.
+Status: implemented and verified on 2026-08-14.
 
 Issue: <https://github.com/electather/nama/issues/20>
 
@@ -86,11 +86,8 @@ apps/server/
         upgrade/
         failure/
     compose.yaml
-    contract.test.ts
-    config.test.ts
-    database.integration.test.ts
-    server.test.ts
-    server.integration.test.ts
+    *.test.ts
+    *.test-support.ts
   .fallowrc.json
   package.json
   tsconfig.json
@@ -99,7 +96,7 @@ apps/server/
 
 | Path | Responsibility |
 | --- | --- |
-| `apps/server/src/main.ts` | Provide the live graph, launch it once, and select the process exit status |
+| `apps/server/src/main.ts` | Launch the root application once and select the process exit status |
 | `apps/server/src/app.ts` | Define strict startup composition and the long-lived root program |
 | `apps/server/src/config.ts` | Read TOML, overlay allowed environment values, validate, and provide immutable redacted configuration |
 | `apps/server/src/logging.ts` | Build the configured Effect JSON logger and the pre-configuration fatal writer |
@@ -116,7 +113,7 @@ Tagged errors stay beside their owner: configuration errors in `config.ts`, conn
 
 Do not add `core/`, `utils/`, `repositories/`, `interfaces/`, or premature subsystem directories. Convert a module into a directory only after it contains multiple coherent files. Later issues perform that conversion when needed.
 
-Move `apps/server/src/contract.test.ts` to `apps/server/test/contract.test.ts` and convert it from `node:test` to Vitest. Replace the server-local contract-only test script with one complete `check:test` script. The root TypeScript check must execute it. Do not add a root Mise task.
+Move `apps/server/src/contract.test.ts` to `apps/server/test/contract.test.ts`, split contract coverage into focused authority, playback, and field-error suites, and convert it from `node:test` to Vitest. Replace the server-local contract-only test script with one complete `check:test` script. The root TypeScript check must execute it. Do not add a root Mise task.
 
 ## Maintainability and growth
 
@@ -128,7 +125,6 @@ Keep runtime imports acyclic:
 
 ```text
 main -> app
-main -> logging
 app -> config + logging + database + server
 logging -> config
 database -> config

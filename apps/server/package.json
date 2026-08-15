@@ -4,17 +4,25 @@
   "type": "module",
   "scripts": {
     "audit:fallow": "fallow audit --base HEAD --quiet",
-    "check:contract": "node --test src/contract.test.ts",
-    "check:fallow": "fallow --fail-on-issues && fallow security --fail-on-issues",
+    "check:fallow": "concurrently --kill-others-on-fail --names audit,security \"fallow --fail-on-issues\" \"fallow security --fail-on-issues\"",
+    "check:test": "../../scripts/check-server-tests.sh",
     "check:type": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@nama/api": "workspace:*"
+    "@effect/platform-node": "4.0.0-beta.100",
+    "@nama/api": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "effect": "4.0.0-beta.100",
+    "pg": "8.23.0",
+    "smol-toml": "1.8.0"
   },
   "devDependencies": {
     "@bufbuild/protobuf": "2.13.0",
     "@bufbuild/protovalidate": "1.2.0",
+    "@effect/vitest": "4.0.0-beta.100",
     "@types/node": "24.13.3",
-    "fallow": "3.16.0"
+    "@types/pg": "8.21.0",
+    "fallow": "3.16.0",
+    "vitest": "4.1.10"
   }
 }
