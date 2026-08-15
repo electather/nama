@@ -1,0 +1,22 @@
+{
+  "servers": {
+    "typescript-language-server": {
+      "command": "tsc",
+      "args": ["--lsp", "--stdio"]
+    },
+    "gopls": {
+      "command": "mise",
+      "args": ["exec", "--", "gopls", "serve"]
+    },
+    "buf": {
+      "command": "/usr/bin/env",
+      "args": ["mise", "exec", "--", "buf", "lsp", "serve"],
+      "fileTypes": [".proto"],
+      "languageId": "proto",
+      "rootMarkers": ["buf.yaml"]
+    },
+    "sourcekit-lsp": {
+      "rootMarkers": ["gen/swift/Package.swift"]
+    }
+  }
+}
