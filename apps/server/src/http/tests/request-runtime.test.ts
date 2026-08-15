@@ -55,7 +55,10 @@ vi.mock("effect", async (importOriginal) => {
 
 it.live("disposes the managed runtime when the server scope closes", () =>
   Effect.gen(function* managedRuntimeDisposalTest() {
-    const database = Database.of({ checkReadiness: Effect.succeed(true) });
+    const database = Database.of({
+      checkReadiness: Effect.succeed(true),
+      initialization: "setup-eligible",
+    });
     const server = yield* startServer(database);
 
     yield* server.close;

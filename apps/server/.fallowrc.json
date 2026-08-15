@@ -139,10 +139,11 @@
   "boundaries": {
     "zones": [
       { "name": "entry", "patterns": ["src/main.ts"] },
-      { "name": "composition", "patterns": ["src/app.ts"] },
+      { "name": "composition", "patterns": ["src/app.ts", "src/tests/**/*.ts"] },
       { "name": "configuration", "patterns": ["src/config/**/*.ts"] },
       { "name": "logging", "patterns": ["src/logging/**/*.ts"] },
       { "name": "database", "patterns": ["src/database/**/*.ts"] },
+      { "name": "setup", "patterns": ["src/setup/**/*.ts"] },
       { "name": "transport", "patterns": ["src/http/**/*.ts"] },
       { "name": "contracts", "patterns": ["src/contracts/**/*.ts"] },
       { "name": "integration", "patterns": ["integration/**/*.ts"] },
@@ -155,11 +156,12 @@
       { "from": "entry", "allow": ["composition"] },
       {
         "from": "composition",
-        "allow": ["configuration", "logging", "database", "transport"]
+        "allow": ["configuration", "logging", "database", "setup", "transport"]
       },
       { "from": "configuration", "allow": [] },
       { "from": "logging", "allow": ["configuration"] },
       { "from": "database", "allow": ["configuration"] },
+      { "from": "setup", "allow": ["database"] },
       { "from": "transport", "allow": ["configuration", "database"] },
       { "from": "contracts", "allow": [] },
       { "from": "integration", "allow": ["configuration", "database", "transport"] },

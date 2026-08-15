@@ -74,7 +74,10 @@ const verifyGracefulDrain = ({ close, origin, probe, probeStarted }: DrainScenar
 
 it.live("allows port reuse after partial listener acquisition fails", () =>
   Effect.gen(function* partialListenerAcquisitionTest() {
-    const database = Database.of({ checkReadiness: Effect.succeed(true) });
+    const database = Database.of({
+      checkReadiness: Effect.succeed(true),
+      initialization: "setup-eligible",
+    });
     const port = yield* withReservedPort((reservedPort) =>
       Effect.gen(function* occupiedPortTest() {
         const error = yield* Effect.acquireUseRelease(
@@ -109,6 +112,7 @@ it.live("short-circuits readiness after shutdown starts on an active connection"
           yield* Deferred.await(probe);
           return true;
         }),
+        initialization: "setup-eligible",
       }),
     );
     const client = yield* openCapturedSocket(server.origin);
@@ -137,6 +141,7 @@ it.live("drains an in-flight request before disposing", () =>
           yield* Deferred.await(probe);
           return true;
         }),
+        initialization: "setup-eligible",
       }),
     );
 
@@ -158,6 +163,7 @@ const makeDeadlineServer = Effect.gen(function* makeDeadlineTestServer() {
       Effect.andThen(Effect.never),
       Effect.onInterrupt(() => Ref.set(interrupted, true)),
     ),
+    initialization: "setup-eligible",
   });
   const scope = yield* Scope.make();
   yield* Layer.buildWithScope(serverLayer(port, database), scope);

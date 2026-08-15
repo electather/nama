@@ -1,8 +1,8 @@
 # Authentication, setup, and pairing
 
-Status: production persistence and fail-closed initialization reconciliation are implemented. Better Auth runtime integration, setup and authentication handlers, bootstrap-token behavior, and device pairing remain unfinished.
+Status: production persistence, fail-closed initialization reconciliation, and bootstrap-token generation/state are implemented. Better Auth runtime integration, setup and authentication handlers, administrator creation, and device pairing remain unfinished.
 
-The target boundary keeps Better Auth as a server-side implementation detail called only inside Nama's `SetupService`, `AuthService`, and `DeviceService`. The planned one-administrator flow uses a high-entropy bootstrap token for one successful administrator creation or until restart, then disables setup permanently. The Go CLI will exchange that token to create and sign in the administrator; the universal Apple app will discover or accept a server URL, display a short-lived code, and wait for CLI approval before storing its bearer credential in Keychain. Public signup, roles, invites, password recovery, OAuth/OIDC, email delivery, and a browser login flow are deferred. Clients allow plain HTTP only for loopback, private/link-local addresses, or `.local` discovery names with an explicit warning, and require HTTPS for public names and addresses.
+The target boundary keeps Better Auth as a server-side implementation detail called only inside Nama's `SetupService`, `AuthService`, and `DeviceService`. On each setup-eligible process start, the implemented core emits one high-entropy administrator bootstrap token after listener bind, retains only its digest, and closes it in memory after success or possible commit. Issue #23 will consume that capability to create and durably mark the administrator; no setup or authentication RPC exists today. The Go CLI will later exchange that token to create and sign in the administrator; the universal Apple app will discover or accept a server URL, display a short-lived code, and wait for CLI approval before storing its bearer credential in Keychain. Public signup, roles, invites, password recovery, OAuth/OIDC, email delivery, and a browser login flow are deferred. Clients allow plain HTTP only for loopback, private/link-local addresses, or `.local` discovery.
 
 ## Implemented durable boundary
 
@@ -11,6 +11,12 @@ The [core server](core-server.md#durable-persistence-and-initialization) owns th
 Generated persistence does not include a Better Auth runtime import or adapter, mounted Better Auth routes, Nama setup or authentication handlers, or proof of public authentication behavior.
 
 Issue #23 must use the Better Auth release pinned alongside the generated schema or regenerate the schema and reopen migration review before changing that release.
+
+## Implemented bootstrap boundary
+
+Database reconciliation alone classifies startup as `configured` or `setup-eligible`. The setup service is process-local and depends only on that immutable classification. It is inert before bind. Eligible activation obtains 32 random bytes, prints exactly `NAMA_BOOTSTRAP_TOKEN=<token>\n` directly to stdout, retains only the SHA-256 digest, and releases transient token material. Configured starts generate and print nothing.
+
+Candidate validation hashes every string and constant-time compares fixed 32-byte digests. A valid claim yields one scoped opaque attempt. Pre-creation scope exit restores availability; success, commit-capable work that exits unresolved, and ambiguous outcomes disable setup and destroy the digest. Random generation or raw-write failure uses only `BootstrapTokenInitializationError`, does not retry output, and prevents readiness. This boundary has no Better Auth import, database mutation, public route, Connect mapping, or CLI behavior.
 
 ## Prior Milestone 1 Better Auth Connect spike
 

@@ -9,8 +9,10 @@ import {
 } from "./http-server.test-support.ts";
 import {
   EPHEMERAL_PORT,
+  HOST,
   HTTP_NOT_FOUND,
   HTTP_OK,
+  HTTP_UNAVAILABLE,
   expectEmptyResponse,
   reservePort,
 } from "./network.test-support.ts";
@@ -26,6 +28,7 @@ it.live("matches only the exact health method and target", () =>
           probes += SINGLE_CONNECTION;
           return true;
         }),
+        initialization: "setup-eligible",
       }),
     );
 
@@ -57,6 +60,7 @@ it.live("delegates unmatched requests without probing database readiness", () =>
           probes += SINGLE_CONNECTION;
           return true;
         }),
+        initialization: "setup-eligible",
       }),
       [],
       (_request, response) => {
@@ -76,7 +80,10 @@ it.live("releases the listener before its database dependency", () =>
   Effect.gen(function* reverseFinalizationTest() {
     const messages: string[] = [];
     const port = yield* reservePort;
-    const database = Database.of({ checkReadiness: Effect.succeed(true) });
+    const database = Database.of({
+      checkReadiness: Effect.succeed(true),
+      initialization: "setup-eligible",
+    });
     const databaseLayer = Layer.effect(
       Database,
       Effect.acquireRelease(Effect.succeed(database), () =>
@@ -89,6 +96,35 @@ it.live("releases the listener before its database dependency", () =>
     yield* Layer.buildWithScope(serverLayerWithDatabase(port, databaseLayer, { messages }), scope);
     yield* Scope.close(scope, Exit.void);
 
-    expect(messages).toEqual(["server.stopping", "database.closed"]);
+    expect(messages).toEqual(["database.closed"]);
+  }),
+);
+
+it.live("marks the listener unavailable before emitting stopping", () =>
+  Effect.gen(function* stoppingOrderTest() {
+    const port = yield* reservePort;
+    const database = Database.of({
+      checkReadiness: Effect.succeed(true),
+      initialization: "setup-eligible",
+    });
+    let observedStopping = false;
+    const emitStopping = () =>
+      Effect.promise(() => fetch(`http://${HOST}:${port}/health/ready`)).pipe(
+        Effect.tap((response) =>
+          Effect.sync(() => {
+            expect(response.status).toBe(HTTP_UNAVAILABLE);
+            observedStopping = true;
+          }),
+        ),
+        Effect.asVoid,
+      );
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(
+      serverLayerWithDatabase(port, Layer.succeed(Database, database), { emitStopping }),
+      scope,
+    );
+    yield* Scope.close(scope, Exit.void);
+
+    expect(observedStopping).toBe(true);
   }),
 );

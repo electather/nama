@@ -90,6 +90,18 @@ it.live("creates all production tables and one uninitialized server singleton", 
   ),
 );
 
+it.live("exposes immutable setup eligibility after reconciliation", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* setupEligibilityTest() {
+      const initialization = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.succeed(database.initialization),
+      );
+
+      expect(initialization).toBe("setup-eligible");
+    }),
+  ),
+);
+
 it.live("upgrades the prior zero-entry production journal exactly once", () =>
   withIsolatedDatabase((databaseUrl) =>
     Effect.gen(function* migrationUpgradeTest() {
