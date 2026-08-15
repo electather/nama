@@ -5,10 +5,11 @@
   "scripts": {
     "check:format": "oxfmt --check .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server/.fallowrc.json apps/server plugins/jellyfin gen/ts/package.json",
     "check:lint": "oxlint apps/server plugins/jellyfin",
-    "check:ts": "pnpm run check:format && pnpm run check:lint && pnpm --filter @nama/server --fail-if-no-match run check:fallow && pnpm run check:type && pnpm --filter @nama/server run check:contract",
-    "check:type": "pnpm --filter @nama/server --fail-if-no-match run check:type && pnpm --filter @nama/jellyfin --fail-if-no-match run check:type"
+    "check:ts": "concurrently --kill-others-on-fail --names format,lint,fallow,types,tests \"pnpm run check:format\" \"pnpm run check:lint\" \"pnpm --filter @nama/server --fail-if-no-match run check:fallow\" \"pnpm run check:type\" \"pnpm --filter @nama/server --fail-if-no-match run check:test\"",
+    "check:type": "concurrently --kill-others-on-fail --names server,jellyfin \"pnpm --filter @nama/server --fail-if-no-match run check:type\" \"pnpm --filter @nama/jellyfin --fail-if-no-match run check:type\""
   },
   "devDependencies": {
+    "concurrently": "10.0.4",
     "oxfmt": "0.62.0",
     "oxlint": "1.77.0",
     "oxlint-tsgolint": "7.0.2001",

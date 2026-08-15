@@ -23,7 +23,7 @@
     "curly": "error",
     "eqeqeq": "error",
     "eslint/no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
-    "eslint/sort-imports": ["warn", { "allowSeparatedGroups": true }],
+    "eslint/sort-imports": "off",
     "import/no-cycle": "error",
     "import/no-named-export": "off",
     "import/prefer-default-export": "off",
@@ -41,7 +41,66 @@
     "typescript/no-unsafe-member-access": "error",
     "typescript/no-unsafe-return": "error",
     "typescript/only-throw-error": "error",
+    "typescript/prefer-readonly-parameter-types": "off",
     "typescript/switch-exhaustiveness-check": "error",
     "unicorn/prefer-export-from": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["apps/server/src/config/overlay.ts", "apps/server/src/config/schema.ts"],
+      "rules": {
+        "eslint/new-cap": [
+          "error",
+          {
+            "capIsNewExceptions": ["Literals", "Record", "RedactedFromValue", "Struct"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/server/src/config/schema.ts"],
+      "rules": {
+        "import/no-nodejs-modules": ["error", { "allow": ["node:net"] }]
+      }
+    },
+    {
+      "files": [
+        "apps/server/src/config/config.ts",
+        "apps/server/src/database/database.ts",
+        "apps/server/src/http/listener.ts"
+      ],
+      "rules": {
+        "unicorn/no-useless-undefined": "off"
+      }
+    },
+    {
+      "files": ["apps/server/src/http/http-server.ts", "apps/server/src/http/listener.ts"],
+      "rules": {
+        "import/no-nodejs-modules": ["error", { "allow": ["node:http"] }]
+      }
+    },
+    {
+      "files": [
+        "apps/server/src/**/*.test.ts",
+        "apps/server/src/**/*.test-support.ts",
+        "apps/server/integration/**/*.ts"
+      ],
+      "rules": {
+        "import/no-nodejs-modules": [
+          "error",
+          {
+            "allow": [
+              "node:assert/strict",
+              "node:child_process",
+              "node:events",
+              "node:http",
+              "node:net",
+              "node:path",
+              "node:test"
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

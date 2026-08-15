@@ -2,6 +2,8 @@ packages:
   - apps/server
   - gen/ts
   - plugins/jellyfin
+allowBuilds:
+  msgpackr-extract: true
 minimumReleaseAgeExclude:
   - '@fallow-cli/darwin-arm64@3.16.0'
   - '@fallow-cli/darwin-x64@3.16.0'
