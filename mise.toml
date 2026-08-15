@@ -34,7 +34,7 @@ description = "Lint contracts and reject generated drift"
 run = "scripts/check-contracts.sh"
 
 [tasks."check:ts"]
-description = "Check handwritten TypeScript"
+description = "Check TypeScript and auth-schema drift"
 run = "pnpm run check:ts"
 
 [tasks."check:go"]

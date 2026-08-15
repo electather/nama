@@ -11,7 +11,6 @@ import {
   reservePort,
   reserveSpecificPort,
 } from "../../src/http/tests/network.test-support.ts";
-import { migrationFailureMainModule } from "./migration-failure-main.test-support.ts";
 
 const MASTER_KEY_BYTES = 32;
 const MASTER_KEY_FILL = 9;
@@ -125,7 +124,7 @@ const killChildIfRunning = (child: ChildProcess): void => {
   }
 };
 
-const startProcess = (databaseUrl: string, mainModule: string = MAIN_MODULE) =>
+const startProcess = (databaseUrl: string) =>
   Effect.gen(function* runningServerProcess() {
     const port = yield* reservePort;
     const fileSystem = yield* FileSystem.FileSystem;
@@ -138,7 +137,7 @@ const startProcess = (databaseUrl: string, mainModule: string = MAIN_MODULE) =>
     const stderr = outputCapture();
     const child = yield* Effect.acquireRelease(
       Effect.sync(() =>
-        fork(mainModule, [], {
+        fork(MAIN_MODULE, [], {
           cwd: SERVER_ROOT,
           env: { ...process.env, NAMA_CONFIG: configPath },
           stdio: ["ignore", "pipe", "pipe", "ipc"],
@@ -152,9 +151,6 @@ const startProcess = (databaseUrl: string, mainModule: string = MAIN_MODULE) =>
     captureOutput(child, stdout, stderr);
     return { child, origin: `http://${HOST}:${port}`, stderr: stderr.read, stdout: stdout.read };
   }).pipe(Effect.provide(NodeFileSystem.layer));
-
-const startMigrationFailureProcess = (databaseUrl: string) =>
-  startProcess(databaseUrl, migrationFailureMainModule);
 
 const requestStatus = (target: StatusTarget) =>
   Effect.callback<Response, unknown>((resume) => {
@@ -235,7 +231,6 @@ export {
   expectPortReleased,
   recordFromLine,
   startProcess,
-  startMigrationFailureProcess,
   stopProcess,
   waitForExit,
   waitForStatus,

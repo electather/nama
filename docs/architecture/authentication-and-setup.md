@@ -1,13 +1,25 @@
 # Authentication, setup, and pairing
 
-Better Auth manages the one MVP administrator's credentials and sessions but is only called inside Nama's `SetupService`, `AuthService`, and `DeviceService`: on an unconfigured start the server prints a high-entropy bootstrap token valid for one successful admin creation or until restart, replaces it on each unconfigured restart, and disables setup permanently after the admin exists. The Go CLI exchanges that token to create and sign in the administrator; the universal Apple app discovers or accepts a server URL, displays a short-lived code, and waits for `nama devices approve CODE`, after which its bearer credential is stored in Keychain. Public signup, roles, invites, password recovery, OAuth/OIDC, email delivery, and a browser login flow are deferred; clients allow plain HTTP only for loopback, private/link-local addresses, or `.local` discovery names with an explicit warning, and require HTTPS for public names and addresses.
+Status: production persistence and fail-closed initialization reconciliation are implemented. Better Auth runtime integration, setup and authentication handlers, bootstrap-token behavior, and device pairing remain unfinished.
 
-## Milestone 1 Better Auth Connect spike
+The target boundary keeps Better Auth as a server-side implementation detail called only inside Nama's `SetupService`, `AuthService`, and `DeviceService`. The planned one-administrator flow uses a high-entropy bootstrap token for one successful administrator creation or until restart, then disables setup permanently. The Go CLI will exchange that token to create and sign in the administrator; the universal Apple app will discover or accept a server URL, display a short-lived code, and wait for CLI approval before storing its bearer credential in Keychain. Public signup, roles, invites, password recovery, OAuth/OIDC, email delivery, and a browser login flow are deferred. Clients allow plain HTTP only for loopback, private/link-local addresses, or `.local` discovery names with an explicit warning, and require HTTPS for public names and addresses.
 
-The spike proved the administrator lifecycle through generated Nama `SetupService` and `AuthService` clients without mounting a Better Auth HTTP route. Administrator creation keeps automatic sign-in disabled and single-flight, and `AuthService.SignIn` exposes only the bearer plugin's signed token as `BearerCredential.token`. Public errors and logs must not expose issued secrets or private Better Auth failures.
+## Implemented durable boundary
 
-The pinned Better Auth release can report successful sign-out after its session deletion fails. Nama therefore treats Better Auth's result as non-authoritative: `AuthService.SignOut` succeeds only after the presented bearer no longer resolves in the session store. A still-valid bearer or failed confirmation returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the client retains the bearer and resolves ambiguity through `GetCurrentUser`.
+The [core server](core-server.md#durable-persistence-and-initialization) owns the implemented generated auth persistence and permanent initialization marker. That boundary supplies the future private authentication adapter's database contract and guarantees that setup eligibility cannot reopen after initialization; this note owns the authentication consequences and remaining gates.
 
-The disposable spike uses Better Auth's official stateful memory adapter. It proves RPC translation and failure semantics, not PostgreSQL migrations, durable initialization, restart repair, production logging, or server lifecycle. Those remain Milestone 2 work.
+Generated persistence does not include a Better Auth runtime import or adapter, mounted Better Auth routes, Nama setup or authentication handlers, or proof of public authentication behavior.
 
-The pinned Better Auth and transitive fetch declarations are incompatible with the repository's strict TypeScript settings because they reference optional runtime types and contain incompatible optional properties. The spike isolates the runtime behind a private, structurally typed boundary instead of weakening repository checks. Milestone 2 must resolve this upstream compatibility risk before adopting a normal static import; it must not enable `skipLibCheck` or add unused runtime packages to hide it.
+Issue #23 must use the Better Auth release pinned alongside the generated schema or regenerate the schema and reopen migration review before changing that release.
+
+## Prior Milestone 1 Better Auth Connect spike
+
+The earlier disposable spike used Better Auth's official stateful memory adapter. It demonstrated the intended administrator lifecycle through generated Nama `SetupService` and `AuthService` clients without mounting a Better Auth HTTP route: administrator creation was single-flight with automatic sign-in disabled, and sign-in exposed only the bearer plugin's signed token through Nama's `BearerCredential`. That evidence established RPC translation and failure semantics, not the current production runtime.
+
+The spike also showed that Better Auth could report successful sign-out after session deletion failed. Nama must therefore continue to treat that result as non-authoritative: sign-out succeeds only after the presented bearer no longer resolves in the durable session store. A still-valid bearer or failed confirmation returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the client retains the bearer and resolves ambiguity through `GetCurrentUser`. Public errors and logs never expose issued secrets or private Better Auth failures.
+
+## Issue #23 runtime integration gates
+
+Only the private authentication adapter may import Better Auth. Better Auth routes, cookies, request and response models, errors, and secrets must not cross that boundary or be mounted directly.
+
+The pinned Better Auth runtime and its transitive fetch declarations exposed strict-TypeScript incompatibilities during the spike through optional runtime types and incompatible optional properties. Issue #23 must resolve that runtime and declaration compatibility risk before adopting a normal static import. It must not weaken strict TypeScript, enable `skipLibCheck`, or add unused runtime packages to hide upstream type failures.

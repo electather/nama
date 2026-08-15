@@ -1,6 +1,6 @@
 # Core server
 
-Status: the bootable server lifecycle from issue #20 is implemented and verified. The persistence, bootstrap, and Connect/authentication extensions in issues #21–#23 remain approved Milestone 2 work and are not implemented.
+Status: the bootable server lifecycle from issue #20 and the production persistence and durable initialization boundary from issue #21 are implemented and verified. The setup and authentication extensions in issues #22–#23 remain approved Milestone 2 work and are not implemented.
 
 This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics.
 
@@ -12,11 +12,13 @@ This note is the canonical record for durable core-server boundaries. The implem
 - safe structured Effect logging;
 - one PostgreSQL pool and one Drizzle instance;
 - automatic migration application before bind;
+- reviewed production migrations for the Better Auth core tables and Nama's durable initialization marker;
+- transactional, fail-closed initialization reconciliation before the initial probe;
 - exact liveness and readiness HTTP routes;
 - one native Node listener and one Effect managed runtime for callbacks; and
 - deterministic `SIGINT` and `SIGTERM` shutdown.
 
-The current process has no production tables, Better Auth adapter, administrator setup, Connect service registration, RPC handlers, plugin supervision, retries, configuration reload, metrics, or exported tracing. Until issue #23 adds Connect delegation, every HTTP request other than the two exact health routes returns 404. Generated contracts compiling does not prove any of those runtime behaviors exist.
+The current process has no Better Auth runtime or adapter, administrator setup, Connect service registration, RPC handlers, plugin supervision, retries, configuration reload, metrics, or exported tracing. The database application service remains readiness-only. Until issue #23 adds Connect delegation, every HTTP request other than the two exact health routes returns 404. Generated contracts compiling does not prove any of those runtime behaviors exist.
 
 ## Architecture decisions
 
@@ -49,7 +51,7 @@ Exports stay minimal. Raw TOML, environment snapshots, parser errors, `pg.Pool`,
 ## Invariants
 
 1. Configuration is read and decoded once, then remains immutable for the process lifetime.
-2. The listener does not bind until configuration, database acquisition, migrations, and an initial database probe succeed.
+2. The listener does not bind until configuration, database acquisition, migrations, durable initialization reconciliation, and an initial database probe succeed.
 3. There is one pool, one Drizzle instance, one callback runtime, and one listener.
 4. The database pool is never exposed as an application service.
 5. Startup performs no retry for connection, migration, or other writes.
@@ -109,6 +111,7 @@ read and decode configuration
   -> install configured logging
   -> acquire and verify the shared pg pool
   -> construct Drizzle and apply migrations
+  -> transactionally reconcile durable initialization
   -> run the initial SELECT 1 probe
   -> construct the shared request ManagedRuntime
   -> bind the native HTTP listener
@@ -117,11 +120,32 @@ read and decode configuration
 
 The production migration directory is resolved relative to the server module, never the current working directory. Tests inject independent migration fixture directories through layer construction; migration location is not operator configuration.
 
-The current production journal is valid and has zero entries. Missing or malformed migration metadata is fatal. Issue #21 adds reviewed production schema and SQL migrations without changing the pre-bind migration rule.
+`apps/server/better-auth.config.ts` is the sole owner of Better Auth models and fields, and `apps/server/src/database/auth-schema.ts` is committed Better Auth CLI output that must never be hand-edited. The configuration is deliberately tooling-only: offline schema generation selects the database shape without receiving a live Drizzle instance or installing a Better Auth runtime adapter. The drift gate regenerates into a temporary path and requires byte-identical output; runtime code invokes neither generator nor Better Auth's migration path.
 
-The database module owns pool creation, Drizzle construction, migrations, probes, and normalization of database failures. Consumers receive only Nama-owned Effect operations. Issue #21 may pass the private Drizzle instance to the private Better Auth adapter, but it must not expose a generic query service or repository abstraction.
+`schema.ts` hand-defines only Nama's initialization state. Drizzle owns the reviewed SQL, migration journal, and runtime application over the shared pool; a database carrying the prior zero-entry journal upgrades exactly once, and missing or malformed migration metadata is fatal.
+
+The database module owns pool creation, schema-aware Drizzle construction, migrations, initialization reconciliation, probes, and normalization of database failures. Consumers still receive only Nama-owned readiness operations. Issue #23 may pass the private Drizzle instance to a private Better Auth adapter, but it must not expose a generic query service or repository abstraction.
 
 The MVP runs one core process. Drizzle bookkeeping is sufficient; do not add advisory locks, distributed migration coordination, Redis, or a job framework before multi-process deployment is accepted.
+
+### Durable persistence and initialization
+
+The committed generated auth schema and reviewed SQL provide the Better Auth core `user`, `session`, `account`, and `verification` tables alongside one Nama-owned `nama_server_state` singleton. Generated persistence does not constitute a Better Auth runtime integration; [authentication and setup](authentication-and-setup.md) owns the runtime compatibility gates.
+
+The initialization marker admits only the fixed `server` key. Its initialization time and administrator user reference are either both absent or both present, and the administrator reference restricts deletion. No application operation deletes the singleton, clears either field, or resets setup eligibility. A missing singleton is corruption rather than a fresh deployment.
+
+Startup locks and classifies the marker and a bounded view of users in one transaction:
+
+| Initialization marker | Better Auth users | Outcome |
+| --- | ---: | --- |
+| initialized | exactly one | continue configured |
+| initialized | zero or more than one | fatal integrity error; setup never reopens |
+| uninitialized | zero | continue setup-eligible |
+| uninitialized | exactly one | conditionally repair both marker fields to that user, then continue configured |
+| uninitialized | more than one | fatal integrity error |
+| missing | any count | fatal integrity error |
+
+The single-user repair closes the crash window in which administrator creation committed before Nama's marker. It records database transaction time and the administrator reference together; any failed or ambiguous conditional update is fatal. No startup write is retried, and corruption never falls back to setup eligibility. Database details, SQL, table contents, user identifiers, and underlying failures remain inside the database boundary.
 
 ### Readiness
 
@@ -149,12 +173,12 @@ Health callbacks run through one shared `ManagedRuntime`, so request Effects hav
 Expected failures are tagged beside their owner:
 
 - configuration: `ConfigReadError`, `ConfigParseError`, `ConfigValidationError`;
-- database: `DatabaseConnectionError`, `MigrationError`; and
+- database: `DatabaseConnectionError`, `MigrationError`, `DatabaseIntegrityError`; and
 - transport: `ServerBindError`, `ShutdownError`.
 
 There is no central error module. Safe tagged-error data is limited to the stable tag, optional allowlisted configuration field path, and optional TOML line and column. Raw parser, PostgreSQL, Node, Drizzle, and later Better Auth errors are normalized at their adapter boundary.
 
-A configuration, connection, migration, runtime-construction, or bind failure emits exactly one safe `server.start_failed` record, releases acquired resources, leaves no listener, and exits non-zero. Failures before configured logging exists use one minimal JSON record on stderr. Later startup failures use the configured Effect logger on stdout. Effect's default cause reporting remains disabled so it cannot emit a second unsafe record.
+A configuration, connection, migration, integrity, runtime-construction, or bind failure emits exactly one safe `server.start_failed` record, releases acquired resources, leaves no listener, and exits non-zero. Failures before configured logging exists use one minimal JSON record on stderr. Later startup failures use the configured Effect logger on stdout. Effect's default cause reporting remains disabled so it cannot emit a second unsafe record.
 
 Normal logs are newline-delimited JSON on stdout. The configured threshold applies after configuration is decoded. Stable lifecycle events are:
 
@@ -191,25 +215,10 @@ mark accepting false
 
 An already-established connection sees readiness become 503 as soon as accepting is false, without a database probe. Finalizers are idempotent and tolerate partial acquisition. A finalizer failure emits `server.shutdown_failed` and exits non-zero.
 
-## Approved Milestone 2 extensions
+## Unfinished Milestone 2 extensions
 
-These sections remain active specifications for unfinished work. Implementing one issue must preserve the bootable lifecycle above and must not claim later issue behavior.
+These sections remain active specifications for unfinished work. They must preserve the implemented lifecycle, persistence, and durable initialization boundary above and must not claim later issue behavior.
 
-### Issue #21: persistence and initialization marker
-
-Add reviewed Better Auth tables and one `nama_server_state` singleton row. The row has a fixed key, nullable `initialized_at`, and nullable `administrator_user_id`. Once set, initialization cannot be cleared by an application operation, and the administrator reference restricts deletion.
-
-Startup repair remains fail-closed:
-
-| Initialization marker | Better Auth users | Outcome |
-| --- | ---: | --- |
-| initialized | exactly one | configured |
-| initialized | zero or more than one | fatal integrity error; setup never reopens |
-| uninitialized | zero | setup mode |
-| uninitialized | exactly one | repair the marker to that user, then continue configured |
-| uninitialized | more than one | fatal integrity error |
-
-The single-user repair handles a crash after Better Auth commits the administrator but before Nama commits its marker. Production schema changes come from Drizzle definitions and committed, reviewed SQL; generated migrations still run before bind.
 
 ### Issue #22: one-time administrator bootstrap
 
@@ -244,13 +253,13 @@ The Better Auth compatibility constraints and spike evidence remain in [authenti
 The server test gate must continue to exercise behavior, not only generated contracts or compilation:
 
 - pure and Effect-scoped configuration, logging, routing, drain, deadline interruption, and finalization behavior;
-- serial integration against disposable PostgreSQL with real migration journals, upgrade and failure fixtures, pool closure, and loss/recovery;
-- the actual package entrypoint, both termination signals, released listener ports, normalized startup failure, valid JSON output, and secret absence; and
+- serial integration against disposable PostgreSQL with production migrations, prior-journal upgrade, constraints, the complete initialization state matrix, conditional repair failure, pool closure, and readiness loss/recovery;
+- the actual package entrypoint, both termination signals, migration-and-reconciliation-before-bind ordering, released listener ports, normalized startup and integrity failures, valid JSON output, and secret absence; and
 - root TypeScript checks that execute the complete server suite.
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.
 
-Issues #21–#23 must extend the real-flow gate for migration repair, concurrent setup, token replacement and consumption, generated-client setup/authentication, fail-closed authorization, confirmed session revocation, request cancellation, and secret-safe errors and logs.
+Issues #22–#23 must extend the real-flow gate for concurrent setup, token replacement and consumption, generated-client setup/authentication, fail-closed authorization, confirmed session revocation, request cancellation, and secret-safe errors and logs.
 
 ## Deferred work
 

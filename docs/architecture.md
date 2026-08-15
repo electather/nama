@@ -23,7 +23,7 @@ Apple player <──────────┴──────── playable
 
 The installable MVP is intentionally narrow: one private deployment, one administrator, Jellyfin as the only provider type, and one universal SwiftUI client targeting iOS, tvOS, and macOS; more than one Jellyfin instance may be configured when the administrator needs multiple watch-state inputs. The architecture keeps the public and plugin contracts real from the first vertical slice, but does not build a marketplace, web console, generic workflow engine, distributed queue, or native media server in anticipation of later releases.
 
-The implemented core baseline is narrower than the target topology: `@nama/server` now boots as one Effect application, decodes immutable configuration, applies Drizzle migrations over one PostgreSQL pool, serves exact liveness/readiness routes, emits safe structured logs, and shuts down deterministically. It does not yet register Connect handlers, mount Better Auth, create production tables, supervise plugins, or implement product RPC behavior; all non-health HTTP targets currently return 404. [Core server](architecture/core-server.md) owns this implementation boundary and the approved extension points.
+The implemented core baseline is narrower than the target topology: `@nama/server` boots as one Effect application, decodes immutable configuration, applies reviewed Drizzle migrations for the Better Auth core tables and Nama's durable initialization marker over one PostgreSQL pool, transactionally reconciles that marker fail-closed, probes the database, serves exact liveness/readiness routes, emits safe structured logs, and shuts down deterministically. Better Auth configuration and CLI tooling own the committed generated auth schema; Drizzle owns reviewed SQL and runtime migration application over that existing pool. The process does not yet import or mount Better Auth, expose setup or authentication handlers, register Connect handlers, supervise plugins, or implement product RPC behavior; all non-health HTTP targets currently return 404. [Core server](architecture/core-server.md) owns this implementation boundary and the approved extension points.
 
 ## Decision index
 
@@ -33,7 +33,7 @@ The implemented core baseline is narrower than the target topology: `@nama/serve
 | Public API | Protobuf managed by Buf; ConnectRPC `api.v1`; unary RPCs first. |
 | Plugin API | Separate ConnectRPC `plugin.v1`; supervised subprocesses over Unix domain sockets. |
 | Authentication | Better Auth is a server-side implementation detail behind Nama-owned Setup, Auth, and Device RPCs. |
-| Persistence | PostgreSQL 18 through Drizzle ORM over one shared `pg.Pool`, with Promise operations wrapped at Effect service boundaries and committed, reviewed SQL migrations. |
+| Persistence | Better Auth configuration and CLI tooling own committed generated auth tables; Drizzle owns reviewed SQL and runtime application over one shared PostgreSQL `pg.Pool`. |
 | Background work | A core-owned scheduler with durable database cursors; no Redis or job framework for MVP. |
 | First plugin | A stateless Jellyfin adapter for catalog, playback negotiation, and two-way watch-state sync. |
 | First client | One universal Swift/SwiftUI app in `apps/ios`, targeting iOS 17+, tvOS 17+, and macOS 14+, with Connect-Swift, Keychain, and native Bonjour discovery. |
@@ -54,7 +54,7 @@ Exact dependency versions are lockfile decisions, not promises in this document.
 5. A plugin may be restarted or replaced without losing correctness; schedules, credentials, cursors, and reconciliation state belong to the core.
 6. Playback-engine types do not escape the universal Apple app's playback adapter.
 7. New infrastructure or abstraction requires a current use case, not only a plausible future one.
-8. The core binds only after configuration, migrations, and its initial database probe succeed; Effect scope owns request interruption and resource shutdown.
+8. The core binds only after configuration, migrations, durable initialization reconciliation, and its initial database probe succeed; Effect scope owns request interruption and resource shutdown.
 9. Exact operational health routes retain precedence when Connect delegation is added, and unmatched traffic must never imply an RPC handler exists.
 
 ## Subsystem decisions

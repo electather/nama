@@ -63,6 +63,7 @@
   },
   "duplicates": {
     "enabled": true,
+    "ignore": ["src/database/auth-schema.ts"],
     "mode": "semantic",
     "near": true,
     "minTokens": 50,
@@ -145,7 +146,10 @@
       { "name": "transport", "patterns": ["src/http/**/*.ts"] },
       { "name": "contracts", "patterns": ["src/contracts/**/*.ts"] },
       { "name": "integration", "patterns": ["integration/**/*.ts"] },
-      { "name": "tooling", "patterns": ["vitest.config.ts"] }
+      {
+        "name": "tooling",
+        "patterns": ["better-auth.config.ts", "drizzle.config.ts", "vitest.config.ts"]
+      }
     ],
     "rules": [
       { "from": "entry", "allow": ["composition"] },

@@ -11,7 +11,7 @@
     "builtin": true,
     "node": true
   },
-  "ignorePatterns": ["gen/ts/src/**"],
+  "ignorePatterns": ["apps/server/src/database/auth-schema.ts", "gen/ts/src/**"],
   "options": {
     "denyWarnings": true,
     "reportUnusedDisableDirectives": "error",

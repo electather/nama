@@ -4,8 +4,11 @@ import { Context, Data, Effect, Layer, Redacted } from "effect";
 import { Pool } from "pg";
 
 import { Config } from "../config/config.ts";
+import { reconcileDatabaseInitialization } from "./initialization.ts";
+import { account, namaServerState, session, user, verification } from "./schema.ts";
 
 const PROBE_TIMEOUT_MILLISECONDS = 2000;
+const databaseSchema = { account, namaServerState, session, user, verification };
 
 const taggedError = Data.TaggedError;
 const contextService = Context.Service;
@@ -63,17 +66,20 @@ const makeDatabase = (migrationsFolder: string) =>
     );
 
     yield* verifyConnection(pool);
-    const database = drizzle(pool, { logger: false });
+    const database = drizzle(pool, { logger: false, schema: databaseSchema });
     yield* Effect.tryPromise({
       catch: () => new MigrationError(undefined),
       try: () => migrate(database, { migrationsFolder }),
     });
+    yield* reconcileDatabaseInitialization(database);
     yield* runInitialProbe(pool);
 
     return Database.of({ checkReadiness: makeReadinessProbe(pool) });
   });
 
-export class Database extends contextService<Database, DatabaseService>()("@nama/server/Database") {
+class Database extends contextService<Database, DatabaseService>()("@nama/server/Database") {
   static readonly layer = (migrationsFolder: string) =>
     Layer.effect(Database, makeDatabase(migrationsFolder));
 }
+
+export { Database };

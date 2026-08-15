@@ -2,69 +2,24 @@ import { join } from "node:path";
 
 import { NodeFileSystem } from "@effect/platform-node";
 import { expect, it } from "@effect/vitest";
-import { Clock, Effect, FileSystem, Redacted } from "effect";
-import { Pool } from "pg";
+import { Clock, Effect, FileSystem } from "effect";
 
-import { Config } from "../../src/config/config.ts";
-import { Database } from "../../src/database/database.ts";
+import {
+  exerciseMarkerConstraints,
+  insertFixtureUser,
+} from "./database-constraint.test-support.ts";
+import {
+  createZeroEntryMigrationJournal,
+  databaseFailure,
+  productionMigrations,
+  useDatabase,
+  withPool,
+} from "./database.test-support.ts";
 import { integrationUrl, withIsolatedDatabase } from "./postgres.test-support.ts";
 
-const MASTER_KEY_BYTES = 32;
 const FIRST_ROW_INDEX = 0;
 const PROBE_BOUND_MILLISECONDS = 3000;
-const ENCODED_MASTER_KEY = Buffer.alloc(MASTER_KEY_BYTES).toString("base64");
-const MASTER_KEY = `base64:${ENCODED_MASTER_KEY}`;
-
-const migrationPath = (relativePath: string): string => join(import.meta.dirname, relativePath);
-const productionMigrations = migrationPath("../../drizzle/");
-const priorMigrations = migrationPath("fixtures/migrations/upgrade/prior/");
-const latestMigrations = migrationPath("fixtures/migrations/upgrade/latest/");
-const failingMigrations = migrationPath("fixtures/migrations/failure/");
-
-const configForDatabase = (databaseUrl: string) =>
-  Config.of({
-    database: Object.freeze({ maxConnections: 3, url: Redacted.make(databaseUrl) }),
-    logging: Object.freeze({ level: "info" as const }),
-    security: Object.freeze({
-      masterKey: Redacted.make(MASTER_KEY),
-    }),
-    server: Object.freeze({ bind: "127.0.0.1:8080", publicUrl: "http://localhost:8080/" }),
-  });
-
-const useDatabase = <Result, Error, Requirements>(
-  databaseUrl: string,
-  migrationsFolder: string,
-  use: (database: Database["Service"]) => Effect.Effect<Result, Error, Requirements>,
-) => {
-  const config = configForDatabase(databaseUrl);
-  const databaseLayer = Database.layer(migrationsFolder);
-  const program = Effect.gen(function* useDatabaseProgram() {
-    const database = yield* Database;
-    return yield* use(database);
-  }).pipe(Effect.provide(databaseLayer), Effect.provideService(Config, config));
-  return Effect.scoped(program);
-};
-
-const databaseFailure = (databaseUrl: string, migrationsFolder: string) => {
-  const config = configForDatabase(databaseUrl);
-  const databaseLayer = Database.layer(migrationsFolder);
-  const program = Database.pipe(
-    Effect.provide(databaseLayer),
-    Effect.provideService(Config, config),
-    Effect.flip,
-  );
-  return Effect.scoped(program);
-};
-
-const withPool = <Result, Error, Requirements>(
-  databaseUrl: string,
-  use: (pool: Pool) => Effect.Effect<Result, Error, Requirements>,
-) =>
-  Effect.acquireUseRelease(
-    Effect.sync(() => new Pool({ connectionString: databaseUrl, max: 1 })),
-    use,
-    (pool) => Effect.promise(() => pool.end()),
-  );
+const SINGLE_ROW_COUNT = 1;
 
 const namaConnectionCount = (databaseUrl: string) =>
   withPool(databaseUrl, (observer) =>
@@ -91,54 +46,135 @@ const makeInvalidMigrationFolders = Effect.gen(function* invalidMigrationFolders
   return { malformed, missing };
 }).pipe(Effect.provide(NodeFileSystem.layer));
 
-it.live("boots an empty database with the zero-entry production journal", () =>
+it.live("creates all production tables and one uninitialized server singleton", () =>
   withIsolatedDatabase((databaseUrl) =>
-    Effect.gen(function* emptyDatabaseTest() {
-      const ready = yield* useDatabase(
-        databaseUrl,
-        productionMigrations,
-        (database) => database.checkReadiness,
-      );
-      expect(ready).toBe(true);
-
+    Effect.gen(function* freshMigrationTest() {
+      yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
       const result = yield* withPool(databaseUrl, (observer) =>
-        Effect.promise(() =>
-          observer.query<{ readonly table_name: string }>(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'drizzle'",
-          ),
-        ),
+        Effect.promise(async () => {
+          const tables = await observer.query<{ readonly table_name: string }>(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
+          );
+          const state = await observer.query<{
+            readonly administrator_user_id: string | null;
+            readonly initialized_at: Date | null;
+            readonly initialized_at_type: string;
+            readonly key: string;
+          }>(
+            'SELECT "key", initialized_at, administrator_user_id, pg_typeof(initialized_at)::text AS initialized_at_type FROM nama_server_state',
+          );
+          return {
+            state: state.rows,
+            tables: tables.rows,
+          };
+        }),
       );
-      expect(result.rows.map(({ table_name: tableName }) => tableName)).toContain(
-        "__drizzle_migrations",
-      );
+
+      expect(result.tables.map(({ table_name: tableName }) => tableName)).toEqual([
+        "account",
+        "nama_server_state",
+        "session",
+        "user",
+        "verification",
+      ]);
+      expect(result.state).toEqual([
+        expect.objectContaining({
+          initialized_at_type: "timestamp with time zone",
+          key: "server",
+        }),
+      ]);
+      const serverState = result.state[FIRST_ROW_INDEX];
+      expect(serverState?.administrator_user_id).toBeNull();
+      expect(serverState?.initialized_at).toBeNull();
     }),
   ),
 );
 
-it.live("upgrades a database that already applied the prior fixture migration", () =>
+it.live("upgrades the prior zero-entry production journal exactly once", () =>
   withIsolatedDatabase((databaseUrl) =>
     Effect.gen(function* migrationUpgradeTest() {
-      yield* useDatabase(databaseUrl, priorMigrations, (database) => database.checkReadiness);
-      yield* useDatabase(databaseUrl, latestMigrations, (database) => database.checkReadiness);
-
-      const result = yield* withPool(databaseUrl, (observer) =>
-        Effect.promise(() =>
-          observer.query<{ readonly upgraded: boolean; readonly value: string }>(
-            "SELECT value, upgraded FROM nama_fixture_upgrade",
+      yield* withPool(databaseUrl, createZeroEntryMigrationJournal);
+      const migrationCount = () =>
+        withPool(databaseUrl, (observer) =>
+          Effect.map(
+            Effect.promise(() =>
+              observer.query<{ readonly migration_count: string }>(
+                "SELECT count(*) AS migration_count FROM drizzle.__drizzle_migrations",
+              ),
+            ),
+            (result) => result.rows[FIRST_ROW_INDEX]?.migration_count,
           ),
-        ),
-      );
-      expect(result.rows).toEqual([{ upgraded: true, value: "prior" }]);
+        );
+      expect(yield* migrationCount()).toBe("0");
+
+      yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
+      expect(yield* migrationCount()).toBe("1");
+      yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
+      expect(yield* migrationCount()).toBe("1");
     }),
   ),
 );
 
-it.live("normalizes migration failure and closes its partially acquired pool", () =>
+it.live("repeated Database acquisition preserves an initialized marker", () =>
   withIsolatedDatabase((databaseUrl) =>
-    Effect.gen(function* migrationFailureTest() {
-      const error = yield* databaseFailure(databaseUrl, failingMigrations);
+    Effect.gen(function* idempotentMigrationTest() {
+      yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
+      const before = yield* withPool(databaseUrl, (observer) =>
+        Effect.gen(function* initializeMarker() {
+          yield* insertFixtureUser(observer, "administrator", "administrator@example.test");
+          yield* Effect.promise(() =>
+            observer.query(
+              "UPDATE nama_server_state SET initialized_at = CURRENT_TIMESTAMP, administrator_user_id = $1 WHERE \"key\" = 'server'",
+              ["administrator"],
+            ),
+          );
+          return yield* Effect.promise(() =>
+            observer.query(
+              "SELECT initialized_at::text AS initialized_at, administrator_user_id FROM nama_server_state",
+            ),
+          );
+        }),
+      );
+
+      yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
+      const after = yield* withPool(databaseUrl, (observer) =>
+        Effect.promise(() =>
+          observer.query(
+            "SELECT initialized_at::text AS initialized_at, administrator_user_id FROM nama_server_state",
+          ),
+        ),
+      );
+      expect(after.rows).toEqual(before.rows);
+    }),
+  ),
+);
+
+it.live("enforces the fixed, paired, restrictive server marker", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* markerConstraintTest() {
+      yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
+      const result = yield* exerciseMarkerConstraints(databaseUrl);
+
+      expect(result.failures).toMatchObject({
+        administratorWithoutInitialization: { code: "23514" },
+        initializedWithoutAdministrator: { code: "23514" },
+        invalidKey: { code: "23514" },
+        retainedAdministratorDeletion: { code: "23001" },
+      });
+      expect(result.retainedUsers).toEqual([{ user_count: SINGLE_ROW_COUNT }]);
+    }),
+  ),
+);
+
+it.live("normalizes unmanaged-table conflict and closes its partially acquired pool", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* migrationConflictTest() {
+      yield* withPool(databaseUrl, (observer) =>
+        Effect.promise(() => observer.query('CREATE TABLE "user" (id text PRIMARY KEY)')),
+      );
+      const error = yield* databaseFailure(databaseUrl, productionMigrations);
       expect(error).toMatchObject({ _tag: "MigrationError" });
-      expect(JSON.stringify(error)).not.toContain("nama_forced_migration_failure");
+      expect(JSON.stringify(error)).not.toContain("already exists");
       expect(JSON.stringify(error)).not.toContain(databaseUrl);
       expect(yield* namaConnectionCount(databaseUrl)).toBe("0");
     }),

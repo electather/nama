@@ -9,6 +9,7 @@ const KNOWN_ERROR_TAGS: Readonly<Record<string, true>> = Object.freeze({
   ConfigReadError: true,
   ConfigValidationError: true,
   DatabaseConnectionError: true,
+  DatabaseIntegrityError: true,
   MigrationError: true,
   ServerBindError: true,
   ShutdownError: true,

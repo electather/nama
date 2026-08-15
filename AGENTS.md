@@ -2,7 +2,7 @@
 
 Nama is a self-hosted, iOS-first Jellyfin control plane. It has a TypeScript/Node core, a Go CLI, generated Swift bindings for a future universal app targeting iOS, tvOS, and macOS, and a first-party Jellyfin plugin; no Apple client application is currently checked in. The core is not a media relay: media travels directly from a provider to the client through safe, short-lived locators.
 
-- `apps/server/` — executable TypeScript core; issue #20 implements configuration, PostgreSQL migrations/readiness, operational health routes, structured logging, and signal shutdown, while production schema, authentication, Connect handlers, and product behavior remain unimplemented.
+- `apps/server/` — executable TypeScript core; issue #20 implements the server lifecycle, and issue #21 adds generated Better Auth persistence plus fail-closed initialization while Better Auth runtime integration and product behavior remain unimplemented.
 - `apps/cli/` — Go CLI, a thin client of the public API.
 - `plugins/jellyfin/` — first-party TypeScript provider adapter.
 - `proto/` — authoritative Protobuf schemas and generation configuration.
@@ -20,6 +20,7 @@ Architecture records in `docs/architecture/` and scoped rules in nested `AGENTS.
 ## Failure log
 
 - Do not edit `gen/` by hand. Change `proto/` or generation configuration, run `mise run generate`, and commit the regenerated leaves with their source change.
+- Never hand-edit `apps/server/src/database/auth-schema.ts`. Change `apps/server/better-auth.config.ts`, run `pnpm --filter @nama/server run generate:auth-schema`, and commit the generated output with its source change.
 - Do not claim a server, plugin runtime, authentication, or Jellyfin integration exists because generated clients and contract tests compile. Verify an executable entrypoint, handlers, persistence, and startup behavior.
 - Do not treat generated Protobuf or Connect round trips as Nama behavior tests. Verify schema format/lint/build, generation drift, consumer compilation, and handwritten Nama policy or adapter behavior.
 - Do not build product playback on AetherEngine `6.21.0`: source review rejected it because it leaks locator headers across origins and logs locator URLs in Release.
@@ -33,7 +34,7 @@ Every change runs through its owning native check. A task is not done until its 
 ```bash
 mise tasks                 # inspect the current task surface
 mise run check:contracts   # schema format, lint, build, and generated drift
-mise run check:ts          # handwritten TypeScript
+mise run check:ts          # TypeScript and auth-schema drift
 mise run check:go          # Go formatting, vet, and tests
 mise run check:docker      # Compose model
 mise run check             # all current repository checks
