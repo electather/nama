@@ -2,7 +2,7 @@
 
 Status: the bootable server lifecycle from issue #20 is implemented and verified. The persistence, bootstrap, and Connect/authentication extensions in issues #21–#23 remain approved Milestone 2 work and are not implemented.
 
-This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics; the completed [issue #20 design](../design/2026-08-14-bootable-effect-core-design.md) records implementation detail and evidence, not a second runtime contract.
+This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics.
 
 ## Current boundary
 
