@@ -5,6 +5,7 @@ import { Pool } from "pg";
 
 import { Config } from "../config/config.ts";
 import { reconcileDatabaseInitialization } from "./initialization.ts";
+import type { DatabaseInitialization } from "./initialization.ts";
 import { account, namaServerState, session, user, verification } from "./schema.ts";
 
 const PROBE_TIMEOUT_MILLISECONDS = 2000;
@@ -16,6 +17,7 @@ const DatabaseConnectionError = taggedError("DatabaseConnectionError");
 const MigrationError = taggedError("MigrationError");
 
 interface DatabaseService {
+  readonly initialization: DatabaseInitialization;
   readonly checkReadiness: Effect.Effect<boolean>;
 }
 const ignoreIdlePoolError = (): void => {
@@ -71,10 +73,10 @@ const makeDatabase = (migrationsFolder: string) =>
       catch: () => new MigrationError(undefined),
       try: () => migrate(database, { migrationsFolder }),
     });
-    yield* reconcileDatabaseInitialization(database);
+    const initialization = yield* reconcileDatabaseInitialization(database);
     yield* runInitialProbe(pool);
 
-    return Database.of({ checkReadiness: makeReadinessProbe(pool) });
+    return Database.of({ checkReadiness: makeReadinessProbe(pool), initialization });
   });
 
 class Database extends contextService<Database, DatabaseService>()("@nama/server/Database") {

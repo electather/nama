@@ -13,6 +13,7 @@ const config = Config.of({
 const EXPECTED_RECORD_COUNT = 2;
 const READY_RECORD_INDEX = 0;
 const FAILURE_RECORD_INDEX = 1;
+const SINGLE_RECORD_COUNT = 1;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -87,5 +88,29 @@ it.effect("keeps bootstrap and unexpected failures free of exception data", () =
     yield* failure.pipe(Effect.provide(loggingLayer));
 
     expectSafeFailures(lines);
+  }),
+);
+
+it.effect("preserves bootstrap initialization as a stable failure tag", () =>
+  Effect.gen(function* bootstrapFailureTagTest() {
+    const lines: string[] = [];
+    const failure = logFailure(
+      Cause.fail({ _tag: "BootstrapTokenInitializationError" }),
+      "server.start_failed",
+    );
+    const loggingLayer = configuredLoggingLayer(config, (line) => {
+      lines.push(line);
+    });
+
+    yield* failure.pipe(Effect.provide(loggingLayer));
+
+    expect(lines).toHaveLength(SINGLE_RECORD_COUNT);
+    const record = recordFromLine(lines[READY_RECORD_INDEX] ?? "");
+    expect(record).toEqual({
+      error_tag: "BootstrapTokenInitializationError",
+      event: "server.start_failed",
+      level: "fatal",
+      timestamp: record["timestamp"],
+    });
   }),
 );

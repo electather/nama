@@ -16,6 +16,7 @@ type ShutdownFailure = InstanceType<typeof ShutdownError>;
 
 interface ListenerShutdown {
   readonly awaitRequests: Effect.Effect<void>;
+  readonly emitStopping: () => Effect.Effect<void>;
   readonly interruptRequests: Effect.Effect<void>;
   readonly markNotAccepting: () => void;
 }
@@ -98,7 +99,7 @@ const forceClose = (
 const closeListener = (server: Server, shutdown: ListenerShutdown) =>
   Effect.gen(function* closeHttpListener() {
     shutdown.markNotAccepting();
-    yield* Effect.log("server.stopping");
+    yield* shutdown.emitStopping();
     const closePromise = yield* Effect.try({
       catch: () => new ShutdownError(undefined),
       try: () => closeServer(server),

@@ -32,6 +32,7 @@ const messageText = (message: unknown): string => {
 };
 
 interface ServerLayerOptions {
+  readonly emitStopping?: () => Effect.Effect<void>;
   readonly messages?: string[];
   readonly unmatchedRequest?: RequestListener | undefined;
 }
@@ -50,7 +51,10 @@ const serverLayerWithDatabase = (
     databaseLayer,
     Logger.layer([capture]),
   );
-  return HttpServer.layer(options.unmatchedRequest).pipe(Layer.provide(dependencies));
+  return HttpServer.layer({
+    emitStopping: options.emitStopping,
+    unmatchedRequest: options.unmatchedRequest,
+  }).pipe(Layer.provide(dependencies));
 };
 
 const serverLayer = (

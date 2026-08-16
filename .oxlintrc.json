@@ -64,6 +64,14 @@
       }
     },
     {
+      "files": ["apps/server/src/setup/bootstrap-token.ts"],
+      "rules": {
+        "import/no-nodejs-modules": ["error", { "allow": ["node:crypto", "node:fs"] }],
+        "unicorn/no-useless-undefined": "off",
+        "node/no-sync": "off"
+      }
+    },
+    {
       "files": [
         "apps/server/src/config/config.ts",
         "apps/server/src/database/database.ts",

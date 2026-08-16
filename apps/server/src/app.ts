@@ -10,6 +10,7 @@ import {
   logFailure,
   writeBootstrapFailure,
 } from "./logging/logging.ts";
+import { BootstrapToken } from "./setup/bootstrap-token.ts";
 
 const PRODUCTION_MIGRATIONS = `${import.meta.dirname}/../drizzle/`;
 
@@ -20,28 +21,56 @@ const loadConfiguration = (environment: Environment) => {
   return Effect.scoped(Config.pipe(Effect.provide(configLayer)));
 };
 
-const serverLayer = (config: Readonly<Config["Service"]>, migrationsFolder: string) => {
-  const configLayer = Layer.succeed(Config, config);
-  const databaseLayer = Database.layer(migrationsFolder).pipe(Layer.provide(configLayer));
-  return HttpServer.layer().pipe(Layer.provide(Layer.mergeAll(configLayer, databaseLayer)));
-};
-
-const runConfigured = (
+const serverLayer = (
   config: Readonly<Config["Service"]>,
   migrationsFolder: string,
-  startedAt: number,
+  emitStopping: () => Effect.Effect<void>,
 ) => {
+  const configLayer = Layer.succeed(Config, config);
+  const databaseLayer = Database.layer(migrationsFolder).pipe(Layer.provide(configLayer));
+  return HttpServer.layer({ emitStopping }).pipe(
+    Layer.provideMerge(BootstrapToken.layer()),
+    Layer.provideMerge(Layer.mergeAll(configLayer, databaseLayer)),
+  );
+};
+
+interface RunConfiguredOptions {
+  readonly config: Readonly<Config["Service"]>;
+  readonly migrationsFolder: string;
+  readonly serverRuntimeLayer?: Layer.Layer<BootstrapToken | HttpServer, unknown>;
+  readonly startedAt: number;
+  readonly writeLogLine?: (line: string) => void;
+}
+
+const runConfigured = ({
+  config,
+  migrationsFolder,
+  serverRuntimeLayer,
+  startedAt,
+  writeLogLine,
+}: RunConfiguredOptions) => {
   const state = { ready: false };
   const runServer = Effect.gen(function* runServerProgram() {
+    const bootstrapToken = yield* BootstrapToken;
     yield* HttpServer;
+    yield* bootstrapToken.activate;
     const readyAt = yield* Clock.currentTimeMillis;
     yield* logEvent("server.ready", { durationMs: readyAt - startedAt });
     state.ready = true;
     return yield* Effect.never;
   });
 
+  const emitStopping = () =>
+    Effect.suspend(() => {
+      if (!state.ready) {
+        return Effect.void;
+      }
+      return logEvent("server.stopping");
+    });
+  const runtimeLayer = serverRuntimeLayer ?? serverLayer(config, migrationsFolder, emitStopping);
+
   return runServer.pipe(
-    Effect.provide(serverLayer(config, migrationsFolder)),
+    Effect.provide(runtimeLayer),
     Effect.onExit((exit) => {
       if (state.ready && Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)) {
         return logEvent("server.stopped");
@@ -59,7 +88,7 @@ const runConfigured = (
       }
       return logFailure(cause, "server.start_failed").pipe(Effect.andThen(Effect.failCause(cause)));
     }),
-    Effect.provide(configuredLoggingLayer(config)),
+    Effect.provide(configuredLoggingLayer(config, writeLogLine)),
   );
 };
 
@@ -72,10 +101,11 @@ const makeApp = (environment: Environment, migrationsFolder: string = PRODUCTION
           writeBootstrapFailure(cause);
         }).pipe(Effect.andThen(Effect.failCause(cause))),
       onSuccess: (config: Readonly<Config["Service"]>) =>
-        runConfigured(config, migrationsFolder, startedAt),
+        runConfigured({ config, migrationsFolder, startedAt }),
     });
   });
 
 const app = makeApp(process.env);
 
-export { app };
+export type { RunConfiguredOptions };
+export { app, runConfigured };

@@ -28,7 +28,10 @@ it.live("serves empty responses and logs only database readiness transitions", (
     const states = [false, false, true, true];
     const messages: string[] = [];
     const server = yield* startServer(
-      Database.of({ checkReadiness: Effect.sync(() => states.shift() ?? true) }),
+      Database.of({
+        checkReadiness: Effect.sync(() => states.shift() ?? true),
+        initialization: "setup-eligible",
+      }),
       messages,
     );
 

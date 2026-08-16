@@ -19,6 +19,7 @@ const POLL_MILLISECONDS = 25;
 const SERVER_ROOT = join(import.meta.dirname, "../../");
 const MAIN_MODULE = join(SERVER_ROOT, "src/main.ts");
 const MASTER_KEY = `base64:${Buffer.alloc(MASTER_KEY_BYTES, MASTER_KEY_FILL).toString("base64")}`;
+const BOOTSTRAP_TOKEN_PREFIX = "NAMA_BOOTSTRAP_TOKEN=";
 
 interface RunningProcess {
   readonly child: ChildProcess;
@@ -43,26 +44,29 @@ interface StatusTarget {
   readonly status: number;
 }
 
+const childOutputClosed = (child: ChildProcess): boolean =>
+  (child.stderr?.readableEnded ?? true) && (child.stdout?.readableEnded ?? true);
+
 const waitForExit = (child: ChildProcess) =>
   Effect.suspend(() => {
-    if (child.exitCode !== null || child.signalCode !== null) {
+    if ((child.exitCode !== null || child.signalCode !== null) && childOutputClosed(child)) {
       return Effect.succeed({ code: child.exitCode, signal: child.signalCode });
     }
     return Effect.callback<ProcessExit, Error>((resume) => {
       const cleanup = (): void => {
+        child.removeListener("close", onClose);
         child.removeListener("error", onError);
-        child.removeListener("exit", onExit);
+      };
+      const onClose = (code: number | null, signal: NodeJS.Signals | null): void => {
+        cleanup();
+        resume(Effect.succeed({ code, signal }));
       };
       const onError = (error: Error): void => {
         cleanup();
         resume(Effect.fail(error));
       };
-      const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
-        cleanup();
-        resume(Effect.succeed({ code, signal }));
-      };
+      child.once("close", onClose);
       child.once("error", onError);
-      child.once("exit", onExit);
       return Effect.sync(cleanup);
     });
   });
@@ -124,15 +128,15 @@ const killChildIfRunning = (child: ChildProcess): void => {
   }
 };
 
-const startProcess = (databaseUrl: string) =>
+const startProcess = (databaseUrl: string, port?: number) =>
   Effect.gen(function* runningServerProcess() {
-    const port = yield* reservePort;
+    const selectedPort = port ?? (yield* reservePort);
     const fileSystem = yield* FileSystem.FileSystem;
     const directory = yield* fileSystem.makeTempDirectoryScoped({
       prefix: "nama-server-process-",
     });
     const configPath = join(directory, "nama.toml");
-    yield* fileSystem.writeFileString(configPath, configuration(databaseUrl, port));
+    yield* fileSystem.writeFileString(configPath, configuration(databaseUrl, selectedPort));
     const stdout = outputCapture();
     const stderr = outputCapture();
     const child = yield* Effect.acquireRelease(
@@ -149,7 +153,12 @@ const startProcess = (databaseUrl: string) =>
         }),
     );
     captureOutput(child, stdout, stderr);
-    return { child, origin: `http://${HOST}:${port}`, stderr: stderr.read, stdout: stdout.read };
+    return {
+      child,
+      origin: `http://${HOST}:${selectedPort}`,
+      stderr: stderr.read,
+      stdout: stdout.read,
+    };
   }).pipe(Effect.provide(NodeFileSystem.layer));
 
 const requestStatus = (target: StatusTarget) =>
@@ -206,6 +215,27 @@ const pollStatus = (target: StatusTarget, deadline: number): Effect.Effect<Respo
     return yield* pollStatus(target, deadline);
   });
 
+const pollOutput = (
+  runningProcess: RunningProcess,
+  expected: string,
+  deadline: number,
+): Effect.Effect<void> =>
+  Effect.gen(function* outputPoll() {
+    if (runningProcess.stdout().includes(expected)) {
+      return yield* Effect.void;
+    }
+    const now = yield* Clock.currentTimeMillis;
+    if (now >= deadline) {
+      return yield* Effect.die(new Error("timed out waiting for process stdout"));
+    }
+    yield* Effect.sleep(POLL_MILLISECONDS);
+    return yield* pollOutput(runningProcess, expected, deadline);
+  });
+
+const waitForStdout = (runningProcess: RunningProcess, expected: string) =>
+  Clock.currentTimeMillis.pipe(
+    Effect.flatMap((now) => pollOutput(runningProcess, expected, now + STATUS_WAIT_MILLISECONDS)),
+  );
 const waitForStatus = (origin: string, path: string, status: number) =>
   Clock.currentTimeMillis.pipe(
     Effect.flatMap((now) => pollStatus({ origin, path, status }, now + STATUS_WAIT_MILLISECONDS)),
@@ -217,22 +247,26 @@ const stopProcess = (runningProcess: RunningProcess, signal: NodeJS.Signals) =>
 
 const expectPortReleased = (origin: string) => reserveSpecificPort(Number(new URL(origin).port));
 
+const outputLines = (output: string): string[] => output.split("\n").filter(Boolean);
+const bootstrapLinesFrom = (runningProcess: RunningProcess): string[] =>
+  outputLines(runningProcess.stdout()).filter((line) => line.startsWith(BOOTSTRAP_TOKEN_PREFIX));
+const structuredLinesFrom = (runningProcess: RunningProcess): string[] =>
+  outputLines(runningProcess.stdout()).filter((line) => !line.startsWith(BOOTSTRAP_TOKEN_PREFIX));
 const eventsFrom = (runningProcess: RunningProcess): string[] =>
-  runningProcess
-    .stdout()
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => eventFromLine(line));
+  structuredLinesFrom(runningProcess).map((line) => eventFromLine(line));
 
 export {
+  BOOTSTRAP_TOKEN_PREFIX,
   MASTER_KEY,
+  bootstrapLinesFrom,
   eventsFrom,
   expectPortReleased,
   recordFromLine,
   startProcess,
   stopProcess,
+  structuredLinesFrom,
   waitForExit,
   waitForStatus,
+  waitForStdout,
 };
 export type { RunningProcess };

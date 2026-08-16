@@ -5,6 +5,7 @@ const MAXIMUM_STACK_FRAMES = 20;
 const FIRST_INDEX = 0;
 const SINGLE_MESSAGE_COUNT = 1;
 const KNOWN_ERROR_TAGS: Readonly<Record<string, true>> = Object.freeze({
+  BootstrapTokenInitializationError: true,
   ConfigParseError: true,
   ConfigReadError: true,
   ConfigValidationError: true,

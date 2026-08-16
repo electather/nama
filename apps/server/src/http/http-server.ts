@@ -28,6 +28,11 @@ interface RequestListenerOptions {
   readonly unmatchedRequest: RequestListener;
 }
 
+interface HttpServerLayerOptions {
+  readonly emitStopping?: (() => Effect.Effect<void>) | undefined;
+  readonly unmatchedRequest?: RequestListener | undefined;
+}
+
 const contextService = Context.Service;
 
 const notFoundRequest: RequestListener = (_request, response) => {
@@ -57,7 +62,7 @@ const makeRequestListener =
     });
   };
 
-const makeServer = (unmatchedRequest: RequestListener) =>
+const makeServer = (unmatchedRequest: RequestListener, emitStopping: () => Effect.Effect<void>) =>
   Effect.gen(function* makeHttpServer() {
     const config = yield* Config;
     const database = yield* Database;
@@ -75,6 +80,7 @@ const makeServer = (unmatchedRequest: RequestListener) =>
       (acquired) =>
         closeListener(acquired, {
           awaitRequests: requestRuntime.awaitRequests,
+          emitStopping,
           interruptRequests: requestRuntime.interruptRequests,
           markNotAccepting: () => {
             accepting.value = false;
@@ -88,8 +94,11 @@ const makeServer = (unmatchedRequest: RequestListener) =>
 class HttpServer extends contextService<HttpServer, HttpServerService>()(
   "@nama/server/HttpServer",
 ) {
-  static readonly layer = (unmatchedRequest: RequestListener = notFoundRequest) =>
-    Layer.effect(HttpServer, makeServer(unmatchedRequest));
+  static readonly layer = ({
+    emitStopping = () => Effect.void,
+    unmatchedRequest = notFoundRequest,
+  }: HttpServerLayerOptions = {}) =>
+    Layer.effect(HttpServer, makeServer(unmatchedRequest, emitStopping));
 }
 
 export { HttpServer };

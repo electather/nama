@@ -17,6 +17,8 @@ type InitializationMarker = Pick<
   "administratorUserId" | "initializedAt"
 >;
 type UserRow = Pick<typeof user.$inferSelect, "id">;
+type DatabaseInitialization = "configured" | "setup-eligible";
+
 type InitializationDecision =
   | { readonly state: "configured" }
   | { readonly state: "setup-eligible" }
@@ -71,7 +73,7 @@ const requireSuccessfulRepair = (repairedRows: readonly unknown[]): void => {
 
 const classifyInitialization = <Schema extends Record<string, unknown>>(
   database: NodePgDatabase<Schema>,
-): Promise<"configured" | "setup-eligible"> =>
+): Promise<DatabaseInitialization> =>
   database.transaction(async (transaction) => {
     const markerRows = await transaction
       .select({
@@ -121,3 +123,4 @@ const reconcileDatabaseInitialization = <Schema extends Record<string, unknown>>
   });
 
 export { reconcileDatabaseInitialization };
+export type { DatabaseInitialization };
