@@ -22,13 +22,22 @@
   "rules": {
     "curly": "error",
     "eqeqeq": "error",
+    "eslint/capitalized-comments": [
+      "error",
+      "always",
+      {
+        "line": {
+          "ignorePattern": "^fallow-ignore-(?:next-line|file)"
+        }
+      }
+    ],
     "eslint/no-duplicate-imports": ["error", { "allowSeparateTypeImports": true }],
     "eslint/sort-imports": "off",
     "import/no-cycle": "error",
     "import/no-named-export": "off",
     "import/prefer-default-export": "off",
     "no-console": "error",
-    "import/no-nodejs-modules": ["error", { "allow": ["node:assert/strict", "node:test"] }],
+    "import/no-nodejs-modules": "off",
     "sort-keys": "warn",
     "typescript/consistent-type-imports": "error",
     "typescript/no-explicit-any": "error",
@@ -58,15 +67,8 @@
       }
     },
     {
-      "files": ["apps/server/src/config/schema.ts"],
-      "rules": {
-        "import/no-nodejs-modules": ["error", { "allow": ["node:net"] }]
-      }
-    },
-    {
       "files": ["apps/server/src/setup/bootstrap-token.ts"],
       "rules": {
-        "import/no-nodejs-modules": ["error", { "allow": ["node:crypto", "node:fs"] }],
         "unicorn/no-useless-undefined": "off",
         "node/no-sync": "off"
       }
@@ -79,35 +81,6 @@
       ],
       "rules": {
         "unicorn/no-useless-undefined": "off"
-      }
-    },
-    {
-      "files": ["apps/server/src/http/http-server.ts", "apps/server/src/http/listener.ts"],
-      "rules": {
-        "import/no-nodejs-modules": ["error", { "allow": ["node:http"] }]
-      }
-    },
-    {
-      "files": [
-        "apps/server/src/**/*.test.ts",
-        "apps/server/src/**/*.test-support.ts",
-        "apps/server/integration/**/*.ts"
-      ],
-      "rules": {
-        "import/no-nodejs-modules": [
-          "error",
-          {
-            "allow": [
-              "node:assert/strict",
-              "node:child_process",
-              "node:events",
-              "node:http",
-              "node:net",
-              "node:path",
-              "node:test"
-            ]
-          }
-        ]
       }
     }
   ]
