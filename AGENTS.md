@@ -2,9 +2,9 @@
 
 Nama is a self-hosted, iOS-first Jellyfin control plane. It has a TypeScript/Node core, a Go CLI, generated Swift bindings for a future universal app targeting iOS, tvOS, and macOS, and a first-party Jellyfin plugin; no Apple client application is currently checked in. The core is not a media relay: media travels directly from a provider to the client through safe, short-lived locators.
 
-- `apps/server/` — executable TypeScript core; issue #20 implements the server lifecycle, and issue #21 adds generated Better Auth persistence plus fail-closed initialization while Better Auth runtime integration and product behavior remain unimplemented.
-- `apps/cli/` — Go CLI, a thin client of the public API.
-- `plugins/jellyfin/` — first-party TypeScript provider adapter.
+- `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements administrator setup and authentication over the durable Better Auth schema. Device pairing, CLI setup/sign-in, and client behavior remain unimplemented.
+- `apps/cli/` — Go public-API client surface; no administrator setup or sign-in flow is implemented.
+- `plugins/jellyfin/` — first-party TypeScript provider-adapter source; no provider runtime is implemented.
 - `proto/` — authoritative Protobuf schemas and generation configuration.
 - `gen/` — committed, Buf-owned generated bindings.
 
@@ -21,11 +21,17 @@ Architecture records in `docs/architecture/` and scoped rules in nested `AGENTS.
 
 - Do not edit `gen/` by hand. Change `proto/` or generation configuration, run `mise run generate`, and commit the regenerated leaves with their source change.
 - Never hand-edit `apps/server/src/database/auth-schema.ts`. Change `apps/server/better-auth.config.ts`, run `pnpm --filter @nama/server run generate:auth-schema`, and commit the generated output with its source change.
+- In handwritten server ESM source, use `.ts` on relative imports; retain generator-owned `.js` imports in generated packages.
+- Do not use TypeScript parameter properties in Node 24 strip-only executable paths.
+- Keep the committed Drizzle compatibility patch declaration-only; never change its runtime JavaScript or weaken strict TypeScript, including through `skipLibCheck`.
 - Do not claim a server, plugin runtime, authentication, or Jellyfin integration exists because generated clients and contract tests compile. Verify an executable entrypoint, handlers, persistence, and startup behavior.
 - Do not treat generated Protobuf or Connect round trips as Nama behavior tests. Verify schema format/lint/build, generation drift, consumer compilation, and handwritten Nama policy or adapter behavior.
 - Do not build product playback on AetherEngine `6.21.0`: source review rejected it because it leaks locator headers across origins and logs locator URLs in Release.
 - Do not claim the generated Swift bindings prove iOS, tvOS, or macOS compilation or runtime behavior while no universal client application is checked in.
 - Do not expose provider resource IDs, SDK types, raw provider errors, configuration secrets, reusable credentials, locator URLs, or locator headers across the public boundary or in logs.
+- On a Nama fatal setup-commit ambiguity, make local `GetStatus` fail `UNAVAILABLE/SETUP_UNAVAILABLE` until exit; never report `initialized=false`.
+- While a Nama bootstrap attempt is active, return `SETUP_IN_PROGRESS` only for its matching token; every other candidate fails `AUTHENTICATION_FAILED`.
+- Emit Nama `server.runtime_failed` at `fatal` severity so configured `warn`, `error`, and `fatal` thresholds retain it.
 
 ## The loop
 

@@ -287,7 +287,7 @@ const file_nama_api_v1_auth_proto_rawDesc = "" +
 	"\x05email\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x18\xc0\x02`\x01R\x05email\x12&\n" +
 	"\bpassword\x18\x02 \x01(\tB\n" +
-	"\xbaH\ar\x05\x10\x01\x18\x80\bR\bpassword\"\xa1\x01\n" +
+	"\xbaH\ar\x05\x10\b\x18\x80\x01R\bpassword\"\xa1\x01\n" +
 	"\x0eSignInResponse\x12H\n" +
 	"\radministrator\x18\x01 \x01(\v2\x1a.nama.api.v1.AdministratorB\x06\xbaH\x03\xc8\x01\x01R\radministrator\x12E\n" +
 	"\n" +

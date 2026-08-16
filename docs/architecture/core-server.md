@@ -1,25 +1,24 @@
 # Core server
 
-Status: the bootable server lifecycle from issue #20, production persistence and durable initialization boundary from issue #21, and the one-time administrator bootstrap token from issue #22 are implemented and verified. Setup and authentication handlers remain issue #23 Milestone 2 work.
+Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, and issue #23 Connect setup/authentication runtime are implemented and verified.
 
 This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics.
 
 ## Current boundary
 
-`@nama/server` is an executable Node process and one Effect modular monolith. The implemented foundation owns:
+`@nama/server` is an executable Node process and one Effect modular monolith. Its implemented boundary owns:
 
 - immutable TOML configuration and an explicit environment override allowlist;
-- safe structured Effect logging;
-- one PostgreSQL pool and one Drizzle instance;
-- automatic migration application before bind;
-- reviewed production migrations for the Better Auth core tables and Nama's durable initialization marker;
-- transactional, fail-closed initialization reconciliation before the initial probe;
-- an in-memory setup bootstrap service that emits one token only after listener bind;
-- exact liveness and readiness HTTP routes;
-- one native Node listener and one Effect managed runtime for callbacks; and
-- deterministic `SIGINT` and `SIGTERM` shutdown.
+- safe structured Effect and allowlisted terminal RPC logging;
+- one PostgreSQL pool, one schema-aware Drizzle instance, and a narrow private authentication capability;
+- automatic reviewed migrations, transactional fail-closed initialization reconciliation, and bounded readiness probes;
+- the process-local bootstrap-token state machine and transactional administrator completion;
+- exact liveness and readiness routes before Connect delegation;
+- one native Node listener and one Effect managed request runtime for health and RPC callbacks;
+- runtime-controlled readiness and fatal post-bind failure; and
+- deterministic signal shutdown, bounded drain, and resource finalization.
 
-The current process has no Better Auth runtime or adapter, administrator creation, Connect service registration, setup or authentication handlers, plugin supervision, retries, configuration reload, metrics, or exported tracing. The database application service exposes immutable startup classification and readiness only. Until issue #23 adds Connect delegation, every HTTP request other than the two exact health routes returns 404. Generated contracts compiling does not prove any of those runtime behaviors exist.
+The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes. All generated public services are registered behind the explicit default-deny authority inventory; only Setup and Auth behavior is implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. Plugin services, pairing, CLI setup/sign-in, client behavior, retries, configuration reload, metrics, and exported tracing remain outside this runtime.
 
 ## Architecture decisions
 
@@ -27,7 +26,7 @@ The server uses Node.js 24, strict TypeScript, ESM, exact-pinned Effect v4, Post
 
 Hono remains removed. The native Node listener is deliberate: Nama owns operational-route precedence, request-fiber interruption, idle connection closure, bounded drain, and forced connection closure. A future transport abstraction may replace it only if it preserves that lifecycle and supplies a current second use.
 
-Effect owns composition, scopes, interruption, logging, expected failures, and shutdown. Node HTTP, `pg`, Drizzle, and later Connect or Better Auth remain narrow adapters at module edges. There is no second dependency-injection system.
+Effect owns composition, scopes, interruption, logging, expected failures, and shutdown. Node HTTP, `pg`, Drizzle, Connect, and Better Auth remain narrow adapters at module edges. There is no second dependency-injection system.
 
 Keep Drizzle on the shared `pg.Pool`; do not introduce `@effect/sql-pg`. Wrap Promise-based database operations once inside the Effect module that owns the operation.
 
@@ -35,14 +34,14 @@ The implemented dependency graph is:
 
 ```text
 main -> app
-app -> config + logging + database + setup + http
+app -> config + logging + database + lifecycle + authentication + http
 logging -> config
 database -> config
-setup -> database
-http -> config + database
+authentication -> config + database + lifecycle + bootstrap token
+http -> config + database + lifecycle + authentication
 ```
 
-`src/main.ts` launches the root Effect once and selects process exit status. `src/app.ts` owns graph construction and startup ordering. Runtime responsibilities live under `src/config/`, `src/logging/`, `src/database/`, `src/setup/`, and `src/http/`; generated-contract policy lives independently under `src/contracts/`. Fallow covers every TypeScript file and enforces this acyclic direction.
+`src/main.ts` launches the root Effect once and selects process exit status. `src/app.ts` owns graph construction and startup ordering. Runtime responsibilities live under `src/config/`, `src/logging/`, `src/database/`, `src/setup/`, `src/authentication/`, `src/lifecycle/`, and `src/http/`; generated-contract policy lives independently under `src/contracts/`. Fallow covers every TypeScript file and enforces this acyclic direction.
 
 Organize server code by concrete responsibility, not technical layer or file size. Split an owner only when it has independently changing responsibilities; there is no line-count limit. Keep `database/` cohesive until implemented behavior proves another owner is needed. Imports name concrete modules; do not add `index.ts` barrels.
 
@@ -115,26 +114,25 @@ read and decode configuration
   -> construct Drizzle and apply migrations
   -> transactionally reconcile durable initialization
   -> run the initial SELECT 1 probe
-  -> construct the inactive or pending bootstrap service
-  -> construct the shared request ManagedRuntime
-  -> bind the native HTTP listener
+  -> construct bootstrap, private authentication, setup, runtime-control, and request-runtime services
+  -> bind the native HTTP listener with health-first Connect dispatch
   -> synchronously activate bootstrap output
-  -> emit server.ready and wait for interruption
+  -> mark runtime ready, emit server.ready, and wait for interruption or fatal runtime failure
 ```
 
 The production migration directory is resolved relative to the server module, never the current working directory. Tests inject independent migration fixture directories through layer construction; migration location is not operator configuration.
 
-`apps/server/better-auth.config.ts` is the sole owner of Better Auth models and fields, and `apps/server/src/database/auth-schema.ts` is committed Better Auth CLI output that must never be hand-edited. The configuration is deliberately tooling-only: offline schema generation selects the database shape without receiving a live Drizzle instance or installing a Better Auth runtime adapter. The drift gate regenerates into a temporary path and requires byte-identical output; runtime code invokes neither generator nor Better Auth's migration path.
+`apps/server/better-auth.config.ts` is the sole owner of Better Auth models and fields, and `apps/server/src/database/auth-schema.ts` is committed Better Auth CLI output that must never be hand-edited. The configuration remains tooling-only: schema generation selects the database shape without a live runtime adapter. The private runtime adapter separately receives the generated schema and the database's narrow capability; neither Better Auth migration nor route handling runs in the server.
 
 `schema.ts` hand-defines only Nama's initialization state. Drizzle owns the reviewed SQL, migration journal, and runtime application over the shared pool; a database carrying the prior zero-entry journal upgrades exactly once, and missing or malformed migration metadata is fatal.
 
-The database module owns pool creation, schema-aware Drizzle construction, migrations, initialization reconciliation, probes, and normalization of database failures. It exposes only the immutable `configured` or `setup-eligible` classification captured during reconciliation plus Nama-owned readiness operations. Issue #23 may pass the private Drizzle instance to a private Better Auth adapter, but it must not expose a generic query service or repository abstraction.
+The database module owns pool creation, schema-aware Drizzle construction, migrations, initialization reconciliation, probes, and normalization of database failures. It exposes immutable startup classification and Nama-owned readiness operations, plus a private authentication capability containing the existing Drizzle instance and conditional durable-marker completion. It does not expose a generic query service or repository abstraction.
 
 The MVP runs one core process. Drizzle bookkeeping is sufficient; do not add advisory locks, distributed migration coordination, Redis, or a job framework before multi-process deployment is accepted.
 
 ### Durable persistence and initialization
 
-The committed generated auth schema and reviewed SQL provide the Better Auth core `user`, `session`, `account`, and `verification` tables alongside one Nama-owned `nama_server_state` singleton. Generated persistence does not constitute a Better Auth runtime integration; [authentication and setup](authentication-and-setup.md) owns the runtime compatibility gates.
+The committed generated auth schema and reviewed SQL provide the Better Auth core `user`, `session`, `account`, and `verification` tables alongside one Nama-owned `nama_server_state` singleton. The private adapter uses that shared schema and pool only through the database capability; [authentication and setup](authentication-and-setup.md) owns the application-facing consequences.
 
 The initialization marker admits only the fixed `server` key. Its initialization time and administrator user reference are either both absent or both present, and the administrator reference restricts deletion. No application operation deletes the singleton, clears either field, or resets setup eligibility. A missing singleton is corruption rather than a fresh deployment.
 
@@ -159,18 +157,16 @@ A failed probe does not close or replace the pool. Normal `pg` reconnection allo
 
 ## HTTP transport
 
-The listener dispatches only:
+The listener dispatches in this order:
 
-| Request                                                                    | Response                         |
-| -------------------------------------------------------------------------- | -------------------------------- |
-| exact `GET /health/live`                                                   | 200 when the listener can answer |
-| exact `GET /health/ready` while accepting and PostgreSQL is reachable      | 200                              |
-| exact `GET /health/ready` while shutting down or PostgreSQL is unavailable | 503                              |
-| every other method or target                                               | 404                              |
+| Request | Response |
+| --- | --- |
+| exact `GET /health/live` | 200 when the listener can answer |
+| exact `GET /health/ready` while accepting, runtime-ready, and PostgreSQL is reachable | 200 |
+| exact `GET /health/ready` while shutting down, runtime-unready, or PostgreSQL is unavailable | 503 |
+| every other target | server-owned request ID, then Connect delegation or 404 fallback |
 
-Targets containing a query string or trailing slash are not exact matches. Every response has an empty body and `Content-Length: 0`; health routes have no response schema or content type. Liveness performs no dependency work. Readiness checks local accepting state before touching PostgreSQL.
-
-Health callbacks run through one shared `ManagedRuntime`, so request Effects have the same interruption and shutdown ownership as future handlers. The runtime currently contains only the services required by health handling. Issue #23 must extend this runtime and delegate unmatched requests to the supported Connect Node adapter rather than create a second runtime or listener. Exact health-route precedence and listener ownership must not change.
+Targets containing a query string or trailing slash are not exact health matches. Health responses retain their empty body and `Content-Length: 0`; liveness performs no dependency work, and readiness checks local accepting and runtime state before its bounded database probe. For delegated traffic the outer Node dispatch assigns `nama-request-id` before decoding, so malformed Connect input and application responses have a server-owned correlation header. Exact health precedence, one-listener ownership, and one managed request runtime remain invariant.
 
 ## Failure and logging contract
 
@@ -181,7 +177,7 @@ Expected failures are tagged beside their owner:
 - setup: `BootstrapTokenInitializationError`; and
 - transport: `ServerBindError`, `ShutdownError`.
 
-There is no central error module. Safe tagged-error data is limited to the stable tag, optional allowlisted configuration field path, and optional TOML line and column. Raw parser, PostgreSQL, Node, Drizzle, and later Better Auth errors are normalized at their adapter boundary.
+There is no central error module. Safe tagged-error data is limited to the stable tag, optional allowlisted configuration field path, and optional TOML line and column. Raw parser, PostgreSQL, Node, Drizzle, and Better Auth errors are normalized at their adapter boundary.
 
 A configuration, connection, migration, integrity, runtime-construction, bind, or bootstrap-activation failure emits exactly one safe `server.start_failed` record, releases acquired resources, leaves no listener, and exits non-zero. Failures before configured logging exists use one minimal JSON record on stderr. Later startup failures use the configured Effect logger on stdout. Effect's default cause reporting remains disabled so it cannot emit a second unsafe record.
 
@@ -195,10 +191,11 @@ Normal logs are newline-delimited JSON on stdout. The configured threshold appli
 - `database.readiness_changed`.
 
 Current lifecycle log fields are limited to `timestamp`, `level`, `event`, `duration_ms`, `error_tag`, and `sanitized_stack_frames`. Expected failures expose no arbitrary exception message or cause. An unexpected defect may include bounded stack frames after removing the exception message; sanitation must never serialize enumerable exception properties.
+Fatal post-bind failure emits exactly one `server.runtime_failed` record at `fatal` severity, so configured `warn`, `error`, and `fatal` thresholds cannot suppress the sole record.
 
 The only secret-output exception is exactly one direct stdout line, `NAMA_BOOTSTRAP_TOKEN=<token>\n`, after a setup-eligible listener binds. It bypasses Effect logging and JSON record construction through one checked synchronous write; a short or failed write is not retried because a partial output could be ambiguous. Startup then fails before `server.ready`.
 
-Never log bind address, public URL, database URL, master key, source TOML, SQL, environment values, request bodies, arbitrary headers, credentials, bootstrap tokens, locator URLs, or locator headers. Issue #23 adds Nama request and correlation IDs for RPC logs independently; it does not turn Effect spans into distributed tracing.
+Never log bind address, public URL, database URL, master key, source TOML, SQL, environment values, request bodies, arbitrary headers, credentials, bootstrap tokens, locator URLs, or locator headers. Terminal RPC logs use only the request ID, fully qualified method, Connect code, and duration; Effect spans do not become distributed tracing.
 
 Do not add OpenTelemetry, OTLP, trace-header propagation, sampling, exporters, a metrics backend, or trace/span IDs to the stable log contract without a separately accepted operational need.
 
@@ -222,31 +219,17 @@ mark accepting false
 
 An already-established connection sees readiness become 503 as soon as accepting is false, without a database probe. Finalizers are idempotent and tolerate partial acquisition. A finalizer failure emits `server.shutdown_failed` and exits non-zero.
 
-## Milestone 2 extensions
+## Implemented setup and authentication runtime
 
-Issue #22 is implemented below. Its in-memory token boundary preserves the lifecycle and durable initialization contract without claiming administrator creation or a public setup flow.
+The process-local bootstrap boundary retains one digest-backed, single-flight token after a setup-eligible listener binds. It is invalidated on successful completion or any possible commit; cancellation before that boundary restores the claim. `CreateAdministrator` validates the token before password hashing, keeps automatic sign-in disabled, creates the administrator through the private adapter, and conditionally completes both durable marker fields. A confirmed result closes setup and returns no session. An ambiguous authentication or marker outcome disables setup, makes runtime readiness false, and causes non-zero exit so startup reconciliation, rather than a retry, determines durable truth.
 
-### Issue #22: implemented one-time administrator bootstrap
+After fatal setup-commit ambiguity, this process's `GetStatus` fails `UNAVAILABLE/SETUP_UNAVAILABLE` until exit and never returns `initialized=false`. While a bootstrap attempt is active, only its matching token returns `ABORTED/SETUP_IN_PROGRESS`; every other candidate returns `UNAUTHENTICATED/AUTHENTICATION_FAILED`.
 
-`src/setup/` is a Fallow zone that depends only on `database/`. Reconciliation supplies one immutable startup classification: `configured` constructs an inert service; `setup-eligible` constructs a pending service. After binding, activation obtains exactly 32 random bytes, emits their unpadded base64url encoding in the one raw stdout line, and retains only the SHA-256 digest. Activation is one-shot; failure neither retries nor announces readiness.
+Only the private authentication adapter loads Better Auth. Better Auth routes, cookies, request/response models, errors, secrets, raw sessions, and raw tokens neither cross that boundary nor mount on the public listener. Its secret derives from the redacted master key with HKDF-SHA-256 and context `nama/better-auth/v1`; the generated schema, shared pool, PostgreSQL transactions, signed bearer tokens, and Better Auth's session lifecycle remain private implementation concerns.
 
-Every candidate is SHA-256 hashed before a constant-time comparison of two fixed-size digests. Invalid candidates preserve availability. A valid candidate acquires one scoped opaque attempt; concurrent claims fail immediately. A scope that closes before the commit-capable boundary restores availability. Entering that boundary keeps the exclusive attempt fail-closed; confirmed success or an unresolved scope exit destroys the digest and disables setup for the process. Issue #23 owns administrator creation, durable marker completion, interruption masking, readiness failure, process exit after an ambiguous commit, Connect codes, and public Nama error details.
+Generated public services are registered through `connectNodeAdapter` behind the health dispatcher. Connect cancellation and deadlines interrupt their tracked Effect request; shutdown drains those same health and RPC fibers through the one managed runtime. The request pipeline applies setup-state precedence, default-deny authorization, validation, sign-in limits, Nama-owned errors, and one allowlisted terminal record. Valid administrators exist only in request context.
 
-### Issue #23: Connect setup and authentication
-
-Only the private authentication adapter may import Better Auth. Better Auth routes, cookies, request/response models, errors, and secrets never cross that module boundary and are never mounted directly. Derive its secret from the redacted master key with HKDF-SHA-256 and context `nama/better-auth/v1`.
-
-Register generated Nama Connect handlers through `connectNodeAdapter` behind the existing health dispatcher. One shared managed runtime bridges callbacks into Effect. Connect cancellation and deadlines interrupt the request Effect; do not create detached request fibers.
-
-Public methods are limited to setup status, administrator creation, and sign-in. Every other generated method fails closed unless it is in one explicit public-method set. Authentication stores a Nama administrator identity in request context; no mutable global current-user state exists.
-
-Administrator creation keeps Better Auth automatic sign-in disabled and returns no session. The operator signs in explicitly after setup.
-
-Sign-in returns the Better Auth bearer plugin's signed credential through Nama's response, not a cookie or raw session model. Better Auth owns session expiry, rotation, and revocation; Nama adds no refresh-token protocol. Sign-out succeeds only after the durable session store confirms the presented bearer no longer resolves. An ambiguous or failed deletion returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the caller retains the credential and resolves state through `GetCurrentUser`.
-
-Application errors map exhaustively to the Connect codes and Nama-owned typed details defined by the API contract. Clients receive stable reasons and correlation IDs, never database messages, Better Auth errors, credentials, configuration, or stacks. Writes are not retried automatically.
-
-The Better Auth compatibility constraints and spike evidence remain in [authentication and setup](authentication-and-setup.md). Do not weaken strict TypeScript, enable `skipLibCheck`, or add unused runtime packages to hide upstream type failures.
+`SetupService.GetStatus` and `CreateAdministrator`, plus `AuthService.SignIn`, `GetCurrentUser`, and `SignOut`, are implemented. Sign-in returns only the signed bearer credential and administrator; there is no refresh-token protocol. Sign-out returns success only after the durable store no longer resolves the presented bearer. Deletion or confirmation ambiguity returns `UNAVAILABLE/SESSION_REVOCATION_UNCONFIRMED`, and the caller resolves it through `GetCurrentUser`. Application failures carry stable Nama details and the same request ID as the response header; they never expose database messages, Better Auth errors, credentials, configuration, or stacks. Writes are not retried automatically.
 
 ## Verification contract
 
@@ -259,7 +242,7 @@ The server test gate must continue to exercise behavior, not only generated cont
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.
 
-Issue #22 verifies the bootstrap state machine and real process output: fresh setup-eligible emission, output before readiness, liveness, bind failure without output, valid non-bootstrap JSON, configured silence, restart replacement, and secret absence from structured output and stderr. Issue #23 must add the generated-client real-flow proof for consumption, reuse rejection, concurrent administrator creation, durable marker completion, ambiguous commits, post-setup closure, authentication, and request cancellation.
+The implemented issue #23 coverage exercises generated-client and real-process setup/authentication flows: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, request cancellation, correlation, safe public errors and logs, readiness, and fatal runtime exit.
 
 ## Deferred work
 

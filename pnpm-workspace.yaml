@@ -16,3 +16,5 @@ minimumReleaseAgeExclude:
   - '@fallow-cli/win32-x64-msvc@3.16.0'
   - fallow-type-aware@3.16.0
   - fallow@3.16.0
+patchedDependencies:
+  drizzle-orm@0.45.2: patches/drizzle-orm@0.45.2.patch

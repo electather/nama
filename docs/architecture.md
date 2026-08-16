@@ -23,7 +23,7 @@ Apple player <──────────┴──────── playable
 
 The installable MVP is intentionally narrow: one private deployment, one administrator, Jellyfin as the only provider type, and one universal SwiftUI client targeting iOS, tvOS, and macOS; more than one Jellyfin instance may be configured when the administrator needs multiple watch-state inputs. The architecture keeps the public and plugin contracts real from the first vertical slice, but does not build a marketplace, web console, generic workflow engine, distributed queue, or native media server in anticipation of later releases.
 
-The implemented core baseline is narrower than the target topology: `@nama/server` boots as one Effect application, decodes immutable configuration, applies reviewed Drizzle migrations for the Better Auth core tables and Nama's durable initialization marker over one PostgreSQL pool, transactionally reconciles that marker fail-closed, probes the database, emits one setup-eligible administrator bootstrap token directly to stdout after listener binding while retaining only its digest, serves exact liveness/readiness routes, emits safe structured logs, and shuts down deterministically. Better Auth configuration and CLI tooling own the committed generated auth schema; Drizzle owns reviewed SQL and runtime migration application over that existing pool. The process does not yet import or mount Better Auth, expose setup or authentication handlers, register Connect handlers, supervise plugins, or create an administrator.
+The implemented core baseline is narrower than the target topology: `@nama/server` runs one Effect application with one native listener and managed request runtime. It decodes immutable configuration, applies reviewed Drizzle migrations and fail-closed initialization reconciliation over one PostgreSQL pool, probes readiness, and serves exact liveness/readiness routes before delegating other traffic to Connect. A private runtime-loaded Better Auth adapter receives the database's narrow Drizzle capability to implement Setup and administrator Auth RPCs; Better Auth routes remain unmounted. Setup transactionally closes the durable marker, and session revocation is confirmed against the durable store. Pairing, CLI setup/sign-in, Apple-client behavior, plugins, providers, playback, and synchronization remain unimplemented.
 
 ## Decision index
 
@@ -55,7 +55,7 @@ Exact dependency versions are lockfile decisions, not promises in this document.
 6. Playback-engine types do not escape the universal Apple app's playback adapter.
 7. New infrastructure or abstraction requires a current use case, not only a plausible future one.
 8. The core binds only after configuration, migrations, durable initialization reconciliation, and its initial database probe succeed; Effect scope owns request interruption and resource shutdown.
-9. Exact operational health routes retain precedence when Connect delegation is added, and unmatched traffic must never imply an RPC handler exists.
+9. Exact operational health routes retain precedence over Connect delegation, and unmatched traffic must never imply an RPC handler exists.
 
 ## Subsystem decisions
 

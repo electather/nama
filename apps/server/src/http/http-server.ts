@@ -4,14 +4,14 @@ import { Context, Effect, Exit, Layer } from "effect";
 
 import { Config } from "../config/config.ts";
 import { Database } from "../database/database.ts";
+import { RuntimeControl } from "../lifecycle/runtime-control.ts";
+import { makeConnectRequestListener } from "./connect-listener.ts";
 import { makeHealthStatus } from "./health.ts";
 import type { HealthStatusEffect } from "./health.ts";
 import { closeListener, openListener, sendEmpty } from "./listener.ts";
 import type { ListenerShutdown } from "./listener.ts";
 import { makeRequestRuntime } from "./request-runtime.ts";
 import type { RequestRuntime } from "./request-runtime.ts";
-
-const HTTP_NOT_FOUND = 404;
 
 interface AcceptingState {
   value: boolean;
@@ -34,10 +34,6 @@ interface HttpServerLayerOptions {
 }
 
 const contextService = Context.Service;
-
-const notFoundRequest: RequestListener = (_request, response) => {
-  sendEmpty(response, HTTP_NOT_FOUND);
-};
 
 const makeRequestListener =
   ({ accepting, healthStatus, requestRuntime, unmatchedRequest }: RequestListenerOptions) =>
@@ -62,18 +58,22 @@ const makeRequestListener =
     });
   };
 
-const makeServer = (unmatchedRequest: RequestListener, emitStopping: () => Effect.Effect<void>) =>
+const makeServer = (
+  unmatchedRequest: RequestListener | undefined,
+  emitStopping: () => Effect.Effect<void>,
+) =>
   Effect.gen(function* makeHttpServer() {
     const config = yield* Config;
     const database = yield* Database;
+    const runtimeControl = yield* RuntimeControl;
     const requestRuntime = yield* makeRequestRuntime(database);
     const accepting: AcceptingState = { value: true };
-    const healthStatus = makeHealthStatus(database.checkReadiness);
+    const healthStatus = makeHealthStatus(database.checkReadiness, runtimeControl.isReady);
     const listener = makeRequestListener({
       accepting,
       healthStatus,
       requestRuntime,
-      unmatchedRequest,
+      unmatchedRequest: unmatchedRequest ?? (yield* makeConnectRequestListener(requestRuntime)),
     });
     const server = yield* Effect.acquireRelease(
       openListener(config.server.bind, listener),
@@ -96,7 +96,7 @@ class HttpServer extends contextService<HttpServer, HttpServerService>()(
 ) {
   static readonly layer = ({
     emitStopping = () => Effect.void,
-    unmatchedRequest = notFoundRequest,
+    unmatchedRequest,
   }: HttpServerLayerOptions = {}) =>
     Layer.effect(HttpServer, makeServer(unmatchedRequest, emitStopping));
 }

@@ -1,10 +1,10 @@
 # API contracts
 
-Status: implemented Milestone 0 contract.
+Status: implemented Milestone 0 contract with verified issue #23 Setup and Auth runtime semantics.
 
-This document defines the public and plugin wire-contract semantics established in Milestone 0. The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
+The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
-Milestone 0 establishes the complete MVP contract surface so later milestones do not grow behavior around provider-specific payloads. It contains no handlers, database tables, provider clients, or fake runtime behavior. Later milestones implement the persistence, handlers, and provider behavior that exercise these existing wire schemas and services.
+Only `SetupService` and `AuthService` behavior is implemented in the core. The remaining public and plugin schemas are durable contracts, not evidence that their handlers, clients, or provider runtime exist.
 
 ## Scope
 
@@ -112,11 +112,12 @@ They are untrusted compatibility claims, not credentials or attestation, and may
 
 Each plugin returns its build version and contract major from `PluginService.GetInfo`. The MVP accepts contract major `1`; capabilities, not provider type or version checks, decide which operations may be called.
 
-### Transport and secrets
+### Transport, correlation, and secrets
 
-- Public and plugin RPCs use Connect over HTTP. The plugin transport is a core-owned Unix socket authenticated by one random per-launch bearer.
+- Public and plugin RPCs use only Connect over HTTP; Nama does not expose gRPC or gRPC-Web. The plugin transport is a core-owned Unix socket authenticated by one random per-launch bearer.
 - The only ordinary public HTTP endpoints are exact `GET /health/live` and `GET /health/ready`. Better Auth routes and callbacks are not mounted.
 - Public administrator and device credentials use `Authorization: Bearer`. Plugin credentials use the same header on the private socket.
+- The server, not the client, assigns `nama-request-id` at outer Node dispatch and returns it on every Connect-delegated response, including malformed-body failures. Application-generated errors carry the identical value in `google.rpc.RequestInfo`; Connect may reject malformed input before the application pipeline, where the response header is the sole correlation value.
 - Request and response bodies, authorization headers, locator headers, passwords, bootstrap tokens, polling tokens, provider configuration, and opaque plugin session context are never logged.
 - Locators are absolute HTTP or HTTPS URLs. Any attached headers are allowlisted by the core and valid only for the referenced artwork or playback session.
 
@@ -151,10 +152,15 @@ The public HTTP liveness endpoint only proves that the process can answer. Readi
 | `CreateAdministrator` | Bootstrap token in request | `bootstrap_token`, `display_name`, `email`, `password` | `administrator` |
 
 `Administrator` contains only `id`, `display_name`, and normalized `email`.
+Both public password inputs—`CreateAdministratorRequest.password` and `SignInRequest.password`—accept 8 through 128 characters. These bounds were tightened before the first runtime implementation and are the compatibility floor for every client.
 
 `CreateAdministrator` is single-use and not generally idempotent. It does not create or return a session. Better Auth is configured with automatic sign-in disabled. If the response is lost after user creation, the client calls `GetStatus` and then `AuthService.SignIn`; it does not replay setup. The bootstrap token is validated before password hashing and is never returned in an error.
 
+During an active claim, `ABORTED/SETUP_IN_PROGRESS` is returned only for the matching current-process token; every other candidate returns only `UNAUTHENTICATED/AUTHENTICATION_FAILED`. These documented errors are the complete token-observable contract.
+
 Once the Better Auth creation call can commit, cancellation cannot restore setup eligibility. The core masks interruption across the create-and-marker boundary. If the Better Auth commit outcome is ambiguous, the process disables setup in memory, marks itself unready, and exits non-zero so startup repair inspects durable users before serving again. A cancelled client can therefore produce either no user with the same valid token, or exactly one recoverable user with setup closed—never a reopened race for a second administrator.
+
+In the process that detects fatal commit ambiguity, `GetStatus` fails `UNAVAILABLE/SETUP_UNAVAILABLE` and never answers `initialized=false`. Only a restarted process resumes status after reconciliation: a repaired one-user marker reports `initialized=true`, while a zero-user result is a new setup-eligible process state rather than a local ambiguity response.
 
 ### AuthService
 
@@ -164,9 +170,9 @@ Once the Better Auth creation call can commit, cancellation cannot restore setup
 | `GetCurrentUser` | Administrator | none | `administrator` |
 | `SignOut` | Administrator | none | none |
 
-`SignIn` calls Better Auth's private server API and returns the signed token extracted from its `set-auth-token` response header, not a raw session token or cookie. This exact extraction and `autoSignIn: false` setup behavior must pass the pinned Better Auth spike before implementation is accepted. Better Auth owns expiry, rotation, and revocation; Nama adds no refresh-token protocol and does not force a different expiry. Authentication failure always uses the same public reason regardless of whether an email exists. A Nama-owned limiter wraps the public SignIn RPC because private server-API calls do not rely on Better Auth's HTTP-route limiter.
+`SignIn` calls Better Auth's private server API with automatic sign-in disabled and returns the signed token extracted from its `set-auth-token` response header, never a raw session token or cookie. Better Auth owns expiry, rotation, and revocation; Nama adds no refresh-token protocol and does not force a different expiry. Authentication failure always uses the same public reason regardless of whether an email exists. A Nama-owned limiter wraps the public SignIn RPC because private server-API calls do not rely on Better Auth's HTTP-route limiter.
 
-`SignOut` succeeds only after the durable session store confirms that the presented bearer no longer resolves to an active session. Clearing cookies or client state is not proof of revocation. If deletion fails or its outcome cannot be confirmed, Nama returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the caller retains the bearer and resolves the ambiguity with `GetCurrentUser` before retrying. An unauthenticated read proves the credential is no longer usable. The pinned Better Auth spike must exercise a forced session-deletion failure and prove that Nama never reports successful sign-out while the bearer remains valid.
+`SignOut` succeeds only after the durable session store confirms that the presented bearer no longer resolves to an active session. Clearing cookies or client state is not proof of revocation. If deletion fails or its outcome cannot be confirmed, Nama returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the caller retains the bearer and resolves the ambiguity with `GetCurrentUser` before retrying. An unauthenticated read proves the credential is no longer usable. PostgreSQL coverage forces session-deletion failure and proves Nama never reports successful sign-out while the bearer remains valid.
 
 ### DeviceService
 
@@ -713,7 +719,7 @@ Before initialization, only the two operational HTTP health endpoints and setup 
 
 Administrator sessions cannot be manufactured from device credentials. Device credentials cannot call provider, device-management, sync, health, setup, or administrator-auth methods. A plugin bearer is accepted only on its process socket and never on the public listener.
 
-Authentication and correlation run before handler validation so unauthenticated protected requests do not receive field-level oracle details. Public and bootstrap methods still receive complete field validation. The request ID is assigned at Node dispatch, before decoding, authentication, and validation, so every reachable failure has a correlation value. This is the shared transport ordering for the core.
+Authentication and correlation run before handler validation so unauthenticated protected requests do not receive field-level oracle details. Public and bootstrap methods still receive complete field validation. Node dispatch assigns the request ID before decoding, authentication, and validation. Application failures carry it in `RequestInfo`; decoder failures retain only the same server-owned response header.
 
 ## Validation and form errors
 
@@ -727,11 +733,11 @@ Structural validation uses pinned Protovalidate annotations in both packages and
 
 Handlers enforce state-dependent and cross-field rules: setup state, credential ownership, provider schema values, source membership, plan expiry, track membership, expected revision, sequence ordering, and idempotency payload identity. The core validates all plugin responses before mapping or storage. The restricted provider JSON Schema validator is independent of Protobuf validation.
 
-Validation failures use standard Google RPC details rather than a Nama-specific error message:
+Application-generated validation and expected failures use standard Google RPC details rather than a Nama-specific error message:
 
 - `google.rpc.ErrorInfo` carries the overall stable reason and domain;
 - `google.rpc.BadRequest` carries repeated per-field violations;
-- `google.rpc.RequestInfo` carries the correlation ID; and
+- `google.rpc.RequestInfo` carries the server-assigned correlation ID; and
 - `google.rpc.RetryInfo` carries a server-selected retry delay when retry is safe.
 
 For public errors, `ErrorInfo.domain` is `nama.api.v1`; for plugin errors it is `nama.plugin.v1`.
@@ -755,7 +761,9 @@ Clients first branch on Connect code, then on `ErrorInfo.reason`. They must fall
 | --- | --- | --- |
 | Structural, schema, or cross-field input failure | `INVALID_ARGUMENT` | `VALIDATION_FAILED` |
 | Invalid or mismatched page token | `INVALID_ARGUMENT` | `PAGE_TOKEN_INVALID` |
-| Invalid bootstrap token or sign-in credentials | `UNAUTHENTICATED` | `AUTHENTICATION_FAILED` |
+| Invalid bootstrap candidate or sign-in credentials | `UNAUTHENTICATED` | `AUTHENTICATION_FAILED` |
+| Matching current-process bootstrap token during its active claim | `ABORTED` | `SETUP_IN_PROGRESS` |
+| Fatal local setup-commit ambiguity before process exit | `UNAVAILABLE` | `SETUP_UNAVAILABLE` |
 | Missing, invalid, expired, or revoked bearer | `UNAUTHENTICATED` | `CREDENTIAL_INVALID` |
 | Durable session revocation cannot be confirmed | `UNAVAILABLE` | `SESSION_REVOCATION_UNCONFIRMED` |
 | Authenticated authority cannot call method | `PERMISSION_DENIED` | `PERMISSION_DENIED` |
@@ -784,7 +792,7 @@ Clients first branch on Connect code, then on `ErrorInfo.reason`. They must fall
 | Deadline elapsed | `DEADLINE_EXCEEDED` | `DEADLINE_EXCEEDED` |
 | Unexpected defect | `INTERNAL` | `INTERNAL` |
 
-Expected errors include `ErrorInfo` and `RequestInfo`. Rate limiting, temporary provider/plugin unavailability, and other explicitly retryable failures also include `RetryInfo`. `RetryInfo` is not attached to writes that are unsafe to repeat.
+Expected application errors include `ErrorInfo` and `RequestInfo`. Rate limiting, temporary provider/plugin unavailability, and other explicitly retryable failures also include `RetryInfo`. `RetryInfo` is not attached to writes that are unsafe to repeat.
 
 `ErrorInfo.metadata` has an allowlist of non-secret context such as canonical `resource_type`, canonical `resource_id`, or `minimum_client_version`. It never contains provider response text, provider references in a public error, database text, stack traces, request bodies, config fields, or credentials. Unexpected defects are logged server-side under the request ID and reduced to the generic public `INTERNAL` reason.
 
@@ -944,7 +952,7 @@ This design follows established provider and television behavior without adoptin
 
 - Apple tvOS interaction and media-detail expectations: [Designing for tvOS](https://developer.apple.com/design/human-interface-guidelines/designing-for-tvos/) and [Apple TV movie and show information](https://support.apple.com/en-ca/guide/tv/atvb0d26676e/tvos).
 - AetherEngine's player surface and separate sidecar-subtitle URL/header handling: [README](https://github.com/superuser404notfound/aetherengine/blob/main/README.md) and [format support](https://github.com/superuser404notfound/aetherengine/blob/main/docs/formats.md).
-- Better Auth's current sign-out implementation, whose caught session-deletion failure must not become a successful Nama response: [sign-out source](https://github.com/better-auth/better-auth/blob/v1.6.26/packages/better-auth/src/api/routes/sign-out.ts#L34-L49). The implementation spike rechecks the exact pinned release.
+- Better Auth's sign-out implementation, whose caught session-deletion failure must not become a successful Nama response: [sign-out source](https://github.com/better-auth/better-auth/blob/v1.6.26/packages/better-auth/src/api/routes/sign-out.ts#L34-L49). Nama's runtime confirms revocation with an authoritative follow-up lookup.
 - Jellyfin's documented surface: [stable OpenAPI](https://api.jellyfin.org/openapi/jellyfin-openapi-stable.json). Current source was also inspected at commit [`1fbd873`](https://github.com/jellyfin/jellyfin/tree/1fbd8739292cce610231be93daf43368733edf63) to distinguish implementation behavior from API guarantees.
 - Plex's documented surface: [metadata](https://developer.plex.tv/pms/#section/API-Info/Metadata-Response), [pagination](https://developer.plex.tv/pms/#section/API-Info/Pagination), [scrobble](https://developer.plex.tv/pms/#tag/Timeline/operation/putScrobble), and [timeline reporting](https://developer.plex.tv/pms/#tag/Timeline/operation/timelinePostSlash).
 - Standard field-level error details: [`google/rpc/error_details.proto`](https://github.com/googleapis/googleapis/blob/master/google/rpc/error_details.proto#L250-L310).

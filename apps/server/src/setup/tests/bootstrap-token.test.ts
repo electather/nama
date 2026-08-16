@@ -102,6 +102,25 @@ it.effect("rejects a concurrent valid claim without queuing it", () =>
   }),
 );
 
+it.effect("does not reveal an active valid claim to invalid candidates", () =>
+  Effect.gen(function* invalidConcurrentCandidateTest() {
+    const bootstrapToken = makeBootstrapToken("setup-eligible", {
+      randomBytes: () => Buffer.alloc(TOKEN_BYTES),
+      writeLine: discardOutput,
+    });
+
+    yield* bootstrapToken.activate;
+    yield* Effect.scoped(
+      Effect.gen(function* attemptingClaimTest() {
+        yield* bootstrapToken.claim(ZERO_TOKEN);
+        const invalid = yield* failed(bootstrapToken.claim("not-the-emitted-token"));
+
+        expect(invalid).toMatchObject({ _tag: "BootstrapTokenInvalidError" });
+      }),
+    );
+  }),
+);
+
 it.effect("restores availability after a definitely pre-creation failure", () =>
   Effect.gen(function* releaseAttemptTest() {
     const bootstrapToken = makeBootstrapToken("setup-eligible", {

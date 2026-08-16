@@ -107,5 +107,6 @@ export {
   namaServerConnectionCount,
   waitForNamaServerConnectionCount,
   waitForNamaServerMigrationLock,
+  withAdminPool,
   withIsolatedDatabase,
 };

@@ -1,13 +1,16 @@
 import { NodeFileSystem } from "@effect/platform-node";
 import { Cause, Clock, Effect, Exit, Layer } from "effect";
 
+import { makeSetupAuthenticationLayer } from "./authentication/setup-coordinator.ts";
 import { Config } from "./config/config.ts";
 import { Database } from "./database/database.ts";
 import { HttpServer } from "./http/http-server.ts";
+import { RuntimeControl } from "./lifecycle/runtime-control.ts";
 import {
   configuredLoggingLayer,
   logEvent,
   logFailure,
+  logFatalEvent,
   writeBootstrapFailure,
 } from "./logging/logging.ts";
 import { BootstrapToken } from "./setup/bootstrap-token.ts";
@@ -28,19 +31,73 @@ const serverLayer = (
 ) => {
   const configLayer = Layer.succeed(Config, config);
   const databaseLayer = Database.layer(migrationsFolder).pipe(Layer.provide(configLayer));
+  const foundationLayer = Layer.mergeAll(configLayer, databaseLayer);
   return HttpServer.layer({ emitStopping }).pipe(
-    Layer.provideMerge(BootstrapToken.layer()),
-    Layer.provideMerge(Layer.mergeAll(configLayer, databaseLayer)),
+    Layer.provideMerge(makeSetupAuthenticationLayer(foundationLayer, RuntimeControl.layer)),
   );
 };
 
 interface RunConfiguredOptions {
   readonly config: Readonly<Config["Service"]>;
   readonly migrationsFolder: string;
-  readonly serverRuntimeLayer?: Layer.Layer<BootstrapToken | HttpServer, unknown>;
+  readonly serverRuntimeLayer?: Layer.Layer<BootstrapToken | HttpServer | RuntimeControl, unknown>;
   readonly startedAt: number;
   readonly writeLogLine?: (line: string) => void;
 }
+
+interface LifecycleState {
+  lifecycleFailure: "runtime" | undefined;
+  ready: boolean;
+}
+
+const runLifecycle = (state: LifecycleState, startedAt: number) =>
+  Effect.gen(function* runLifecycleProgram() {
+    const runtimeControl = yield* RuntimeControl;
+    yield* HttpServer;
+    const bootstrapToken = yield* BootstrapToken;
+    yield* bootstrapToken.activate;
+    yield* runtimeControl.markReady;
+    const readyAt = yield* Clock.currentTimeMillis;
+    yield* logEvent("server.ready", { durationMs: readyAt - startedAt });
+    state.ready = true;
+    yield* runtimeControl.awaitFatalFailure.pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          state.lifecycleFailure = "runtime";
+        }).pipe(
+          Effect.andThen(logFatalEvent("server.runtime_failed")),
+          Effect.andThen(Effect.fail(error)),
+        ),
+      ),
+    );
+  });
+
+const makeEmitStopping = (state: LifecycleState) => () =>
+  Effect.suspend(() => {
+    if (!state.ready) {
+      return Effect.void;
+    }
+    return logEvent("server.stopping");
+  });
+
+const logStoppedOnInterruption = (state: LifecycleState) => (exit: Exit.Exit<unknown, unknown>) => {
+  if (state.ready && Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)) {
+    return logEvent("server.stopped");
+  }
+  return Effect.void;
+};
+
+const classifyLifecycleFailure = (state: LifecycleState, cause: Readonly<Cause.Cause<unknown>>) => {
+  if (state.lifecycleFailure === "runtime" || Cause.hasInterruptsOnly(cause)) {
+    return Effect.failCause(cause);
+  }
+  if (state.ready) {
+    return logFailure(cause, "server.shutdown_failed").pipe(
+      Effect.andThen(Effect.failCause(cause)),
+    );
+  }
+  return logFailure(cause, "server.start_failed").pipe(Effect.andThen(Effect.failCause(cause)));
+};
 
 const runConfigured = ({
   config,
@@ -49,45 +106,13 @@ const runConfigured = ({
   startedAt,
   writeLogLine,
 }: RunConfiguredOptions) => {
-  const state = { ready: false };
-  const runServer = Effect.gen(function* runServerProgram() {
-    const bootstrapToken = yield* BootstrapToken;
-    yield* HttpServer;
-    yield* bootstrapToken.activate;
-    const readyAt = yield* Clock.currentTimeMillis;
-    yield* logEvent("server.ready", { durationMs: readyAt - startedAt });
-    state.ready = true;
-    return yield* Effect.never;
-  });
-
-  const emitStopping = () =>
-    Effect.suspend(() => {
-      if (!state.ready) {
-        return Effect.void;
-      }
-      return logEvent("server.stopping");
-    });
+  const state: LifecycleState = { lifecycleFailure: undefined, ready: false };
+  const emitStopping = makeEmitStopping(state);
   const runtimeLayer = serverRuntimeLayer ?? serverLayer(config, migrationsFolder, emitStopping);
-
-  return runServer.pipe(
+  return runLifecycle(state, startedAt).pipe(
     Effect.provide(runtimeLayer),
-    Effect.onExit((exit) => {
-      if (state.ready && Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)) {
-        return logEvent("server.stopped");
-      }
-      return Effect.void;
-    }),
-    Effect.catchCause((cause: Readonly<Cause.Cause<unknown>>) => {
-      if (Cause.hasInterruptsOnly(cause)) {
-        return Effect.failCause(cause);
-      }
-      if (state.ready) {
-        return logFailure(cause, "server.shutdown_failed").pipe(
-          Effect.andThen(Effect.failCause(cause)),
-        );
-      }
-      return logFailure(cause, "server.start_failed").pipe(Effect.andThen(Effect.failCause(cause)));
-    }),
+    Effect.onExit(logStoppedOnInterruption(state)),
+    Effect.catchCause((cause) => classifyLifecycleFailure(state, cause)),
     Effect.provide(configuredLoggingLayer(config, writeLogLine)),
   );
 };
