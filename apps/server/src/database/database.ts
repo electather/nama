@@ -1,4 +1,6 @@
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Context, Data, Effect, Layer, Redacted } from "effect";
 import { Pool } from "pg";
@@ -8,15 +10,30 @@ import { reconcileDatabaseInitialization } from "./initialization.ts";
 import type { DatabaseInitialization } from "./initialization.ts";
 import { account, namaServerState, session, user, verification } from "./schema.ts";
 
+const EXPECTED_SINGLE_UPDATED_MARKER_COUNT = 1;
 const PROBE_TIMEOUT_MILLISECONDS = 2000;
+const SERVER_KEY = "server";
 const databaseSchema = { account, namaServerState, session, user, verification };
 
 const taggedError = Data.TaggedError;
 const contextService = Context.Service;
 const DatabaseConnectionError = taggedError("DatabaseConnectionError");
 const MigrationError = taggedError("MigrationError");
+const DatabaseInitializationCompletionError = taggedError("DatabaseInitializationCompletionError");
+type DatabaseInitializationCompletionFailure = InstanceType<
+  typeof DatabaseInitializationCompletionError
+>;
+type DatabaseDrizzle = NodePgDatabase<typeof databaseSchema>;
+
+interface DatabaseAuthentication {
+  readonly database: DatabaseDrizzle;
+  readonly completeInitialization: (
+    administratorUserId: string,
+  ) => Effect.Effect<void, DatabaseInitializationCompletionFailure>;
+}
 
 interface DatabaseService {
+  readonly authentication: DatabaseAuthentication;
   readonly initialization: DatabaseInitialization;
   readonly checkReadiness: Effect.Effect<boolean>;
 }
@@ -49,6 +66,34 @@ const makeReadinessProbe = (pool: Readonly<Pool>): Effect.Effect<boolean> =>
     Effect.match({ onFailure: () => false, onSuccess: (ready) => ready }),
   );
 
+const completeInitialization = (
+  database: DatabaseDrizzle,
+  administratorUserId: string,
+): Effect.Effect<void, DatabaseInitializationCompletionFailure> =>
+  Effect.tryPromise({
+    catch: () => new DatabaseInitializationCompletionError({}),
+    try: () =>
+      database.transaction(async (transaction) => {
+        const updatedRows = await transaction
+          .update(namaServerState)
+          .set({
+            administratorUserId,
+            initializedAt: sql`transaction_timestamp()`,
+          })
+          .where(
+            and(
+              eq(namaServerState.key, SERVER_KEY),
+              isNull(namaServerState.administratorUserId),
+              isNull(namaServerState.initializedAt),
+            ),
+          )
+          .returning({ key: namaServerState.key });
+        if (updatedRows.length !== EXPECTED_SINGLE_UPDATED_MARKER_COUNT) {
+          throw new DatabaseInitializationCompletionError(undefined);
+        }
+      }),
+  });
+
 const makeDatabase = (migrationsFolder: string) =>
   Effect.gen(function* makeDatabaseService() {
     const config = yield* Config;
@@ -76,7 +121,15 @@ const makeDatabase = (migrationsFolder: string) =>
     const initialization = yield* reconcileDatabaseInitialization(database);
     yield* runInitialProbe(pool);
 
-    return Database.of({ checkReadiness: makeReadinessProbe(pool), initialization });
+    return Database.of({
+      authentication: {
+        completeInitialization: (administratorUserId) =>
+          completeInitialization(database, administratorUserId),
+        database,
+      },
+      checkReadiness: makeReadinessProbe(pool),
+      initialization,
+    });
   });
 
 class Database extends contextService<Database, DatabaseService>()("@nama/server/Database") {

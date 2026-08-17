@@ -3,7 +3,6 @@
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "rootDir": ".",
-    "skipLibCheck": true,
     "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*.ts", "integration/**/*.ts", "vitest.config.ts"]

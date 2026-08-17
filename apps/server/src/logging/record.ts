@@ -17,17 +17,23 @@ const KNOWN_ERROR_TAGS: Readonly<Record<string, true>> = Object.freeze({
 });
 
 interface EventMessage {
+  readonly code?: number;
   readonly durationMs?: number;
   readonly errorTag?: string;
   readonly event: string;
+  readonly method?: string;
+  readonly requestId?: string;
   readonly sanitizedStackFrames?: readonly string[];
 }
 
 interface LogRecord {
+  connect_code?: number;
   duration_ms?: number;
   error_tag?: string;
   event: string;
   level: string;
+  request_id?: string;
+  rpc_method?: string;
   sanitized_stack_frames?: readonly string[];
   timestamp: string;
 }
@@ -99,15 +105,23 @@ const toEventMessage = (value: unknown): EventMessage | undefined => {
   return undefined;
 };
 
-const addOptionalFields = (record: LogRecord, message: Readonly<EventMessage>): void => {
-  if (message.durationMs !== undefined) {
-    record.duration_ms = message.durationMs;
+const addOptionalField = <Key extends keyof LogRecord>(
+  record: LogRecord,
+  key: Key,
+  value: LogRecord[Key] | undefined,
+): void => {
+  if (value !== undefined) {
+    record[key] = value;
   }
-  if (message.errorTag !== undefined) {
-    record.error_tag = message.errorTag;
-  }
-  if (message.sanitizedStackFrames !== undefined) {
-    record.sanitized_stack_frames = message.sanitizedStackFrames;
+};
+const addEventFields = (record: LogRecord, eventMessage: EventMessage): void => {
+  if (eventMessage.event === "rpc.completed") {
+    addOptionalField(record, "request_id", eventMessage.requestId);
+    addOptionalField(record, "rpc_method", eventMessage.method);
+    addOptionalField(record, "connect_code", eventMessage.code);
+  } else {
+    addOptionalField(record, "error_tag", eventMessage.errorTag);
+    addOptionalField(record, "sanitized_stack_frames", eventMessage.sanitizedStackFrames);
   }
 };
 
@@ -126,7 +140,8 @@ const recordFor = (
     level: level.toLowerCase(),
     timestamp: timestamp.toISOString(),
   };
-  addOptionalFields(record, eventMessage);
+  addOptionalField(record, "duration_ms", eventMessage.durationMs);
+  addEventFields(record, eventMessage);
   return record;
 };
 

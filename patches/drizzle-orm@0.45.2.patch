@@ -1,0 +1,128 @@
+diff --git a/cache/core/cache.d.ts b/cache/core/cache.d.ts
+index cdb10b212a8b61cf50919bd61c67c7f5a1f85332..ad87eeaf312f9f8012e794b81e8843d68ab933e7 100644
+--- a/cache/core/cache.d.ts
++++ b/cache/core/cache.d.ts
+@@ -1,5 +1,5 @@
+ import { entityKind } from "../../entity.js";
+-import type { Table } from "../../index.js";
++import type { Table } from "../../table.js";
+ import type { CacheConfig } from "./types.js";
+ export declare abstract class Cache {
+     static readonly [entityKind]: string;
+diff --git a/column-builder.d.ts b/column-builder.d.ts
+index 07dfef92d0c098601abb8292847460e278863bd8..b41ededfc59957becb34ed8ccae87c0da92a0627 100644
+--- a/column-builder.d.ts
++++ b/column-builder.d.ts
+@@ -1,14 +1,40 @@
+ import { entityKind } from "./entity.js";
+-import type { Column } from "./column.js";
+-import type { GelColumn, GelExtraConfigColumn } from "./gel-core/index.js";
+-import type { MySqlColumn } from "./mysql-core/index.js";
+-import type { ExtraConfigColumn, PgColumn, PgSequenceOptions } from "./pg-core/index.js";
+-import type { SingleStoreColumn } from "./singlestore-core/index.js";
++import type { Column, ColumnBaseConfig } from "./column.js";
++import type { ExtraConfigColumn, PgColumn } from "./pg-core/columns/common.js";
++import type { PgSequenceOptions } from "./pg-core/sequence.js";
+ import type { SQL } from "./sql/sql.js";
+-import type { SQLiteColumn } from "./sqlite-core/index.js";
+ import type { Assume, Simplify } from "./utils.js";
+ export type ColumnDataType = 'string' | 'number' | 'boolean' | 'array' | 'json' | 'date' | 'bigint' | 'custom' | 'buffer' | 'dateDuration' | 'duration' | 'relDuration' | 'localTime' | 'localDate' | 'localDateTime';
+ export type Dialect = 'pg' | 'mysql' | 'sqlite' | 'singlestore' | 'common' | 'gel';
++type GelColumn<T extends ColumnBaseConfig<ColumnDataType, string> = ColumnBaseConfig<ColumnDataType, string>, TRuntimeConfig extends object = {}, TTypeConfig extends object = {}> = Column<T, TRuntimeConfig, TTypeConfig & {
++    dialect: 'gel';
++}>;
++type MySqlColumn<T extends ColumnBaseConfig<ColumnDataType, string> = ColumnBaseConfig<ColumnDataType, string>, TRuntimeConfig extends object = {}, TTypeConfig extends object = {}> = Column<T, TRuntimeConfig, TTypeConfig & {
++    dialect: 'mysql';
++}>;
++type SingleStoreColumn<T extends ColumnBaseConfig<ColumnDataType, string> = ColumnBaseConfig<ColumnDataType, string>, TRuntimeConfig extends object = {}, TTypeConfig extends object = {}> = Column<T, TRuntimeConfig, TTypeConfig & {
++    dialect: 'singlestore';
++}>;
++type SQLiteColumn<T extends ColumnBaseConfig<ColumnDataType, string> = ColumnBaseConfig<ColumnDataType, string>, TRuntimeConfig extends object = {}, TTypeConfig extends object = {}> = Column<T, TRuntimeConfig, TTypeConfig & {
++    dialect: 'sqlite';
++}>;
++type GelIndexedExtraConfig = {
++    order?: 'asc' | 'desc';
++    nulls?: 'first' | 'last';
++    opClass?: string;
++};
++interface GelExtraConfigColumn<T extends ColumnBaseConfig<ColumnDataType, string> = ColumnBaseConfig<ColumnDataType, string>> extends Column<T, GelIndexedExtraConfig, {
++    dialect: 'gel';
++}> {
++    getSQLType(): string;
++    indexConfig: GelIndexedExtraConfig;
++    defaultConfig: GelIndexedExtraConfig;
++    asc(): Omit<this, 'asc' | 'desc'>;
++    desc(): Omit<this, 'asc' | 'desc'>;
++    nullsFirst(): Omit<this, 'nullsFirst' | 'nullsLast'>;
++    nullsLast(): Omit<this, 'nullsFirst' | 'nullsLast'>;
++    op(opClass: string): Omit<this, 'op'>;
++}
+ export type GeneratedStorageMode = 'virtual' | 'stored';
+ export type GeneratedType = 'always' | 'byDefault';
+ export type GeneratedColumnConfig<TDataType> = {
+diff --git a/pg-core/policies.d.ts b/pg-core/policies.d.ts
+index 9f4339c6bcd2850330e98c059e59db2fa60f73dc..f80c1616e2ed284700a91425d9def9aa44857ada 100644
+--- a/pg-core/policies.d.ts
++++ b/pg-core/policies.d.ts
+@@ -13,11 +13,11 @@ export interface PgPolicyConfig {
+ export declare class PgPolicy implements PgPolicyConfig {
+     readonly name: string;
+     static readonly [entityKind]: string;
+-    readonly as: PgPolicyConfig['as'];
+-    readonly for: PgPolicyConfig['for'];
+-    readonly to: PgPolicyConfig['to'];
+-    readonly using: PgPolicyConfig['using'];
+-    readonly withCheck: PgPolicyConfig['withCheck'];
++    readonly as?: 'permissive' | 'restrictive';
++    readonly for?: 'all' | 'select' | 'insert' | 'update' | 'delete';
++    readonly to?: PgPolicyToOption;
++    readonly using?: SQL;
++    readonly withCheck?: SQL;
+     constructor(name: string, config?: PgPolicyConfig);
+     link(table: PgTable): this;
+ }
+diff --git a/pg-core/query-builders/query.d.ts b/pg-core/query-builders/query.d.ts
+index 94e995bb97bdd824abb0e3384f5a68f0ce3aeb6a..6591a68315925811e3d7e787471d4d71f5d124d2 100644
+--- a/pg-core/query-builders/query.d.ts
++++ b/pg-core/query-builders/query.d.ts
+@@ -2,7 +2,7 @@ import { entityKind } from "../../entity.js";
+ import { QueryPromise } from "../../query-promise.js";
+ import { type BuildQueryResult, type DBQueryConfig, type TableRelationalConfig, type TablesRelationalConfig } from "../../relations.js";
+ import type { RunnableQuery } from "../../runnable-query.js";
+-import type { Query, SQLWrapper } from "../../sql/sql.js";
++import type { Query, SQL, SQLWrapper } from "../../sql/sql.js";
+ import type { KnownKeysOnly } from "../../utils.js";
+ import type { PgDialect } from "../dialect.js";
+ import type { PgPreparedQuery, PgSession, PreparedQueryConfig } from "../session.js";
+@@ -40,6 +40,7 @@ export declare class PgRelationalQuery<TResult> extends QueryPromise<TResult> im
+         execute: TResult;
+     }>;
+     private _getQuery;
++    getSQL(): SQL;
+     private _toSQL;
+     toSQL(): Query;
+     private authToken?;
+diff --git a/pg-core/roles.d.ts b/pg-core/roles.d.ts
+index 443d397a775cfc70ef6b41e9763a223d2055611f..4a631872bf687a54a785247adf7fecf7b59223a8 100644
+--- a/pg-core/roles.d.ts
++++ b/pg-core/roles.d.ts
+@@ -7,6 +7,9 @@ export interface PgRoleConfig {
+ export declare class PgRole implements PgRoleConfig {
+     readonly name: string;
+     static readonly [entityKind]: string;
++    readonly createDb?: boolean;
++    readonly createRole?: boolean;
++    readonly inherit?: boolean;
+     constructor(name: string, config?: PgRoleConfig);
+     existing(): this;
+ }
+diff --git a/session.d.ts b/session.d.ts
+index acbddce6fae90f219904f4f6b65bfbbc8ddae710..294f85d2cad98e49de781113d1986dd3e973c8cd 100644
+--- a/session.d.ts
++++ b/session.d.ts
+@@ -1,4 +1,4 @@
+-import type { Query } from "./index.js";
++import type { Query } from "./sql/sql.js";
+ export interface PreparedQuery {
+     getQuery(): Query;
+     mapResult(response: unknown, isFromBatch?: boolean): unknown;

@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": ["src/main.ts", "src/contracts/probe.ts"],
+  "ignoreDependencies": ["better-auth"],
   "rules": {
     "boundary-violation": "error",
     "circular-dependencies": "error",
@@ -140,10 +141,12 @@
     "zones": [
       { "name": "entry", "patterns": ["src/main.ts"] },
       { "name": "composition", "patterns": ["src/app.ts", "src/tests/**/*.ts"] },
+      { "name": "authentication", "patterns": ["src/authentication/**/*.ts"] },
       { "name": "configuration", "patterns": ["src/config/**/*.ts"] },
       { "name": "logging", "patterns": ["src/logging/**/*.ts"] },
       { "name": "database", "patterns": ["src/database/**/*.ts"] },
       { "name": "setup", "patterns": ["src/setup/**/*.ts"] },
+      { "name": "lifecycle", "patterns": ["src/lifecycle/**/*.ts"] },
       { "name": "transport", "patterns": ["src/http/**/*.ts"] },
       { "name": "contracts", "patterns": ["src/contracts/**/*.ts"] },
       { "name": "integration", "patterns": ["integration/**/*.ts"] },
@@ -156,15 +159,50 @@
       { "from": "entry", "allow": ["composition"] },
       {
         "from": "composition",
-        "allow": ["configuration", "logging", "database", "setup", "transport"]
+        "allow": [
+          "authentication",
+          "configuration",
+          "database",
+          "lifecycle",
+          "logging",
+          "setup",
+          "transport"
+        ]
+      },
+      {
+        "from": "authentication",
+        "allow": ["configuration", "database", "lifecycle", "setup"]
       },
       { "from": "configuration", "allow": [] },
       { "from": "logging", "allow": ["configuration"] },
       { "from": "database", "allow": ["configuration"] },
       { "from": "setup", "allow": ["database"] },
-      { "from": "transport", "allow": ["configuration", "database"] },
+      { "from": "lifecycle", "allow": [] },
+      {
+        "from": "transport",
+        "allow": [
+          "authentication",
+          "configuration",
+          "contracts",
+          "database",
+          "lifecycle",
+          "logging"
+        ]
+      },
       { "from": "contracts", "allow": [] },
-      { "from": "integration", "allow": ["configuration", "database", "transport"] },
+      {
+        "from": "integration",
+        "allow": [
+          "authentication",
+          "configuration",
+          "contracts",
+          "database",
+          "lifecycle",
+          "logging",
+          "setup",
+          "transport"
+        ]
+      },
       { "from": "tooling", "allow": [] }
     ],
     "coverage": {

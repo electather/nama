@@ -1,3 +1,4 @@
+import type { Code } from "@connectrpc/connect";
 import { Effect, Layer, Logger, References } from "effect";
 import type { Cause, LogLevel } from "effect";
 
@@ -15,7 +16,18 @@ const MINIMUM_LEVEL: Readonly<Record<Config["Service"]["logging"]["level"], LogL
     warn: "Warn",
   });
 
+const RPC_SUCCESS_CODE = 0;
+const BOOTSTRAP_FAILURE_LOG_LEVEL = "fatal";
+
 type LineWriter = (line: string) => void;
+
+type RpcCompletionRecord = Readonly<{
+  event: "rpc.completed";
+  requestId: string;
+  method: string;
+  code: Code | typeof RPC_SUCCESS_CODE;
+  durationMs: number;
+}>;
 
 const stdoutWriter: LineWriter = (line) => {
   process.stdout.write(line);
@@ -45,6 +57,10 @@ const configuredLoggingLayer = (
 
 const logEvent = (event: string, fields: { readonly durationMs?: number } = {}) =>
   Effect.logInfo({ event, ...fields } satisfies EventMessage);
+const logFatalEvent = (event: string, fields: { readonly durationMs?: number } = {}) =>
+  Effect.logFatal({ event, ...fields } satisfies EventMessage);
+const logRpcCompletion = (record: RpcCompletionRecord): Effect.Effect<void> =>
+  Effect.logInfo(record);
 
 const logFailure = (
   cause: Readonly<Cause.Cause<unknown>>,
@@ -70,10 +86,18 @@ const writeBootstrapFailure = (
     `${JSON.stringify({
       error_tag: errorTag(cause),
       event: "server.start_failed",
-      level: "fatal",
+      level: BOOTSTRAP_FAILURE_LOG_LEVEL,
       timestamp: new Date().toISOString(),
     } satisfies LogRecord)}\n`,
   );
 };
 
-export { configuredLoggingLayer, logEvent, logFailure, writeBootstrapFailure };
+export {
+  configuredLoggingLayer,
+  logEvent,
+  logFailure,
+  logFatalEvent,
+  logRpcCompletion,
+  writeBootstrapFailure,
+};
+export type { RpcCompletionRecord };

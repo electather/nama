@@ -2,10 +2,8 @@ import { expect, it } from "@effect/vitest";
 import { Deferred, Effect, Exit, Fiber, Layer, Ref, Scope } from "effect";
 import { TestClock } from "effect/testing";
 
-import { Database } from "../../database/database.ts";
-import { SINGLE_CONNECTION, serverLayer, startServer } from "./http-server.test-support.ts";
+import { makeDatabase, serverLayer, startServer } from "./http-server.test-support.ts";
 import {
-  EPHEMERAL_PORT,
   HOST,
   HTTP_OK,
   HTTP_UNAVAILABLE,
@@ -19,6 +17,9 @@ import {
 } from "./network.test-support.ts";
 import type { CapturedSocket } from "./network.test-support.ts";
 
+const NO_DATABASE_PROBES = 0;
+const ONE_DATABASE_PROBE = 1;
+
 interface ShutdownSocketScenario {
   readonly assertBeforeRelease: () => void;
   readonly client: CapturedSocket;
@@ -26,6 +27,28 @@ interface ShutdownSocketScenario {
   readonly probe: Deferred.Deferred<void>;
   readonly probeStarted: Deferred.Deferred<void>;
 }
+
+const assertReadyRequestDuringShutdown = (
+  client: CapturedSocket,
+  assertBeforeRelease: () => void,
+) =>
+  Effect.gen(function* readyRequestDuringShutdownAssertion() {
+    yield* waitForShortDelay;
+    yield* sendReadyRequest(client, "close");
+    yield* waitForShortDelay;
+    assertBeforeRelease();
+  });
+
+const captureStatusCodes = (client: CapturedSocket): string[] => {
+  const statusCodes: string[] = [];
+  for (const status of statusesFrom(client.read())) {
+    if (status === undefined) {
+      throw new Error("captured response omitted an HTTP status");
+    }
+    statusCodes.push(status);
+  }
+  return statusCodes;
+};
 
 const runShutdownSocketScenario = ({
   assertBeforeRelease,
@@ -41,13 +64,10 @@ const runShutdownSocketScenario = ({
       Effect.forkChild(waitForSocketClose(client)),
       Effect.forkChild(close),
     ] as const);
-    yield* waitForShortDelay;
-    yield* sendReadyRequest(client, "close");
-    yield* waitForShortDelay;
-    assertBeforeRelease();
+    yield* assertReadyRequestDuringShutdown(client, assertBeforeRelease);
     yield* Deferred.done(probe, Exit.void);
     yield* Effect.all([Fiber.join(socketClosed), Fiber.join(shutdown)]);
-    return statusesFrom(client.read());
+    return captureStatusCodes(client);
   });
 
 interface DrainScenario {
@@ -74,10 +94,7 @@ const verifyGracefulDrain = ({ close, origin, probe, probeStarted }: DrainScenar
 
 it.live("allows port reuse after partial listener acquisition fails", () =>
   Effect.gen(function* partialListenerAcquisitionTest() {
-    const database = Database.of({
-      checkReadiness: Effect.succeed(true),
-      initialization: "setup-eligible",
-    });
+    const database = makeDatabase(Effect.succeed(true));
     const port = yield* withReservedPort((reservedPort) =>
       Effect.gen(function* occupiedPortTest() {
         const error = yield* Effect.acquireUseRelease(
@@ -103,22 +120,21 @@ it.live("short-circuits readiness after shutdown starts on an active connection"
   Effect.gen(function* readinessShutdownTest() {
     const probeStarted = yield* Deferred.make<void>();
     const probe = yield* Deferred.make<void>();
-    let probes = EPHEMERAL_PORT;
+    let probes = NO_DATABASE_PROBES;
     const server = yield* startServer(
-      Database.of({
-        checkReadiness: Effect.gen(function* readinessProbe() {
-          probes += SINGLE_CONNECTION;
+      makeDatabase(
+        Effect.gen(function* readinessProbe() {
+          probes += ONE_DATABASE_PROBE;
           yield* Deferred.done(probeStarted, Exit.void);
           yield* Deferred.await(probe);
           return true;
         }),
-        initialization: "setup-eligible",
-      }),
+      ),
     );
     const client = yield* openCapturedSocket(server.origin);
     const statuses = yield* runShutdownSocketScenario({
       assertBeforeRelease: () => {
-        expect(probes).toBe(SINGLE_CONNECTION);
+        expect(probes).toBe(ONE_DATABASE_PROBE);
       },
       client,
       close: server.close,
@@ -135,14 +151,13 @@ it.live("drains an in-flight request before disposing", () =>
     const probeStarted = yield* Deferred.make<void>();
     const probe = yield* Deferred.make<void>();
     const server = yield* startServer(
-      Database.of({
-        checkReadiness: Effect.gen(function* readinessProbe() {
+      makeDatabase(
+        Effect.gen(function* readinessProbe() {
           yield* Deferred.done(probeStarted, Exit.void);
           yield* Deferred.await(probe);
           return true;
         }),
-        initialization: "setup-eligible",
-      }),
+      ),
     );
 
     yield* verifyGracefulDrain({
@@ -158,13 +173,12 @@ const makeDeadlineServer = Effect.gen(function* makeDeadlineTestServer() {
   const port = yield* reservePort;
   const probeStarted = yield* Deferred.make<void>();
   const interrupted = yield* Ref.make(false);
-  const database = Database.of({
-    checkReadiness: Deferred.done(probeStarted, Exit.void).pipe(
+  const database = makeDatabase(
+    Deferred.done(probeStarted, Exit.void).pipe(
       Effect.andThen(Effect.never),
       Effect.onInterrupt(() => Ref.set(interrupted, true)),
     ),
-    initialization: "setup-eligible",
-  });
+  );
   const scope = yield* Scope.make();
   yield* Layer.buildWithScope(serverLayer(port, database), scope);
   return { interrupted, port, probeStarted, scope };

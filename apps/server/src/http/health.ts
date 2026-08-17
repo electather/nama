@@ -7,7 +7,10 @@ type HealthTarget = "/health/live" | "/health/ready";
 type HealthStatus = typeof HTTP_OK | typeof HTTP_UNAVAILABLE;
 type HealthStatusEffect = (accepting: boolean, target: HealthTarget) => Effect.Effect<HealthStatus>;
 
-const makeHealthStatus = (checkReadiness: Effect.Effect<boolean>): HealthStatusEffect => {
+const makeHealthStatus = (
+  checkReadiness: Effect.Effect<boolean>,
+  isRuntimeReady: Effect.Effect<boolean>,
+): HealthStatusEffect => {
   const state: { previous?: boolean } = {};
   const readinessProbe = checkReadiness.pipe(
     Effect.tap((ready) =>
@@ -28,12 +31,19 @@ const makeHealthStatus = (checkReadiness: Effect.Effect<boolean>): HealthStatusE
     if (!accepting) {
       return Effect.succeed(HTTP_UNAVAILABLE);
     }
-    return readinessProbe.pipe(
-      Effect.map((ready) => {
-        if (ready) {
-          return HTTP_OK;
+    return isRuntimeReady.pipe(
+      Effect.flatMap((runtimeReady) => {
+        if (!runtimeReady) {
+          return Effect.succeed(HTTP_UNAVAILABLE);
         }
-        return HTTP_UNAVAILABLE;
+        return readinessProbe.pipe(
+          Effect.map((ready) => {
+            if (ready) {
+              return HTTP_OK;
+            }
+            return HTTP_UNAVAILABLE;
+          }),
+        );
       }),
     );
   };

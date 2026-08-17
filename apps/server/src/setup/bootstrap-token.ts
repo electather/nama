@@ -79,6 +79,15 @@ const candidatesMatch = (candidate: string, expected: Buffer): boolean => {
     wipe(candidateDigest);
   }
 };
+const attemptingClaimFailure = (
+  candidate: string,
+  digest: Buffer,
+): Effect.Effect<never, BootstrapTokenClaimError> => {
+  if (!candidatesMatch(candidate, digest)) {
+    return Effect.fail(new BootstrapTokenInvalidError(undefined));
+  }
+  return Effect.fail(new BootstrapTokenBusyError(undefined));
+};
 
 const initialBootstrapState = (initialization: DatabaseInitialization): BootstrapState => {
   if (initialization === "configured") {
@@ -171,7 +180,7 @@ const claimAttempt = (
       return Effect.fail(new BootstrapTokenUnavailableError(undefined));
     }
     case "attempting": {
-      return Effect.fail(new BootstrapTokenBusyError(undefined));
+      return attemptingClaimFailure(candidate, state.digest);
     }
     case "inactive":
     case "disabled": {
