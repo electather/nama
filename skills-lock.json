@@ -18,6 +18,12 @@
       "sourceType": "github",
       "skillPath": "skills/swiftui-patterns/SKILL.md",
       "computedHash": "9d2196debaca96e2a7e6b040081274cca22c02a41ec1ea35f0eabb3c5ae9730e"
+    },
+    "use-modern-go": {
+      "source": "jetbrains/go-modern-guidelines",
+      "sourceType": "github",
+      "skillPath": "plugin/skills/use-modern-go/SKILL.md",
+      "computedHash": "87950b964d94190df5c764b09dab02334aa05c6be04bbb4b296bbe0f5a19428f"
     }
   }
 }
