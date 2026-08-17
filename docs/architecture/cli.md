@@ -222,10 +222,13 @@ Most behavior is tested in process by constructing a command with injected argum
 - JSON success and error contracts with focused golden files;
 - typed-error to exit-code mapping;
 - the generated command-surface snapshot;
-- handwritten CLI and API-adapter behavior over an in-memory or test HTTP transport; and
+- handwritten CLI and API-adapter behavior over an in-memory or test HTTP transport;
+- static analysis of handwritten CLI code; and
 - a small number of compiled-binary setup and authentication paths against a test server.
 
-Milestone 0 needs only formatting, vet, tests, and compilation of the root command against the generated Health client. It does not create fake runtime behavior, empty future packages, golden files, generated CLI documentation, or a compatibility snapshot before a real command surface exists.
+Static analysis is scoped to handwritten CLI code; generated Connect-Go bindings are not a static-analysis target.
+
+Milestone 0 needs formatting, vet, Staticcheck, tests, and compilation of the root command against the generated Health client. It does not create fake runtime behavior, empty future packages, golden files, generated CLI documentation, or a compatibility snapshot before a real command surface exists.
 
 ## Deferred
 

@@ -4,6 +4,7 @@ min_version = { hard = "2026.8.3" }
 buf = "1.72.0"
 go = "1.26.5"
 "go:golang.org/x/tools/gopls" = "0.23.0"
+"go:honnef.co/go/tools/cmd/staticcheck" = "2026.1"
 node = "24.19.0"
 pnpm = "11.20.0"
 prek = "0.4.13"
@@ -38,7 +39,7 @@ description = "Check TypeScript and auth-schema drift"
 run = "pnpm run check:ts"
 
 [tasks."check:go"]
-description = "Check Go formatting, vet, and tests"
+description = "Check Go formatting, vet, tests, and Staticcheck"
 run = "scripts/check-go.sh"
 
 

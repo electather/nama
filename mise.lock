@@ -82,6 +82,10 @@ url = "https://dl.google.com/go/go1.26.5.windows-amd64.zip"
 version = "0.23.0"
 backend = "go:golang.org/x/tools/gopls"
 
+[[tools."go:honnef.co/go/tools/cmd/staticcheck"]]
+version = "2026.1"
+backend = "go:honnef.co/go/tools/cmd/staticcheck"
+
 [[tools.node]]
 version = "24.19.0"
 backend = "core:node"
