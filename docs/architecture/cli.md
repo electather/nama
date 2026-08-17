@@ -1,7 +1,6 @@
 # Management CLI
 
-Status: only a compilable Cobra-based CLI boundary is implemented;
-administrator setup and sign-in flows remain unimplemented.
+Status: issue #24 profiles, administrator setup, sign-in, and authentication status are implemented and verified. The remaining MVP command families are unfinished.
 
 ## Purpose
 
@@ -13,9 +12,9 @@ The CLI remains useful without an interactive terminal. Every operation has a co
 
 The complete MVP management surface covers initial administrator setup, authentication and server profiles, plugin and Jellyfin configuration, synchronization status and triggering, device approval, health, and diagnostics. Command families enter with the server RPCs they exercise:
 
-- Milestone 0 creates only a compilable Cobra boundary and proves the generated public Health client is consumable.
-- Milestone 2 adds the shared CLI foundation plus setup, authentication, profile, health, and diagnostic commands.
-- Later milestones add plugin, Jellyfin, device, and synchronization commands alongside their API behavior.
+- Milestone 0 created the compilable Cobra boundary and proved that generated public clients are consumable.
+- Issue #24 implements the shared CLI foundation, named profiles, administrator setup, sign-in, and authentication status.
+- Health, diagnostics, plugin, Jellyfin, device, and synchronization commands enter only with their implemented API behavior.
 
 The repository also ships one installable Codex `SKILL.md` with command discovery, JSON use, safe setup and configuration flows, and confirmation boundaries. There is no management web application or CLI plugin framework in the MVP.
 
@@ -87,7 +86,7 @@ nama
 
 Only commands backed by an implemented public RPC are added. Exact leaf commands, arguments, and flags are designed with those RPCs; this list reserves no unimplemented server behavior.
 
-The canonical binary name is `nama`. The command tree supplies complete `--help`, version reporting, and completion generation for Bash, Zsh, Fish, and PowerShell. Dynamic completions may query the server only when they are fast, bounded, and degrade to no suggestions when the server is unavailable.
+The canonical binary name is `nama`. The issue #24 command tree supplies Cobra's standard static help. Version reporting, shell completion, generated command documentation, and compatibility snapshots remain deferred to issue #25.
 
 ## Output contract
 
@@ -97,8 +96,9 @@ In JSON mode:
 
 - successful stdout is exactly one JSON object followed by a newline;
 - failed stderr is exactly one JSON error object followed by a newline;
-- stdout contains no progress, color, prompts, warnings, logs, or decorative text;
-- warnings go to stderr only when they do not make that stream ambiguous with a JSON error;
+- successful stdout contains no progress, color, prompts, logs, or decorative prose;
+- allowed plain-HTTP warnings appear only as a structured top-level `warnings` collection in the success object;
+- successful stderr remains empty, including when the success object contains warnings;
 - dates use RFC 3339 in UTC;
 - public identifiers remain strings;
 - field names and optional-value behavior are stable; and
@@ -129,7 +129,7 @@ Human tables and prose may evolve without a compatibility guarantee. Automation 
 
 ## Errors and exit codes
 
-Application operations return typed CLI errors containing a stable code, safe message, exit code, and an internal cause. The root command renders each error once, suppresses Cobra's duplicate usage/error output, and never exposes the internal cause, token, password, credential, or provider response body in structured output.
+Application operations return typed CLI errors containing a stable code, safe message, exit code, and an internal cause. The root command renders each error once, suppresses Cobra's duplicate usage/error output, and never exposes the internal cause, token, password, credential, or provider response body in structured output. JSON renders a positive `retry_delay` as a unit-bearing duration string and omits it when absent.
 
 The stable exit codes are:
 
@@ -144,11 +144,11 @@ The stable exit codes are:
 7  network or API unavailable
 ```
 
-Connect errors map centrally to this model. Retries are bounded and limited to operations known to be safe to repeat; mutations are not retried merely because a transport failed.
+Connect errors map centrally to this model. Generated clients use a private HTTP/1-only clone of a standard-library `*http.Transport` and refuse redirects, so mutation bodies and bearer headers cannot be replayed automatically or forwarded to another origin. A non-`*http.Transport` client fails closed because its HTTP/1 behavior cannot be guaranteed without taking ownership of caller state. Retries remain bounded and limited to operations known to be safe to repeat; mutations are not retried merely because a transport failed.
 
 ## Authentication and credentials
 
-`nama auth login` accepts a username and reads a password interactively from a hidden prompt or non-interactively from stdin. A password is never accepted as a command-line flag, persisted, or written to logs. Login exchanges the password for a server-issued session or token, and only that credential may be stored.
+`nama auth login` accepts an email address and reads a password interactively from a labelled hidden prompt or non-interactively from redirected stdin. JSON mode rejects terminal stdin before reading. A password is never accepted as a command-line flag, persisted, or written to logs. Login exchanges the password for a server-issued session or token, and only that credential may be stored.
 
 Persistent tokens use the operating system credential facility where available:
 
@@ -158,7 +158,7 @@ Windows  Credential Manager
 Linux    Secret Service
 ```
 
-When native credential storage is unavailable, the CLI does not silently write a plaintext token. Automation may inject a token for the current process through the documented environment variable. Any future file-backed fallback requires an explicit design amendment and owner-only permissions.
+When native credential storage is unavailable, the CLI does not silently write a plaintext token. Native records bind the bearer and expiry to the canonical full server target. Malformed and legacy unbound records never attach: the CLI deletes them and treats them as absent, while a failed deletion returns the typed credential-cleanup error and stops the operation. Automation may inject a token for authentication status in the current process through the documented environment variable. Setup and login reject while that injection is active so a newly issued bearer cannot be orphaned. Any future file-backed fallback requires an explicit design amendment and owner-only permissions.
 
 ## Configuration and profiles
 
@@ -174,8 +174,9 @@ CLI flag
 ```
 
 The shared global inputs are `--server`, `--profile`, and `--output`, with corresponding `NAMA_SERVER`, `NAMA_PROFILE`, and `NAMA_OUTPUT` variables. Profile configuration never contains passwords or tokens.
+`profile set` ignores inherited profile selection but still resolves `--server` and `NAMA_SERVER`. `profile list` and `profile use` ignore both inherited profile and server selections because those inputs are irrelevant to their local configuration operations.
 
-The client permits plain HTTP only for loopback, private or link-local addresses, and `.local` discovery names, with the warning required by the authentication design. Public names and addresses require HTTPS.
+The client permits plain HTTP only for loopback, private or link-local addresses, and `.local` discovery names, with the warning required by the authentication design. For these permitted plain-HTTP targets it bypasses environment proxies; HTTPS retains the caller's configured proxy behavior. Public names and addresses require HTTPS. Human rendering visibly escapes untrusted terminal controls returned by a server.
 
 ## Discovery and compatibility
 
@@ -217,19 +218,16 @@ No empty package or interface is created in anticipation of a later command. A c
 
 ## Testing
 
-Most behavior is tested in process by constructing a command with injected arguments, context, and output buffers. Tests cover:
+The implemented issue #24 surface is tested in process through the real Cobra tree with injected arguments, context, streams, configuration location, credential store, secret reader, and generated service clients. Coverage includes:
 
-- command parsing and the application call it produces;
-- JSON success and error contracts with focused golden files;
-- typed-error to exit-code mapping;
-- the generated command-surface snapshot;
-- handwritten CLI and API-adapter behavior over an in-memory or test HTTP transport;
-- static analysis of handwritten CLI code; and
-- a small number of compiled-binary setup and authentication paths against a test server.
+- profile persistence, resolution precedence, URL policy, and credential-deletion ordering;
+- terminal and non-interactive secret input plus native-credential semantics;
+- generated-client metadata, deadlines, and method-specific bearer attachment over test Connect handlers;
+- setup recovery, sign-in replacement, authentication status, revocation, cleanup, and typed errors;
+- exact JSON stream behavior plus human warning and prompt placement, exit codes, and secret redaction; and
+- a compiled-binary status flow against a test Connect server using a process-injected credential.
 
-Static analysis is scoped to handwritten CLI code; generated Connect-Go bindings are not a static-analysis target.
-
-Milestone 0 needs formatting, vet, Staticcheck, tests, and compilation of the root command against the generated Health client. It does not create fake runtime behavior, empty future packages, golden files, generated CLI documentation, or a compatibility snapshot before a real command surface exists.
+The owning Go check runs formatting, vet, Staticcheck, tests, and compilation. A disposable Node server, PostgreSQL database, and macOS Keychain flow additionally verifies administrator setup and stored-credential status on macOS; it is not portable keyring evidence. Generated CLI documentation, command-surface snapshots, expanded help/version/completion, and their compatibility enforcement remain deferred.
 
 ## Deferred
 
