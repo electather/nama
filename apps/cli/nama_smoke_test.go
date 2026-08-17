@@ -20,7 +20,7 @@ import (
 	apiv1 "github.com/electather/nama/gen/go/nama/api/v1"
 )
 
-func TestNamaBinaryReportsInjectedCredentialStatus(t *testing.T) {
+func TestNamaBinaryProcessContract(t *testing.T) {
 	const token = "smoke-token"
 	service := &smokeAuthService{token: token}
 	mux := http.NewServeMux()
@@ -48,40 +48,67 @@ func TestNamaBinaryReportsInjectedCredentialStatus(t *testing.T) {
 	home := t.TempDir()
 	environment := isolatedSmokeEnvironment(home, token)
 
-	for _, test := range []struct {
-		name string
-		args []string
-	}{
-		{
-			name: "version flag",
-			args: []string{"--output", "json", "--version"},
-		},
-		{
-			name: "completion command",
-			args: []string{"--output", "json", "completion"},
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			stdout, stderr, err := runNama(t, binary, environment, test.args...)
+	{
+		stdout, stderr, err := runNama(t, binary, environment, "--version")
+		if err != nil {
+			t.Fatalf("nama --version error = %v", err)
+		}
+		if got, want := string(stdout), "0.0.0-dev\n"; got != want || len(stderr) != 0 {
+			t.Errorf("nama --version stdout=%q stderr=%q, want %q and empty", stdout, stderr, want)
+		}
+
+		stdout, stderr, err = runNama(t, binary, environment, "--output", "json", "--version")
+		if err != nil || len(stderr) != 0 {
+			t.Fatalf("nama JSON version error=%v stderr=%q", err, stderr)
+		}
+		versionData := decodeSingleJSON(t, stdout)["data"].(map[string]any)
+		if got, want := versionData["version"], "0.0.0-dev"; got != want {
+			t.Errorf("nama JSON version = %#v, want %q", got, want)
+		}
+
+		humanCompletion, stderr, err := runNama(t, binary, environment, "completion", "bash")
+		if err != nil || len(stderr) != 0 || len(humanCompletion) == 0 {
+			t.Fatalf("nama human completion error=%v stdout=%d bytes stderr=%q", err, len(humanCompletion), stderr)
+		}
+		stdout, stderr, err = runNama(t, binary, environment, "completion", "bash", "--output", "json")
+		if err != nil || len(stderr) != 0 {
+			t.Fatalf("nama JSON completion error=%v stderr=%q", err, stderr)
+		}
+		completionData := decodeSingleJSON(t, stdout)["data"].(map[string]any)
+		if got, want := completionData["shell"], "bash"; got != want {
+			t.Errorf("nama JSON completion shell = %#v, want %q", got, want)
+		}
+		if got, ok := completionData["script"].(string); !ok || !bytes.Equal([]byte(got), humanCompletion) {
+			t.Error("nama JSON completion script differs from raw human script")
+		}
+
+		stdout, stderr, err = runNama(t, binary, environment, "schema", "--output", "json")
+		if err != nil || len(stderr) != 0 {
+			t.Fatalf("nama JSON schema error=%v stderr=%q", err, stderr)
+		}
+		schemaData := decodeSingleJSON(t, stdout)["data"].(map[string]any)
+		if got, want := schemaData["schema_version"], float64(1); got != want {
+			t.Errorf("nama schema version = %#v, want %#v", got, want)
+		}
+
+		for _, arguments := range [][]string{
+			{"--output", "json"},
+			{"--output", "json", "--help"},
+		} {
+			stdout, stderr, err = runNama(t, binary, environment, arguments...)
 			exitErr, ok := errors.AsType[*exec.ExitError](err)
-			if !ok {
-				t.Fatalf("nama %v error = %v, want exit status 2", test.args, err)
-			}
-			if got, want := exitErr.ExitCode(), 2; got != want {
-				t.Errorf("nama %v exit code = %d, want %d", test.args, got, want)
+			if !ok || exitErr.ExitCode() != 2 {
+				t.Fatalf("nama %v error = %v, want exit status 2", arguments, err)
 			}
 			if len(stdout) != 0 {
-				t.Errorf("nama %v stdout = %q, want empty", test.args, stdout)
+				t.Errorf("nama %v stdout = %q, want empty", arguments, stdout)
 			}
 			payload := decodeSingleJSON(t, stderr)
 			failure, ok := payload["error"].(map[string]any)
-			if !ok {
-				t.Fatalf("nama %v error payload = %#v, want object", test.args, payload["error"])
+			if !ok || failure["code"] != "invalid_argument" {
+				t.Errorf("nama %v error payload = %#v", arguments, payload["error"])
 			}
-			if got, want := failure["code"], "invalid_argument"; got != want {
-				t.Errorf("nama %v error code = %#v, want %q", test.args, got, want)
-			}
-		})
+		}
 	}
 
 	if _, stderr, err := runNama(t, binary, environment, "profile", "set", "smoke", "--server", server.URL, "--output", "json"); err != nil {

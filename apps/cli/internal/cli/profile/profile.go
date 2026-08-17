@@ -4,6 +4,7 @@ package profile
 import (
 	"errors"
 
+	"github.com/electather/nama/apps/cli/internal/surface"
 	"github.com/spf13/cobra"
 )
 
@@ -20,37 +21,55 @@ func NewCommand(handlers Handlers) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "profile",
 		Short: "Manage server profiles",
+		Long:  "Manage named server profiles. Profiles store non-secret server targets; credentials remain in native credential storage.",
 		Args:  noArgs(handlers),
 		RunE: func(command *cobra.Command, _ []string) error {
 			return handlers.InvalidArguments(command, errors.New("a profile subcommand is required"))
 		},
 	}
-	command.AddCommand(
-		&cobra.Command{
-			Use:   "set <name>",
-			Short: "Create or update a server profile",
-			Args:  exactArgs(handlers, 1),
-			RunE: func(command *cobra.Command, arguments []string) error {
-				return handlers.Set(command, arguments[0])
-			},
+	set := &cobra.Command{
+		Use:     "set <name>",
+		Short:   "Create or update a server profile",
+		Long:    "Create or update the profile name supplied as <name>. The server target resolves from --server before NAMA_SERVER.",
+		Example: "  nama profile set local --server https://nama.example.test",
+		Args:    exactArgs(handlers, 1),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return handlers.Set(command, arguments[0])
 		},
-		&cobra.Command{
-			Use:   "use <name>",
-			Short: "Select the default server profile",
-			Args:  exactArgs(handlers, 1),
-			RunE: func(command *cobra.Command, arguments []string) error {
-				return handlers.Use(command, arguments[0])
-			},
+	}
+	surface.SetArguments(set, surface.Argument{
+		Name:        "name",
+		Type:        "string",
+		Required:    true,
+		Description: "Stable profile name",
+	})
+	use := &cobra.Command{
+		Use:     "use <name>",
+		Short:   "Select the default server profile",
+		Long:    "Select the profile name supplied as <name> as the default for later commands.",
+		Example: "  nama profile use local",
+		Args:    exactArgs(handlers, 1),
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return handlers.Use(command, arguments[0])
 		},
-		&cobra.Command{
-			Use:   "list",
-			Short: "List configured server profiles",
-			Args:  noArgs(handlers),
-			RunE: func(command *cobra.Command, _ []string) error {
-				return handlers.List(command)
-			},
+	}
+	surface.SetArguments(use, surface.Argument{
+		Name:        "name",
+		Type:        "string",
+		Required:    true,
+		Description: "Configured profile name",
+	})
+	list := &cobra.Command{
+		Use:     "list",
+		Short:   "List configured server profiles",
+		Long:    "List configured profiles and identify the selected default profile.",
+		Example: "  nama profile list\n  nama profile list --output json",
+		Args:    noArgs(handlers),
+		RunE: func(command *cobra.Command, _ []string) error {
+			return handlers.List(command)
 		},
-	)
+	}
+	command.AddCommand(set, use, list)
 	return command
 }
 
