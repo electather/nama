@@ -2,18 +2,20 @@
 
 ## Purpose and boundary
 
-This note records the Milestone 0 repository decisions: a buildable polyglot
-workspace, deterministic contract generation, native verification, and CI. It
-establishes tooling and deployable boundaries only. Contract boundary rules and
-compatibility policy live in [API contracts](api-contracts.md); the Protobuf
-schemas own concrete service and message definitions. Server runtime behavior
-is later work.
+This note records the repository architecture: one polyglot workspace,
+deterministic contract generation, native verification, and CI. TypeScript,
+Go, Swift, Protobuf, plugin, and deployment surfaces remain in the same
+repository while their native configurations own their respective concerns.
+Contract boundary rules and compatibility policy live in
+[API contracts](api-contracts.md); the Protobuf schemas own concrete service
+and message definitions.
 
 ## Orchestration and ownership
 
-Mise is the thin root orchestrator. It exposes discoverable repository tasks
-and delegates to the tool that owns each concern; it is not a universal build
-graph, cache, or replacement for native manifests.
+Mise is the thin root orchestrator
+([ADR-0017](../adr/0017-mise-thin-native-orchestrator.md)). It exposes
+discoverable repository tasks and delegates to the tool that owns each concern;
+it is not a universal build graph, cache, or replacement for native manifests.
 
 Native configuration is the source of truth:
 
@@ -38,14 +40,14 @@ commands, paths, or CI job implementation.
 ## Generated contracts
 
 Schemas and generator configuration are edited; generated leaves are not.
-Generated code is committed so consumers compile from the same contract
-revision, but no application code or package manifest belongs inside a
-Buf-cleaned leaf. A schema or generator change and its regenerated output move
-together.
+Generated code is committed so present consumers compile from the same contract
+revision, and a schema or generator change moves with its regenerated output
+([ADR-0018](../adr/0018-commit-present-consumer-bindings.md)). No application
+code or package manifest belongs inside a Buf-cleaned leaf.
 
-Generation is consumer-driven: generate only the bindings used by a present
-consumer. Public API contracts and plugin contracts remain distinct boundaries;
-consumers depend on only the boundary they need.
+Generation remains consumer-driven: generate only the bindings used by a
+present consumer. Public API contracts and plugin contracts remain distinct
+boundaries; consumers depend on only the boundary they need.
 
 ## Change and verification workflow
 

@@ -8,7 +8,21 @@ Nama is a self-hosted, iOS-first Jellyfin control plane. It has a TypeScript/Nod
 - `proto/` — authoritative Protobuf schemas and generation configuration.
 - `gen/` — committed, Buf-owned generated bindings.
 
-Architecture records in `docs/architecture/` and scoped rules in nested `AGENTS.md` files are separate sources of truth. Read [system architecture](docs/architecture.md) and [API contracts](docs/architecture/api-contracts.md) before changing this repository, then the relevant subsystem record and nested guidance. Their decisions are requirements: change one only when the task explicitly requires it and record the reason in the affected architecture note.
+Repository authority is role-based: [CONTEXT.md](CONTEXT.md) owns domain language; accepted [ADRs](docs/adr/) own architectural choices and rationale; [system architecture](docs/architecture.md) and its subsystem notes own current and target shape; contracts own required behavior; and [Protobuf](proto/) owns concrete wire definitions. Before changing this repository, read `CONTEXT.md`, the system architecture, and API contracts, then the relevant subsystem note, contract, ADR, and nested guidance.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues for `electather/nama`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage uses the canonical `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix` labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](docs/adr/) own choices and rationale, and [architecture](docs/architecture.md) owns the current and target system shape. See [domain guidance](docs/agents/domain.md).
 
 ## Ask before you assume
 
@@ -67,7 +81,8 @@ gen/
   ts/src/                 # generated TypeScript bindings
   go/                     # generated Go bindings
   swift/Sources/NamaAPI/  # generated Swift bindings
-docs/architecture/        # canonical technical decisions
+docs/adr/                 # accepted architectural choices and rationale
+docs/architecture/        # current and target living architecture
 scripts/                  # multi-step implementations of Mise tasks
 .agents/skills/           # project-specific workflows
 ```
@@ -88,14 +103,14 @@ Code is cheaper than maintenance. Prefer an existing local pattern, the standard
 
 ## Naming and public boundaries
 
-Consistency matters more than cleverness. Reuse the established Nama word rather than coining another.
+Use the exact domain language in [CONTEXT.md](CONTEXT.md). The following table constrains public-boundary vocabulary; it does not define the domain.
 
 | Concept | Use | Never expose publicly as |
 | --- | --- | --- |
 | Consumer and management API | `nama.api.v1` | provider-specific services or messages |
 | Plugin subprocess API | `nama.plugin.v1` | a consumer API |
 | Nama-owned media | canonical item, source, part, track | provider item ID, stream index, filesystem path |
-| Installed integration | provider type, provider instance | a dedicated Jellyfin public endpoint |
+| Installed integration | provider instance | a dedicated Jellyfin public endpoint |
 | Mutation correlation | `operation_id` or `event_id` | a server-synthesized client ID |
 
 - Public IDs are opaque. Compare and return them; do not parse, sort, or synthesize them.
@@ -128,7 +143,7 @@ When a correction reveals durable repository knowledge:
 
 1. Add one imperative, Nama-specific line here.
 2. Put a repeatable workflow in `.agents/skills/` and link it here when a one-line rule is insufficient.
-3. Keep architecture decisions in `docs/architecture/` and subtree rules in their nested `AGENTS.md` files; do not duplicate them here.
+3. Keep domain language in `CONTEXT.md`, accepted choices and rationale in `docs/adr/`, current and target shape in `docs/architecture/`, required behavior in contract notes, and concrete wire definitions in `proto/`; keep subtree rules in their nested `AGENTS.md` files.
 4. Include the update in the same commit and mention it in the summary.
 
 Keep this file below 500 lines. Move a section that outgrows its usefulness to the owning architecture record, subtree guidance, or project skill.

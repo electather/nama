@@ -1,10 +1,11 @@
 # Management CLI
 
-Status: approved on 2026-08-10.
+Status: only a compilable Cobra-based CLI boundary is implemented;
+administrator setup and sign-in flows remain unimplemented.
 
 ## Purpose
 
-`nama` is the public management interface for both terminal users and shell-capable agents. It is a thin Go 1.26 client over generated Connect-Go services, not a second implementation of server behavior. Commands, flags, structured output, errors, and exit codes form a versioned public contract.
+`nama` is the public management interface for both terminal users and shell-capable agents. [ADR-0015](../adr/0015-thin-management-cli.md) keeps it a thin Go 1.26 client over generated Connect-Go services, not a second implementation of server behavior. Commands, flags, structured output, errors, and exit codes form a versioned public contract.
 
 The CLI remains useful without an interactive terminal. Every operation has a complete non-interactive form, and interactive affordances may only wrap those same operations later.
 

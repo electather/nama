@@ -1,10 +1,14 @@
 # Nama System Architecture
 
-Status: accepted technical direction for the MVP.
+This document is Nama's canonical architecture entry point and ADR index. Read [philosophy.md](philosophy.md) for product intent and then use each source according to its role:
 
-Read [philosophy.md](philosophy.md) for the product intent. This document is the canonical index of system boundaries and technology choices every agent must preserve. Its decisions are requirements, not a menu: change one only when a task explicitly calls for it, and record the reason here and in the affected subsystem note.
-
-The linked subsystem notes are concise decision records, not implementation specifications. Consult the relevant note before changing a subsystem.
+| Need | Authoritative source |
+| --- | --- |
+| Domain language | [CONTEXT.md](../CONTEXT.md) |
+| Accepted architectural choice and rationale | [ADRs](adr/) |
+| Current and target system shape | This document and the linked [subsystem notes](#subsystem-architecture) |
+| Required behavior | The relevant contract, including [API contracts](architecture/api-contracts.md) |
+| Concrete wire definitions | [Protobuf](../proto/) |
 
 ## System shape
 
@@ -21,43 +25,60 @@ Go CLI ── Connect api.v1├──> Node core ───> Drizzle ORM ──�
 Apple player <──────────┴──────── playable URL ──┘
 ```
 
-The installable MVP is intentionally narrow: one private deployment, one administrator, Jellyfin as the only provider type, and one universal SwiftUI client targeting iOS, tvOS, and macOS; more than one Jellyfin instance may be configured when the administrator needs multiple watch-state inputs. The architecture keeps the public and plugin contracts real from the first vertical slice, but does not build a marketplace, web console, generic workflow engine, distributed queue, or native media server in anticipation of later releases.
+The target installation is one private deployment with one administrator, Jellyfin as its first provider type, and one universal SwiftUI client targeting iOS, tvOS, and macOS. Multiple Jellyfin provider instances may supply watch-state input. The public and plugin contracts are real from the first vertical slice, while a marketplace, web console, generic workflow engine, distributed queue, and native media server are not part of the target architecture.
 
-The implemented core baseline is narrower than the target topology: `@nama/server` runs one Effect application with one native listener and managed request runtime. It decodes immutable configuration, applies reviewed Drizzle migrations and fail-closed initialization reconciliation over one PostgreSQL pool, probes readiness, and serves exact liveness/readiness routes before delegating other traffic to Connect. A private runtime-loaded Better Auth adapter receives the database's narrow Drizzle capability to implement Setup and administrator Auth RPCs; Better Auth routes remain unmounted. Setup transactionally closes the durable marker, and session revocation is confirmed against the durable store. Pairing, CLI setup/sign-in, Apple-client behavior, plugins, providers, playback, and synchronization remain unimplemented.
+The implemented baseline is narrower than that topology. `@nama/server` currently runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, readiness probing, exact health routes, and Setup and administrator Auth RPCs through a private Better Auth adapter. Better Auth routes remain unmounted; setup closes its durable marker transactionally; and sign-out confirms durable session revocation. Device pairing, CLI setup and sign-in, Apple-client behavior, provider runtime, and playback behavior remain target contracts rather than implemented capabilities.
 
-## Decision index
+The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.
 
-| Area | Decision |
-| --- | --- |
-| Core | Node.js 24 LTS, strict TypeScript, ESM, exact-pinned Effect v4 beta, pnpm, one Effect application graph, and a scoped native Node HTTP listener. |
-| Public API | Protobuf managed by Buf; ConnectRPC `api.v1`; unary RPCs first. |
-| Plugin API | Separate ConnectRPC `plugin.v1`; supervised subprocesses over Unix domain sockets. |
-| Authentication | Better Auth is a server-side implementation detail behind Nama-owned Setup, Auth, and Device RPCs. |
-| Persistence | Better Auth configuration and CLI tooling own committed generated auth tables; Drizzle owns reviewed SQL and runtime application over one shared PostgreSQL `pg.Pool`. |
-| Background work | A core-owned scheduler with durable database cursors; no Redis or job framework for MVP. |
-| First plugin | A stateless Jellyfin adapter for catalog, playback negotiation, and two-way watch-state sync. |
-| First client | One universal Swift/SwiftUI app in `apps/ios`, targeting iOS 17+, tvOS 17+, and macOS 14+, with Connect-Swift, Keychain, and native Bonjour discovery. |
-| Playback | An exact-pinned, security-reviewed on-device engine behind one Nama-owned adapter; direct play, then remux, then transcode. |
-| Administration | A thin Go 1.26 CLI using the generated Connect client; no management web app for MVP. |
-| Deployment | Linux-first Docker image containing core and first-party plugin executables, plus a separate PostgreSQL service. |
-| Exposure | Nama does not manage domains, certificates, tunnels, or reverse proxies; users choose LAN, VPN, or proxy access. |
-| Repository | One repository with native tooling for TypeScript, Go, Swift, and Protobuf; mise pins command-line tools and delegates common tasks without becoming a build framework. |
+## Architectural decision records
 
-Exact dependency versions are lockfile decisions, not promises in this document. Releases pin and test them; upgrades are deliberate, especially the playback engine and pre-1.0 client libraries.
+Accepted ADRs record only the choices and rationale below; their linked living architecture and contracts retain current shape and required behavior.
+
+1. [ADR-0001 — Use one Effect application graph for the core](adr/0001-effect-application-graph.md)
+2. [ADR-0002 — Own HTTP lifecycle with one native Node listener](adr/0002-native-node-http-lifecycle.md)
+3. [ADR-0003 — Use Protobuf and ConnectRPC as Nama's versioned RPC boundary](adr/0003-protobuf-connectrpc-boundary.md)
+4. [ADR-0004 — Keep public and plugin Protobuf packages independent](adr/0004-independent-public-plugin-protobuf-packages.md)
+5. [ADR-0005 — Expose one provider-neutral, domain-oriented public API](adr/0005-provider-neutral-public-api.md)
+6. [ADR-0006 — Run integrations as stateless supervised subprocesses](adr/0006-stateless-supervised-plugin-subprocesses.md)
+7. [ADR-0007 — Keep Better Auth private behind Nama-owned authentication RPCs](adr/0007-private-better-auth-adapter.md)
+8. [ADR-0008 — Fail closed on ambiguous setup commits and reconcile on restart](adr/0008-fail-closed-setup-reconciliation.md)
+9. [ADR-0009 — Confirm durable revocation before reporting sign-out success](adr/0009-confirm-durable-session-revocation.md)
+10. [ADR-0010 — Use one PostgreSQL and Drizzle persistence boundary](adr/0010-postgresql-drizzle-persistence-boundary.md)
+11. [ADR-0011 — Build one universal native Apple application](adr/0011-universal-native-apple-application.md)
+12. [ADR-0012 — Contain the playback engine behind one concrete Nama adapter](adr/0012-single-playback-engine-adapter.md)
+13. [ADR-0013 — Deliver media directly with origin-scoped short-lived locators](adr/0013-origin-scoped-short-lived-locators.md)
+14. [ADR-0014 — Model playback as plan, open, report, and close](adr/0014-four-stage-playback-lifecycle.md)
+15. [ADR-0015 — Make the management CLI a thin public-API client](adr/0015-thin-management-cli.md)
+16. [ADR-0016 — Package one Linux application image with a separate PostgreSQL service](adr/0016-linux-application-image-and-postgresql.md)
+17. [ADR-0017 — Use Mise only as a thin orchestrator over native owners](adr/0017-mise-thin-native-orchestrator.md)
+18. [ADR-0018 — Commit generated bindings only for present consumers](adr/0018-commit-present-consumer-bindings.md)
+19. [ADR-0019 — Configure providers through one restricted schema-driven surface](adr/0019-restricted-schema-driven-provider-configuration.md)
+20. [ADR-0020 — Make provider-secret classification monotonic](adr/0020-monotonic-provider-secret-classification.md)
+21. [ADR-0021 — Bind each provider instance to one immutable provider principal](adr/0021-immutable-provider-principal-binding.md)
+22. [ADR-0022 — Store a canonical provider-neutral item/source model](adr/0022-canonical-provider-neutral-media-model.md)
+23. [ADR-0023 — Make Nama canonical for watch state with explicit reconciliation precedence](adr/0023-canonical-watch-state-reconciliation.md)
+24. [ADR-0024 — Use best-effort provider scans and core-owned checkpoints](adr/0024-best-effort-provider-scans.md)
+25. [ADR-0025 — Authorize generated RPC methods through a default-deny inventory](adr/0025-default-deny-rpc-authorization.md)
+26. [ADR-0026 — Normalize failures with Connect codes and standard Google RPC details](adr/0026-standard-google-rpc-error-details.md)
+27. [ADR-0027 — Separate request correlation from durable logical-operation idempotency](adr/0027-logical-operation-idempotency.md)
 
 ## Invariants
 
-1. The core is the source of truth for Nama-owned user and watch state; plugins never become hidden databases.
-2. Remote provider resource IDs, errors, SDK types, and provider-specific consumer shapes stop at plugin boundaries. Installed provider type IDs and schema-driven configuration are authenticated Nama management resources; public consumers otherwise see Nama concepts.
-3. Protobuf is the source of truth for every supported client, CLI, and plugin RPC; auth is not a second client SDK.
-4. Media bytes do not pass through the core in normal playback.
-5. A plugin may be restarted or replaced without losing correctness; schedules, credentials, cursors, and reconciliation state belong to the core.
-6. Playback-engine types do not escape the universal Apple app's playback adapter.
+1. The core is the source of truth for Nama-owned user and watch state; plugins never become hidden databases. See [ADR-0006](adr/0006-stateless-supervised-plugin-subprocesses.md), [ADR-0022](adr/0022-canonical-provider-neutral-media-model.md), and [ADR-0023](adr/0023-canonical-watch-state-reconciliation.md).
+2. Remote provider resource IDs, errors, SDK types, and provider-specific consumer shapes stop at plugin boundaries. Installed provider type IDs and schema-driven configuration are authenticated Nama management resources; public consumers otherwise see Nama concepts. See [ADR-0005](adr/0005-provider-neutral-public-api.md) and [ADR-0019](adr/0019-restricted-schema-driven-provider-configuration.md).
+3. Protobuf is the source of truth for every supported client, CLI, and plugin RPC; authentication is not a second client SDK. See [ADR-0003](adr/0003-protobuf-connectrpc-boundary.md), [ADR-0004](adr/0004-independent-public-plugin-protobuf-packages.md), and [ADR-0007](adr/0007-private-better-auth-adapter.md).
+4. Media bytes do not pass through the core in normal playback. Locators remain origin-scoped and short-lived. See [ADR-0013](adr/0013-origin-scoped-short-lived-locators.md).
+5. A plugin may be restarted or replaced without losing correctness; schedules, credentials, cursors, and reconciliation state belong to the core. See [ADR-0006](adr/0006-stateless-supervised-plugin-subprocesses.md) and [ADR-0024](adr/0024-best-effort-provider-scans.md).
+6. Playback-engine types do not escape the universal Apple app's playback adapter. See [ADR-0012](adr/0012-single-playback-engine-adapter.md).
 7. New infrastructure or abstraction requires a current use case, not only a plausible future one.
-8. The core binds only after configuration, migrations, durable initialization reconciliation, and its initial database probe succeed; Effect scope owns request interruption and resource shutdown.
-9. Exact operational health routes retain precedence over Connect delegation, and unmatched traffic must never imply an RPC handler exists.
+8. The core binds only after configuration, migrations, durable initialization reconciliation, and its initial database probe succeed; Effect scope owns request interruption and resource shutdown. See [ADR-0001](adr/0001-effect-application-graph.md), [ADR-0002](adr/0002-native-node-http-lifecycle.md), [ADR-0008](adr/0008-fail-closed-setup-reconciliation.md), and [ADR-0010](adr/0010-postgresql-drizzle-persistence-boundary.md).
+9. Exact operational health routes retain precedence over Connect delegation, and unmatched traffic must never imply an RPC handler exists. See [ADR-0002](adr/0002-native-node-http-lifecycle.md).
+10. Generated RPC methods are authorized through one default-deny descriptor inventory. See [ADR-0025](adr/0025-default-deny-rpc-authorization.md).
+11. Clients branch on Connect code and stable reason; application failures use standard Google RPC details. See [ADR-0026](adr/0026-standard-google-rpc-error-details.md).
+12. Request correlation is distinct from durable logical-operation idempotency. See [ADR-0027](adr/0027-logical-operation-idempotency.md).
 
-## Subsystem decisions
+## Subsystem architecture
 
 - [Core server](architecture/core-server.md)
 - [API contracts](architecture/api-contracts.md)
@@ -71,8 +92,4 @@ Exact dependency versions are lockfile decisions, not promises in this document.
 - [Deployment and exposure](architecture/deployment.md)
 - [Repository and tooling](architecture/repository-and-tooling.md)
 
-Implementation order and release acceptance criteria live in [release-plan.md](release-plan.md).
-
-## Deferred until evidence demands them
-
-Multi-user roles and invitations, browser and Android clients, third-party plugin installation, WASM isolation, per-plugin persistent storage, a durable job framework, provider event streams, an embedded reverse proxy, a management web application, and a native library/transcode plugin are outside the MVP. Each should be introduced by a concrete feature with a testable need; this architecture does not reserve machinery for them.
+Implementation order, capability sequencing, and release acceptance criteria live in [release-plan.md](release-plan.md). Apply the current-use-case rule in [AGENTS.md](../AGENTS.md#dependencies) rather than reserving architecture for deferred scope.

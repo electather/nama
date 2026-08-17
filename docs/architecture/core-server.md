@@ -1,6 +1,6 @@
 # Core server
 
-Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, and issue #23 Connect setup/authentication runtime are implemented and verified.
+Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, and Connect setup/authentication runtime are implemented and verified.
 
 This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics.
 
@@ -18,17 +18,17 @@ This note is the canonical record for durable core-server boundaries. The implem
 - runtime-controlled readiness and fatal post-bind failure; and
 - deterministic signal shutdown, bounded drain, and resource finalization.
 
-The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes. All generated public services are registered behind the explicit default-deny authority inventory; only Setup and Auth behavior is implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. Plugin services, pairing, CLI setup/sign-in, client behavior, retries, configuration reload, metrics, and exported tracing remain outside this runtime.
+The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; only Setup and Auth behavior is implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. Plugin services, pairing, CLI setup/sign-in, client behavior, retries, configuration reload, metrics, and exported tracing remain outside this runtime.
 
 ## Architecture decisions
 
 The server uses Node.js 24, strict TypeScript, ESM, exact-pinned Effect v4, PostgreSQL through Drizzle over `pg`, and pnpm. Vitest and `@effect/vitest` own TypeScript behavior tests.
 
-Hono remains removed. The native Node listener is deliberate: Nama owns operational-route precedence, request-fiber interruption, idle connection closure, bounded drain, and forced connection closure. A future transport abstraction may replace it only if it preserves that lifecycle and supplies a current second use.
+A native Node listener owns operational-route precedence, request-fiber interruption, idle connection closure, bounded drain, and forced connection closure ([ADR-0002](../adr/0002-native-node-http-lifecycle.md)). A future transport abstraction may replace it only if it preserves that lifecycle and supplies a current second use.
 
-Effect owns composition, scopes, interruption, logging, expected failures, and shutdown. Node HTTP, `pg`, Drizzle, Connect, and Better Auth remain narrow adapters at module edges. There is no second dependency-injection system.
+Effect owns composition, scopes, interruption, logging, expected failures, and shutdown ([ADR-0001](../adr/0001-effect-application-graph.md)). Node HTTP, `pg`, Drizzle, Connect, and Better Auth remain narrow adapters at module edges. There is no second dependency-injection system.
 
-Keep Drizzle on the shared `pg.Pool`; do not introduce `@effect/sql-pg`. Wrap Promise-based database operations once inside the Effect module that owns the operation.
+Under [ADR-0010](../adr/0010-postgresql-drizzle-persistence-boundary.md), Drizzle stays on the shared `pg.Pool`; do not introduce `@effect/sql-pg`. Wrap Promise-based database operations once inside the Effect module that owns the operation.
 
 The implemented dependency graph is:
 
@@ -147,7 +147,7 @@ Startup locks and classifies the marker and a bounded view of users in one trans
 | uninitialized         |         more than one | fatal integrity error                                                          |
 | missing               |             any count | fatal integrity error                                                          |
 
-The single-user repair closes the crash window in which administrator creation committed before Nama's marker. It records database transaction time and the administrator reference together; any failed or ambiguous conditional update is fatal. No startup write is retried, and corruption never falls back to setup eligibility. Database details, SQL, table contents, user identifiers, and underlying failures remain inside the database boundary.
+The single-user repair records database transaction time and the administrator reference together ([ADR-0008](../adr/0008-fail-closed-setup-reconciliation.md)); any failed or ambiguous conditional update is fatal. No startup write is retried, and corruption never falls back to setup eligibility. Database details, SQL, table contents, user identifiers, and underlying failures remain inside the database boundary.
 
 ### Readiness
 
@@ -155,7 +155,7 @@ The readiness probe performs `SELECT 1` with both PostgreSQL query timeout and E
 
 A failed probe does not close or replace the pool. Normal `pg` reconnection allows a later probe to restore readiness. The server logs `database.readiness_changed` on the first observed state and subsequent transitions only; health traffic is not logged at info level.
 
-## HTTP transport
+## HTTP transport ([ADR-0002](../adr/0002-native-node-http-lifecycle.md))
 
 The listener dispatches in this order:
 
@@ -219,7 +219,7 @@ mark accepting false
 
 An already-established connection sees readiness become 503 as soon as accepting is false, without a database probe. Finalizers are idempotent and tolerate partial acquisition. A finalizer failure emits `server.shutdown_failed` and exits non-zero.
 
-## Implemented setup and authentication runtime
+## Implemented setup and authentication runtime ([ADR-0007](../adr/0007-private-better-auth-adapter.md), [ADR-0008](../adr/0008-fail-closed-setup-reconciliation.md))
 
 The process-local bootstrap boundary retains one digest-backed, single-flight token after a setup-eligible listener binds. It is invalidated on successful completion or any possible commit; cancellation before that boundary restores the claim. `CreateAdministrator` validates the token before password hashing, keeps automatic sign-in disabled, creates the administrator through the private adapter, and conditionally completes both durable marker fields. A confirmed result closes setup and returns no session. An ambiguous authentication or marker outcome disables setup, makes runtime readiness false, and causes non-zero exit so startup reconciliation, rather than a retry, determines durable truth.
 
@@ -242,7 +242,7 @@ The server test gate must continue to exercise behavior, not only generated cont
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.
 
-The implemented issue #23 coverage exercises generated-client and real-process setup/authentication flows: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, request cancellation, correlation, safe public errors and logs, readiness, and fatal runtime exit.
+The implemented coverage exercises generated-client and real-process setup/authentication flows: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, request cancellation, correlation, safe public errors and logs, readiness, and fatal runtime exit.
 
 ## Deferred work
 

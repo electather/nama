@@ -1,6 +1,6 @@
 # API contracts
 
-Status: implemented Milestone 0 contract with verified issue #23 Setup and Auth runtime semantics.
+Status: Setup and Auth runtime semantics are implemented and verified.
 
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
@@ -27,14 +27,14 @@ The MVP remains single-administrator and single-user. User administration, invit
 
 1. `nama.api.v1` is the public contract consumed by the TypeScript core, Go CLI, and future universal Swift app rooted in `apps/ios`.
 2. `nama.plugin.v1` is a private subprocess contract consumed only by the TypeScript core and TypeScript plugins.
-3. The packages do not import each other and do not share a third Protobuf package. Similar public and plugin messages are deliberately separate because they have different trust and identity boundaries.
+3. The packages do not import each other and do not share a third Protobuf package. Similar public and plugin messages remain separately declared ([ADR-0004](../adr/0004-independent-public-plugin-protobuf-packages.md)).
 4. Public consumer messages never expose provider item IDs, stream indexes, SDK objects, raw provider errors, configuration, or reusable provider credentials.
-5. Management RPCs may expose Nama-managed resources for installed provider types and their configuration, such as the neutral type identifier `jellyfin`, because selecting and configuring an installed provider is the purpose of that API. Remote provider resource IDs, SDK errors and types, and provider-specific consumer shapes remain private to plugins. Provider types never appear in service or message names.
+5. Management RPCs may expose Nama-managed resources for installed provider types and their configuration, such as the neutral type identifier `jellyfin`. Remote provider resource IDs, SDK errors and types, and provider-specific consumer shapes remain private to plugins. Provider types never appear in service or message names.
 6. Canonical Nama item IDs and provider-instance IDs are Nama-owned. A canonical item may have sources from more than one provider instance.
 7. The core maps plugin observations into stored canonical media before serving consumer reads. Public browse and search never proxy a live provider query.
 8. The core is a control plane. Artwork and media bytes travel directly from the provider to the client through short-lived, narrowly scoped locators when the provider can supply them safely.
 9. All MVP RPCs are unary. Streaming RPCs, event feeds, REST, and GraphQL are deferred until a concrete consumer requires them.
-10. Better Auth and provider wire formats are server implementation details. Only Nama-owned messages cross either public boundary.
+10. Better Auth and provider wire formats are server implementation details. Only Nama-owned messages cross either public boundary ([ADR-0007](../adr/0007-private-better-auth-adapter.md)).
 
 ## Package and file layout
 
@@ -114,7 +114,7 @@ Each plugin returns its build version and contract major from `PluginService.Get
 
 ### Transport, correlation, and secrets
 
-- Public and plugin RPCs use only Connect over HTTP; Nama does not expose gRPC or gRPC-Web. The plugin transport is a core-owned Unix socket authenticated by one random per-launch bearer.
+- Public and plugin RPCs use only Connect over HTTP; Nama does not expose gRPC or gRPC-Web ([ADR-0003](../adr/0003-protobuf-connectrpc-boundary.md)). The plugin transport is a core-owned Unix socket authenticated by one random per-launch bearer.
 - The only ordinary public HTTP endpoints are exact `GET /health/live` and `GET /health/ready`. Better Auth routes and callbacks are not mounted.
 - Public administrator and device credentials use `Authorization: Bearer`. Plugin credentials use the same header on the private socket.
 - The server, not the client, assigns `nama-request-id` at outer Node dispatch and returns it on every Connect-delegated response, including malformed-body failures. Application-generated errors carry the identical value in `google.rpc.RequestInfo`; Connect may reject malformed input before the application pipeline, where the response header is the sole correlation value.
@@ -125,7 +125,7 @@ Each plugin returns its build version and contract major from `PluginService.Get
 
 ## Public services
 
-The public package is domain-oriented rather than split into separate consumer and management packages. The server's method authorization table is authoritative; each client exposes only the subset appropriate to its interface.
+The public package is one domain-oriented package for consumer and management services ([ADR-0005](../adr/0005-provider-neutral-public-api.md)). The server's method authorization table is authoritative; each client exposes only the subset appropriate to its interface.
 
 ### HealthService
 
@@ -144,7 +144,7 @@ The public package is domain-oriented rather than split into separate consumer a
 
 The public HTTP liveness endpoint only proves that the process can answer. Readiness probes PostgreSQL with the bounded behavior defined in `core-server.md`. These HTTP responses are not mirrors of the authenticated RPC messages.
 
-### SetupService
+### SetupService ([ADR-0008](../adr/0008-fail-closed-setup-reconciliation.md))
 
 | RPC | Access | Request fields | Response fields |
 | --- | --- | --- | --- |
@@ -170,9 +170,9 @@ In the process that detects fatal commit ambiguity, `GetStatus` fails `UNAVAILAB
 | `GetCurrentUser` | Administrator | none | `administrator` |
 | `SignOut` | Administrator | none | none |
 
-`SignIn` calls Better Auth's private server API with automatic sign-in disabled and returns the signed token extracted from its `set-auth-token` response header, never a raw session token or cookie. Better Auth owns expiry, rotation, and revocation; Nama adds no refresh-token protocol and does not force a different expiry. Authentication failure always uses the same public reason regardless of whether an email exists. A Nama-owned limiter wraps the public SignIn RPC because private server-API calls do not rely on Better Auth's HTTP-route limiter.
+`SignIn` calls Better Auth's private server API with automatic sign-in disabled and returns the signed token extracted from its `set-auth-token` response header, never a raw session token or cookie ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). Better Auth owns expiry, rotation, and revocation; Nama adds no refresh-token protocol and does not force a different expiry. Authentication failure always uses the same public reason regardless of whether an email exists. A Nama-owned limiter wraps the public SignIn RPC because private server-API calls do not rely on Better Auth's HTTP-route limiter.
 
-`SignOut` succeeds only after the durable session store confirms that the presented bearer no longer resolves to an active session. Clearing cookies or client state is not proof of revocation. If deletion fails or its outcome cannot be confirmed, Nama returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the caller retains the bearer and resolves the ambiguity with `GetCurrentUser` before retrying. An unauthenticated read proves the credential is no longer usable. PostgreSQL coverage forces session-deletion failure and proves Nama never reports successful sign-out while the bearer remains valid.
+Under [ADR-0009](../adr/0009-confirm-durable-session-revocation.md), `SignOut` succeeds only after the durable session store confirms that the presented bearer no longer resolves to an active session. Clearing cookies or client state is not proof of revocation. If deletion fails or its outcome cannot be confirmed, Nama returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the caller retains the bearer and resolves the ambiguity with `GetCurrentUser` before retrying. An unauthenticated read proves the credential is no longer usable. PostgreSQL coverage forces session-deletion failure and proves Nama never reports successful sign-out while the bearer remains valid.
 
 ### DeviceService
 
@@ -196,7 +196,11 @@ Pairing requests expire, user codes are single-use, and polling earlier than `po
 
 ### ProviderService
 
-Provider management is neutral and schema-driven. A provider type is an installed runtime capability, not a dedicated endpoint. The same CLI or future UI renders any supported provider configuration from the returned schema.
+Provider management is neutral and schema-driven
+([ADR-0019](../adr/0019-restricted-schema-driven-provider-configuration.md)).
+A provider type is an installed runtime capability, not a dedicated endpoint.
+The same CLI or future UI renders any supported provider configuration from the
+returned schema.
 
 | RPC | Access | Request | Response |
 | --- | --- | --- | --- |
@@ -233,13 +237,24 @@ Initial provider capabilities are `LIBRARY_READ`, `ARTWORK_RESOLVE`, `PLAYBACK_P
 
 Secret values are write-only. They are omitted from returned `configuration`, diagnostics, errors, logs, and event metadata. A configured marker reveals only whether a value exists. Updating another field does not require resending existing secrets.
 
-Secret classification is monotonic. Once a property key has been accepted as `writeOnly`, the core persists that classification and rejects a later schema revision that removes it or changes the property's type. A provider must introduce a new key plus an explicit migration to replace a secret field; a plugin update can never make stored ciphertext readable through management responses.
+Secret classification is monotonic
+([ADR-0020](../adr/0020-monotonic-provider-secret-classification.md)). Once a
+property key has been accepted as `writeOnly`, the core persists that
+classification and rejects a later schema revision that removes it or changes
+the property's type. A provider must introduce a new key plus an explicit
+migration to replace a secret field; a plugin update can never make stored
+ciphertext readable through management responses.
 
 Enabled instances have unique positive sync priorities. On create, an omitted priority receives the next lowest precedence after existing instances. An update may reorder it; a duplicate value returns a field-level `CONFLICT`. This field is the administrator-configured source-priority tie breaker required by watch-state reconciliation.
 
 The MVP permits at most 100 configured provider instances. Creating another returns `RESOURCE_EXHAUSTED` with reason `PROVIDER_INSTANCE_LIMIT_REACHED`. This hard bound keeps complete operator diagnostics unary without introducing a second pagination contract.
 
-The provider user's opaque binding is established by the successful create connection test and is immutable for the instance. A configuration or credential update may reconnect only as the same provider user. Changing the remote user requires a new provider instance so existing replica state cannot silently cross identities.
+The opaque provider-principal binding is established by the successful create
+connection test and is immutable for the instance
+([ADR-0021](../adr/0021-immutable-provider-principal-binding.md)). A
+configuration or credential update may reconnect only as the same provider
+principal. Changing the remote principal requires a new provider instance so
+existing replica state cannot silently cross identities.
 
 Deleting an instance is allowed only after it is disabled and has no active playback session or sync run; otherwise it fails with `PROVIDER_INSTANCE_BUSY`. Delete invalidates unopened plans and atomically removes encrypted credentials, configuration, scheduler state, scan continuations, provider sources, and provider-to-canonical mappings for that instance. It never calls a destructive provider API and never cascades into canonical user state. Canonical items backed by another source remain. Items left without any source lose public library membership—browse, search, and `GetMedia` treat them as absent—while their internal Nama-owned state is retained indefinitely in the MVP. Garbage collection requires a separately reviewed lifecycle policy.
 
@@ -270,7 +285,13 @@ A provider type may change its schema additively. `schema_profile_version` ident
 
 ## Canonical media model
 
-The public media model serves the universal Apple app without mirroring either Jellyfin or Plex. Lists stay lean; detail and technical requests are explicit. A duplicate title from multiple provider instances is one canonical item with multiple Nama-owned sources when identity reconciliation has enough evidence. Distinct cuts or editions remain distinct items; alternate encodes and resolutions of the same edition are sources.
+The public media model serves the universal Apple app without mirroring either
+Jellyfin or Plex. Lists stay lean; detail and technical requests are explicit.
+A duplicate title from multiple provider instances is one canonical item with
+multiple Nama-owned sources when identity reconciliation has enough evidence
+([ADR-0022](../adr/0022-canonical-provider-neutral-media-model.md)). Distinct
+cuts or editions remain distinct items; alternate encodes and resolutions of
+the same edition are sources.
 
 ### MediaSummary
 
@@ -336,7 +357,7 @@ The selected oneof member must agree with `summary.kind`. Counts are absent when
 
 Text presence is descriptive, not guaranteed. Clients prefer textless cover art when available but always render the mandatory media title as the accessibility and missing-art fallback.
 
-Artwork references never contain a provider path, token, or URL. `LibraryService.ResolveArtwork` converts one reference into an `ArtworkLocator` containing `url`, repeated scoped `headers`, repeated `allowed_redirect_origins`, `refresh_at`, optional `access_expires_at`, and optional resolved dimensions. The request may include `max_width` and `max_height`; zero means no preference. `refresh_at` is the core-selected time after which the client resolves the reference again; it is cache freshness, not an access-control claim. `access_expires_at` is present only when the provider enforces that the locator authorization stops working at that time. Clients do not start a new fetch after either deadline.
+Under [ADR-0013](../adr/0013-origin-scoped-short-lived-locators.md), artwork references never contain a provider path, token, or URL. `LibraryService.ResolveArtwork` converts one reference into an `ArtworkLocator` containing `url`, repeated scoped `headers`, repeated `allowed_redirect_origins`, `refresh_at`, optional `access_expires_at`, and optional resolved dimensions. The request may include `max_width` and `max_height`; zero means no preference. `refresh_at` is the core-selected time after which the client resolves the reference again; it is cache freshness, not an access-control claim. `access_expires_at` is present only when the provider enforces that the locator authorization stops working at that time. Clients do not start a new fetch after either deadline.
 
 The core validates the initial and allowed redirect origins and that the locator contains no reusable account credential. Headers apply only to the initial origin and are stripped on any origin change. A locator whose URL or headers carry authorization must have provider-enforced, item-constrained access and an `access_expires_at`; otherwise resolution fails as ordinary missing artwork and the client keeps its title fallback. A credential-free public artwork URL may omit `access_expires_at`; its `refresh_at` remains only a re-resolution deadline.
 
@@ -397,7 +418,7 @@ All reads use the stored canonical model. `NOT_FOUND` means the canonical resour
 
 ## PlaybackService
 
-Playback is a four-step lifecycle: plan without long-lived side effects, open exactly one session, report ordered telemetry, and close idempotently. The public and plugin services intentionally mirror this lifecycle while keeping their messages package-local.
+[ADR-0014](../adr/0014-four-stage-playback-lifecycle.md) defines the playback lifecycle: plan without long-lived side effects, open exactly one session, report ordered telemetry, and close idempotently. The public and plugin services intentionally mirror this lifecycle while keeping their messages package-local.
 
 ### Capabilities and preferences
 
@@ -463,7 +484,7 @@ On successful open, the core copies the materialized plan-to-provider track mapp
 
 Opening the same operation ID with the same request returns the same logical session while it remains valid. Opening with a different payload fails with `IDEMPOTENCY_KEY_REUSED`. A plan may be opened once logically; a second operation ID fails with `PLAYBACK_PLAN_ALREADY_OPENED`.
 
-The locator authorizes only the planned item/session and expires no earlier than the expected runtime plus a bounded grace period. It never contains an administrator, device, provider API-key, or reusable provider-account credential. Media bytes then flow from the provider to the Apple client without traversing the core.
+Under [ADR-0013](../adr/0013-origin-scoped-short-lived-locators.md), the locator authorizes only the planned item/session and expires no earlier than the expected runtime plus a bounded grace period. It never contains an administrator, device, provider API-key, or reusable provider-account credential. Media bytes then flow from the provider to the Apple client without traversing the core.
 
 Milestone 1 must prove that Jellyfin can satisfy this security boundary on real hardware. Current documented Jellyfin APIs do not themselves promise an item- or session-scoped media credential, so this is a release-blocking proof rather than an assumed implementation detail. Jellyfin does not advertise usable `PLAYBACK_OPEN` to the core until that proof passes. Milestone 4 repeats the transport, logging, and redirect proof on iOS, tvOS, and macOS. The same rule applies to every later provider, including Plex. If a provider cannot safely constrain direct authorization, playback returns to security design; Nama does not ship a reusable provider credential or silently become a proxy.
 
@@ -524,9 +545,19 @@ For `TriggerSync`, an omitted provider instance means all enabled instances. The
 
 A failed import or export does not roll back already committed canonical state. Status failures are sanitized so the CLI can show recovery without raw provider errors.
 
-Reconciliation stores the last normalized replica observed from each provider instance. A committed Nama-originated action wins immediately and is exported outward. Otherwise the most recent reliable provider activity wins, including a lower position or unwatched state from a genuine seek or rewatch. Missing or heuristic activity time, and exact reliable-time ties, use the instance's configured `sync_priority`. Equality with an already observed target produces no export. No rule takes maximum position or makes watched state permanently dominant.
+Reconciliation stores the last normalized replica observed from each provider
+instance ([ADR-0023](../adr/0023-canonical-watch-state-reconciliation.md)). A
+committed Nama-originated action wins immediately and is exported outward.
+Otherwise the most recent reliable provider activity wins, including a lower
+position or unwatched state from a genuine seek or rewatch. Missing or
+heuristic activity time, and exact reliable-time ties, use the instance's
+configured `sync_priority`. Equality with an already observed target produces
+no export. No rule takes maximum position or makes watched state permanently
+dominant.
 
 ## Plugin services
+The stateless supervised process boundary is defined by [ADR-0006](../adr/0006-stateless-supervised-plugin-subprocesses.md).
+
 
 Each plugin process represents exactly one installed provider type and, for provider operations, one configured or candidate instance. A discovery launch has no instance and serves only health and `GetInfo`; this is how the core obtains a schema before configuration exists. The core supplies candidate or stored configuration and credentials at launch through the supervised-process boundary; ordinary RPC request bodies never carry the provider's account credential. An instance also has one immutable MVP provider-user binding in its core-owned configuration: Jellyfin uses the explicitly configured user ID even with an API key, while Plex uses the token principal. Watch-state RPCs never infer a user from an API key or accept a caller-selected provider user. The process is stateless, owns no database or durable cursor, and may be killed and recreated between calls.
 
@@ -558,7 +589,10 @@ The existing `nama.plugin.v1.HealthService.Check` remains the additive anchor wi
 
 ### Plugin media model
 
-The plugin media package mirrors normalized public concepts but retains opaque provider references. It never returns a provider SDK object or an unbounded payload map.
+The plugin media package mirrors normalized public concepts but retains opaque
+provider references
+([ADR-0022](../adr/0022-canonical-provider-neutral-media-model.md)). It never
+returns a provider SDK object or an unbounded payload map.
 
 `ProviderItemReference` contains opaque `item_id`. The configured provider instance is implied by the authenticated process, so it is not repeated in every request. `ProviderSourceReference`, `ProviderPartReference`, `ProviderTrackReference`, and `ProviderArtworkReference` contain the parent reference plus their corresponding opaque provider identifier where needed.
 
@@ -596,9 +630,19 @@ Adapter normalization rules are mandatory:
 | `GetItem` | `item_reference` | `item` |
 | `ResolveArtwork` | `artwork_reference`, optional maximum dimensions | `lease` |
 
-`BeginListItems` contains `page_size`. `continuation` is the opaque token alone. The plugin binds the token to provider instance, catalog scope, requested non-watch-state ordering, query shape, and offset. `ListConsistency` is `BEST_EFFORT_SCAN` for the MVP. Providers may ignore ordering or pagination hints, and a scan may duplicate or miss items during concurrent changes. `complete` means only that the adapter reached the provider's end-of-pass condition; it does not claim snapshot or no-gap coverage. The core deduplicates references and later full scans reconcile shifts.
+`BeginListItems` contains `page_size`. `continuation` is the opaque token
+alone. The plugin binds the token to provider instance, catalog scope,
+requested non-watch-state ordering, query shape, and offset. `ListConsistency`
+is `BEST_EFFORT_SCAN` for the MVP. Providers may ignore ordering or pagination
+hints, and a scan may duplicate or miss items during concurrent changes.
+`complete` means only that the adapter reached the provider's end-of-pass
+condition; it does not claim snapshot or no-gap coverage. The core deduplicates
+references and later full scans reconcile shifts.
 
-The core durably records the catalog scan run and last accepted continuation. After restart it resumes a valid token or begins the full scan again; an opaque plugin token is never treated as an authoritative provider change cursor.
+The core durably records the catalog scan run and last accepted continuation
+([ADR-0024](../adr/0024-best-effort-provider-scans.md)). After restart it
+resumes a valid token or begins the full scan again; an opaque plugin token is
+never treated as an authoritative provider change cursor.
 
 `GetItem` supports targeted repair and refresh before a write. Missing items return `NOT_FOUND`; provider unavailability returns `UNAVAILABLE`. Provider event subscriptions are not part of the unary MVP contract.
 
@@ -645,7 +689,12 @@ When a plugin advertises `PLAYBACK_REPORTS_USER_STATE`, report and close are the
 
 ### Plugin WatchStateService
 
-Jellyfin and Plex can both enumerate current state, but neither documents a durable current-state change cursor, snapshot revision, provider-side idempotency key, compare-and-set write, or atomic multi-item mutation. The plugin contract represents that reality rather than manufacturing a cursor from mutable activity fields.
+Jellyfin and Plex can both enumerate current state, but neither documents a
+durable current-state change cursor, snapshot revision, provider-side
+idempotency key, compare-and-set write, or atomic multi-item mutation. The
+plugin contract follows
+[ADR-0024](../adr/0024-best-effort-provider-scans.md) rather than
+manufacturing a cursor from mutable activity fields.
 
 | RPC | Request | Response |
 | --- | --- | --- |
@@ -694,11 +743,19 @@ The batch is explicitly non-atomic. `APPLIED` and `ALREADY_APPLIED` require `obs
 
 Provider events, Jellyfin WebSocket messages, Plex EventSource/WebSocket streams, webhooks, and playback history would be invalidation hints only, but the unary MVP does not subscribe to them. The core periodically repeats complete scans. Adapters request a provider-supported non-watch-state order where available, never watched state, play count, progress, or activity time. Because providers may ignore ordering or mutate the catalog mid-pass, deduplication and later scans—not a false snapshot guarantee—provide convergence.
 
-The core computes an exact semantic fingerprint from normalized state confirmed by the post-write observation and records it for a bounded period. Plugins do not define reconciliation fingerprints. Only an identical subsequent provider observation is eligible for suppression. Causal attribution remains best-effort because providers do not echo Nama operation IDs; loop safety ultimately comes from never exporting a target already observed at that provider. “Ignore the next event for this item,” maximum-position merging, and “watched wins” are forbidden because a real seek, unwatch, or rewatch can race the export.
+The core computes an exact semantic fingerprint from normalized state confirmed
+by the post-write observation and records it for a bounded period
+([ADR-0023](../adr/0023-canonical-watch-state-reconciliation.md)). Plugins do
+not define reconciliation fingerprints. Only an identical subsequent provider
+observation is eligible for suppression. Causal attribution remains best-effort
+because providers do not echo Nama operation IDs; loop safety ultimately comes
+from never exporting a target already observed at that provider. “Ignore the
+next event for this item,” maximum-position merging, and “watched wins” are
+forbidden because a real seek, unwatch, or rewatch can race the export.
 
 ## Authentication and authorization
 
-Authorization is default-deny. The server maintains one explicit table keyed by generated method descriptor; adding an RPC without adding an access rule fails a descriptor-level test. The contract does not add custom Protobuf authorization options or a generic permission language.
+[ADR-0025](../adr/0025-default-deny-rpc-authorization.md) records the default-deny authorization choice and rationale. The server maintains one explicit table keyed by generated method descriptor; adding an RPC without adding an access rule fails a descriptor-level test.
 
 | Method group | Accepted authority |
 | --- | --- |
@@ -733,7 +790,7 @@ Structural validation uses pinned Protovalidate annotations in both packages and
 
 Handlers enforce state-dependent and cross-field rules: setup state, credential ownership, provider schema values, source membership, plan expiry, track membership, expected revision, sequence ordering, and idempotency payload identity. The core validates all plugin responses before mapping or storage. The restricted provider JSON Schema validator is independent of Protobuf validation.
 
-Application-generated validation and expected failures use standard Google RPC details rather than a Nama-specific error message:
+[ADR-0026](../adr/0026-standard-google-rpc-error-details.md) records the failure-model choice and rationale. Application-generated validation and expected failures use these standard Google RPC details:
 
 - `google.rpc.ErrorInfo` carries the overall stable reason and domain;
 - `google.rpc.BadRequest` carries repeated per-field violations;
@@ -798,7 +855,7 @@ Expected application errors include `ErrorInfo` and `RequestInfo`. Rate limiting
 
 ## Retry, idempotency, and concurrency
 
-A transport request ID correlates one network attempt. An operation or event ID identifies one logical action across attempts. They are not interchangeable.
+[ADR-0027](../adr/0027-logical-operation-idempotency.md) records the identity-model choice and rationale. A transport request ID correlates one network attempt. An operation or event ID identifies one logical action across attempts. They are not interchangeable.
 
 ### Safe retries
 
@@ -860,9 +917,18 @@ Provider configuration schema changes follow the schema compatibility rules abov
 - Go generates public messages and Connect clients only, excludes dependency-owned message generation, and pins the Google RPC/type and Protovalidate Go modules named by generated imports in `go.mod`; and
 - Swift generates public messages and Connect clients only, uses per-plugin `include_imports: true` for transitive non-WKT definitions, generates the selected `google.rpc` messages, and continues to obtain WKTs from SwiftProtobuf.
 
-The TypeScript and Swift imported-source strategy is restricted to transitive imports of Nama files plus the four selected error messages; it does not generate every file in the googleapis or Protovalidate modules. Connect client generation for imported files produces no extra clients because the selected inputs define messages/options, not services. The googleapis input is pinned to the same resolved module commit as `buf.lock`. Present consumers compile as an ownership check; generated Swift remains drift-checked but is not a client compilation boundary while no universal iOS application exists.
+The TypeScript and Swift imported-source strategy is restricted to transitive
+imports of Nama files plus the four selected error messages; it does not
+generate every file in the googleapis or Protovalidate modules. Connect client
+generation for imported files produces no extra clients because the selected
+inputs define messages/options, not services. The googleapis input is pinned to
+the same resolved module commit as `buf.lock`. Selected, committed bindings
+follow [ADR-0018](../adr/0018-commit-present-consumer-bindings.md): present
+consumers compile as an ownership check, while generated Swift remains
+drift-checked but is not a client compilation boundary while no universal iOS
+application exists.
 
-Generated code stays committed. Milestone 0 repository checks run:
+Generated code stays committed. Repository checks run:
 
 1. Buf format and lint;
 2. module build;
@@ -883,7 +949,11 @@ Focused contract tests cover handwritten Nama behavior only:
 
 Generated values or descriptors may be inputs to those tests, but serialization round trips, generated symbol inventories, descriptor snapshots, unknown enum/oneof/field preservation, and cross-language parity are not test subjects.
 
-Handler conformance, database persistence, provider fixtures, authorization execution, idempotency ledgers, pagination token cryptography, and end-to-end media tests belong to the milestone that implements each behavior. Milestone 0 does not add fake handlers, fake provider clients, or database scaffolding merely to make the schemas look exercised.
+Handler conformance, database persistence, provider fixtures, authorization
+execution, idempotency ledgers, pagination token cryptography, and end-to-end
+media tests belong to the milestone that implements each behavior. Do not add
+fake handlers, fake provider clients, or database scaffolding merely to make
+the schemas look exercised.
 
 ## End-to-end contract flows
 

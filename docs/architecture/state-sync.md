@@ -1,20 +1,26 @@
 # Watch-state synchronization
 
-Nama is the canonical watch-state ledger while plugins expose source and sink operations: the core polls configured sources, stores each source's last observed replica and cursor, reconciles progress and watched status, and exports changes without feeding its own writes back as new activity. A Nama-originated action always wins and fans out; otherwise the most recent reliable activity wins even when it is a regression or rewatch, with administrator-configured source priority breaking ties or replacing missing timestamps. MVP ships this machinery for one or more configured Jellyfin instances with durable checkpoints, idempotent calls, and a single non-overlapping scheduler; other provider types and provider events reuse the contract later without adding a queue now.
+Nama's target synchronization architecture makes it the canonical watch-state
+ledger while plugins expose source and sink operations
+([ADR-0023](../adr/0023-canonical-watch-state-reconciliation.md)). The core
+polls configured sources, stores each source's last normalized replica and
+core-owned checkpoint, reconciles progress and watched status, and exports
+changes without treating its own writes as new activity. A Nama-originated
+action always wins and fans out; otherwise the most recent reliable activity
+wins even when it is a regression or rewatch, with administrator-configured
+source priority breaking ties or replacing missing timestamps.
 
-## Milestone 1 reconciliation evidence
+The core uses repeated best-effort full scans with opaque continuations and
+durable core-owned checkpoints
+([ADR-0024](../adr/0024-best-effort-provider-scans.md)). It deduplicates
+observations, retries only according to durable logical-operation semantics
+([ADR-0027](../adr/0027-logical-operation-idempotency.md)), and permits only
+one non-overlapping run per provider instance. Provider events remain future
+invalidation hints; the unary MVP does not subscribe to them or treat them as
+current truth.
 
-The disposable Milestone 1 replay established the accepted ordering rules:
-
-| Evidence | Proven result |
-| --- | --- |
-| Reliable activity times | The newest timestamp wins across and within providers. An older later-delivered observation does not regress canonical state and receives the unchanged canonical target as an export. |
-| Genuine rewatch | A newer reliable observation may lower progress and clear watched state; neither maximum progress nor watched state is dominant. |
-| Missing or heuristic activity time | Configured provider priority replaces time comparison. Lower positive `sync_priority` wins. A later untimestamped observation from the same provider replaces that provider's earlier replica. |
-| Exact reliable-time tie | Lower positive `sync_priority` wins deterministically. |
-| Duplicate provider observation | Replaying the same normalized observation creates neither another canonical version nor another export. |
-| Retry idempotency | Replaying one Nama `operation_id` with the same state preserves one canonical version and one set of provider targets. Replaying a confirmed provider export does not re-arm a consumed echo fingerprint. |
-| Provider echo | A confirmed export records an exact normalized fingerprint. The identical next observation is suppressed; a different newer observation is reconciled normally. |
-| Canonical ownership | Nama actions commit before export. Provider export confirmations update replicas and echo evidence without replacing canonical state. |
-
-This evidence is a pure reconciliation proof, not a production runtime. Milestone 5 still owns scheduling, persistence, provider adapters, bounded fingerprint retention, and retry execution; the spike adds no public schema or dependency decision.
+Production synchronization is unimplemented: scheduling, persistence, provider
+adapters, bounded fingerprint retention, and retry execution remain target
+work. The contract supports one or more configured Jellyfin instances without
+adding a queue or provider-owned durable state; later provider types reuse that
+contract.

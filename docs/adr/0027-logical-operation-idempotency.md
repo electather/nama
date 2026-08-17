@@ -1,0 +1,3 @@
+# Separate request correlation from durable logical-operation idempotency
+
+A request ID identifies one network attempt, while operation, event, and mutation IDs identify logical actions across attempts. Nama deduplicates public mutations by authenticated scope and normalized payload; when a provider action may already have committed, it follows the operation-specific read or cleanup rule rather than blindly replaying it. Replaying one `operation_id` with identical state preserves one canonical version and one set of provider targets, and replaying a confirmed provider export does not re-arm its consumed echo fingerprint. This accepts durable deduplication state and operation-specific recovery over transport-level idempotency to avoid duplicate non-convergent effects.

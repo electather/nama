@@ -1,16 +1,16 @@
 # Authentication, setup, and pairing
 
-Status: issue #23 setup and administrator-authentication runtime is implemented and verified. Device pairing, CLI setup/sign-in, and Apple-client behavior remain unfinished.
+Status: setup and administrator-authentication runtime is implemented and verified. Device pairing, CLI setup/sign-in, and Apple-client behavior remain unfinished.
 
-Nama owns the public setup and authentication semantics. Better Auth is a private server-side implementation detail used only by the runtime-loaded adapter behind `SetupService` and `AuthService`; generated auth persistence alone is not the boundary.
+Nama owns the public setup and authentication semantics. Better Auth is a private server-side implementation detail used only by the runtime-loaded adapter behind `SetupService` and `AuthService`; generated auth persistence alone is not the boundary ([ADR-0007](../adr/0007-private-better-auth-adapter.md)).
 
 ## Implemented runtime boundary
 
 The private adapter is the only production module that loads Better Auth. Better Auth routes, cookies, request and response models, errors, raw sessions, and secrets never cross that boundary and are never mounted. It uses the shared PostgreSQL pool through the database module's narrow Drizzle capability, while `better-auth.config.ts` remains tooling-only and the committed generated auth schema remains its sole model source. The adapter derives a 32-byte secret from the redacted master key with HKDF-SHA-256 and context `nama/better-auth/v1`, encodes it as unpadded base64url, enables email/password and signed bearer credentials, disables automatic sign-in, logging, and telemetry, and leaves Better Auth's session lifecycle unchanged.
 
-All generated public descriptors are registered behind the default-deny method inventory, so authorization precedes an unimplemented handler. The issue implements `SetupService.GetStatus`, `SetupService.CreateAdministrator`, `AuthService.SignIn`, `AuthService.GetCurrentUser`, and `AuthService.SignOut`. Device descriptors have no pairing or device-credential behavior.
+Under [ADR-0025](../adr/0025-default-deny-rpc-authorization.md), all generated public descriptors are registered behind the default-deny method inventory, so authorization precedes an unimplemented handler. The implemented runtime supports `SetupService.GetStatus`, `SetupService.CreateAdministrator`, `AuthService.SignIn`, `AuthService.GetCurrentUser`, and `AuthService.SignOut`. Device descriptors have no pairing or device-credential behavior.
 
-## Durable setup and recovery
+## Durable setup and recovery ([ADR-0008](../adr/0008-fail-closed-setup-reconciliation.md))
 
 Startup reconciliation remains the only source of setup eligibility. The singleton marker and one administrator must agree: an initialized marker requires exactly one user; an uninitialized marker with one user is conditionally repaired; zero users is setup-eligible; a missing marker, multiple users, or any other disagreement is fatal. Setup never reopens after initialization or corruption.
 
@@ -24,11 +24,11 @@ Before creation becomes commit-capable, cancellation restores the claim. Afterwa
 
 Bearer resolution accepts only the allowlisted Authorization value and stores the mapped administrator in request context. `GetCurrentUser` returns that request-local value. Better Auth owns expiry, rotation, and revocation; Nama adds no refresh-token protocol.
 
-`SignOut` ignores Better Auth's claimed success and confirms that the presented bearer no longer resolves through the durable session store. A remaining session, deletion failure, or failed confirmation returns `UNAVAILABLE` with `SESSION_REVOCATION_UNCONFIRMED`; callers retain the bearer and use `GetCurrentUser` to resolve ambiguity. Only the presented session is revoked.
+Under [ADR-0009](../adr/0009-confirm-durable-session-revocation.md), `SignOut` ignores Better Auth's claimed success and confirms that the presented bearer no longer resolves through the durable session store. A remaining session, deletion failure, or failed confirmation returns `UNAVAILABLE` with `SESSION_REVOCATION_UNCONFIRMED`; callers retain the bearer and use `GetCurrentUser` to resolve ambiguity. Only the presented session is revoked.
 
 ## Correlation, safety, and verification
 
-The outer Node dispatch assigns server-owned `nama-request-id` to every delegated Connect response before decoding. Application-generated failures carry the same value in `google.rpc.RequestInfo`; malformed Connect input may fail before the application pipeline, so the response header is the correlation fallback. Terminal RPC logs contain only the request ID, method, Connect code, and duration. Public errors and logs never expose credentials, identities, passwords, bootstrap tokens, database detail, or Better Auth data.
+[ADR-0026](../adr/0026-standard-google-rpc-error-details.md) governs application failure details, and [ADR-0027](../adr/0027-logical-operation-idempotency.md) keeps server-owned request correlation separate from logical-operation identity. The outer Node dispatch assigns server-owned `nama-request-id` to every delegated Connect response before decoding. Application-generated failures carry the same value in `google.rpc.RequestInfo`; malformed Connect input may fail before the application pipeline, so the response header is the correlation fallback. Terminal RPC logs contain only the request ID, method, Connect code, and duration. Public errors and logs never expose credentials, identities, passwords, bootstrap tokens, database detail, or Better Auth data.
 
 Focused, disposable-PostgreSQL, generated-client, and package-entrypoint process coverage verifies setup creation and restart repair, sign-in/current-user/sign-out, forced session-deletion failure, rate limits, cancellation, correlation, public-error and log redaction, readiness, and fatal ambiguity handling.
 

@@ -1,31 +1,12 @@
 # iOS application
 
-Status: the disposable tvOS playback experiment passed as a feasibility study
-and was retired on 2026-08-14. No universal Apple application is currently
-checked in.
+Status: the universal Apple application is accepted target architecture; no
+universal Apple application is currently checked in.
 
-## Decision
+## Target application boundary
 
-The experiment established the durable client and playback boundaries without
-depending on the unfinished core or Jellyfin plugin. Its implementation,
-fixtures, mock server, tests, Xcode project, and dependency lock were test
-artifacts rather than a product foundation, so they were removed after the
-findings below were recorded.
-
-“Passed” means the spike answered its architecture questions. It does not mean
-the simulator proved physical display switching, hardware decoding, speaker
-behavior, distribution readiness, or production stability. Those remain
-acceptance gates for the next implementation.
-
-AetherEngine `6.21.0` is not eligible for Nama: exact-source review and the lab
-showed public Release logging of complete locator URLs and cross-origin replay
-of unrecognized custom headers. Source review of Sodalite's newer AetherEngine
-integration confirmed broad playback machinery but the same trust-boundary
-failures. Sodalite's GPL application code is design evidence, not source to
-copy. A future implementation may clean-room reproduce useful behavior only
-after selecting a secure, reviewed engine revision or fork.
-
-## Durable application boundary
+[ADR-0011](../adr/0011-universal-native-apple-application.md) establishes the
+one universal application target. Its boundary is:
 
 - The first client is one universal native Swift/SwiftUI application rooted in
   `apps/ios`, targeting iOS 17+, tvOS 17+, and macOS 14+. Use Observation and
@@ -46,6 +27,10 @@ after selecting a secure, reviewed engine revision or fork.
   the shared interface.
 
 ## Playback boundary
+
+[ADR-0012](../adr/0012-single-playback-engine-adapter.md) confines the
+selected engine to this adapter.
+
 
 Playback has one concrete, Nama-owned adapter. It is the only code allowed to
 import the selected engine. Engine views, publishers, tracks, cues, errors, and
@@ -69,6 +54,9 @@ surfaces may switch internally, but the adapter remains the sole lifecycle
 owner.
 
 ## Locator and logging invariants
+
+[ADR-0013](../adr/0013-origin-scoped-short-lived-locators.md) establishes the
+direct-delivery security boundary.
 
 Media travels directly from the provider to the client. The core is not a media
 relay, and an on-device loopback bridge used by a player does not change that
