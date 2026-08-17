@@ -48,19 +48,19 @@ Pin both through the Go module manifest and lock state.
 
 The root exposes inherited `--profile`, `--server`, and `--output` flags. The corresponding environment variables are `NAMA_PROFILE`, `NAMA_SERVER`, and `NAMA_OUTPUT`.
 
-Profile selection resolves from `--profile`, `NAMA_PROFILE`, then the configured default. Server selection resolves from `--server`, `NAMA_SERVER`, then the selected profile; there is no built-in server. Output selection resolves from `--output`, `NAMA_OUTPUT`, the configured global preference, then the built-in human default. JSON must be requested explicitly.
+Profile selection resolves from `--profile`, `NAMA_PROFILE`, then the configured default. Server selection resolves from `--server`, `NAMA_SERVER`, then the selected profile; there is no built-in server. Output selection resolves from `--output`, `NAMA_OUTPUT`, the configured global preference, then the built-in human default. JSON must be requested explicitly. `profile set` ignores inherited profile selection but still resolves `--server` and `NAMA_SERVER`; `profile list` and `profile use` ignore both inherited profile and server selections.
 
 Profile names are 1 through 64 lowercase ASCII letters, digits, periods, underscores, or hyphens. The first character is a letter or digit. Names are compared exactly.
 
 ## Input behavior
 
-`setup` requires a selected named profile. It rejects an explicit server override that differs from the selected profile URL. `auth login` has the same requirement. This gives every returned credential one stable storage identity.
+`setup` requires a selected named profile. It rejects an explicit server override that differs from the selected profile URL. `auth login` has the same requirement. Every persisted credential records both the profile-scoped account and its canonical full server target; status requires both to match before attaching the bearer.
 
 Interactive setup reads the bootstrap token and password from no-echo terminal prompts. Non-interactive setup requires `NAMA_BOOTSTRAP_TOKEN` and reads one password line from stdin. Display name and email remain explicit flags.
 
 Interactive login reads the password from a no-echo terminal prompt. Non-interactive login reads one password line from stdin.
 
-No command accepts a password flag or password environment variable. No command accepts the bootstrap token as an argument. A missing required non-interactive secret is an argument error; the CLI never switches to prompting when stdin is not a terminal or JSON output is selected.
+No command accepts a password flag or password environment variable. No command accepts the bootstrap token as an argument. A missing required non-interactive secret is an argument error; the CLI never switches to prompting when stdin is not a terminal or JSON output is selected. JSON mode with terminal stdin fails before reading so it cannot echo a secret; automation must redirect stdin.
 
 ## Component ownership
 
@@ -84,7 +84,7 @@ No command accepts a password flag or password environment variable. No command 
 
 An unreleased local build reports `0.0.0-dev`. Issue #25 may expose the same build information through the version command; it must not introduce a second source.
 
-Each current RPC has a 30-second deadline. Setup recovery uses a fresh bounded context after an ambiguous creation result. The client performs no automatic mutation retry. It does not disable TLS verification or add alternate transports.
+Each current RPC has a 30-second deadline. An ambiguous setup creation first uses a fresh bounded recovery context; after recovery confirms initialization, sign-in and credential storage use a separate fresh bounded settlement context. The client accepts only a concrete standard-library `*http.Transport`, clones it without changing caller-owned state, allows HTTP/1 only, and refuses redirects, preventing Go transport replay and cross-origin replay of mutation bodies or bearer headers. A non-`*http.Transport` fails closed because its protocol behavior cannot be guaranteed. Permitted plain HTTP bypasses environment proxies on the private clone, while HTTPS retains configured proxy behavior. TLS verification remains enabled.
 
 Bearer attachment is explicit for protected calls. Setup status, administrator creation, and sign-in never receive a stored bearer merely because one exists.
 
@@ -98,7 +98,7 @@ Configuration never contains bearer credentials, passwords, bootstrap tokens, re
 
 ### Credentials and secret input
 
-`apps/cli/internal/auth` owns secret input and credential persistence. Keyring service name is `nama-cli`. The keyring account is the profile name. A record contains only the bearer and its expiry.
+`apps/cli/internal/auth` owns secret input and credential persistence. Keyring service name is `nama-cli`. The keyring account is the profile name. A record contains only the bearer, its expiry, and the canonical full server target that minted it. Malformed and legacy unbound records never attach: successful deletion makes them absent so setup or login can replace them; deletion failure remains a typed, fail-closed credential-cleanup error.
 
 `NAMA_TOKEN` overrides keyring lookup for the current process. An injected bearer is never persisted, replaced, or deleted.
 
@@ -106,7 +106,7 @@ A missing keyring record is a normal signed-out state for `auth status`. An unav
 
 Changing a profile URL first deletes the old profile credential. If deletion fails, the configuration change fails and the old URL remains. Repeating `profile set` with the same normalized URL preserves the credential.
 
-If an explicit server override differs from the selected profile URL, the client never attaches that profile's stored bearer. `auth status` may use `NAMA_TOKEN` against the override; without it, status reports signed out. With no selected profile, `auth status` requires an explicit server and omits the profile field from its result.
+If an explicit server override differs from the selected profile URL, or a stored credential's bound server differs from the effective server, the client never attaches that bearer. `auth status` may use `NAMA_TOKEN` against an override; without it, status reports signed out. With no selected profile, `auth status` requires an explicit server and omits the profile field from its result.
 
 ### Output and errors
 
@@ -131,7 +131,7 @@ Do not resolve an arbitrary hostname to weaken this rule. Every accepted plain-H
 
 ### Profile operations
 
-`profile set` validates and normalizes the URL before touching persistent state. A changed URL removes the corresponding keyring record before committing the config update. The operation is idempotent for the same normalized name and URL.
+`profile set` validates and normalizes the URL before touching persistent state. A changed URL removes the corresponding keyring record before committing the config update. The operation is idempotent for the same normalized name and URL. Profile operations ignore unrelated inherited profile and server selections and never construct an API client.
 
 `profile use` requires an existing profile. `profile list` succeeds with an empty collection when no profiles exist.
 
@@ -143,21 +143,21 @@ Do not resolve an arbitrary hostname to weaken this rule. Every accepted plain-H
 4. Call `SetupService.CreateAdministrator` exactly once.
 5. On an unambiguous application failure, return the translated error.
 6. On a transport-ambiguous creation result, call `GetStatus` with a fresh bounded recovery context. Continue only when it reports initialized. Preserve the original failure when it reports uninitialized. Return setup-unavailable ambiguity when status cannot establish the state. Never replay administrator creation.
-7. Call `AuthService.SignIn` exactly once with the same email and password.
-8. Store the returned bearer and expiry in keyring.
-9. If storage fails, call `AuthService.SignOut` with the in-memory bearer. Return the storage error only after confirmed revocation. If revocation cannot be confirmed, return `session_revocation_unconfirmed`. Never render the bearer.
+7. After confirmed ambiguous creation, establish a separate fresh bounded settlement context detached from cancellation of the original caller. Call `AuthService.SignIn` exactly once with the same email and password on that context; use it for credential storage and any required settlement cleanup.
+8. Store the returned bearer, expiry, and canonical server target in keyring.
+9. If storage fails after changing the native record, restore the prior record or delete the partial new record before revoking the in-memory session. Return the resulting storage error only after confirmed revocation. If revocation cannot be confirmed, return `session_revocation_unconfirmed`. Never render the bearer.
 
 A successful setup reports initialized and signed in. It returns the public administrator fields and credential expiry, never the credential.
 
 ### Login
 
-Call `AuthService.SignIn` exactly once. A failed sign-in leaves any existing keyring record untouched. Before replacing a record after successful sign-in, retain the prior record in memory.
+Call `AuthService.SignIn` exactly once. A failed sign-in leaves any existing keyring record untouched. Before sign-in, retain the prior record in memory and reject the operation when `NAMA_TOKEN` is active.
 
-Write the new record without deleting the prior record first. If the write fails, re-read the account and restore the prior record when the backend changed it. Revoke the new in-memory bearer. Revocation ambiguity takes precedence over a credential restoration error because it may leave an active unknown session; otherwise report any restoration failure as a credential-store operational error.
+Write the new server-bound record without deleting the prior record first. If the write fails, restore the retained prior record or delete a partial new record, then revoke the new in-memory bearer. Revocation ambiguity takes precedence over a credential restoration error because it may leave an active unknown session; otherwise report any restoration failure as a credential-store operational error.
 
 ### Authentication status
 
-Resolve `NAMA_TOKEN` first, then the selected profile keyring record when the effective server matches the profile URL.
+Resolve `NAMA_TOKEN` first, then look up the selected profile keyring record only when the effective profile URL matches the effective server. Any loaded record must also bind to that canonical server before its bearer attaches. A loaded malformed or legacy record is deleted and treated as absent; deletion failure returns the credential-cleanup operational error without attaching the bearer.
 
 When no credential exists, return success with signed-in state false. When a credential exists, call `AuthService.GetCurrentUser`.
 
@@ -167,7 +167,7 @@ A rejected injected credential remains untouched and returns authentication fail
 
 ## Output contract
 
-Human output uses concise labelled fields. Human formatting is not a compatibility surface.
+Human output uses concise labelled fields and visibly escapes untrusted terminal controls. Human formatting is not a compatibility surface.
 
 JSON success writes exactly one object followed by one newline to stdout. The object has a top-level `data` member. JSON failure writes exactly one object with a top-level `error` member followed by one newline to stderr and leaves stdout empty. JSON mode emits no prompts, progress, color, logs, or prose.
 
@@ -179,7 +179,7 @@ Administrator output contains only opaque ID, display name, and normalized email
 
 ## Error and exit contract
 
-JSON error output contains a stable lowercase CLI code and safe message. It may contain a server request ID, normalized field violations, and retry delay. Omit unavailable optional values consistently.
+JSON error output contains a stable lowercase CLI code and safe message. It may contain a server request ID, normalized field violations, and `retry_delay`. A positive retry delay is a stable unit-bearing duration string such as `"1.5s"`; omit it and other unavailable optional values consistently.
 
 Exit codes are:
 
@@ -209,15 +209,15 @@ Automated Go coverage includes:
 - command parsing and operation inputs through the real Cobra tree;
 - profile create, update, use, list, precedence, normalization, atomic persistence, malformed state, and credential deletion ordering;
 - URL boundaries for HTTPS, loopback, private/link-local IPv4 and IPv6, `localhost`, `.local`, public HTTP, user information, and reverse-proxy paths;
-- terminal and non-interactive secret input without echo or fallback;
-- environment and keyring credential precedence;
-- client metadata and method-specific bearer attachment;
+- terminal and non-interactive secret input without echo or fallback, including terminal-JSON rejection and I/O failures;
+- environment and server-bound keyring credential precedence;
+- client metadata, deadlines, redirect refusal, HTTP/1-only mutation delivery, and method-specific bearer attachment;
 - every setup success, application-failure, and ambiguous-creation branch, including proof that creation is called once;
-- login replacement and preservation rules;
-- all three status states: absent, valid, and rejected credential;
-- keyring storage, cleanup, and revocation failures;
+- login replacement, restoration, malformed-response revocation, and preservation rules;
+- all three status states: absent, valid, and rejected credential, plus stored-target mismatch;
+- keyring storage, cleanup, restoration, and revocation failures;
 - exact JSON stream placement and newline behavior;
-- human warnings, JSON warnings, field violations, request IDs, exit mapping, and secret redaction.
+- human warnings and terminal-control escaping, JSON warnings, field violations, request IDs, exit mapping, and secret redaction.
 
 Command tests inject context, arguments, streams, config location, credential store, and generated client interfaces. Wire tests use generated Connect handlers on `httptest.Server`. Do not create a handwritten parallel HTTP client or duplicate public DTOs.
 
