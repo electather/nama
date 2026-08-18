@@ -57,6 +57,15 @@ func (r *Renderer) Success(data any, warnings []Warning) error {
 	return writeHuman(r.stdout, reflect.ValueOf(data), "")
 }
 
+// SuccessText renders raw human text or the normal JSON data envelope.
+func (r *Renderer) SuccessText(text string, data any) error {
+	if r.mode == JSON {
+		return r.Success(data, nil)
+	}
+	_, err := io.WriteString(r.stdout, text)
+	return err
+}
+
 // Failure renders only safe public error data.
 func (r *Renderer) Failure(cause error) error {
 	failure := clierror.Translate(cause)

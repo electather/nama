@@ -1,11 +1,10 @@
-// oxlint-disable eslint/max-statements, eslint/no-ternary, eslint/no-magic-numbers, typescript/consistent-return, unicorn/switch-case-braces -- Plugin log normalization is an allowlisted boundary with deliberate field branches.
 import type { Code } from "@connectrpc/connect";
 import { Effect, Layer, Logger, References } from "effect";
 import type { Cause, LogLevel } from "effect";
 
 import type { Config } from "../config/config.ts";
 import { errorTag, recordFor, sanitizedStackFrames } from "./record.ts";
-import type { EventMessage, LogRecord, PluginFieldValue } from "./record.ts";
+import type { EventMessage, LogRecord } from "./record.ts";
 
 const MINIMUM_LEVEL: Readonly<Record<Config["Service"]["logging"]["level"], LogLevel.LogLevel>> =
   Object.freeze({
@@ -63,55 +62,6 @@ const logFatalEvent = (event: string, fields: { readonly durationMs?: number } =
 const logRpcCompletion = (record: RpcCompletionRecord): Effect.Effect<void> =>
   Effect.logInfo(record);
 
-type PluginEventLevel = "debug" | "info" | "warn" | "error";
-
-// fallow-ignore-next-line complexity -- Plugin logs normalize reserved lifecycle fields and bounded child fields in one allowlist.
-const logPluginEvent = (
-  level: PluginEventLevel,
-  event: string,
-  fields: Readonly<Record<string, PluginFieldValue>> = {},
-): Effect.Effect<void> => {
-  const pluginFields: Record<string, PluginFieldValue> = {};
-  for (const [key, value] of Object.entries(fields)) {
-    if (
-      key !== "exitCode" &&
-      key !== "providerInstanceId" &&
-      key !== "providerTypeId" &&
-      key !== "recoveryAttempt" &&
-      key !== "signal"
-    ) {
-      pluginFields[key] = value;
-    }
-  }
-  const exitCode = typeof fields["exitCode"] === "number" ? fields["exitCode"] : undefined;
-  const providerInstanceId =
-    typeof fields["providerInstanceId"] === "string" ? fields["providerInstanceId"] : undefined;
-  const providerTypeId =
-    typeof fields["providerTypeId"] === "string" ? fields["providerTypeId"] : undefined;
-  const recoveryAttempt =
-    typeof fields["recoveryAttempt"] === "number" ? fields["recoveryAttempt"] : undefined;
-  const signal = typeof fields["signal"] === "string" ? fields["signal"] : undefined;
-  const message: EventMessage = {
-    event,
-    ...(exitCode === undefined ? {} : { exitCode }),
-    ...(Object.keys(pluginFields).length === 0 ? {} : { pluginFields }),
-    ...(providerInstanceId === undefined ? {} : { providerInstanceId }),
-    ...(providerTypeId === undefined ? {} : { providerTypeId }),
-    ...(recoveryAttempt === undefined ? {} : { recoveryAttempt }),
-    ...(signal === undefined ? {} : { signal }),
-  };
-  switch (level) {
-    case "debug":
-      return Effect.logDebug(message);
-    case "info":
-      return Effect.logInfo(message);
-    case "warn":
-      return Effect.logWarning(message);
-    case "error":
-      return Effect.logError(message);
-  }
-};
-
 const logFailure = (
   cause: Readonly<Cause.Cause<unknown>>,
   event: "server.shutdown_failed" | "server.start_failed",
@@ -148,7 +98,6 @@ export {
   logFailure,
   logFatalEvent,
   logRpcCompletion,
-  logPluginEvent,
   writeBootstrapFailure,
 };
-export type { PluginEventLevel, RpcCompletionRecord };
+export type { RpcCompletionRecord };

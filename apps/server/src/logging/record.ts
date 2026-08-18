@@ -1,4 +1,3 @@
-// oxlint-disable eslint/max-statements -- Log-record mapping intentionally keeps the allowlisted field conversion adjacent to its owner.
 import { Cause } from "effect";
 import type { LogLevel } from "effect";
 
@@ -13,12 +12,11 @@ const KNOWN_ERROR_TAGS: Readonly<Record<string, true>> = Object.freeze({
   DatabaseConnectionError: true,
   DatabaseIntegrityError: true,
   MigrationError: true,
-  PluginSupervisorError: true,
+  PluginSupervisorBoundaryError: true,
+  PluginSupervisorCleanupError: true,
   ServerBindError: true,
   ShutdownError: true,
 });
-
-type PluginFieldValue = number | string | boolean;
 
 interface EventMessage {
   readonly code?: number;
@@ -27,9 +25,9 @@ interface EventMessage {
   readonly event: string;
   readonly exitCode?: number;
   readonly method?: string;
-  readonly pluginFields?: Readonly<Record<string, PluginFieldValue>>;
+  readonly pluginFields?: Readonly<Record<string, number | string>>;
   readonly providerInstanceId?: string;
-  readonly providerTypeId?: string;
+  readonly providerType?: string;
   readonly recoveryAttempt?: number;
   readonly requestId?: string;
   readonly sanitizedStackFrames?: readonly string[];
@@ -38,13 +36,14 @@ interface EventMessage {
 
 // fallow-ignore-next-line code-duplication -- The log boundary intentionally maps camelCase Effect messages to snake_case JSON records.
 interface LogRecord {
+  [key: string]: number | readonly string[] | string | undefined;
   connect_code?: number;
   duration_ms?: number;
   error_tag?: string;
   event: string;
   exit_code?: number;
   level: string;
-  plugin_fields?: Readonly<Record<string, PluginFieldValue>>;
+
   provider_instance_id?: string;
   provider_type?: string;
   recovery_attempt?: number;
@@ -131,21 +130,34 @@ const addOptionalField = <Key extends keyof LogRecord>(
     record[key] = value;
   }
 };
+const addPluginFields = (record: LogRecord, eventMessage: EventMessage): void => {
+  if (eventMessage.pluginFields === undefined) {
+    return;
+  }
+  for (const [key, value] of Object.entries(eventMessage.pluginFields)) {
+    record[key] = value;
+  }
+};
+
+const addFailureEventFields = (record: LogRecord, eventMessage: EventMessage): void => {
+  addOptionalField(record, "error_tag", eventMessage.errorTag);
+  addOptionalField(record, "exit_code", eventMessage.exitCode);
+  addOptionalField(record, "provider_instance_id", eventMessage.providerInstanceId);
+  addOptionalField(record, "provider_type", eventMessage.providerType);
+  addOptionalField(record, "recovery_attempt", eventMessage.recoveryAttempt);
+  addOptionalField(record, "sanitized_stack_frames", eventMessage.sanitizedStackFrames);
+  addOptionalField(record, "signal", eventMessage.signal);
+  addPluginFields(record, eventMessage);
+};
+
 const addEventFields = (record: LogRecord, eventMessage: EventMessage): void => {
   if (eventMessage.event === "rpc.completed") {
     addOptionalField(record, "request_id", eventMessage.requestId);
     addOptionalField(record, "rpc_method", eventMessage.method);
     addOptionalField(record, "connect_code", eventMessage.code);
-  } else {
-    addOptionalField(record, "error_tag", eventMessage.errorTag);
-    addOptionalField(record, "exit_code", eventMessage.exitCode);
-    addOptionalField(record, "plugin_fields", eventMessage.pluginFields);
-    addOptionalField(record, "provider_instance_id", eventMessage.providerInstanceId);
-    addOptionalField(record, "provider_type", eventMessage.providerTypeId);
-    addOptionalField(record, "recovery_attempt", eventMessage.recoveryAttempt);
-    addOptionalField(record, "sanitized_stack_frames", eventMessage.sanitizedStackFrames);
-    addOptionalField(record, "signal", eventMessage.signal);
+    return;
   }
+  addFailureEventFields(record, eventMessage);
 };
 
 const recordFor = (
@@ -168,4 +180,4 @@ const recordFor = (
   return record;
 };
 export { errorTag, recordFor, sanitizedStackFrames };
-export type { EventMessage, LogRecord, PluginFieldValue };
+export type { EventMessage, LogRecord };
