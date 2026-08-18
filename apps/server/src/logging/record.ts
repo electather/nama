@@ -12,6 +12,8 @@ const KNOWN_ERROR_TAGS: Readonly<Record<string, true>> = Object.freeze({
   DatabaseConnectionError: true,
   DatabaseIntegrityError: true,
   MigrationError: true,
+  PluginSupervisorBoundaryError: true,
+  PluginSupervisorCleanupError: true,
   ServerBindError: true,
   ShutdownError: true,
 });
@@ -21,20 +23,32 @@ interface EventMessage {
   readonly durationMs?: number;
   readonly errorTag?: string;
   readonly event: string;
+  readonly exitCode?: number;
   readonly method?: string;
+  readonly pluginFields?: Readonly<Record<string, number | string>>;
+  readonly providerInstanceId?: string;
+  readonly providerType?: string;
+  readonly recoveryAttempt?: number;
   readonly requestId?: string;
   readonly sanitizedStackFrames?: readonly string[];
+  readonly signal?: string;
 }
 
 interface LogRecord {
+  [key: string]: number | readonly string[] | string | undefined;
   connect_code?: number;
   duration_ms?: number;
   error_tag?: string;
   event: string;
+  exit_code?: number;
   level: string;
+  provider_instance_id?: string;
+  provider_type?: string;
+  recovery_attempt?: number;
   request_id?: string;
   rpc_method?: string;
   sanitized_stack_frames?: readonly string[];
+  signal?: string;
   timestamp: string;
 }
 
@@ -114,15 +128,34 @@ const addOptionalField = <Key extends keyof LogRecord>(
     record[key] = value;
   }
 };
+const addPluginFields = (record: LogRecord, eventMessage: EventMessage): void => {
+  if (eventMessage.pluginFields === undefined) {
+    return;
+  }
+  for (const [key, value] of Object.entries(eventMessage.pluginFields)) {
+    record[key] = value;
+  }
+};
+
+const addFailureEventFields = (record: LogRecord, eventMessage: EventMessage): void => {
+  addOptionalField(record, "error_tag", eventMessage.errorTag);
+  addOptionalField(record, "exit_code", eventMessage.exitCode);
+  addOptionalField(record, "provider_instance_id", eventMessage.providerInstanceId);
+  addOptionalField(record, "provider_type", eventMessage.providerType);
+  addOptionalField(record, "recovery_attempt", eventMessage.recoveryAttempt);
+  addOptionalField(record, "sanitized_stack_frames", eventMessage.sanitizedStackFrames);
+  addOptionalField(record, "signal", eventMessage.signal);
+  addPluginFields(record, eventMessage);
+};
+
 const addEventFields = (record: LogRecord, eventMessage: EventMessage): void => {
   if (eventMessage.event === "rpc.completed") {
     addOptionalField(record, "request_id", eventMessage.requestId);
     addOptionalField(record, "rpc_method", eventMessage.method);
     addOptionalField(record, "connect_code", eventMessage.code);
-  } else {
-    addOptionalField(record, "error_tag", eventMessage.errorTag);
-    addOptionalField(record, "sanitized_stack_frames", eventMessage.sanitizedStackFrames);
+    return;
   }
+  addFailureEventFields(record, eventMessage);
 };
 
 const recordFor = (

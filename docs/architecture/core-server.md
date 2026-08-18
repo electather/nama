@@ -1,6 +1,6 @@
 # Core server
 
-Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, and Connect setup/authentication runtime are implemented and verified.
+Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, and authenticated plugin-subprocess supervisor are implemented and verified.
 
 This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics.
 
@@ -15,10 +15,11 @@ This note is the canonical record for durable core-server boundaries. The implem
 - the process-local bootstrap-token state machine and transactional administrator completion;
 - exact liveness and readiness routes before Connect delegation;
 - one native Node listener and one Effect managed request runtime for health and RPC callbacks;
-- runtime-controlled readiness and fatal post-bind failure; and
-- deterministic signal shutdown, bounded drain, and resource finalization.
+- runtime-controlled readiness and fatal post-bind failure;
+- one Effect-scoped authenticated plugin-subprocess supervisor; and
+- deterministic signal shutdown, bounded drain, process-group termination, and resource finalization.
 
-The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; only Setup and Auth behavior is implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. Plugin services, pairing, CLI setup/sign-in, client behavior, retries, configuration reload, metrics, and exported tracing remain outside this runtime.
+The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; only Setup and Auth behavior is implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. The private plugin transport now launches, authenticates, handshakes with, calls, recovers, and terminates code-owned subprocesses, but no production provider descriptor or plugin method workflow is registered. Pairing, CLI setup/sign-in, client behavior, provider persistence, schedules, and exported tracing remain outside this runtime.
 
 ## Architecture decisions
 
@@ -34,14 +35,15 @@ The implemented dependency graph is:
 
 ```text
 main -> app
-app -> config + logging + database + lifecycle + authentication + http
+app -> config + logging + database + lifecycle + authentication + plugin + http
 logging -> config
 database -> config
+plugin -> Node subprocess/process-group + private plugin.v1 Connect transport
 authentication -> config + database + lifecycle + bootstrap token
 http -> config + database + lifecycle + authentication
 ```
 
-`src/main.ts` launches the root Effect once and selects process exit status. `src/app.ts` owns graph construction and startup ordering. Runtime responsibilities live under `src/config/`, `src/logging/`, `src/database/`, `src/setup/`, `src/authentication/`, `src/lifecycle/`, and `src/http/`; generated-contract policy lives independently under `src/contracts/`. Fallow covers every TypeScript file and enforces this acyclic direction.
+`src/main.ts` launches the root Effect once and selects process exit status. `src/app.ts` owns graph construction and startup ordering. Runtime responsibilities live under `src/config/`, `src/logging/`, `src/database/`, `src/setup/`, `src/authentication/`, `src/lifecycle/`, `src/plugin/`, and `src/http/`; generated-contract policy lives independently under `src/contracts/`. Fallow covers every TypeScript file and enforces this acyclic direction.
 
 Organize server code by concrete responsibility, not technical layer or file size. Split an owner only when it has independently changing responsibilities; there is no line-count limit. Keep `database/` cohesive until implemented behavior proves another owner is needed. Imports name concrete modules; do not add `index.ts` barrels.
 
@@ -52,7 +54,7 @@ Exports stay minimal. Raw TOML, environment snapshots, parser errors, `pg.Pool`,
 ## Invariants
 
 1. Configuration is read and decoded once, then remains immutable for the process lifetime.
-2. The listener does not bind until configuration, database acquisition, migrations, durable initialization reconciliation, and an initial database probe succeed.
+2. The listener does not bind until configuration, database acquisition, migrations, durable initialization reconciliation, an initial database probe, and plugin-supervisor runtime-root acquisition succeed.
 3. There is one pool, one Drizzle instance, one callback runtime, and one listener.
 4. The database pool is never exposed as an application service.
 5. Startup performs no retry for connection, migration, or other writes.
@@ -114,6 +116,7 @@ read and decode configuration
   -> construct Drizzle and apply migrations
   -> transactionally reconcile durable initialization
   -> run the initial SELECT 1 probe
+  -> acquire the protected plugin-supervisor runtime root
   -> construct bootstrap, private authentication, setup, runtime-control, and request-runtime services
   -> bind the native HTTP listener with health-first Connect dispatch
   -> synchronously activate bootstrap output
@@ -174,14 +177,15 @@ Expected failures are tagged beside their owner:
 
 - configuration: `ConfigReadError`, `ConfigParseError`, `ConfigValidationError`;
 - database: `DatabaseConnectionError`, `MigrationError`, `DatabaseIntegrityError`;
-- setup: `BootstrapTokenInitializationError`; and
+- setup: `BootstrapTokenInitializationError`;
+- plugin supervision: `PluginUnavailable`, `PluginDeadlineExceeded`, `PluginRpcError`, `PluginSupervisorBoundaryError`, `PluginSupervisorCleanupError`; and
 - transport: `ServerBindError`, `ShutdownError`.
 
 There is no central error module. Safe tagged-error data is limited to the stable tag, optional allowlisted configuration field path, and optional TOML line and column. Raw parser, PostgreSQL, Node, Drizzle, and Better Auth errors are normalized at their adapter boundary.
 
 A configuration, connection, migration, integrity, runtime-construction, bind, or bootstrap-activation failure emits exactly one safe `server.start_failed` record, releases acquired resources, leaves no listener, and exits non-zero. Failures before configured logging exists use one minimal JSON record on stderr. Later startup failures use the configured Effect logger on stdout. Effect's default cause reporting remains disabled so it cannot emit a second unsafe record.
 
-Normal logs are newline-delimited JSON on stdout. The configured threshold applies after configuration is decoded. Stable lifecycle events are:
+Normal logs are newline-delimited JSON on stdout. The configured threshold applies after configuration is decoded. Stable server lifecycle events are:
 
 - `server.ready`;
 - `server.stopping`;
@@ -190,8 +194,9 @@ Normal logs are newline-delimited JSON on stdout. The configured threshold appli
 - `server.shutdown_failed`; and
 - `database.readiness_changed`.
 
-Current lifecycle log fields are limited to `timestamp`, `level`, `event`, `duration_ms`, `error_tag`, and `sanitized_stack_frames`. Expected failures expose no arbitrary exception message or cause. An unexpected defect may include bounded stack frames after removing the exception message; sanitation must never serialize enumerable exception properties.
-Fatal post-bind failure emits exactly one `server.runtime_failed` record at `fatal` severity, so configured `warn`, `error`, and `fatal` thresholds cannot suppress the sole record.
+Plugin supervision additionally emits `plugin.recovery_attempt`, `plugin.process_exited`, `plugin.rpc_deadline_exceeded`, `plugin.recovery_exhausted`, `plugin.stderr_dropped`, and code-declared plugin events. Plugin lifecycle fields are restricted to `provider_type`, `provider_instance_id`, `recovery_attempt`, `exit_code`, and `signal`; code-declared plugin fields are finite numbers or allowlisted enum values. Bearers, socket paths, executable arguments, environment, configuration, raw stderr, and arbitrary process errors never enter records.
+
+Expected failures expose no arbitrary exception message or cause. An unexpected defect may include bounded stack frames after removing the exception message; sanitation must never serialize enumerable exception properties. Fatal post-bind failure emits exactly one `server.runtime_failed` record at `fatal` severity, so configured `warn`, `error`, and `fatal` thresholds cannot suppress the sole record.
 
 The only secret-output exception is exactly one direct stdout line, `NAMA_BOOTSTRAP_TOKEN=<token>\n`, after a setup-eligible listener binds. It bypasses Effect logging and JSON record construction through one checked synchronous write; a short or failed write is not retried because a partial output could be ambiguous. Startup then fails before `server.ready`.
 
@@ -213,6 +218,8 @@ mark accepting false
   -> interrupt remaining request Effects
   -> force-close remaining HTTP connections
   -> dispose the request ManagedRuntime
+  -> terminate and reap active plugin process groups
+  -> remove plugin launch directories and the supervisor runtime root
   -> close the PostgreSQL pool
   -> emit server.stopped after the full resource graph finalizes successfully
 ```
@@ -236,14 +243,15 @@ Generated public services are registered through `connectNodeAdapter` behind the
 The server test gate must continue to exercise behavior, not only generated contracts or compilation:
 
 - pure and Effect-scoped configuration, logging, routing, drain, deadline interruption, and finalization behavior;
+- a real disposable plugin subprocess covering protected launch material, bearer authentication, handshake rejection, bounded recovery, cancellation, deadlines, no replay, structured stderr, process-group escalation, and artifact cleanup;
 - serial integration against disposable PostgreSQL with production migrations, prior-journal upgrade, constraints, the complete initialization state matrix, conditional repair failure, pool closure, and readiness loss/recovery;
 - the actual package entrypoint, both termination signals, migration-and-reconciliation-before-bind ordering, released listener ports, normalized startup and integrity failures, valid JSON output, and secret absence; and
 - root TypeScript checks that execute the complete server suite.
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.
 
-The implemented coverage exercises generated-client and real-process setup/authentication flows: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, request cancellation, correlation, safe public errors and logs, readiness, and fatal runtime exit.
+The implemented coverage exercises generated-client and real-process setup/authentication flows plus the private plugin-supervision transport: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, plugin launch authentication and authority rotation, recovery, call cancellation and deadlines, process-group cleanup, correlation, safe public errors and logs, readiness, and fatal runtime exit.
 
 ## Deferred work
 
-Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. Plugin, pairing, media, playback, and synchronization runtime behavior belongs to their owning milestones.
+Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. Production provider descriptors and workflows, on-demand or idle policy, persistence and credentials, Jellyfin behavior, pairing, media, playback, and synchronization belong to their owning milestones.

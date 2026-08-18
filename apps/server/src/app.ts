@@ -13,6 +13,7 @@ import {
   logFatalEvent,
   writeBootstrapFailure,
 } from "./logging/logging.ts";
+import { PluginSupervisor } from "./plugin/supervisor.ts";
 import { BootstrapToken } from "./setup/bootstrap-token.ts";
 
 const PRODUCTION_MIGRATIONS = `${import.meta.dirname}/../drizzle/`;
@@ -32,8 +33,9 @@ const serverLayer = (
   const configLayer = Layer.succeed(Config, config);
   const databaseLayer = Database.layer(migrationsFolder).pipe(Layer.provide(configLayer));
   const foundationLayer = Layer.mergeAll(configLayer, databaseLayer);
+  const pluginFoundationLayer = PluginSupervisor.layer().pipe(Layer.provideMerge(foundationLayer));
   return HttpServer.layer({ emitStopping }).pipe(
-    Layer.provideMerge(makeSetupAuthenticationLayer(foundationLayer, RuntimeControl.layer)),
+    Layer.provideMerge(makeSetupAuthenticationLayer(pluginFoundationLayer, RuntimeControl.layer)),
   );
 };
 

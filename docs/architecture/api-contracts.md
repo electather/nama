@@ -1,10 +1,10 @@
 # API contracts
 
-Status: Setup and Auth runtime semantics are implemented and verified.
+Status: Setup and Auth runtime semantics plus the private plugin-subprocess transport are implemented and verified.
 
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
-Only `SetupService` and `AuthService` behavior is implemented in the core. The remaining public and plugin schemas are durable contracts, not evidence that their handlers, clients, or provider runtime exist.
+Only `SetupService` and `AuthService` behavior is implemented in the core. The core also implements private plugin process launch, bearer authentication, health/identity handshake, deadline and cancellation propagation, bounded recovery, and cleanup against generated `nama.plugin.v1` clients. The remaining public and plugin method workflows are durable contracts, not evidence that their handlers, provider adapters, persistence, or scheduling exist.
 
 ## Scope
 
@@ -556,7 +556,7 @@ no export. No rule takes maximum position or makes watched state permanently
 dominant.
 
 ## Plugin services
-The stateless supervised process boundary is defined by [ADR-0006](../adr/0006-stateless-supervised-plugin-subprocesses.md).
+The stateless supervised process boundary is defined by [ADR-0006](../adr/0006-stateless-supervised-plugin-subprocesses.md). Its production transport is implemented: code-owned executable validation, protected per-launch authority and Unix socket, authenticated health and identity handshake, explicit caller deadlines, cancellation without replay, bounded recovery, structured stderr, and process-group cleanup. Production provider descriptors and method workflows remain unimplemented.
 
 
 Each plugin process represents exactly one installed provider type and, for provider operations, one configured or candidate instance. A discovery launch has no instance and serves only health and `GetInfo`; this is how the core obtains a schema before configuration exists. The core supplies candidate or stored configuration and credentials at launch through the supervised-process boundary; ordinary RPC request bodies never carry the provider's account credential. An instance also has one immutable MVP provider-user binding in its core-owned configuration: Jellyfin uses the explicitly configured user ID even with an API key, while Plex uses the token principal. Watch-state RPCs never infer a user from an API key or accept a caller-selected provider user. The process is stateless, owns no database or durable cursor, and may be killed and recreated between calls.
