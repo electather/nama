@@ -4,6 +4,8 @@ package clierror
 import (
 	"encoding/json"
 	"errors"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -147,6 +149,11 @@ type Error struct {
 	RetryDelay      time.Duration    `json:"retry_delay,omitzero"`
 
 	cause error
+}
+
+// Codes returns every stable public error code in canonical order.
+func Codes() []string {
+	return slices.Sorted(maps.Keys(messages))
 }
 
 // New creates a local CLI error from an allowlisted stable code. Unknown codes are unexpected failures.
