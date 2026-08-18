@@ -119,8 +119,8 @@ func TestNewClientsSendMetadataAndAttachBearerOnlyToProtectedMethods(t *testing.
 		if got := header.Get("nama-client-platform"); got != "go" {
 			t.Errorf("%s nama-client-platform = %q, want go", test.procedure, got)
 		}
-		if got := header.Get("nama-client-version"); got != "0.0.0-dev" {
-			t.Errorf("%s nama-client-version = %q, want 0.0.0-dev", test.procedure, got)
+		if got, want := header.Get("nama-client-version"), Version(); got != want {
+			t.Errorf("%s nama-client-version = %q, want displayed version %q", test.procedure, got, want)
 		}
 		if got := header.Get("Authorization"); got != test.wantAuthorization {
 			t.Errorf("%s Authorization = %q, want %q", test.procedure, got, test.wantAuthorization)

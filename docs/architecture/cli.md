@@ -1,6 +1,6 @@
 # Management CLI
 
-Status: issue #24 profiles, administrator setup, sign-in, and authentication status are implemented and verified. The remaining MVP command families are unfinished.
+Status: issue #24 profiles, administrator setup, sign-in, and authentication status plus issue #25's complete public process contract are implemented and verified. The remaining MVP command families are unfinished.
 
 ## Purpose
 
@@ -14,9 +14,10 @@ The complete MVP management surface covers initial administrator setup, authenti
 
 - Milestone 0 created the compilable Cobra boundary and proved that generated public clients are consumable.
 - Issue #24 implements the shared CLI foundation, named profiles, administrator setup, sign-in, and authentication status.
+- Issue #25 completes help, version reporting, shell completion, machine schema, generated reference documentation, and semantic compatibility enforcement.
 - Health, diagnostics, plugin, Jellyfin, device, and synchronization commands enter only with their implemented API behavior.
 
-The repository also ships one installable Codex `SKILL.md` with command discovery, JSON use, safe setup and configuration flows, and confirmation boundaries. There is no management web application or CLI plugin framework in the MVP.
+The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no management web application or CLI plugin framework in the MVP.
 
 ## Technology
 
@@ -86,7 +87,7 @@ nama
 
 Only commands backed by an implemented public RPC are added. Exact leaf commands, arguments, and flags are designed with those RPCs; this list reserves no unimplemented server behavior.
 
-The canonical binary name is `nama`. The issue #24 command tree supplies Cobra's standard static help. Version reporting, shell completion, generated command documentation, and compatibility snapshots remain deferred to issue #25.
+The canonical binary name is `nama`. The live Cobra tree now supplies complete human help, a global version flag, four shell-completion formats, machine schema version 1, the generated CLI reference, and the compatibility baseline.
 
 ## Output contract
 
@@ -180,11 +181,11 @@ The client permits plain HTTP only for loopback, private or link-local addresses
 
 ## Discovery and compatibility
 
-One constructed Cobra tree drives human help, shell completion, generated Markdown documentation, machine-readable schema, and the compatibility snapshot. Generated Markdown lives under `docs/cli/` and is checked for drift in CI once real commands exist.
+One constructed Cobra tree drives human help, shell completion, generated reference documentation, machine-readable schema, and the compatibility baseline. Hidden framework plumbing is excluded.
 
-`nama schema --output json` describes canonical command paths, positional arguments, flags, types, requirements, and descriptions by walking the actual command tree. It is generated rather than maintained as a parallel registry.
+`nama schema --output json` is the machine-discovery surface. Schema version 1 describes canonical command paths, ordered positional arguments, effective flags and inheritance, conditional secret inputs without values, and the full exit/error mapping. `docs/cli/reference.md` is the deterministic, timestamp-free human reference generated from the same metadata.
 
-Released commands, positional arguments, flags, JSON fields, error codes, and exit-code meanings are compatibility surfaces. CI compares the current command schema with the released snapshot and reports removals or incompatible changes for explicit review. Additive commands, flags, and JSON fields are normally compatible. Human formatting is not snapshot-compatible.
+The committed schema-v1 milestone baseline permits additive optional commands, flags, arguments, inputs, and allowed values. It rejects removals and renames; newly required inputs; type, source, environment-binding, static-default, or inheritance changes; allowed-value removals; exit/error remapping; and schema-field removal or type changes. Descriptions and human copy may evolve independently.
 
 ## Destructive operations
 
@@ -227,7 +228,7 @@ The implemented issue #24 surface is tested in process through the real Cobra tr
 - exact JSON stream behavior plus human warning and prompt placement, exit codes, and secret redaction; and
 - a compiled-binary status flow against a test Connect server using a process-injected credential.
 
-The owning Go check runs formatting, vet, Staticcheck, tests, and compilation. A disposable Node server, PostgreSQL database, and macOS Keychain flow additionally verifies administrator setup and stored-credential status on macOS; it is not portable keyring evidence. Generated CLI documentation, command-surface snapshots, expanded help/version/completion, and their compatibility enforcement remain deferred.
+The owning Go check runs formatting, vet, Staticcheck, tests, compilation, generated-reference drift, and schema-v1 semantic compatibility. Focused in-process and compiled-binary coverage verifies help, local output precedence, version/header identity, all completion formats, schema ordering and metadata, exit mappings, secret redaction, and exact JSON stream placement. A disposable Node server, PostgreSQL database, and macOS Keychain flow additionally verifies administrator setup and stored-credential status on macOS; it is not portable keyring evidence.
 
 ## Deferred
 

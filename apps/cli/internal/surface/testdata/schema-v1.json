@@ -1,0 +1,1037 @@
+{
+  "schema_version": 1,
+  "commands": [
+    {
+      "path": [
+        "nama"
+      ],
+      "summary": "Manage a Nama server",
+      "description": "Manage a Nama server through the implemented administration surface.\n\nConfiguration precedence\n  Profile selection: --profile -> NAMA_PROFILE -> configured default profile.\n  Server target: --server -> NAMA_SERVER -> selected profile.\n  Output mode: --output -> NAMA_OUTPUT -> configured preferred output -> human.\n\nOutput modes\n  Human output is the default. Use --output json for one machine-readable\n  object on stdout on success or stderr on failure.\n\nExit codes\n  0 success\n  1 unexpected failure or cancellation\n  2 invalid arguments or configuration\n  3 authentication failure\n  4 permission denied\n  5 resource not found\n  6 conflict or invalid state\n  7 network or API unavailable, rate limited, or resource exhausted\n\nExamples\n  nama profile set local --server https://nama.example.test\n  nama setup --profile local --display-name \"Nama Administrator\" --email admin@example.test\n  nama auth login --profile local --email admin@example.test\n  nama auth status --profile local",
+      "arguments": [],
+      "flags": [
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": false,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": false,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": false,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": false,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": false,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": [
+        "nama",
+        "auth"
+      ],
+      "summary": "Manage authentication",
+      "description": "Manage Administrator authentication. Sign in with a password or inspect the current process or native-store credential.",
+      "arguments": [],
+      "flags": [
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": [
+        "nama",
+        "auth",
+        "login"
+      ],
+      "summary": "Sign in as an Administrator",
+      "description": "Sign in with the Administrator email and a password.\n\nHuman terminal input reads the password through a labelled hidden prompt.\nNon-interactive input reads exactly one password line from redirected stdin.\nJSON output with terminal stdin is rejected before the password is read.",
+      "arguments": [],
+      "flags": [
+        {
+          "name": "email",
+          "type": "string",
+          "required": true,
+          "inherited": false,
+          "description": "Administrator email address (required)",
+          "environment": "",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": [
+        {
+          "name": "password",
+          "type": "string",
+          "required": true,
+          "secret": true,
+          "description": "Administrator password",
+          "sources": [
+            {
+              "kind": "hidden_prompt",
+              "name": "Password",
+              "condition": "human_terminal"
+            },
+            {
+              "kind": "stdin_line",
+              "name": "stdin",
+              "condition": "nonterminal"
+            },
+            {
+              "kind": "rejected",
+              "name": "terminal_stdin",
+              "condition": "json_terminal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": [
+        "nama",
+        "auth",
+        "status"
+      ],
+      "summary": "Report authentication status",
+      "description": "Report whether an Administrator credential is active. NAMA_TOKEN may inject a process-only bearer instead of reading native credential storage.",
+      "arguments": [],
+      "flags": [
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": [
+        {
+          "name": "bearer",
+          "type": "string",
+          "required": false,
+          "secret": true,
+          "description": "Administrator bearer credential",
+          "sources": [
+            {
+              "kind": "environment",
+              "name": "NAMA_TOKEN",
+              "condition": "always"
+            },
+            {
+              "kind": "native_credential_store",
+              "name": "operating_system",
+              "condition": "NAMA_TOKEN_unset"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": [
+        "nama",
+        "completion"
+      ],
+      "summary": "Generate a shell completion script",
+      "description": "Generate a completion script for Bash, Zsh, Fish, or PowerShell without installing or changing shell configuration.",
+      "arguments": [
+        {
+          "name": "shell",
+          "type": "string",
+          "required": true,
+          "variadic": false,
+          "description": "Shell whose completion script is generated",
+          "allowed_values": [
+            "bash",
+            "fish",
+            "powershell",
+            "zsh"
+          ]
+        }
+      ],
+      "flags": [
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": [
+        "nama",
+        "help"
+      ],
+      "summary": "Show help for a command",
+      "description": "Show human help for the root command or one implemented command path. Use `nama schema --output json` for machine discovery.",
+      "arguments": [
+        {
+          "name": "command",
+          "type": "string",
+          "required": false,
+          "variadic": true,
+          "description": "Implemented command path to describe",
+          "allowed_values": []
+        }
+      ],
+      "flags": [
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": [
+        "nama",
+        "profile"
+      ],
+      "summary": "Manage server profiles",
+      "description": "Manage named server profiles. Profiles store non-secret server targets; credentials remain in native credential storage.",
+      "arguments": [],
+      "flags": [
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": [
+        "nama",
+        "profile",
+        "list"
+      ],
+      "summary": "List configured server profiles",
+      "description": "List configured profiles and identify the selected default profile.",
+      "arguments": [],
+      "flags": [
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": [
+        "nama",
+        "profile",
+        "set"
+      ],
+      "summary": "Create or update a server profile",
+      "description": "Create or update the profile name supplied as <name>. The server target resolves from --server before NAMA_SERVER.",
+      "arguments": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "variadic": false,
+          "description": "Stable profile name",
+          "allowed_values": []
+        }
+      ],
+      "flags": [
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": [
+        "nama",
+        "profile",
+        "use"
+      ],
+      "summary": "Select the default server profile",
+      "description": "Select the profile name supplied as <name> as the default for later commands.",
+      "arguments": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "variadic": false,
+          "description": "Configured profile name",
+          "allowed_values": []
+        }
+      ],
+      "flags": [
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": [
+        "nama",
+        "schema"
+      ],
+      "summary": "Describe the public CLI command contract",
+      "description": "Print a compact human command inventory or schema version 1 as one JSON data envelope for machine discovery.",
+      "arguments": [],
+      "flags": [
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "path": [
+        "nama",
+        "setup"
+      ],
+      "summary": "Initialize the Administrator account",
+      "description": "Initialize the sole Administrator account.\n\nHuman terminal input reads the bootstrap token and password through labelled\nhidden prompts. Non-interactive input reads NAMA_BOOTSTRAP_TOKEN from the\nenvironment and exactly one password line from redirected stdin. JSON output\nwith terminal stdin is rejected before either secret is read.",
+      "arguments": [],
+      "flags": [
+        {
+          "name": "display-name",
+          "type": "string",
+          "required": true,
+          "inherited": false,
+          "description": "Administrator display name (required)",
+          "environment": "",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "required": true,
+          "inherited": false,
+          "description": "Administrator email address (required)",
+          "environment": "",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "help",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Show help for a command",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        },
+        {
+          "name": "output",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select human or json output (env: NAMA_OUTPUT)",
+          "environment": "NAMA_OUTPUT",
+          "default": "human",
+          "allowed_values": [
+            "human",
+            "json"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Select a server profile (env: NAMA_PROFILE)",
+          "environment": "NAMA_PROFILE",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "server",
+          "type": "string",
+          "required": false,
+          "inherited": true,
+          "description": "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)",
+          "environment": "NAMA_SERVER",
+          "default": "",
+          "allowed_values": []
+        },
+        {
+          "name": "version",
+          "type": "bool",
+          "required": false,
+          "inherited": true,
+          "description": "Print the Nama CLI semantic version",
+          "environment": "",
+          "default": "false",
+          "allowed_values": []
+        }
+      ],
+      "inputs": [
+        {
+          "name": "bootstrap_token",
+          "type": "string",
+          "required": true,
+          "secret": true,
+          "description": "One-time server bootstrap token",
+          "sources": [
+            {
+              "kind": "hidden_prompt",
+              "name": "Bootstrap token",
+              "condition": "human_terminal"
+            },
+            {
+              "kind": "environment",
+              "name": "NAMA_BOOTSTRAP_TOKEN",
+              "condition": "nonterminal"
+            },
+            {
+              "kind": "rejected",
+              "name": "terminal_stdin",
+              "condition": "json_terminal"
+            }
+          ]
+        },
+        {
+          "name": "password",
+          "type": "string",
+          "required": true,
+          "secret": true,
+          "description": "Initial Administrator password",
+          "sources": [
+            {
+              "kind": "hidden_prompt",
+              "name": "Password",
+              "condition": "human_terminal"
+            },
+            {
+              "kind": "stdin_line",
+              "name": "stdin",
+              "condition": "nonterminal"
+            },
+            {
+              "kind": "rejected",
+              "name": "terminal_stdin",
+              "condition": "json_terminal"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "exit_codes": [
+    {
+      "code": 0,
+      "meaning": "success",
+      "error_codes": []
+    },
+    {
+      "code": 1,
+      "meaning": "unexpected failure or cancellation",
+      "error_codes": [
+        "canceled",
+        "credential_cleanup_failed",
+        "credential_store_unavailable",
+        "data_loss",
+        "internal",
+        "request_cancelled",
+        "unexpected_failure",
+        "unimplemented",
+        "unknown"
+      ]
+    },
+    {
+      "code": 2,
+      "meaning": "invalid arguments or configuration",
+      "error_codes": [
+        "invalid_argument",
+        "invalid_configuration",
+        "out_of_range",
+        "unsafe_transport",
+        "validation_failed"
+      ]
+    },
+    {
+      "code": 3,
+      "meaning": "authentication failure",
+      "error_codes": [
+        "authentication_failed",
+        "credential_invalid",
+        "unauthenticated"
+      ]
+    },
+    {
+      "code": 4,
+      "meaning": "permission denied",
+      "error_codes": [
+        "permission_denied"
+      ]
+    },
+    {
+      "code": 5,
+      "meaning": "resource not found",
+      "error_codes": [
+        "not_found",
+        "profile_not_found"
+      ]
+    },
+    {
+      "code": 6,
+      "meaning": "conflict or invalid state",
+      "error_codes": [
+        "aborted",
+        "already_exists",
+        "already_initialized",
+        "failed_precondition",
+        "not_initialized",
+        "setup_in_progress"
+      ]
+    },
+    {
+      "code": 7,
+      "meaning": "network or API unavailable, rate limited, or resource exhausted",
+      "error_codes": [
+        "authentication_unavailable",
+        "deadline_exceeded",
+        "network_unavailable",
+        "rate_limited",
+        "resource_exhausted",
+        "session_revocation_unconfirmed",
+        "setup_unavailable",
+        "unavailable"
+      ]
+    }
+  ]
+}

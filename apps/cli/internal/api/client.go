@@ -89,7 +89,12 @@ func clientInterceptor(bearer string) connect.UnaryInterceptorFunc {
 
 // Version returns the client version recorded in Go build information.
 func Version() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
+	info, ok := debug.ReadBuildInfo()
+	return versionFromBuildInfo(info, ok)
+}
+
+func versionFromBuildInfo(info *debug.BuildInfo, ok bool) string {
+	if ok && info != nil {
 		version := strings.TrimPrefix(info.Main.Version, "v")
 		if version != "" && version != "(devel)" {
 			return version
