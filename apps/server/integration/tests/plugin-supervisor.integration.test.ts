@@ -1,4 +1,4 @@
-// oxlint-disable import/max-dependencies, eslint/max-lines, eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/prefer-destructuring, unicorn/max-nested-calls -- Integration scenarios keep policy values and ordered process transitions visible.
+// oxlint-disable import/max-dependencies, eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/prefer-destructuring, unicorn/max-nested-calls -- Integration scenarios keep policy values and ordered process transitions visible.
 // oxlint-disable eslint/no-await-in-loop, eslint/init-declarations, typescript/consistent-return, typescript/no-unsafe-type-assertion, typescript/no-inferrable-types, unicorn/no-await-expression-member -- Polling and trusted fixture records are deliberate test-only boundaries.
 import { spawn as spawnChild } from "node:child_process";
 import {
@@ -220,6 +220,28 @@ it.effect("rejects a relative plugin executable before launch", () =>
         reason: "executable_invalid",
       });
     }).pipe(Effect.provide(PluginSupervisor.layer())),
+  ),
+);
+
+it.live("accepts opaque provider-instance IDs", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* opaqueProviderInstanceIdTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise({
+          ...fixtureDescriptor(controlDirectory),
+          providerInstanceId: "1",
+        });
+
+        const health = yield* plugin.call(
+          HealthService.method.check,
+          {},
+          CALL_DEADLINE_MILLISECONDS,
+        );
+
+        expect(health.status).toBe(ServingStatus.SERVING);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
   ),
 );
 
@@ -694,6 +716,37 @@ it.live("recovers an unexpected ready-process exit without waiting for a call", 
   ),
 );
 
+it.live("recovers a replacement that exits after its handshake", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* replacementExitRecoveryTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(
+          fixtureDescriptor(controlDirectory, "exit-after-ready-during-recovery"),
+        );
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
+        if (firstLaunch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+
+        process.kill(firstLaunch.pid, "SIGKILL");
+        const launches = yield* awaitLaunchCount(controlDirectory, 3);
+        const recoveredLaunch = launches[2];
+        if (recoveredLaunch === undefined) {
+          return yield* Effect.die("recovered launch record missing");
+        }
+
+        const health = yield* directHealthCheck(
+          recoveredLaunch.socketPath,
+          `Bearer ${recoveredLaunch.bearer}`,
+        );
+        expect(health.status).toBe(ServingStatus.SERVING);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
 it.effect("makes a three-launch exhausted recovery episode terminal", () =>
   withControlDirectory((controlDirectory) =>
     Effect.scoped(
@@ -1018,6 +1071,46 @@ it.effect("rejects an executable outside the effective owner boundary", () =>
   ),
 );
 
+it.live("revalidates the executable before recovery spawn", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* recoveryExecutableValidationTest() {
+        const executable = join(controlDirectory, "fixture-node");
+        yield* Effect.promise(() =>
+          writeFile(executable, `#!/bin/sh\nexec ${process.execPath} "$@"\n`, { mode: 0o700 }),
+        );
+
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise({
+          ...fixtureDescriptor(controlDirectory),
+          executable,
+        });
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
+        if (firstLaunch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+
+        yield* Effect.promise(() => chmod(executable, 0o722));
+        process.kill(firstLaunch.pid, "SIGKILL");
+        yield* awaitProcessExit(firstLaunch.pid);
+        yield* Effect.yieldNow;
+
+        const call = yield* Effect.forkChild(
+          plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS),
+        );
+        const failure = yield* Fiber.join(call).pipe(Effect.flip);
+
+        expect(failure).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "executable_invalid",
+        });
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
 it.effect("rejects unsafe structured-stderr declarations before launch", () =>
   withControlDirectory((controlDirectory) =>
     Effect.scoped(
@@ -1199,6 +1292,50 @@ it.live("fails sibling RPCs without replay when a deadline recycles the process"
         expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(2);
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
+  ),
+);
+
+it.effect("reaps every active process before surfacing peer cleanup failure", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.gen(function* concurrentHandleCleanupTest() {
+      const cleanupControlDirectory = join(controlDirectory, "cleanup");
+      const ignoringControlDirectory = join(controlDirectory, "ignoring");
+      yield* Effect.promise(async () => {
+        await mkdir(cleanupControlDirectory, { mode: 0o700 });
+        await mkdir(ignoringControlDirectory, { mode: 0o700 });
+      });
+
+      const layerScope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(PluginSupervisor.layer(), layerScope);
+      const supervisor = Context.get(context, PluginSupervisor);
+      const cleanupScope = yield* Scope.make();
+      const ignoringScope = yield* Scope.make();
+      const cleanupPlugin = yield* Scope.provide(cleanupScope)(
+        supervisor.supervise(fixtureDescriptor(cleanupControlDirectory, "cleanup-failure")),
+      );
+      const ignoringPlugin = yield* Scope.provide(ignoringScope)(
+        supervisor.supervise(fixtureDescriptor(ignoringControlDirectory, "ignore-termination")),
+      );
+      yield* cleanupPlugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+      yield* ignoringPlugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+      const cleanupLaunch = (yield* readLaunchRecords(cleanupControlDirectory))[0];
+      const ignoringLaunch = (yield* readLaunchRecords(ignoringControlDirectory))[0];
+      if (cleanupLaunch === undefined || ignoringLaunch === undefined) {
+        return yield* Effect.die("fixture launch record missing");
+      }
+
+      const shutdown = yield* Effect.forkChild(
+        Scope.close(layerScope, Exit.void).pipe(Effect.exit),
+      );
+      yield* awaitProcessExit(cleanupLaunch.pid);
+      yield* TestClock.adjust(2000);
+      yield* awaitProcessExit(ignoringLaunch.pid);
+      const shutdownExit = yield* Fiber.join(shutdown);
+      expect(Exit.isSuccess(shutdownExit)).toBe(false);
+
+      yield* Scope.close(cleanupScope, Exit.void);
+      yield* Scope.close(ignoringScope, Exit.void);
+    }),
   ),
 );
 

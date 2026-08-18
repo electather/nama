@@ -82,6 +82,12 @@
       "rules": {
         "unicorn/no-useless-undefined": "off"
       }
+    },
+    {
+      "files": ["**/*.test.ts", "apps/server/integration/tests/fixtures/**"],
+      "rules": {
+        "eslint/max-lines": "off"
+      }
     }
   ]
 }

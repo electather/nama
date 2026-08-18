@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// oxlint-disable eslint/max-lines, eslint/max-lines-per-function, eslint/max-statements, eslint/no-await-in-loop, eslint/no-magic-numbers, eslint/no-ternary, sort-keys, unicorn/no-await-expression-member, unicorn/prefer-string-raw -- This disposable fixture keeps protocol variants explicit.
+// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-await-in-loop, eslint/no-magic-numbers, eslint/no-ternary, sort-keys, unicorn/no-await-expression-member, unicorn/prefer-string-raw -- This disposable fixture keeps protocol variants explicit.
 // oxlint-disable typescript/no-implied-eval, typescript/no-unsafe-argument, typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access, typescript/no-unsafe-return, typescript/strict-void-return -- Oxlint cannot recover Node and Connect types for this executable JavaScript fixture.
 // fallow-ignore-file unused-file -- The supervisor integration test executes this fixture by absolute path.
 
@@ -231,23 +231,25 @@ const handler = connectNodeAdapter({
       },
       getInfo: (_request, context) => {
         requireAuthorization(context);
-        return {
-          pluginInfo: {
-            buildVersion: "fixture",
-            capabilities: [],
-            configurationSchema: {
-              additionalProperties: false,
-              properties: {},
-              type: "object",
-            },
-            contractMajor: mode === "contract-major" ? 2 : 1,
-            description: "Disposable supervisor fixture",
-            displayName: "Fixture",
-            providerTypeId: mode === "provider-mismatch" ? "other" : "fixture",
-            schemaProfileVersion: 1,
-            schemaRevision: "fixture-1",
+        const pluginInfo = {
+          buildVersion: "fixture",
+          capabilities: [],
+          configurationSchema: {
+            additionalProperties: false,
+            properties: {},
+            type: "object",
           },
+          contractMajor: mode === "contract-major" ? 2 : 1,
+          description: "Disposable supervisor fixture",
+          displayName: "Fixture",
+          providerTypeId: mode === "provider-mismatch" ? "other" : "fixture",
+          schemaProfileVersion: 1,
+          schemaRevision: "fixture-1",
         };
+        if (mode === "exit-after-ready-during-recovery" && launchNumber === 2) {
+          setImmediate(() => process.kill(process.pid, "SIGKILL"));
+        }
+        return { pluginInfo };
       },
     });
   },
