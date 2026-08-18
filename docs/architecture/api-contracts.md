@@ -115,6 +115,7 @@ Each plugin returns its build version and contract major from `PluginService.Get
 ### Transport, correlation, and secrets
 
 - Public and plugin RPCs use only Connect over HTTP; Nama does not expose gRPC or gRPC-Web ([ADR-0003](../adr/0003-protobuf-connectrpc-boundary.md)). The plugin transport is a core-owned Unix socket authenticated by one random per-launch bearer.
+- The supervisor delivers one bounded versioned launch envelope through child stdin, closes stdin, and passes no provider credentials or inherited environment values. Readiness requires socket mode `0600`, authenticated health, expected provider type, and contract major `1`; every provider RPC carries an explicit deadline and cancellation.
 - The only ordinary public HTTP endpoints are exact `GET /health/live` and `GET /health/ready`. Better Auth routes and callbacks are not mounted.
 - Public administrator and device credentials use `Authorization: Bearer`. Plugin credentials use the same header on the private socket.
 - The server, not the client, assigns `nama-request-id` at outer Node dispatch and returns it on every Connect-delegated response, including malformed-body failures. Application-generated errors carry the identical value in `google.rpc.RequestInfo`; Connect may reject malformed input before the application pipeline, where the response header is the sole correlation value.

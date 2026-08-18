@@ -15,10 +15,11 @@ This note is the canonical record for durable core-server boundaries. The implem
 - the process-local bootstrap-token state machine and transactional administrator completion;
 - exact liveness and readiness routes before Connect delegation;
 - one native Node listener and one Effect managed request runtime for health and RPC callbacks;
+- an Effect-scoped authenticated plugin subprocess supervisor with private Unix-socket launch, handshake, deadline, recovery, stderr, and process-group cleanup boundaries;
 - runtime-controlled readiness and fatal post-bind failure; and
 - deterministic signal shutdown, bounded drain, and resource finalization.
 
-The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; only Setup and Auth behavior is implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. Plugin services, pairing, CLI setup/sign-in, client behavior, retries, configuration reload, metrics, and exported tracing remain outside this runtime.
+The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; only Setup and Auth behavior is implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. Plugin provider operations, pairing, CLI setup/sign-in, client behavior, retries owned by provider methods, configuration reload, metrics, and exported tracing remain outside this runtime.
 
 ## Architecture decisions
 
@@ -29,25 +30,25 @@ A native Node listener owns operational-route precedence, request-fiber interrup
 Effect owns composition, scopes, interruption, logging, expected failures, and shutdown ([ADR-0001](../adr/0001-effect-application-graph.md)). Node HTTP, `pg`, Drizzle, Connect, and Better Auth remain narrow adapters at module edges. There is no second dependency-injection system.
 
 Under [ADR-0010](../adr/0010-postgresql-drizzle-persistence-boundary.md), Drizzle stays on the shared `pg.Pool`; do not introduce `@effect/sql-pg`. Wrap Promise-based database operations once inside the Effect module that owns the operation.
-
 The implemented dependency graph is:
 
 ```text
 main -> app
-app -> config + logging + database + lifecycle + authentication + http
+app -> config + logging + database + lifecycle + authentication + plugin supervisor + http
 logging -> config
 database -> config
 authentication -> config + database + lifecycle + bootstrap token
+plugin supervisor -> logging + generated private plugin contracts
 http -> config + database + lifecycle + authentication
 ```
 
-`src/main.ts` launches the root Effect once and selects process exit status. `src/app.ts` owns graph construction and startup ordering. Runtime responsibilities live under `src/config/`, `src/logging/`, `src/database/`, `src/setup/`, `src/authentication/`, `src/lifecycle/`, and `src/http/`; generated-contract policy lives independently under `src/contracts/`. Fallow covers every TypeScript file and enforces this acyclic direction.
+`src/main.ts` launches the root Effect once and selects process exit status. `src/app.ts` owns graph construction and startup ordering. Runtime responsibilities live under `src/config/`, `src/logging/`, `src/database/`, `src/setup/`, `src/authentication/`, `src/lifecycle/`, `src/plugins/`, and `src/http/`; generated-contract policy lives independently under `src/contracts/`. Fallow covers every TypeScript file and enforces this acyclic direction.
 
 Organize server code by concrete responsibility, not technical layer or file size. Split an owner only when it has independently changing responsibilities; there is no line-count limit. Keep `database/` cohesive until implemented behavior proves another owner is needed. Imports name concrete modules; do not add `index.ts` barrels.
 
-Keep validation, overlay mapping, route decisions, error classification, and state transitions beside their owner. Do not create generic `core`, `utils`, `shared`, `repositories`, `interfaces`, or central error modules. Introduce an interface only when a second real implementation exists.
+Keep validation, overlay mapping, route decisions, and state transitions beside their owner. Do not create generic `core`, `utils`, `shared`, `repositories`, `interfaces`, or central error modules. Introduce an interface only when a second real implementation exists.
 
-Exports stay minimal. Raw TOML, environment snapshots, parser errors, `pg.Pool`, Drizzle migration internals, request fibers, and sockets remain private. Tests must not widen production seams: behavior tests and support live in the `tests/` subdirectory of the smallest `src/` owner, while only disposable-PostgreSQL and real-process behavior lives under `integration/tests/`. Production modules never import test support.
+Exports stay minimal. Raw TOML, environment snapshots, parser errors, `pg.Pool`, Drizzle migration internals, request fibers, bearer material, and sockets remain private. Tests must not widen production seams: behavior tests and support live in the `tests/` subdirectory of the smallest `src/` owner, while only disposable-PostgreSQL and real-process behavior lives under `integration/tests/`. Production modules never import test support.
 
 ## Invariants
 
@@ -213,6 +214,7 @@ mark accepting false
   -> interrupt remaining request Effects
   -> force-close remaining HTTP connections
   -> dispose the request ManagedRuntime
+  -> terminate and reap supervised plugin process groups, remove socket artifacts and runtime root
   -> close the PostgreSQL pool
   -> emit server.stopped after the full resource graph finalizes successfully
 ```
