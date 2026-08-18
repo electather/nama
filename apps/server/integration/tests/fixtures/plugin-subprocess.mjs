@@ -109,12 +109,12 @@ if (
   });
   process.exit(17);
 }
-if (mode === "wait-start") {
-  const continuePath = join(controlDirectory, "continue");
+const waitForControlFile = async (filename) => {
+  const controlPath = join(controlDirectory, filename);
   while (true) {
     try {
-      await stat(continuePath);
-      break;
+      await stat(controlPath);
+      return;
     } catch (error) {
       if (error?.code !== "ENOENT") {
         throw error;
@@ -124,22 +124,20 @@ if (mode === "wait-start") {
       await delay.promise;
     }
   }
+};
+
+if (mode === "wait-start" || mode === "wait-start-cleanup-failure") {
+  if (mode === "wait-start-cleanup-failure") {
+    const failCleanup = async () => {
+      await chmod(dirname(dirname(envelope.socket_path)), 0o500);
+      process.exit(0);
+    };
+    process.once("SIGTERM", () => void failCleanup());
+  }
+  await waitForControlFile("continue");
 }
 if (mode === "wait-recovery" && launchNumber > 1) {
-  const continuePath = join(controlDirectory, "recovery-continue");
-  while (true) {
-    try {
-      await stat(continuePath);
-      break;
-    } catch (error) {
-      if (error?.code !== "ENOENT") {
-        throw error;
-      }
-      const delay = Promise.withResolvers();
-      setTimeout(delay.resolve, 10);
-      await delay.promise;
-    }
-  }
+  await waitForControlFile("recovery-continue");
 }
 
 if (mode === "regular-socket") {

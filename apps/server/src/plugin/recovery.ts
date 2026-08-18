@@ -1,4 +1,4 @@
-import { Effect, Fiber } from "effect";
+import { Deferred, Effect, Exit } from "effect";
 
 import { stopPlugin } from "./cleanup.ts";
 import { HEALTHY_EPISODE_RESET_MILLISECONDS } from "./constants.ts";
@@ -6,18 +6,17 @@ import { unavailable } from "./errors.ts";
 import type { PluginUnavailableFailure } from "./errors.ts";
 import { recoverPlugin } from "./launch.ts";
 import type { RecoveryPluginOptions, RecoveryResult } from "./launch.ts";
-import { pluginLifecycleMessage } from "./logging.ts";
+import { pluginProcessExitLog } from "./logging.ts";
 import { ABSENT_PLUGIN } from "./model.ts";
 import type {
   PluginHandleState,
   PluginLaunchDescriptor,
   PluginLogEmitter,
   PluginSpawnProcess,
-  ProcessExit,
   RunningPlugin,
 } from "./model.ts";
 
-const SINGLE_RECOVERY_PERMIT = 1;
+const SINGLE_LIFECYCLE_PERMIT = 1;
 const NO_RECOVERY_DELAY_MILLISECONDS = 0;
 
 interface RecoveryOptions {
@@ -32,12 +31,21 @@ interface BeginRecoveryOptions extends RecoveryOptions {
   readonly graceMilliseconds: number;
   readonly plugin: RunningPlugin;
 }
+interface PluginRecoveryStart {
+  readonly graceMilliseconds: number;
+  readonly options: RecoveryOptions;
+  readonly prior: RunningPlugin | typeof ABSENT_PLUGIN;
+  readonly state: PluginHandleState;
+}
 
+interface RecoveryEpisode extends PluginRecoveryStart {
+  readonly owner: symbol;
+  readonly priorLaunches: number;
+}
+
+type RecoveryCompletion = Deferred.Deferred<RunningPlugin, PluginUnavailableFailure>;
 type RunningPluginSelection =
-  | Readonly<{
-      readonly fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>;
-      readonly kind: "recovery";
-    }>
+  | Readonly<{ readonly completion: RecoveryCompletion; readonly kind: "recovery" }>
   | Readonly<{ readonly kind: "ready"; readonly plugin: RunningPlugin }>;
 
 const stopPriorPlugin = (
@@ -64,101 +72,123 @@ const forkPluginWatchers = (
 };
 
 const markPluginRecovered = (
-  state: PluginHandleState,
-  options: RecoveryOptions,
-  result: Readonly<{ readonly launchesInEpisode: number; readonly plugin: RunningPlugin }>,
-): Effect.Effect<void> =>
-  Effect.gen(function* markPluginRecovery() {
-    state.current = result.plugin;
-    state.launchesInEpisode = result.launchesInEpisode;
-    state.unhealthy = false;
-    yield* forkPluginWatchers(state, options, result.plugin);
-  });
-
-const recoveryProcess = (
-  state: PluginHandleState,
-  options: RecoveryOptions,
-  graceMilliseconds: number,
+  episode: RecoveryEpisode,
+  result: RecoveryResult,
 ): Effect.Effect<RunningPlugin, PluginUnavailableFailure> => {
-  const recoveryOptions: RecoveryPluginOptions = {
-    descriptor: options.descriptor,
-    effectiveUserId: options.effectiveUserId,
-    emit: options.emit,
-    priorLaunches: state.launchesInEpisode,
-    runtimeRoot: options.runtimeRoot,
-    spawnProcess: options.spawnProcess,
-  };
-  const launch: Effect.Effect<RecoveryResult, PluginUnavailableFailure> =
-    recoverPlugin(recoveryOptions);
-  return stopPriorPlugin(state.current, graceMilliseconds).pipe(
-    Effect.andThen(launch),
-    Effect.tap((result) => markPluginRecovered(state, options, result)),
-    Effect.map((result) => result.plugin),
-    Effect.tapError((failure) =>
-      Effect.sync(() => {
-        state.terminal = failure;
-      }),
-    ),
-    Effect.onExit(() =>
-      Effect.sync(() => {
-        state.recoveryFiber = undefined;
-      }),
-    ),
+  const { options, owner, state } = episode;
+  return state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
+    Effect.suspend(() => {
+      const { lifecycle } = state;
+      if (lifecycle.kind !== "recovering" || lifecycle.owner !== owner) {
+        return Effect.fail(unavailable("plugin_exited"));
+      }
+      state.launchesInEpisode = result.launchesInEpisode;
+      state.lifecycle = { kind: "ready", plugin: result.plugin };
+      return forkPluginWatchers(state, options, result.plugin).pipe(Effect.as(result.plugin));
+    }),
   );
 };
 
-const forkPluginRecovery = (
-  state: PluginHandleState,
-  options: RecoveryOptions,
-  graceMilliseconds: number,
-): Effect.Effect<Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>> =>
-  Effect.gen(function* forkPluginRecoveryProcess() {
-    state.unhealthy = true;
-    const recovery = recoveryProcess(state, options, graceMilliseconds);
-    const fiber = yield* Effect.forkIn(recovery, state.scope);
-    state.recoveryFiber = fiber;
-    return fiber;
+const markPluginRecoveryFailed = (
+  episode: RecoveryEpisode,
+  failure: PluginUnavailableFailure,
+): Effect.Effect<void> => {
+  const { owner, prior, state } = episode;
+  return state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
+    Effect.sync(() => {
+      const { lifecycle } = state;
+      if (lifecycle.kind === "recovering" && lifecycle.owner === owner) {
+        state.lifecycle = { failure, kind: "terminal", plugin: prior };
+      }
+    }),
+  );
+};
+
+const releaseUncommittedRecovery = (
+  result: RecoveryResult,
+  exit: Exit.Exit<RunningPlugin, PluginUnavailableFailure>,
+): Effect.Effect<void> => {
+  if (Exit.isSuccess(exit)) {
+    return Effect.void;
+  }
+  return stopPlugin(result.plugin).pipe(Effect.orDie);
+};
+
+const recoveryProcess = (
+  episode: RecoveryEpisode,
+): Effect.Effect<RunningPlugin, PluginUnavailableFailure> => {
+  const { graceMilliseconds, options, prior, priorLaunches } = episode;
+  const { descriptor, effectiveUserId, emit, runtimeRoot, spawnProcess } = options;
+  const recoveryOptions: RecoveryPluginOptions = {
+    descriptor,
+    effectiveUserId,
+    emit,
+    priorLaunches,
+    runtimeRoot,
+    spawnProcess,
+  };
+  const launch = stopPriorPlugin(prior, graceMilliseconds).pipe(
+    Effect.andThen(recoverPlugin(recoveryOptions)),
+  );
+  return Effect.uninterruptibleMask((restore) => {
+    const acquire = restore(launch);
+    const use = (result: RecoveryResult) =>
+      Effect.uninterruptible(markPluginRecovered(episode, result));
+    return Effect.acquireUseRelease(acquire, use, releaseUncommittedRecovery).pipe(
+      Effect.tapError((failure) => markPluginRecoveryFailed(episode, failure)),
+    );
   });
+};
+
+const forkPluginRecovery = ({
+  graceMilliseconds,
+  options,
+  prior,
+  state,
+}: PluginRecoveryStart): Effect.Effect<RecoveryCompletion> =>
+  Effect.uninterruptible(
+    Effect.gen(function* forkPluginRecoveryProcess() {
+      const completion = yield* Deferred.make<RunningPlugin, PluginUnavailableFailure>();
+      const episode: RecoveryEpisode = {
+        graceMilliseconds,
+        options,
+        owner: Symbol("plugin-recovery"),
+        prior,
+        priorLaunches: state.launchesInEpisode,
+        state,
+      };
+      const recovery = recoveryProcess(episode).pipe(
+        Effect.onExit((exit) => Deferred.done(completion, exit).pipe(Effect.asVoid)),
+      );
+      const fiber = yield* Effect.forkDetach(recovery, { startImmediately: false });
+      state.lifecycle = {
+        completion,
+        fiber,
+        kind: "recovering",
+        owner: episode.owner,
+        prior,
+      };
+      return completion;
+    }),
+  );
 
 const beginPluginRecovery = (
   state: PluginHandleState,
   options: BeginRecoveryOptions,
 ): Effect.Effect<void> =>
-  state.recoveryLock.withPermits(SINGLE_RECOVERY_PERMIT)(
+  state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
     Effect.suspend(() => {
-      if (
-        state.terminal !== undefined ||
-        state.current !== options.plugin ||
-        state.recoveryFiber !== undefined
-      ) {
+      const { lifecycle } = state;
+      if (lifecycle.kind !== "ready" || lifecycle.plugin !== options.plugin) {
         return Effect.void;
       }
-      return forkPluginRecovery(state, options, options.graceMilliseconds).pipe(Effect.asVoid);
+      return forkPluginRecovery({
+        graceMilliseconds: options.graceMilliseconds,
+        options,
+        prior: lifecycle.plugin,
+        state,
+      }).pipe(Effect.asVoid);
     }),
-  );
-
-const processExitFields = (
-  processExit: ProcessExit,
-): {
-  exitCode?: number;
-  signal?: NodeJS.Signals;
-} => {
-  const fields: { exitCode?: number; signal?: NodeJS.Signals } = {};
-  if (processExit.code !== null) {
-    fields.exitCode = processExit.code;
-  }
-  if (processExit.signal !== null) {
-    fields.signal = processExit.signal;
-  }
-  return fields;
-};
-
-const processExitLogEffect = (
-  descriptor: PluginLaunchDescriptor,
-  processExit: ProcessExit,
-): Effect.Effect<void> =>
-  Effect.logWarning(
-    pluginLifecycleMessage(descriptor, "plugin.process_exited", processExitFields(processExit)),
   );
 
 const forkPluginExitWatcher = (
@@ -171,44 +201,46 @@ const forkPluginExitWatcher = (
       if (plugin.requestedStop) {
         return Effect.void;
       }
-      options.emit(processExitLogEffect(options.descriptor, processExit));
+      options.emit(pluginProcessExitLog(options.descriptor, processExit));
       return beginPluginRecovery(state, {
         ...options,
         graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
         plugin,
       });
     }),
-    Effect.forkIn(state.scope),
+    Effect.forkIn(state.scope, { startImmediately: false }),
     Effect.asVoid,
   );
 
 const forkHealthyEpisodeReset = (
   state: PluginHandleState,
   plugin: RunningPlugin,
-): Effect.Effect<void> =>
-  Effect.sleep(HEALTHY_EPISODE_RESET_MILLISECONDS).pipe(
-    Effect.andThen(
-      Effect.sync(() => {
-        if (
-          state.current === plugin &&
-          !state.unhealthy &&
-          state.terminal === undefined &&
-          plugin.child.exitCode === null &&
-          plugin.child.signalCode === null
-        ) {
-          state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
-        }
-      }),
-    ),
-    Effect.forkIn(state.scope),
+): Effect.Effect<void> => {
+  const resetEpisode = state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
+    Effect.sync(() => {
+      const { lifecycle } = state;
+      if (
+        lifecycle.kind === "ready" &&
+        lifecycle.plugin === plugin &&
+        plugin.child.exitCode === null &&
+        plugin.child.signalCode === null
+      ) {
+        state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
+      }
+    }),
+  );
+  return Effect.sleep(HEALTHY_EPISODE_RESET_MILLISECONDS).pipe(
+    Effect.andThen(resetEpisode),
+    Effect.forkIn(state.scope, { startImmediately: false }),
     Effect.asVoid,
   );
+};
 
 const awaitRecoverySelection = (
   selection: RunningPluginSelection,
 ): Effect.Effect<RunningPlugin, PluginUnavailableFailure> => {
   if (selection.kind === "recovery") {
-    return Fiber.join(selection.fiber);
+    return Deferred.await(selection.completion);
   }
   return Effect.succeed(selection.plugin);
 };
@@ -217,32 +249,49 @@ const ensureRunningPlugin = (
   state: PluginHandleState,
   options: RecoveryOptions,
 ): Effect.Effect<RunningPlugin, PluginUnavailableFailure> =>
-  state.recoveryLock
-    .withPermits(SINGLE_RECOVERY_PERMIT)(
+  state.lifecycleSemaphore
+    .withPermits(SINGLE_LIFECYCLE_PERMIT)(
       Effect.suspend<RunningPluginSelection, PluginUnavailableFailure, never>(() => {
-        if (state.closed) {
-          return Effect.fail(unavailable("plugin_exited"));
+        const { lifecycle } = state;
+        switch (lifecycle.kind) {
+          case "absent": {
+            return forkPluginRecovery({
+              graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
+              options,
+              prior: ABSENT_PLUGIN,
+              state,
+            }).pipe(Effect.map((completion) => ({ completion, kind: "recovery" as const })));
+          }
+          case "closed": {
+            return Effect.fail(unavailable("plugin_exited"));
+          }
+          case "recovering": {
+            return Effect.succeed({ completion: lifecycle.completion, kind: "recovery" });
+          }
+          case "terminal": {
+            return Effect.fail(lifecycle.failure);
+          }
+          case "ready": {
+            if (
+              lifecycle.plugin.child.exitCode === null &&
+              lifecycle.plugin.child.signalCode === null
+            ) {
+              return Effect.succeed({ kind: "ready", plugin: lifecycle.plugin });
+            }
+            return forkPluginRecovery({
+              graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
+              options,
+              prior: lifecycle.plugin,
+              state,
+            }).pipe(Effect.map((completion) => ({ completion, kind: "recovery" as const })));
+          }
+          default: {
+            return lifecycle satisfies never;
+          }
         }
-        if (state.terminal !== undefined) {
-          return Effect.fail(state.terminal);
-        }
-        if (state.recoveryFiber !== undefined) {
-          return Effect.succeed({ fiber: state.recoveryFiber, kind: "recovery" });
-        }
-        if (
-          state.current !== ABSENT_PLUGIN &&
-          !state.unhealthy &&
-          state.current.child.exitCode === null &&
-          state.current.child.signalCode === null
-        ) {
-          return Effect.succeed({ kind: "ready", plugin: state.current });
-        }
-        return forkPluginRecovery(state, options, NO_RECOVERY_DELAY_MILLISECONDS).pipe(
-          Effect.map((fiber) => ({ fiber, kind: "recovery" as const })),
-        );
       }),
     )
     .pipe(Effect.flatMap((selection) => awaitRecoverySelection(selection)));
 
-export { beginPluginRecovery, ensureRunningPlugin, forkPluginRecovery };
+export { beginPluginRecovery, ensureRunningPlugin };
 export type { BeginRecoveryOptions, RecoveryOptions };

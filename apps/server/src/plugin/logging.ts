@@ -3,7 +3,7 @@ import type { Readable } from "node:stream";
 import { Effect } from "effect";
 
 import type { EventMessage } from "../logging/record.ts";
-import type { PluginLaunchDescriptor, PluginLogEmitter } from "./model.ts";
+import type { PluginLaunchDescriptor, PluginLogEmitter, ProcessExit } from "./model.ts";
 import { makePluginStderrParser } from "./stderr.ts";
 import type { AcceptedPluginStderrRecord } from "./stderr.ts";
 
@@ -41,6 +41,19 @@ const pluginLifecycleMessage = (
   event: string,
   fields: Readonly<Pick<EventMessage, "exitCode" | "recoveryAttempt" | "signal">> = {},
 ): EventMessage => ({ ...pluginLogMessage(descriptor, event), ...fields });
+const pluginProcessExitLog = (
+  descriptor: PluginLaunchDescriptor,
+  processExit: ProcessExit,
+): Effect.Effect<void> => {
+  const fields: { exitCode?: number; signal?: NodeJS.Signals } = {};
+  if (processExit.code !== null) {
+    fields.exitCode = processExit.code;
+  }
+  if (processExit.signal !== null) {
+    fields.signal = processExit.signal;
+  }
+  return Effect.logWarning(pluginLifecycleMessage(descriptor, "plugin.process_exited", fields));
+};
 
 const emitPluginStderrRecord = (
   emit: PluginLogEmitter,
@@ -85,4 +98,4 @@ const attachPluginStderr = (
   });
 };
 
-export { attachPluginStderr, pluginLifecycleMessage };
+export { attachPluginStderr, pluginLifecycleMessage, pluginProcessExitLog };
