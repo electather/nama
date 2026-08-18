@@ -7,7 +7,7 @@ import type {
   MessageShape,
 } from "@bufbuild/protobuf";
 import type { Transport } from "@connectrpc/connect";
-import type { Effect, Fiber, Scope, Semaphore } from "effect";
+import type { Deferred, Effect, Fiber, Scope, Semaphore } from "effect";
 
 import type {
   PluginDeadlineFailure,
@@ -67,16 +67,28 @@ interface AcquiredPluginProcess {
   readonly launched: Promise<void>;
   readonly plugin: RunningPlugin;
 }
+type PluginLifecycleState =
+  | Readonly<{ readonly kind: "absent" }>
+  | Readonly<{ readonly kind: "closed" }>
+  | Readonly<{
+      readonly completion: Deferred.Deferred<RunningPlugin, PluginUnavailableFailure>;
+      readonly fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>;
+      readonly kind: "recovering";
+      readonly owner: symbol;
+      readonly prior: RunningPlugin | typeof ABSENT_PLUGIN;
+    }>
+  | Readonly<{ readonly kind: "ready"; readonly plugin: RunningPlugin }>
+  | Readonly<{
+      readonly failure: PluginUnavailableFailure;
+      readonly kind: "terminal";
+      readonly plugin: RunningPlugin | typeof ABSENT_PLUGIN;
+    }>;
 
 interface PluginHandleState {
-  closed: boolean;
-  current: RunningPlugin | typeof ABSENT_PLUGIN;
   launchesInEpisode: number;
-  readonly recoveryLock: Semaphore.Semaphore;
-  recoveryFiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure> | undefined;
+  lifecycle: PluginLifecycleState;
+  readonly lifecycleSemaphore: Semaphore.Semaphore;
   readonly scope: Scope.Scope;
-  terminal: PluginUnavailableFailure | undefined;
-  unhealthy: boolean;
 }
 
 type PluginSpawnProcess = typeof spawn | undefined;
@@ -89,6 +101,7 @@ export { ABSENT_PLUGIN };
 export type {
   AcquiredPluginProcess,
   PluginHandleState,
+  PluginLifecycleState,
   PluginLaunchDescriptor,
   PluginLogEmitter,
   PluginSpawnProcess,

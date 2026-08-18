@@ -4,12 +4,13 @@ import type {
   MessageInitShape,
   MessageShape,
 } from "@bufbuild/protobuf";
-import { Effect, Exit, Fiber, Semaphore } from "effect";
+import { Cause, Effect, Exit, Fiber, Semaphore } from "effect";
 import type { Scope } from "effect";
 
 import { callSupervisedPlugin } from "./call.ts";
 import type { PluginCallFailure, SupervisedCall } from "./call.ts";
 import { stopPlugin } from "./cleanup.ts";
+import { PluginSupervisorCleanupError } from "./errors.ts";
 import type { PluginSupervisorCleanupFailure, PluginUnavailableFailure } from "./errors.ts";
 import { ABSENT_PLUGIN } from "./model.ts";
 import type {
@@ -18,13 +19,22 @@ import type {
   PluginLogEmitter,
   PluginSpawnProcess,
   PluginSupervisorService,
+  RunningPlugin,
   SupervisedPlugin,
 } from "./model.ts";
-import { forkPluginRecovery } from "./recovery.ts";
 import { validatePluginDescriptor } from "./validation.ts";
 
 const INITIAL_LAUNCH_COUNT = 0;
-const RECOVERY_LOCK_PERMITS = 1;
+const LIFECYCLE_SEMAPHORE_PERMITS = 1;
+
+type PluginHandleCloseSelection =
+  | Readonly<{ readonly kind: "none" }>
+  | Readonly<{ readonly kind: "plugin"; readonly plugin: RunningPlugin }>
+  | Readonly<{
+      readonly fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>;
+      readonly kind: "recovery";
+      readonly prior: RunningPlugin | typeof ABSENT_PLUGIN;
+    }>;
 
 interface PluginSupervisorOptions {
   readonly activeHandles: Set<PluginHandleState>;
@@ -34,23 +44,92 @@ interface PluginSupervisorOptions {
   readonly spawnProcess: PluginSpawnProcess;
 }
 
+const selectTerminalPluginClose = (
+  plugin: RunningPlugin | typeof ABSENT_PLUGIN,
+): PluginHandleCloseSelection => {
+  if (plugin === ABSENT_PLUGIN) {
+    return { kind: "none" };
+  }
+  return { kind: "plugin", plugin };
+};
+const interruptPluginRecovery = (
+  fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>,
+): Effect.Effect<void, PluginSupervisorCleanupFailure> =>
+  Fiber.interrupt(fiber).pipe(
+    Effect.andThen(Fiber.await(fiber)),
+    Effect.flatMap((exit) => {
+      if (Exit.isFailure(exit) && Cause.hasDies(exit.cause)) {
+        return Effect.fail(new PluginSupervisorCleanupError());
+      }
+      return Effect.void;
+    }),
+  );
+
+const selectPluginHandleClose = (state: PluginHandleState): PluginHandleCloseSelection => {
+  const { lifecycle } = state;
+  state.lifecycle = { kind: "closed" };
+  if (lifecycle.kind === "absent" || lifecycle.kind === "closed") {
+    return { kind: "none" };
+  }
+  switch (lifecycle.kind) {
+    case "ready": {
+      return { kind: "plugin", plugin: lifecycle.plugin };
+    }
+    case "recovering": {
+      return {
+        fiber: lifecycle.fiber,
+        kind: "recovery",
+        prior: lifecycle.prior,
+      };
+    }
+    case "terminal": {
+      return selectTerminalPluginClose(lifecycle.plugin);
+    }
+    default: {
+      return lifecycle satisfies never;
+    }
+  }
+};
+
+const closeSelectedPlugin = (
+  selection: PluginHandleCloseSelection,
+): Effect.Effect<void, PluginSupervisorCleanupFailure> => {
+  switch (selection.kind) {
+    case "none": {
+      return Effect.void;
+    }
+    case "plugin": {
+      return stopPlugin(selection.plugin);
+    }
+    case "recovery": {
+      const interruptRecovery = interruptPluginRecovery(selection.fiber);
+      const { prior } = selection;
+      if (prior === ABSENT_PLUGIN) {
+        return interruptRecovery;
+      }
+      return Effect.gen(function* closeRecoveryAndPriorPlugin() {
+        const recoveryExit = yield* interruptRecovery.pipe(Effect.exit);
+        const priorExit = yield* stopPlugin(prior).pipe(Effect.exit);
+        if (Exit.isFailure(recoveryExit)) {
+          yield* Effect.failCause(recoveryExit.cause);
+        }
+        if (Exit.isFailure(priorExit)) {
+          yield* Effect.failCause(priorExit.cause);
+        }
+      });
+    }
+    default: {
+      return selection satisfies never;
+    }
+  }
+};
+
 const closePluginHandle = (
   state: PluginHandleState,
 ): Effect.Effect<void, PluginSupervisorCleanupFailure> =>
-  Effect.suspend(() => {
-    if (state.closed) {
-      return Effect.void;
-    }
-    state.closed = true;
-    return Effect.gen(function* closeSupervisedPlugin() {
-      if (state.recoveryFiber !== undefined) {
-        yield* Fiber.interrupt(state.recoveryFiber);
-      }
-      if (state.current !== ABSENT_PLUGIN) {
-        yield* stopPlugin(state.current);
-      }
-    });
-  });
+  state.lifecycleSemaphore
+    .withPermits(LIFECYCLE_SEMAPHORE_PERMITS)(Effect.sync(() => selectPluginHandleClose(state)))
+    .pipe(Effect.flatMap(closeSelectedPlugin));
 
 const closeActivePluginHandles = (
   activeHandles: ReadonlySet<PluginHandleState>,
@@ -68,25 +147,19 @@ const closeActivePluginHandles = (
   );
 
 const newPluginHandleState = (scope: PluginHandleState["scope"]): PluginHandleState => ({
-  closed: false,
-  current: ABSENT_PLUGIN,
   launchesInEpisode: INITIAL_LAUNCH_COUNT,
-  recoveryFiber: undefined,
-  recoveryLock: Semaphore.makeUnsafe(RECOVERY_LOCK_PERMITS),
+  lifecycle: { kind: "absent" },
+  lifecycleSemaphore: Semaphore.makeUnsafe(LIFECYCLE_SEMAPHORE_PERMITS),
   scope,
-  terminal: undefined,
-  unhealthy: true,
 });
 
 const acquirePluginHandle = (
   options: PluginSupervisorOptions,
-  descriptor: PluginLaunchDescriptor,
 ): Effect.Effect<PluginHandleState, never, Scope.Scope> =>
   Effect.gen(function* acquirePluginHandleEffect() {
     const scope = yield* Effect.scope;
     const state = newPluginHandleState(scope);
     options.activeHandles.add(state);
-    yield* forkPluginRecovery(state, { ...options, descriptor }, INITIAL_LAUNCH_COUNT);
     return state;
   });
 
@@ -122,11 +195,8 @@ const makeSupervisedPlugin = (
     },
   });
 
-const pluginHandleResource = (
-  options: PluginSupervisorOptions,
-  descriptor: PluginLaunchDescriptor,
-) =>
-  Effect.acquireRelease(acquirePluginHandle(options, descriptor), (state) =>
+const pluginHandleResource = (options: PluginSupervisorOptions) =>
+  Effect.acquireRelease(acquirePluginHandle(options), (state) =>
     releasePluginHandle(options, state),
   );
 
@@ -135,7 +205,7 @@ const supervisePlugin = (
   descriptor: PluginLaunchDescriptor,
 ): Effect.Effect<SupervisedPlugin, PluginUnavailableFailure, Scope.Scope> =>
   validatePluginDescriptor(descriptor, options.effectiveUserId).pipe(
-    Effect.andThen(pluginHandleResource(options, descriptor)),
+    Effect.andThen(pluginHandleResource(options)),
     Effect.map((state) => makeSupervisedPlugin(state, options, descriptor)),
   );
 
