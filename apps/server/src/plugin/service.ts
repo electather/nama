@@ -147,6 +147,8 @@ const closeActivePluginHandles = (
   );
 
 const newPluginHandleState = (scope: PluginHandleState["scope"]): PluginHandleState => ({
+  activeDemand: 0,
+  idleTimer: undefined,
   launchesInEpisode: INITIAL_LAUNCH_COUNT,
   lifecycle: { kind: "absent" },
   lifecycleSemaphore: Semaphore.makeUnsafe(LIFECYCLE_SEMAPHORE_PERMITS),

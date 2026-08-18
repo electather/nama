@@ -298,6 +298,178 @@ it.live("launches the authenticated fixture without ambient authority", () =>
   ),
 );
 
+it.effect("retires a ready plugin after 30 idle seconds and starts a fresh incarnation", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* idleRetirementTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (firstLaunch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+
+        yield* TestClock.adjust(29_999);
+        expect(() => process.kill(firstLaunch.pid, 0)).not.toThrow();
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+
+        yield* TestClock.adjust(1);
+        const response = yield* plugin.call(
+          PluginService.method.getConnection,
+          {},
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        const launches = yield* readLaunchRecords(controlDirectory);
+        const secondLaunch = launches[1];
+        if (secondLaunch === undefined) {
+          return yield* Effect.die("replacement launch record missing");
+        }
+        const retiredLaunchFailure = yield* Effect.tryPromise({
+          catch: (error) => error,
+          try: () => lstat(dirname(firstLaunch.socketPath)),
+        }).pipe(Effect.flip);
+
+        expect(response.connection?.status).toBe(1);
+        expect(launches).toHaveLength(2);
+        expect(secondLaunch.bearer).not.toBe(firstLaunch.bearer);
+        expect(secondLaunch.socketPath).not.toBe(firstLaunch.socketPath);
+        expect(retiredLaunchFailure).toMatchObject({ code: "ENOENT" });
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.effect("resets the full idle interval when demand returns before expiry", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* idleResetTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (firstLaunch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+
+        yield* TestClock.adjust(29_999);
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        yield* TestClock.adjust(29_999);
+
+        expect(() => process.kill(firstLaunch.pid, 0)).not.toThrow();
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+
+        yield* TestClock.adjust(1);
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(2);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.effect("keeps a blocked call alive and starts the idle interval after interruption", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* blockedDemandTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(
+          fixtureDescriptor(controlDirectory, "block-first-connection"),
+        );
+        const blockedCall = yield* Effect.forkChild(
+          plugin.call(PluginService.method.getConnection, {}, 120_000),
+        );
+        yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1);
+        const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (firstLaunch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+
+        yield* TestClock.adjust(30_000);
+        expect(() => process.kill(firstLaunch.pid, 0)).not.toThrow();
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+
+        yield* Fiber.interrupt(blockedCall);
+        yield* awaitFileLineCount(controlDirectory, "cancellations.ndjson", 1);
+        yield* TestClock.adjust(29_999);
+        expect(() => process.kill(firstLaunch.pid, 0)).not.toThrow();
+
+        yield* TestClock.adjust(1);
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(2);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.effect("starts the idle interval after a plugin RPC failure", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* failedDemandTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(
+          fixtureDescriptor(controlDirectory, "rpc-not-found"),
+        );
+        const failure = yield* plugin
+          .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
+          .pipe(Effect.flip);
+
+        expect(failure).toMatchObject({ _tag: "PluginRpcError", code: Code.NotFound });
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+
+        yield* TestClock.adjust(30_000);
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(2);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.effect("starts the idle interval after a plugin RPC deadline", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* deadlineDemandTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(
+          fixtureDescriptor(controlDirectory, "block-first-connection"),
+        );
+        const blockedCall = yield* Effect.forkChild(
+          plugin.call(PluginService.method.getConnection, {}, 100),
+        );
+        yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1);
+        const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (firstLaunch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+
+        yield* TestClock.adjust(100);
+        expect(yield* Fiber.join(blockedCall).pipe(Effect.flip)).toMatchObject({
+          _tag: "PluginDeadlineExceeded",
+        });
+        yield* awaitFileLineCount(controlDirectory, "cancellations.ndjson", 1);
+
+        yield* TestClock.adjust(1000);
+        yield* awaitProcessExit(firstLaunch.pid);
+        yield* Effect.yieldNow;
+        yield* TestClock.adjust(99);
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+        yield* TestClock.adjust(1);
+        yield* TestClock.adjust(100);
+        const recoveryLaunches = yield* awaitLaunchCount(controlDirectory, 2);
+        const recoveredLaunch = recoveryLaunches[1];
+        if (recoveredLaunch === undefined) {
+          return yield* Effect.die("recovery launch record missing");
+        }
+        yield* TestClock.adjust(28_799);
+        expect(() => process.kill(recoveredLaunch.pid, 0)).not.toThrow();
+
+        yield* TestClock.adjust(1);
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(3);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
 it.live("recovers a killed ready plugin with fresh launch authority", () =>
   withControlDirectory((controlDirectory) =>
     Effect.scoped(
@@ -1014,7 +1186,11 @@ it.effect("resets the three-launch recovery budget after 60 healthy seconds", ()
           return yield* Effect.die("fixture launch record missing");
         }
 
-        yield* TestClock.adjust(60_000);
+        yield* TestClock.adjust(29_999);
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        yield* TestClock.adjust(29_999);
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        yield* TestClock.adjust(2);
         process.kill(firstLaunch.pid, "SIGKILL");
         yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
         yield* TestClock.adjust(100);

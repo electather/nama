@@ -13,12 +13,12 @@ import type {
   PluginRpcFailure,
   PluginUnavailableFailure,
 } from "./errors.ts";
+import { beginPluginRecovery, ensureRunningPlugin, withPluginDemand } from "./lifecycle.ts";
+import type { BeginRecoveryOptions, RecoveryOptions } from "./lifecycle.ts";
 import { pluginLifecycleMessage } from "./logging.ts";
 import { ABSENT_PLUGIN } from "./model.ts";
 import type { PluginHandleState, RunningPlugin } from "./model.ts";
 import { callPlugin } from "./protocol.ts";
-import { beginPluginRecovery, ensureRunningPlugin } from "./recovery.ts";
-import type { BeginRecoveryOptions, RecoveryOptions } from "./recovery.ts";
 
 const NON_POSITIVE_DEADLINE_MILLISECONDS = 0;
 
@@ -57,7 +57,7 @@ const callWithDeadline = <Input extends DescMessage, Output extends DescMessage>
   );
   const deadlineExceeded = Effect.fail(new PluginDeadlineExceeded());
   const deadline = Effect.sleep(deadlineMilliseconds).pipe(Effect.andThen(deadlineExceeded));
-  return Effect.raceFirst(operation, deadline).pipe(
+  return Effect.raceFirst(withPluginDemand(state, operation), deadline).pipe(
     Effect.tapError((failure) =>
       recoverFromCallFailure({ failure, options, selectedPlugin, state }),
     ),
