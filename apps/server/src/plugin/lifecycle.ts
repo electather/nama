@@ -1,7 +1,8 @@
-import { Deferred, Effect, Exit } from "effect";
+// oxlint-disable eslint/max-lines -- Demand, recovery, and retirement transitions stay with their shared lifecycle semaphore.
+import { Deferred, Effect, Exit, Fiber } from "effect";
 
 import { stopPlugin } from "./cleanup.ts";
-import { HEALTHY_EPISODE_RESET_MILLISECONDS } from "./constants.ts";
+import { HEALTHY_EPISODE_RESET_MILLISECONDS, PLUGIN_IDLE_GRACE_MILLISECONDS } from "./constants.ts";
 import { unavailable } from "./errors.ts";
 import type { PluginUnavailableFailure } from "./errors.ts";
 import { recoverPlugin } from "./launch.ts";
@@ -18,6 +19,7 @@ import type {
 
 const SINGLE_LIFECYCLE_PERMIT = 1;
 const NO_RECOVERY_DELAY_MILLISECONDS = 0;
+const NO_ACTIVE_DEMAND = 0;
 
 interface RecoveryOptions {
   readonly descriptor: PluginLaunchDescriptor;
@@ -47,6 +49,116 @@ type RecoveryCompletion = Deferred.Deferred<RunningPlugin, PluginUnavailableFail
 type RunningPluginSelection =
   | Readonly<{ readonly completion: RecoveryCompletion; readonly kind: "recovery" }>
   | Readonly<{ readonly kind: "ready"; readonly plugin: RunningPlugin }>;
+
+const selectIdlePluginProcess = (
+  lifecycle: PluginHandleState["lifecycle"],
+): RunningPlugin | typeof ABSENT_PLUGIN => {
+  switch (lifecycle.kind) {
+    case "ready":
+    case "terminal": {
+      return lifecycle.plugin;
+    }
+    case "absent":
+    case "closed":
+    case "recovering": {
+      return ABSENT_PLUGIN;
+    }
+    default: {
+      return lifecycle satisfies never;
+    }
+  }
+};
+
+const retireIdlePlugin = (state: PluginHandleState, owner: symbol): Effect.Effect<void> =>
+  state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
+    // oxlint-disable-next-line eslint/max-statements -- Retirement validates timer ownership and lifecycle state under one semaphore.
+    Effect.suspend(() => {
+      if (
+        state.activeDemand !== NO_ACTIVE_DEMAND ||
+        state.idleTimer === undefined ||
+        state.idleTimer.owner !== owner
+      ) {
+        return Effect.void;
+      }
+      const { lifecycle } = state;
+      if (lifecycle.kind === "closed") {
+        state.idleTimer = undefined;
+        return Effect.void;
+      }
+      if (lifecycle.kind === "recovering") {
+        return Effect.void;
+      }
+      const resetLifecycle = Effect.sync(() => {
+        state.idleTimer = undefined;
+        state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
+        state.lifecycle = { kind: "absent" };
+      });
+      const plugin = selectIdlePluginProcess(lifecycle);
+      if (plugin === ABSENT_PLUGIN) {
+        return resetLifecycle;
+      }
+      return stopPlugin(plugin).pipe(Effect.andThen(resetLifecycle), Effect.orDie);
+    }),
+  );
+
+const startPluginIdleTimer = (state: PluginHandleState): Effect.Effect<void> =>
+  Effect.gen(function* startIdleTimer() {
+    const owner = Symbol("plugin-idle-timer");
+    const retirement = Effect.sleep(PLUGIN_IDLE_GRACE_MILLISECONDS).pipe(
+      Effect.andThen(retireIdlePlugin(state, owner)),
+    );
+    const fiber = yield* Effect.forkIn(retirement, state.scope, {
+      startImmediately: false,
+    });
+    state.idleTimer = { fiber, owner };
+  });
+
+const acquirePluginDemand = (
+  state: PluginHandleState,
+): Effect.Effect<void, PluginUnavailableFailure> =>
+  state.lifecycleSemaphore
+    .withPermits(SINGLE_LIFECYCLE_PERMIT)(
+      Effect.suspend(() => {
+        if (state.lifecycle.kind === "closed") {
+          return Effect.fail(unavailable("plugin_exited"));
+        }
+        state.activeDemand += 1;
+        const { idleTimer } = state;
+        state.idleTimer = undefined;
+        return Effect.succeed(idleTimer);
+      }),
+    )
+    .pipe(
+      Effect.flatMap((idleTimer) => {
+        if (idleTimer === undefined) {
+          return Effect.void;
+        }
+        return Fiber.interrupt(idleTimer.fiber).pipe(Effect.asVoid);
+      }),
+    );
+
+const releasePluginDemand = (state: PluginHandleState): Effect.Effect<void> =>
+  state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
+    Effect.gen(function* releaseDemand() {
+      if (state.activeDemand === NO_ACTIVE_DEMAND) {
+        yield* Effect.die("plugin demand underflow");
+      }
+      state.activeDemand -= 1;
+      if (state.activeDemand === NO_ACTIVE_DEMAND && state.lifecycle.kind !== "closed") {
+        yield* startPluginIdleTimer(state);
+      }
+    }),
+  );
+
+const withPluginDemand = <Success, Failure, Requirements>(
+  state: PluginHandleState,
+  operation: Effect.Effect<Success, Failure, Requirements>,
+): Effect.Effect<Success, Failure | PluginUnavailableFailure, Requirements> =>
+  Effect.acquireUseRelease(
+    acquirePluginDemand(state),
+    () => operation,
+    () => releasePluginDemand(state),
+  );
 
 const stopPriorPlugin = (
   plugin: RunningPlugin | typeof ABSENT_PLUGIN,
@@ -293,5 +405,5 @@ const ensureRunningPlugin = (
     )
     .pipe(Effect.flatMap((selection) => awaitRecoverySelection(selection)));
 
-export { beginPluginRecovery, ensureRunningPlugin };
+export { beginPluginRecovery, ensureRunningPlugin, withPluginDemand };
 export type { BeginRecoveryOptions, RecoveryOptions };

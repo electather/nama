@@ -85,6 +85,13 @@ type PluginLifecycleState =
     }>;
 
 interface PluginHandleState {
+  activeDemand: number;
+  idleTimer:
+    | Readonly<{
+        readonly fiber: Fiber.Fiber<void>;
+        readonly owner: symbol;
+      }>
+    | undefined;
   launchesInEpisode: number;
   lifecycle: PluginLifecycleState;
   readonly lifecycleSemaphore: Semaphore.Semaphore;
