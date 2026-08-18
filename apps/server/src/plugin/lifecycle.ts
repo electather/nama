@@ -46,32 +46,57 @@ interface RecoveryEpisode extends PluginRecoveryStart {
 }
 
 type RecoveryCompletion = Deferred.Deferred<RunningPlugin, PluginUnavailableFailure>;
+type RetirementCompletion = Deferred.Deferred<void, PluginUnavailableFailure>;
 type RunningPluginSelection =
   | Readonly<{ readonly completion: RecoveryCompletion; readonly kind: "recovery" }>
-  | Readonly<{ readonly kind: "ready"; readonly plugin: RunningPlugin }>;
+  | Readonly<{ readonly kind: "ready"; readonly plugin: RunningPlugin }>
+  | Readonly<{ readonly completion: RetirementCompletion; readonly kind: "retirement" }>;
 
-const selectIdlePluginProcess = (
-  lifecycle: PluginHandleState["lifecycle"],
-): RunningPlugin | typeof ABSENT_PLUGIN => {
-  switch (lifecycle.kind) {
-    case "ready":
-    case "terminal": {
-      return lifecycle.plugin;
-    }
-    case "absent":
-    case "closed":
-    case "recovering": {
-      return ABSENT_PLUGIN;
-    }
-    default: {
-      return lifecycle satisfies never;
-    }
-  }
-};
+const completeIdlePluginRetirement = (
+  state: PluginHandleState,
+  owner: symbol,
+  completion: RetirementCompletion,
+): Effect.Effect<void> =>
+  state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
+    Effect.uninterruptible(
+      Effect.suspend(() => {
+        const { lifecycle } = state;
+        if (lifecycle.kind !== "retiring" || lifecycle.owner !== owner) {
+          return Effect.void;
+        }
+        state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
+        state.lifecycle = { kind: "absent" };
+        return Deferred.done(completion, Exit.void).pipe(Effect.asVoid);
+      }),
+    ),
+  );
+
+const commitIdlePluginRetirement = (
+  state: PluginHandleState,
+  plugin: RunningPlugin,
+): Effect.Effect<void> =>
+  Effect.uninterruptible(
+    Effect.gen(function* commitRetirement() {
+      const completion = yield* Deferred.make<void, PluginUnavailableFailure>();
+      const owner = Symbol("plugin-retirement");
+      const retirement = stopPlugin(plugin).pipe(
+        Effect.andThen(completeIdlePluginRetirement(state, owner, completion)),
+        Effect.onExit((exit) => {
+          if (Exit.isSuccess(exit)) {
+            return Effect.void;
+          }
+          return Deferred.fail(completion, unavailable("plugin_exited")).pipe(Effect.asVoid);
+        }),
+      );
+      const fiber = yield* Effect.forkDetach(retirement, { startImmediately: false });
+      state.idleTimer = undefined;
+      state.lifecycle = { completion, fiber, kind: "retiring", owner, plugin };
+    }),
+  );
 
 const retireIdlePlugin = (state: PluginHandleState, owner: symbol): Effect.Effect<void> =>
   state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
-    // oxlint-disable-next-line eslint/max-statements -- Retirement validates timer ownership and lifecycle state under one semaphore.
+    // oxlint-disable-next-line eslint/max-statements -- Retirement validates timer ownership and commits one lifecycle transition.
     Effect.suspend(() => {
       if (
         state.activeDemand !== NO_ACTIVE_DEMAND ||
@@ -85,7 +110,7 @@ const retireIdlePlugin = (state: PluginHandleState, owner: symbol): Effect.Effec
         state.idleTimer = undefined;
         return Effect.void;
       }
-      if (lifecycle.kind === "recovering") {
+      if (lifecycle.kind === "recovering" || lifecycle.kind === "retiring") {
         return Effect.void;
       }
       const resetLifecycle = Effect.sync(() => {
@@ -93,11 +118,14 @@ const retireIdlePlugin = (state: PluginHandleState, owner: symbol): Effect.Effec
         state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
         state.lifecycle = { kind: "absent" };
       });
-      const plugin = selectIdlePluginProcess(lifecycle);
+      if (lifecycle.kind === "absent") {
+        return resetLifecycle;
+      }
+      const { plugin } = lifecycle;
       if (plugin === ABSENT_PLUGIN) {
         return resetLifecycle;
       }
-      return stopPlugin(plugin).pipe(Effect.andThen(resetLifecycle), Effect.orDie);
+      return commitIdlePluginRetirement(state, plugin);
     }),
   );
 
@@ -144,7 +172,11 @@ const releasePluginDemand = (state: PluginHandleState): Effect.Effect<void> =>
         yield* Effect.die("plugin demand underflow");
       }
       state.activeDemand -= 1;
-      if (state.activeDemand === NO_ACTIVE_DEMAND && state.lifecycle.kind !== "closed") {
+      if (
+        state.activeDemand === NO_ACTIVE_DEMAND &&
+        state.lifecycle.kind !== "closed" &&
+        state.lifecycle.kind !== "retiring"
+      ) {
         yield* startPluginIdleTimer(state);
       }
     }),
@@ -348,62 +380,77 @@ const forkHealthyEpisodeReset = (
   );
 };
 
-const awaitRecoverySelection = (
+const awaitRunningPluginSelection = (
   selection: RunningPluginSelection,
+  state: PluginHandleState,
+  options: RecoveryOptions,
 ): Effect.Effect<RunningPlugin, PluginUnavailableFailure> => {
   if (selection.kind === "recovery") {
     return Deferred.await(selection.completion);
   }
+  if (selection.kind === "retirement") {
+    return Deferred.await(selection.completion).pipe(
+      Effect.andThen(Effect.suspend(() => ensureRunningPlugin(state, options))),
+    );
+  }
   return Effect.succeed(selection.plugin);
 };
+
+const selectRunningPlugin = (
+  state: PluginHandleState,
+  options: RecoveryOptions,
+): Effect.Effect<RunningPluginSelection, PluginUnavailableFailure> =>
+  // oxlint-disable-next-line eslint/max-statements -- Exhaustive selection keeps every lifecycle transition under the semaphore.
+  Effect.suspend<RunningPluginSelection, PluginUnavailableFailure, never>(() => {
+    const { lifecycle } = state;
+    switch (lifecycle.kind) {
+      case "absent": {
+        return forkPluginRecovery({
+          graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
+          options,
+          prior: ABSENT_PLUGIN,
+          state,
+        }).pipe(Effect.map((completion) => ({ completion, kind: "recovery" as const })));
+      }
+      case "closed": {
+        return Effect.fail(unavailable("plugin_exited"));
+      }
+      case "recovering": {
+        return Effect.succeed({ completion: lifecycle.completion, kind: "recovery" });
+      }
+      case "retiring": {
+        return Effect.succeed({ completion: lifecycle.completion, kind: "retirement" });
+      }
+      case "terminal": {
+        return Effect.fail(lifecycle.failure);
+      }
+      case "ready": {
+        if (
+          lifecycle.plugin.child.exitCode === null &&
+          lifecycle.plugin.child.signalCode === null
+        ) {
+          return Effect.succeed({ kind: "ready", plugin: lifecycle.plugin });
+        }
+        return forkPluginRecovery({
+          graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
+          options,
+          prior: lifecycle.plugin,
+          state,
+        }).pipe(Effect.map((completion) => ({ completion, kind: "recovery" as const })));
+      }
+      default: {
+        return lifecycle satisfies never;
+      }
+    }
+  });
 
 const ensureRunningPlugin = (
   state: PluginHandleState,
   options: RecoveryOptions,
 ): Effect.Effect<RunningPlugin, PluginUnavailableFailure> =>
   state.lifecycleSemaphore
-    .withPermits(SINGLE_LIFECYCLE_PERMIT)(
-      Effect.suspend<RunningPluginSelection, PluginUnavailableFailure, never>(() => {
-        const { lifecycle } = state;
-        switch (lifecycle.kind) {
-          case "absent": {
-            return forkPluginRecovery({
-              graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
-              options,
-              prior: ABSENT_PLUGIN,
-              state,
-            }).pipe(Effect.map((completion) => ({ completion, kind: "recovery" as const })));
-          }
-          case "closed": {
-            return Effect.fail(unavailable("plugin_exited"));
-          }
-          case "recovering": {
-            return Effect.succeed({ completion: lifecycle.completion, kind: "recovery" });
-          }
-          case "terminal": {
-            return Effect.fail(lifecycle.failure);
-          }
-          case "ready": {
-            if (
-              lifecycle.plugin.child.exitCode === null &&
-              lifecycle.plugin.child.signalCode === null
-            ) {
-              return Effect.succeed({ kind: "ready", plugin: lifecycle.plugin });
-            }
-            return forkPluginRecovery({
-              graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
-              options,
-              prior: lifecycle.plugin,
-              state,
-            }).pipe(Effect.map((completion) => ({ completion, kind: "recovery" as const })));
-          }
-          default: {
-            return lifecycle satisfies never;
-          }
-        }
-      }),
-    )
-    .pipe(Effect.flatMap((selection) => awaitRecoverySelection(selection)));
+    .withPermits(SINGLE_LIFECYCLE_PERMIT)(selectRunningPlugin(state, options))
+    .pipe(Effect.flatMap((selection) => awaitRunningPluginSelection(selection, state, options)));
 
 export { beginPluginRecovery, ensureRunningPlugin, withPluginDemand };
 export type { BeginRecoveryOptions, RecoveryOptions };

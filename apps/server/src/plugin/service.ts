@@ -34,6 +34,10 @@ type PluginHandleCloseSelection =
       readonly fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>;
       readonly kind: "recovery";
       readonly prior: RunningPlugin | typeof ABSENT_PLUGIN;
+    }>
+  | Readonly<{
+      readonly fiber: Fiber.Fiber<void, PluginSupervisorCleanupFailure>;
+      readonly kind: "retirement";
     }>;
 
 interface PluginSupervisorOptions {
@@ -82,6 +86,9 @@ const selectPluginHandleClose = (state: PluginHandleState): PluginHandleCloseSel
         prior: lifecycle.prior,
       };
     }
+    case "retiring": {
+      return { fiber: lifecycle.fiber, kind: "retirement" };
+    }
     case "terminal": {
       return selectTerminalPluginClose(lifecycle.plugin);
     }
@@ -117,6 +124,9 @@ const closeSelectedPlugin = (
           yield* Effect.failCause(priorExit.cause);
         }
       });
+    }
+    case "retirement": {
+      return Fiber.join(selection.fiber);
     }
     default: {
       return selection satisfies never;
