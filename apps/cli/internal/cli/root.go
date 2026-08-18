@@ -2,25 +2,57 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/electather/nama/apps/cli/internal/api"
 	"github.com/electather/nama/apps/cli/internal/app"
 	credentialauth "github.com/electather/nama/apps/cli/internal/auth"
 	authcommand "github.com/electather/nama/apps/cli/internal/cli/auth"
+	completioncommand "github.com/electather/nama/apps/cli/internal/cli/completion"
 	profilecommand "github.com/electather/nama/apps/cli/internal/cli/profile"
+	schemacommand "github.com/electather/nama/apps/cli/internal/cli/schema"
 	setupcommand "github.com/electather/nama/apps/cli/internal/cli/setup"
 	"github.com/electather/nama/apps/cli/internal/clierror"
 	"github.com/electather/nama/apps/cli/internal/config"
 	"github.com/electather/nama/apps/cli/internal/output"
+	"github.com/electather/nama/apps/cli/internal/surface"
 	apiv1 "github.com/electather/nama/gen/go/nama/api/v1"
 	"github.com/spf13/cobra"
 )
 
 const insecureTransportMessage = "Plain HTTP is not encrypted."
+
+const rootDescription = `Manage a Nama server through the implemented administration surface.
+
+Configuration precedence
+  Profile selection: --profile -> NAMA_PROFILE -> configured default profile.
+  Server target: --server -> NAMA_SERVER -> selected profile.
+  Output mode: --output -> NAMA_OUTPUT -> configured preferred output -> human.
+
+Output modes
+  Human output is the default. Use --output json for one machine-readable
+  object on stdout on success or stderr on failure.
+
+Exit codes
+  0 success
+  1 unexpected failure or cancellation
+  2 invalid arguments or configuration
+  3 authentication failure
+  4 permission denied
+  5 resource not found
+  6 conflict or invalid state
+  7 network or API unavailable, rate limited, or resource exhausted
+
+Examples
+  nama profile set local --server https://nama.example.test
+  nama setup --profile local --display-name "Nama Administrator" --email admin@example.test
+  nama auth login --profile local --email admin@example.test
+  nama auth status --profile local`
 
 // Dependencies supplies the concrete process dependencies for the command tree.
 type Dependencies struct {
@@ -48,6 +80,90 @@ type commandState struct {
 	resolved config.Resolved
 }
 
+type versionResult struct {
+	Version string `json:"version"`
+}
+
+type completionResult struct {
+	Shell  string `json:"shell"`
+	Script string `json:"script"`
+}
+type helpFlagValue struct {
+	runtime *runtime
+	value   bool
+}
+
+type versionFlagValue struct {
+	runtime *runtime
+	root    *cobra.Command
+	value   bool
+}
+
+func (v *helpFlagValue) Set(raw string) error {
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return err
+	}
+	if !value {
+		v.value = false
+		return nil
+	}
+	mode, err := v.runtime.resolveLocalMode()
+	if err != nil {
+		return err
+	}
+	if mode == output.JSON {
+		return errors.New("JSON help is not supported; use nama schema --output json")
+	}
+	v.value = true
+	return nil
+}
+
+func (v *helpFlagValue) String() string {
+	return strconv.FormatBool(v.value)
+}
+
+func (*helpFlagValue) Type() string {
+	return "bool"
+}
+
+func (*helpFlagValue) IsBoolFlag() bool {
+	return true
+}
+
+func (v *versionFlagValue) Set(raw string) error {
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return err
+	}
+	v.value = value
+	if !value {
+		return nil
+	}
+	mode, err := v.runtime.resolveLocalMode()
+	if err != nil {
+		return err
+	}
+	template, err := versionTemplate(mode)
+	if err != nil {
+		return err
+	}
+	v.root.SetVersionTemplate(template)
+	return nil
+}
+
+func (v *versionFlagValue) String() string {
+	return strconv.FormatBool(v.value)
+}
+
+func (*versionFlagValue) Type() string {
+	return "bool"
+}
+
+func (*versionFlagValue) IsBoolFlag() bool {
+	return true
+}
+
 type profileListResult struct {
 	Profiles []app.Profile `json:"profiles"`
 }
@@ -66,19 +182,41 @@ func NewRootCommand(dependencies Dependencies) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "nama",
 		Short: "Manage a Nama server",
+		Long:  rootDescription,
 		Args:  runtime.rootArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
-			return command.Help()
+			return runtime.root(command)
 		},
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.PersistentFlags().StringVar(&runtime.profile, "profile", "", "Server profile")
-	root.PersistentFlags().StringVar(&runtime.server, "server", "", "Server URL")
-	root.PersistentFlags().StringVar(&runtime.output, "output", "", "Output format (human or json)")
+	root.PersistentFlags().StringVar(&runtime.profile, "profile", "", "Select a server profile (env: NAMA_PROFILE)")
+	root.PersistentFlags().StringVar(&runtime.server, "server", "", "Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER)")
+	root.PersistentFlags().StringVar(&runtime.output, "output", "", "Select human or json output (env: NAMA_OUTPUT)")
+	root.PersistentFlags().Var(&versionFlagValue{runtime: runtime, root: root}, "version", "Print the Nama CLI semantic version")
+	root.PersistentFlags().Lookup("version").NoOptDefVal = "true"
+	root.PersistentFlags().VarP(&helpFlagValue{runtime: runtime}, "help", "h", "Show help for a command")
+	root.PersistentFlags().Lookup("help").NoOptDefVal = "true"
+	surface.SetFlag(root, "profile", surface.FlagMetadata{Environment: "NAMA_PROFILE"})
+	surface.SetFlag(root, "server", surface.FlagMetadata{Environment: "NAMA_SERVER"})
+	surface.SetFlag(root, "output", surface.FlagMetadata{
+		Environment:   "NAMA_OUTPUT",
+		Default:       "human",
+		AllowedValues: []string{"human", "json"},
+	})
+	surface.SetFlag(root, "version", surface.FlagMetadata{Default: "false"})
+	surface.SetFlag(root, "help", surface.FlagMetadata{Default: "false"})
 	root.SetFlagErrorFunc(runtime.flagError)
 	root.AddCommand(
+		completioncommand.NewCommand(completioncommand.Handler{
+			Run:              runtime.completion,
+			InvalidArguments: runtime.invalidArguments,
+		}),
+		schemacommand.NewCommand(schemacommand.Handler{
+			Run:              runtime.schema,
+			InvalidArguments: runtime.invalidArguments,
+		}),
 		profilecommand.NewCommand(profilecommand.Handlers{
 			Set:              runtime.setProfile,
 			Use:              runtime.useProfile,
@@ -95,7 +233,103 @@ func NewRootCommand(dependencies Dependencies) *cobra.Command {
 			InvalidArguments: runtime.invalidArguments,
 		}),
 	)
+	helpCommand := runtime.newHelpCommand()
+	root.SetHelpCommand(helpCommand)
+	setCommandVersions(root, api.Version())
+	helpCommand.Version = api.Version()
 	return root
+}
+
+func (r *runtime) root(command *cobra.Command) error {
+	mode, err := r.resolveLocalMode()
+	if err != nil {
+		return r.failure(command, r.failureMode(), err)
+	}
+	if mode == output.JSON {
+		return r.failure(command, mode, clierror.InvalidArgument(errors.New("a command is required")))
+	}
+	return command.Help()
+}
+
+func versionTemplate(mode output.Mode) (string, error) {
+	var rendered bytes.Buffer
+	renderer := output.New(mode, &rendered, &rendered)
+	var value any = versionResult{Version: api.Version()}
+	if mode == output.Human {
+		value = api.Version()
+	}
+	if err := renderer.Success(value, nil); err != nil {
+		return "", err
+	}
+	return rendered.String(), nil
+}
+
+func setCommandVersions(command *cobra.Command, version string) {
+	command.Version = version
+	for _, child := range command.Commands() {
+		setCommandVersions(child, version)
+	}
+}
+
+func (r *runtime) completion(command *cobra.Command, shell string) error {
+	mode, err := r.resolveLocalMode()
+	if err != nil {
+		return r.failure(command, r.failureMode(), err)
+	}
+
+	var script bytes.Buffer
+	err = completioncommand.Generate(command.Root(), shell, &script)
+	if err != nil {
+		return r.failure(command, mode, clierror.Unexpected(err))
+	}
+	result := completionResult{Shell: shell, Script: script.String()}
+	if err := output.New(mode, command.OutOrStdout(), command.ErrOrStderr()).SuccessText(result.Script, result); err != nil {
+		return r.failure(command, mode, clierror.Unexpected(err))
+	}
+	return nil
+}
+
+func (r *runtime) schema(command *cobra.Command) error {
+	mode, err := r.resolveLocalMode()
+	if err != nil {
+		return r.failure(command, r.failureMode(), err)
+	}
+	value := surface.Extract(command.Root())
+	if err := output.New(mode, command.OutOrStdout(), command.ErrOrStderr()).SuccessText(surface.Inventory(value), value); err != nil {
+		return r.failure(command, mode, clierror.Unexpected(err))
+	}
+	return nil
+}
+
+func (r *runtime) newHelpCommand() *cobra.Command {
+	command := &cobra.Command{
+		Use:   "help [command...]",
+		Short: "Show help for a command",
+		Long:  "Show human help for the root command or one implemented command path. Use `nama schema --output json` for machine discovery.",
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(command *cobra.Command, arguments []string) error {
+			mode, err := r.resolveLocalMode()
+			if err != nil {
+				return r.failure(command, r.failureMode(), err)
+			}
+			if mode == output.JSON {
+				return r.failure(command, mode, clierror.InvalidArgument(errors.New("JSON help is not supported; use nama schema --output json")))
+			}
+			target, remaining, err := command.Root().Find(arguments)
+			if err != nil || len(remaining) != 0 {
+				return r.failure(command, mode, clierror.InvalidArgument(errors.New("unknown help command")))
+			}
+			return target.Help()
+		},
+	}
+	surface.SetArguments(command, surface.Argument{
+		Name:        "command",
+		Type:        "string",
+		Required:    false,
+		Variadic:    true,
+		Description: "Implemented command path to describe",
+	})
+	return command
 }
 
 func (r *runtime) rootArgs(command *cobra.Command, arguments []string) error {
@@ -411,9 +645,47 @@ func (r *runtime) failureMode() output.Mode {
 	return output.Human
 }
 
+func (r *runtime) resolveLocalMode() (output.Mode, error) {
+	if value, ok := explicitOutputValue(r.dependencies.RawArgs); ok {
+		if mode, valid := parseOutputMode(value); valid {
+			return mode, nil
+		}
+		return "", clierror.InvalidArgument(errors.New("output must be human or json"))
+	}
+	if r.output != "" {
+		if mode, ok := parseOutputMode(r.output); ok {
+			return mode, nil
+		}
+		return "", clierror.InvalidArgument(errors.New("output must be human or json"))
+	}
+	if value := r.getenv("NAMA_OUTPUT"); value != "" {
+		if mode, ok := parseOutputMode(value); ok {
+			return mode, nil
+		}
+		return "", clierror.InvalidConfiguration(errors.New("NAMA_OUTPUT must be human or json"))
+	}
+	value, err := r.store.Load()
+	if err != nil {
+		return output.Human, nil
+	}
+	if mode, ok := parseOutputMode(string(value.PreferredOutput)); ok {
+		return mode, nil
+	}
+	return output.Human, nil
+}
+
 // ExplicitOutputMode reports the valid output mode explicitly requested in raw arguments.
 func ExplicitOutputMode(arguments []string) (output.Mode, bool) {
+	value, ok := explicitOutputValue(arguments)
+	if !ok {
+		return "", false
+	}
+	return parseOutputMode(value)
+}
+
+func explicitOutputValue(arguments []string) (string, bool) {
 	mode := ""
+	found := false
 	for index := 0; index < len(arguments); index++ {
 		argument := arguments[index]
 		if argument == "--" {
@@ -424,16 +696,18 @@ func ExplicitOutputMode(arguments []string) (output.Mode, bool) {
 			if index+1 < len(arguments) && arguments[index+1] != "--" {
 				index++
 				mode = arguments[index]
+				found = true
 			}
 		case strings.HasPrefix(argument, "--output="):
 			mode = strings.TrimPrefix(argument, "--output=")
+			found = true
 		case argument == "--server", argument == "--profile", argument == "--email", argument == "--display-name":
 			if index+1 < len(arguments) {
 				index++
 			}
 		}
 	}
-	return parseOutputMode(mode)
+	return mode, found
 }
 
 func parseOutputMode(value string) (output.Mode, bool) {

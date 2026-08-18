@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -411,6 +412,542 @@ func TestRootRejectsExplicitEmptyGlobalFlagsBeforeFallbackOrSignIn(t *testing.T)
 	}
 }
 
+func TestRootHelpVersionAndJSONDiscoveryRules(t *testing.T) {
+	dependencies := testCLIDependencies(filepath.Join(t.TempDir(), "config.json"), nil, false, &cliCredentialStoreFake{}, nil, nil)
+
+	stdout, stderr, err := executeCLI(t, dependencies, "")
+	if err != nil {
+		t.Fatalf("root help error = %v", err)
+	}
+	if len(stderr) != 0 {
+		t.Errorf("root help stderr = %q, want empty", stderr)
+	}
+	for _, text := range []string{
+		"Manage a Nama server",
+		"Profile selection: --profile -> NAMA_PROFILE -> configured default profile",
+		"Server target: --server -> NAMA_SERVER -> selected profile",
+		"Output mode: --output -> NAMA_OUTPUT -> configured preferred output -> human",
+		"absolute HTTP(S)",
+		"without credentials, query, or fragment",
+		".local",
+		"Exit codes",
+		"nama profile set",
+		"nama setup",
+		"nama auth login",
+	} {
+		if !bytes.Contains(stdout, []byte(text)) {
+			t.Errorf("root help does not contain %q:\n%s", text, stdout)
+		}
+	}
+	for _, text := range []string{"logout", "\n  health", "\n  diagnostics", "\n  plugin", "\n  sync", "\n  devices"} {
+		if bytes.Contains(stdout, []byte(text)) {
+			t.Errorf("root help advertises unimplemented surface %q:\n%s", text, stdout)
+		}
+	}
+
+	stdout, stderr, err = executeCLI(t, dependencies, "", "--version")
+	if err != nil {
+		t.Fatalf("human version error = %v", err)
+	}
+	if got, want := string(stdout), "0.0.0-dev\n"; got != want {
+		t.Errorf("human version stdout = %q, want %q", got, want)
+	}
+	if len(stderr) != 0 {
+		t.Errorf("human version stderr = %q, want empty", stderr)
+	}
+
+	stdout, stderr, err = executeCLI(t, dependencies, "", "--output", "json", "--version")
+	if err != nil {
+		t.Fatalf("JSON version error = %v", err)
+	}
+	if len(stderr) != 0 {
+		t.Errorf("JSON version stderr = %q, want empty", stderr)
+	}
+	data := decodeCLIData(t, stdout)
+	if got, want := data["version"], "0.0.0-dev"; got != want {
+		t.Errorf("JSON version = %#v, want %q", got, want)
+	}
+
+	for _, arguments := range [][]string{
+		{"auth", "--version"},
+		{"profile", "set", "--version"},
+	} {
+		stdout, stderr, err = executeCLI(t, dependencies, "", arguments...)
+		if err != nil {
+			t.Fatalf("global human version %v error = %v", arguments, err)
+		}
+		if got, want := string(stdout), "0.0.0-dev\n"; got != want || len(stderr) != 0 {
+			t.Errorf("global human version %v stdout=%q stderr=%q, want %q and empty", arguments, stdout, stderr, want)
+		}
+	}
+	stdout, stderr, err = executeCLI(t, dependencies, "", "auth", "status", "--version", "--output", "json")
+	if err != nil || len(stderr) != 0 {
+		t.Fatalf("global JSON version error=%v stderr=%q", err, stderr)
+	}
+	data = decodeCLIData(t, stdout)
+	if got, want := data["version"], "0.0.0-dev"; got != want {
+		t.Errorf("global JSON version = %#v, want %q", got, want)
+	}
+
+	for _, arguments := range [][]string{
+		{"--output", "json"},
+		{"--output", "json", "--help"},
+		{"--output", "json", "help"},
+		{"--output", "json", "help", "auth"},
+	} {
+		stdout, stderr, err = executeCLI(t, dependencies, "", arguments...)
+		requireCLIError(t, err, "invalid_argument", 2)
+		if len(stdout) != 0 {
+			t.Errorf("JSON discovery %v stdout = %q, want empty", arguments, stdout)
+		}
+		payload := decodeCLIJSON(t, stderr)
+		failure, ok := payload["error"].(map[string]any)
+		if !ok {
+			t.Fatalf("JSON discovery %v error = %#v, want object", arguments, payload["error"])
+		}
+		if got, want := failure["code"], "invalid_argument"; got != want {
+			t.Errorf("JSON discovery %v code = %#v, want %q", arguments, got, want)
+		}
+	}
+}
+
+func TestCommandHelpDescribesEveryImplementedOperation(t *testing.T) {
+	dependencies := testCLIDependencies(filepath.Join(t.TempDir(), "config.json"), nil, false, &cliCredentialStoreFake{}, nil, nil)
+	tests := []struct {
+		path []string
+		want []string
+	}{
+		{path: []string{"profile"}, want: []string{"Manage named server profiles"}},
+		{path: []string{"profile", "set"}, want: []string{"profile name", "--server", "NAMA_SERVER", "nama profile set"}},
+		{path: []string{"profile", "use"}, want: []string{"profile name", "nama profile use"}},
+		{path: []string{"profile", "list"}, want: []string{"configured profiles", "nama profile list"}},
+		{path: []string{"setup"}, want: []string{"Administrator", "--display-name", "--email", "NAMA_BOOTSTRAP_TOKEN", "stdin", "nama setup"}},
+		{path: []string{"auth"}, want: []string{"Administrator authentication"}},
+		{path: []string{"auth", "login"}, want: []string{"Administrator email", "password", "stdin", "nama auth login"}},
+		{path: []string{"auth", "status"}, want: []string{"NAMA_TOKEN", "nama auth status"}},
+		{path: []string{"completion"}, want: []string{"Bash", "Zsh", "Fish", "PowerShell", "<shell>", "nama completion bash"}},
+	}
+
+	for _, test := range tests {
+		t.Run(strings.Join(test.path, " "), func(t *testing.T) {
+			arguments := append([]string{"help"}, test.path...)
+			stdout, stderr, err := executeCLI(t, dependencies, "", arguments...)
+			if err != nil {
+				t.Fatalf("help error = %v", err)
+			}
+			if len(stderr) != 0 {
+				t.Errorf("help stderr = %q, want empty", stderr)
+			}
+			for _, text := range test.want {
+				if !bytes.Contains(stdout, []byte(text)) {
+					t.Errorf("help does not contain %q:\n%s", text, stdout)
+				}
+			}
+		})
+	}
+}
+
+func TestBareCommandFamiliesFailAsInvalidArguments(t *testing.T) {
+	dependencies := testCLIDependencies(filepath.Join(t.TempDir(), "config.json"), nil, false, &cliCredentialStoreFake{}, nil, nil)
+	for _, family := range []string{"profile", "auth"} {
+		stdout, stderr, err := executeCLI(t, dependencies, "", family, "--output", "json")
+		requireCLIError(t, err, "invalid_argument", 2)
+		if len(stdout) != 0 {
+			t.Errorf("bare %s stdout = %q, want empty", family, stdout)
+		}
+		decodeCLIJSON(t, stderr)
+	}
+}
+
+func TestLocalHelpAndVersionSurviveUnreadableConfiguration(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(configPath, []byte("{not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dependencies := testCLIDependencies(configPath, nil, false, &cliCredentialStoreFake{}, nil, nil)
+
+	stdout, stderr, err := executeCLI(t, dependencies, "")
+	if err != nil {
+		t.Fatalf("root help with malformed configuration error = %v", err)
+	}
+	if !bytes.Contains(stdout, []byte("Usage:")) || len(stderr) != 0 {
+		t.Errorf("root help with malformed configuration stdout=%q stderr=%q", stdout, stderr)
+	}
+
+	stdout, stderr, err = executeCLI(t, dependencies, "", "--version")
+	if err != nil {
+		t.Fatalf("version with malformed configuration error = %v", err)
+	}
+	if got, want := string(stdout), "0.0.0-dev\n"; got != want || len(stderr) != 0 {
+		t.Errorf("version with malformed configuration stdout=%q stderr=%q, want %q and empty", stdout, stderr, want)
+	}
+}
+
+func TestLocalDiscoveryIgnoresServerStateAndNeverLeaksRuntimeSecrets(t *testing.T) {
+	const (
+		bootstrapToken = "runtime-bootstrap-sentinel"
+		bearer         = "runtime-bearer-sentinel"
+	)
+	configDirectory := t.TempDir()
+	configPath := filepath.Join(configDirectory, "config.json")
+	if err := os.WriteFile(configPath, []byte("{not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dependencies := testCLIDependencies(configPath, map[string]string{
+		"NAMA_PROFILE":         "missing-profile",
+		"NAMA_SERVER":          "not-a-server-url",
+		"NAMA_BOOTSTRAP_TOKEN": bootstrapToken,
+		"NAMA_TOKEN":           bearer,
+	}, false, &cliCredentialStoreFake{}, nil, nil)
+
+	streams := make([][]byte, 0)
+	for _, arguments := range [][]string{
+		{"--version", "--output", "json"},
+		{"completion", "bash", "--output", "json"},
+		{"schema", "--output", "json"},
+	} {
+		stdout, stderr, err := executeCLI(t, dependencies, "", arguments...)
+		if err != nil {
+			t.Fatalf("local discovery %v error = %v", arguments, err)
+		}
+		if len(stderr) != 0 {
+			t.Errorf("local discovery %v stderr = %q, want empty", arguments, stderr)
+		}
+		decodeCLIData(t, stdout)
+		streams = append(streams, stdout, stderr)
+	}
+	for _, arguments := range [][]string{
+		{},
+		{"help", "setup"},
+		{"help", "auth", "login"},
+	} {
+		stdout, stderr, err := executeCLI(t, dependencies, "", arguments...)
+		if err != nil {
+			t.Fatalf("human discovery %v error = %v", arguments, err)
+		}
+		streams = append(streams, stdout, stderr)
+	}
+	reference, err := os.ReadFile("../../../../docs/cli/reference.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	streams = append(streams, reference)
+	for _, stream := range streams {
+		requireNoCLILeak(t, stream, bootstrapToken, bearer)
+	}
+}
+
+func TestLocalDiscoveryUsesOutputPrecedenceWithoutServerResolution(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	configJSON := `{"profiles":{},"default_profile":"","preferred_output":"json"}`
+	if err := os.WriteFile(configPath, []byte(configJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	dependencies := testCLIDependencies(configPath, nil, false, &cliCredentialStoreFake{}, nil, nil)
+	stdout, stderr, err := executeCLI(t, dependencies, "", "--version")
+	if err != nil || len(stderr) != 0 {
+		t.Fatalf("configured JSON version error=%v stderr=%q", err, stderr)
+	}
+	decodeCLIData(t, stdout)
+
+	stdout, stderr, err = executeCLI(t, dependencies, "", "--help")
+	requireCLIError(t, err, "invalid_argument", 2)
+	if len(stdout) != 0 {
+		t.Errorf("configured JSON help stdout = %q, want empty", stdout)
+	}
+	decodeCLIJSON(t, stderr)
+
+	dependencies = testCLIDependencies(configPath, map[string]string{"NAMA_OUTPUT": "human"}, false, &cliCredentialStoreFake{}, nil, nil)
+	stdout, stderr, err = executeCLI(t, dependencies, "", "--version")
+	if err != nil {
+		t.Fatalf("environment human version error = %v", err)
+	}
+	if got, want := string(stdout), "0.0.0-dev\n"; got != want || len(stderr) != 0 {
+		t.Errorf("environment human version stdout=%q stderr=%q, want %q and empty", stdout, stderr, want)
+	}
+
+	stdout, stderr, err = executeCLI(t, dependencies, "", "--version", "--output", "json")
+	if err != nil || len(stderr) != 0 {
+		t.Fatalf("flag JSON version error=%v stderr=%q", err, stderr)
+	}
+	decodeCLIData(t, stdout)
+}
+func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
+	dependencies := testCLIDependencies(filepath.Join(t.TempDir(), "config.json"), nil, false, &cliCredentialStoreFake{}, nil, nil)
+
+	human, stderr, err := executeCLI(t, dependencies, "", "schema")
+	if err != nil {
+		t.Fatalf("human schema error = %v", err)
+	}
+	if len(stderr) != 0 {
+		t.Errorf("human schema stderr = %q, want empty", stderr)
+	}
+	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama schema"} {
+		if !bytes.Contains(human, []byte(command)) {
+			t.Errorf("human schema inventory omits %q:\n%s", command, human)
+		}
+	}
+
+	stdout, stderr, err := executeCLI(t, dependencies, "", "schema", "--output", "json")
+	if err != nil {
+		t.Fatalf("JSON schema error = %v", err)
+	}
+	if len(stderr) != 0 {
+		t.Errorf("JSON schema stderr = %q, want empty", stderr)
+	}
+	data := decodeCLIData(t, stdout)
+	if got, want := data["schema_version"], float64(1); got != want {
+		t.Fatalf("schema_version = %#v, want %#v", got, want)
+	}
+
+	commands := schemaObjectList(t, data["commands"], "commands")
+	paths := make([]string, 0, len(commands))
+	byPath := make(map[string]map[string]any, len(commands))
+	for _, command := range commands {
+		path := strings.Join(schemaStringList(t, command["path"], "command path"), " ")
+		paths = append(paths, path)
+		byPath[path] = command
+	}
+	wantPaths := []string{
+		"nama",
+		"nama auth",
+		"nama auth login",
+		"nama auth status",
+		"nama completion",
+		"nama help",
+		"nama profile",
+		"nama profile list",
+		"nama profile set",
+		"nama profile use",
+		"nama schema",
+		"nama setup",
+	}
+	if !reflect.DeepEqual(paths, wantPaths) {
+		t.Errorf("schema command paths = %#v, want %#v", paths, wantPaths)
+	}
+	for path, command := range byPath {
+		if command["summary"] == "" || command["description"] == "" {
+			t.Errorf("%s has incomplete command descriptions", path)
+		}
+		flags := schemaObjectList(t, command["flags"], path+" flags")
+		names := make([]string, 0, len(flags))
+		for _, flag := range flags {
+			names = append(names, schemaString(t, flag["name"], path+" flag name"))
+			if flag["type"] == "" || flag["description"] == "" {
+				t.Errorf("%s flag %v has incomplete metadata", path, flag["name"])
+			}
+		}
+		if !slices.IsSorted(names) {
+			t.Errorf("%s flags are not canonically ordered: %#v", path, names)
+		}
+		for _, argument := range schemaObjectList(t, command["arguments"], path+" arguments") {
+			if argument["type"] == "" || argument["description"] == "" {
+				t.Errorf("%s argument %v has incomplete metadata", path, argument["name"])
+			}
+		}
+		for _, input := range schemaObjectList(t, command["inputs"], path+" inputs") {
+			if input["type"] == "" || input["description"] == "" || len(schemaObjectList(t, input["sources"], path+" input sources")) == 0 {
+				t.Errorf("%s input %v has incomplete metadata", path, input["name"])
+			}
+		}
+	}
+
+	rootFlags := schemaObjectsByName(t, byPath["nama"]["flags"], "root flags")
+	for _, name := range []string{"help", "output", "profile", "server", "version"} {
+		if _, ok := rootFlags[name]; !ok {
+			t.Errorf("root schema omits --%s", name)
+		}
+	}
+	outputFlag := rootFlags["output"]
+	if got, want := outputFlag["type"], "string"; got != want {
+		t.Errorf("output flag type = %#v, want %q", got, want)
+	}
+	if got, want := outputFlag["environment"], "NAMA_OUTPUT"; got != want {
+		t.Errorf("output flag environment = %#v, want %q", got, want)
+	}
+	if got, want := outputFlag["default"], "human"; got != want {
+		t.Errorf("output flag default = %#v, want %q", got, want)
+	}
+	if got, want := schemaStringList(t, outputFlag["allowed_values"], "output allowed values"), []string{"human", "json"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("output allowed values = %#v, want %#v", got, want)
+	}
+
+	loginFlags := schemaObjectsByName(t, byPath["nama auth login"]["flags"], "login flags")
+	if got, want := loginFlags["output"]["inherited"], true; got != want {
+		t.Errorf("login output inherited = %#v, want %t", got, want)
+	}
+	if got, want := loginFlags["version"]["inherited"], true; got != want {
+		t.Errorf("login version inherited = %#v, want %t", got, want)
+	}
+	if got, want := loginFlags["email"]["required"], true; got != want {
+		t.Errorf("login email required = %#v, want %t", got, want)
+	}
+
+	completionArguments := schemaObjectList(t, byPath["nama completion"]["arguments"], "completion arguments")
+	if got, want := len(completionArguments), 1; got != want {
+		t.Fatalf("completion arguments = %d, want %d", got, want)
+	}
+	if got, want := completionArguments[0]["name"], "shell"; got != want {
+		t.Errorf("completion argument name = %#v, want %q", got, want)
+	}
+	if got, want := schemaStringList(t, completionArguments[0]["allowed_values"], "completion shells"), []string{"bash", "fish", "powershell", "zsh"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("completion shells = %#v, want %#v", got, want)
+	}
+
+	profileSetArguments := schemaObjectList(t, byPath["nama profile set"]["arguments"], "profile set arguments")
+	if got, want := profileSetArguments[0]["name"], "name"; got != want {
+		t.Errorf("profile set argument name = %#v, want %q", got, want)
+	}
+	if got, want := profileSetArguments[0]["required"], true; got != want {
+		t.Errorf("profile set argument required = %#v, want %t", got, want)
+	}
+
+	setupInputs := schemaObjectsByName(t, byPath["nama setup"]["inputs"], "setup inputs")
+	for _, name := range []string{"bootstrap_token", "password"} {
+		input, ok := setupInputs[name]
+		if !ok {
+			t.Fatalf("setup schema omits %s input", name)
+		}
+		if got, want := input["secret"], true; got != want {
+			t.Errorf("setup %s secret = %#v, want %t", name, got, want)
+		}
+	}
+	bootstrapSources := schemaObjectList(t, setupInputs["bootstrap_token"]["sources"], "bootstrap token sources")
+	if got, want := bootstrapSources[1]["name"], "NAMA_BOOTSTRAP_TOKEN"; got != want {
+		t.Errorf("bootstrap environment source = %#v, want %q", got, want)
+	}
+	if got, want := bootstrapSources[2]["condition"], "json_terminal"; got != want {
+		t.Errorf("bootstrap rejection condition = %#v, want %q", got, want)
+	}
+
+	exitRecords := schemaObjectList(t, data["exit_codes"], "exit codes")
+	if got, want := len(exitRecords), 8; got != want {
+		t.Fatalf("exit code records = %d, want %d", got, want)
+	}
+	errorExits := make(map[string]int)
+	for index, record := range exitRecords {
+		if got, want := record["code"], float64(index); got != want {
+			t.Errorf("exit record %d code = %#v, want %#v", index, got, want)
+		}
+		for _, code := range schemaStringList(t, record["error_codes"], "exit error codes") {
+			errorExits[code] = index
+		}
+	}
+	wantErrorExits := map[string]int{
+		clierror.CodeUnexpectedFailure:            1,
+		clierror.CodeInvalidArgument:              2,
+		clierror.CodeInvalidConfiguration:         2,
+		clierror.CodeProfileNotFound:              5,
+		clierror.CodeCredentialStoreUnavailable:   1,
+		clierror.CodeCredentialCleanupFailed:      1,
+		clierror.CodeUnsafeTransport:              2,
+		clierror.CodeNetworkUnavailable:           7,
+		clierror.CodeAlreadyInitialized:           6,
+		clierror.CodeAuthenticationFailed:         3,
+		clierror.CodeAuthenticationUnavailable:    7,
+		clierror.CodeCredentialInvalid:            3,
+		clierror.CodeDeadlineExceeded:             7,
+		clierror.CodeInternal:                     1,
+		clierror.CodeNotInitialized:               6,
+		clierror.CodePermissionDenied:             4,
+		clierror.CodeRateLimited:                  7,
+		clierror.CodeRequestCancelled:             1,
+		clierror.CodeSessionRevocationUnconfirmed: 7,
+		clierror.CodeSetupInProgress:              6,
+		clierror.CodeSetupUnavailable:             7,
+		clierror.CodeValidationFailed:             2,
+		clierror.CodeUnknown:                      1,
+		clierror.CodeCancelled:                    1,
+		clierror.CodeNotFound:                     5,
+		clierror.CodeAlreadyExists:                6,
+		clierror.CodeResourceExhausted:            7,
+		clierror.CodeFailedPrecondition:           6,
+		clierror.CodeAborted:                      6,
+		clierror.CodeOutOfRange:                   2,
+		clierror.CodeUnimplemented:                1,
+		clierror.CodeUnavailable:                  7,
+		clierror.CodeDataLoss:                     1,
+		clierror.CodeUnauthenticated:              3,
+	}
+	if !reflect.DeepEqual(errorExits, wantErrorExits) {
+		t.Errorf("error exit mappings = %#v, want %#v", errorExits, wantErrorExits)
+	}
+}
+
+func TestCompletionGeneratesIdenticalHumanAndJSONScripts(t *testing.T) {
+	configDirectory := t.TempDir()
+	dependencies := testCLIDependencies(filepath.Join(configDirectory, "config.json"), nil, false, &cliCredentialStoreFake{}, nil, nil)
+
+	for _, shell := range []string{"bash", "zsh", "fish", "powershell"} {
+		t.Run(shell, func(t *testing.T) {
+			human, stderr, err := executeCLI(t, dependencies, "", "completion", shell)
+			if err != nil {
+				t.Fatalf("human completion error = %v", err)
+			}
+			if len(human) == 0 || !bytes.Contains(human, []byte("nama")) {
+				t.Fatalf("human completion script = %q, want generated nama script", human)
+			}
+			if !bytes.HasSuffix(human, []byte("\n")) {
+				t.Errorf("human completion script has no terminating newline")
+			}
+			if !bytes.Contains(human, []byte("__complete")) || bytes.Contains(human, []byte("__completeNoDesc")) {
+				t.Errorf("human completion script disables command descriptions")
+			}
+			if len(stderr) != 0 {
+				t.Errorf("human completion stderr = %q, want empty", stderr)
+			}
+
+			stdout, stderr, err := executeCLI(t, dependencies, "", "completion", shell, "--output", "json")
+			if err != nil {
+				t.Fatalf("JSON completion error = %v", err)
+			}
+			if len(stderr) != 0 {
+				t.Errorf("JSON completion stderr = %q, want empty", stderr)
+			}
+			data := decodeCLIData(t, stdout)
+			if got, want := data["shell"], shell; got != want {
+				t.Errorf("JSON completion shell = %#v, want %q", got, want)
+			}
+			script, ok := data["script"].(string)
+			if !ok {
+				t.Fatalf("JSON completion script = %#v, want string", data["script"])
+			}
+			if got := []byte(script); !bytes.Equal(got, human) {
+				t.Errorf("JSON completion script differs from human script")
+			}
+		})
+	}
+	entries, err := os.ReadDir(configDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("completion installed files as a side effect: %#v", entries)
+	}
+}
+
+func TestCompletionRejectsMissingExtraAndUnsupportedShells(t *testing.T) {
+	dependencies := testCLIDependencies(filepath.Join(t.TempDir(), "config.json"), nil, false, &cliCredentialStoreFake{}, nil, nil)
+
+	for _, arguments := range [][]string{
+		{"completion"},
+		{"completion", "bash", "zsh"},
+		{"completion", "nu"},
+	} {
+		stdout, stderr, err := executeCLI(t, dependencies, "", append(arguments, "--output", "json")...)
+		requireCLIError(t, err, "invalid_argument", 2)
+		if len(stdout) != 0 {
+			t.Errorf("invalid completion %v stdout = %q, want empty", arguments, stdout)
+		}
+		payload := decodeCLIJSON(t, stderr)
+		failure, ok := payload["error"].(map[string]any)
+		if !ok || failure["code"] != "invalid_argument" {
+			t.Errorf("invalid completion %v error = %#v", arguments, payload["error"])
+		}
+	}
+}
+
 func TestRootRejectsUnsupportedTopLevelCommands(t *testing.T) {
 	dependencies := testCLIDependencies(filepath.Join(t.TempDir(), "config.json"), nil, false, &cliCredentialStoreFake{}, nil, nil)
 
@@ -421,14 +958,6 @@ func TestRootRejectsUnsupportedTopLevelCommands(t *testing.T) {
 		{
 			name: "misspelled command",
 			args: []string{"--output", "json", "profle"},
-		},
-		{
-			name: "version flag",
-			args: []string{"--output", "json", "--version"},
-		},
-		{
-			name: "completion command",
-			args: []string{"--output", "json", "completion"},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -924,6 +1453,55 @@ func cliStdin(t *testing.T, input string) *os.File {
 		t.Fatalf("stdin seek error = %v", err)
 	}
 	return file
+}
+
+func schemaObjectList(t *testing.T, value any, name string) []map[string]any {
+	t.Helper()
+	values, ok := value.([]any)
+	if !ok {
+		t.Fatalf("%s = %#v, want array", name, value)
+	}
+	records := make([]map[string]any, 0, len(values))
+	for _, value := range values {
+		record, ok := value.(map[string]any)
+		if !ok {
+			t.Fatalf("%s member = %#v, want object", name, value)
+		}
+		records = append(records, record)
+	}
+	return records
+}
+
+func schemaObjectsByName(t *testing.T, value any, name string) map[string]map[string]any {
+	t.Helper()
+	records := make(map[string]map[string]any)
+	for _, record := range schemaObjectList(t, value, name) {
+		recordName := schemaString(t, record["name"], name+" name")
+		records[recordName] = record
+	}
+	return records
+}
+
+func schemaStringList(t *testing.T, value any, name string) []string {
+	t.Helper()
+	values, ok := value.([]any)
+	if !ok {
+		t.Fatalf("%s = %#v, want string array", name, value)
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		result = append(result, schemaString(t, value, name))
+	}
+	return result
+}
+
+func schemaString(t *testing.T, value any, name string) string {
+	t.Helper()
+	result, ok := value.(string)
+	if !ok {
+		t.Fatalf("%s = %#v, want string", name, value)
+	}
+	return result
 }
 
 func decodeCLIData(t *testing.T, stream []byte) map[string]any {
