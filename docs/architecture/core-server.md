@@ -30,6 +30,16 @@ A native Node listener owns operational-route precedence, request-fiber interrup
 Effect owns composition, scopes, interruption, logging, expected failures, and shutdown ([ADR-0001](../adr/0001-effect-application-graph.md)). Node HTTP, `pg`, Drizzle, Connect, and Better Auth remain narrow adapters at module edges. There is no second dependency-injection system.
 
 Under [ADR-0010](../adr/0010-postgresql-drizzle-persistence-boundary.md), Drizzle stays on the shared `pg.Pool`; do not introduce `@effect/sql-pg`. Wrap Promise-based database operations once inside the Effect module that owns the operation.
+
+Issue #29's target adds one deep `ProviderManagement` Effect module. Its narrow
+interface owns provider-type reads and provider-instance mutations while hiding
+restricted-schema validation, secret splitting, encryption, operation
+idempotency, status observations, persistence transactions, and runtime revision
+gates. Connect handlers remain mappings, the supervised-plugin runtime remains a
+separate owner, and the database module gains only the provider transactions
+needed by this module. Do not expose Drizzle or add generic repository,
+encryption, schema-validator, or idempotency interfaces for their single current
+consumer.
 The implemented dependency graph is:
 
 ```text
@@ -133,6 +143,15 @@ The database module owns pool creation, schema-aware Drizzle construction, migra
 
 The MVP runs one core process. Drizzle bookkeeping is sufficient; do not add advisory locks, distributed migration coordination, Redis, or a job framework before multi-process deployment is accepted.
 
+Issue #29's target startup reconciles the code-owned bundled-provider registry
+and authenticates stored provider-credential envelopes after migrations and
+durable initialization reconciliation but before runtime readiness. Discovery
+is deadline-bounded. An unsafe code-owned launch descriptor, duplicate provider
+type, or other registry integrity defect remains startup-fatal; plugin
+unavailability, an incompatible schema revision, or an unreadable provider
+credential preserves durable state and contains unavailability to the affected
+provider type or instance.
+
 ### Durable persistence and initialization
 
 The committed generated auth schema and reviewed SQL provide the Better Auth core `user`, `session`, `account`, and `verification` tables alongside one Nama-owned `nama_server_state` singleton. The private adapter uses that shared schema and pool only through the database capability; [authentication and setup](authentication-and-setup.md) owns the application-facing consequences.
@@ -202,6 +221,13 @@ The only secret-output exception is exactly one direct stdout line, `NAMA_BOOTST
 
 Never log bind address, public URL, database URL, master key, source TOML, SQL, environment values, request bodies, arbitrary headers, credentials, bootstrap tokens, locator URLs, or locator headers. Terminal RPC logs use only the request ID, fully qualified method, Connect code, and duration; Effect spans do not become distributed tracing.
 
+Provider-management and supervisor records may add only allowlisted provider
+type, optional Nama provider-instance ID, revision, safe status, and bounded
+lifecycle fields. They never contain provider configuration, secret keys or
+values, principal references, request fingerprints, launch envelopes, process
+IDs, executable or socket paths, provider response bodies, or cryptographic
+failure detail.
+
 Do not add OpenTelemetry, OTLP, trace-header propagation, sampling, exporters, a metrics backend, or trace/span IDs to the stable log contract without a separately accepted operational need.
 
 ## Shutdown
@@ -238,6 +264,36 @@ Generated public services are registered through `connectNodeAdapter` behind the
 
 `SetupService.GetStatus` and `CreateAdministrator`, plus `AuthService.SignIn`, `GetCurrentUser`, and `SignOut`, are implemented. Sign-in returns only the signed bearer credential and administrator; there is no refresh-token protocol. Sign-out returns success only after the durable store no longer resolves the presented bearer. Deletion or confirmation ambiguity returns `UNAVAILABLE/SESSION_REVOCATION_UNCONFIRMED`, and the caller resolves it through `GetCurrentUser`. Application failures carry stable Nama details and the same request ID as the response header; they never expose database messages, Better Auth errors, credentials, configuration, or stacks. Writes are not retried automatically.
 
+## Target provider management runtime
+
+Provider installation reconciliation treats bundled executable selection as
+code-owned, never database-controlled. A compatible discovery atomically
+persists the last accepted provider type metadata and restricted schema.
+Schema regressions preserve that accepted record and make the type unavailable;
+they never weaken write-only classification or rewrite instances piecemeal.
+
+One transactional provider-instance snapshot contains enabled state, revision,
+non-secret configuration, and encrypted secret rows. Calls acquire supervised
+demand under instance ID plus revision. Configuration updates validate a
+one-shot candidate as the existing provider principal, then close old-revision
+admission, drain bounded calls, require certain process cleanup, commit the new
+snapshot and durable operation result, and reopen admission. Disabling prevents
+new provider work; delete additionally requires no active playback or sync,
+retires the process before commit, and never calls a destructive provider API.
+
+Provider mutations use a seven-day completed-result ledger scoped by
+administrator, fully qualified method, and client operation ID. The ledger
+stores a keyed canonical request fingerprint and safe serialized result, not
+plaintext credentials. Database uniqueness arbitrates concurrent duplicates;
+no transaction or pending-operation lease spans a provider call.
+
+A provider mutation whose commit result is ambiguous does not trigger the
+setup-specific fatal process rule. The affected instance gate stays closed
+until a fresh database read resolves its durable operation result and revision.
+Unrelated provider instances and authentication remain available whenever
+their owners and PostgreSQL are healthy; no candidate test or provider mutation
+is replayed blindly.
+
 ## Verification contract
 
 The server test gate must continue to exercise behavior, not only generated contracts or compilation:
@@ -245,7 +301,17 @@ The server test gate must continue to exercise behavior, not only generated cont
 - pure and Effect-scoped configuration, logging, routing, drain, deadline interruption, and finalization behavior;
 - a real disposable plugin subprocess covering descriptor-only supervision, shared first-demand launch, protected launch material, bearer authentication, handshake rejection, bounded recovery, cancellation, independent deadlines, no replay, structured stderr, process-group escalation, and artifact cleanup;
 - serial integration against disposable PostgreSQL with production migrations, prior-journal upgrade, constraints, the complete initialization state matrix, conditional repair failure, pool closure, and readiness loss/recovery;
-- the actual package entrypoint, both termination signals, migration-and-reconciliation-before-bind ordering, released listener ports, normalized startup and integrity failures, valid JSON output, and secret absence; and
+- the actual package entrypoint, both termination signals, migration-and-reconciliation-before-bind ordering, released listener ports, normalized startup and integrity failures, valid JSON output, and secret absence;
+- provider-management behavior against production migrations: installation
+  reconciliation, schema compatibility, credential tamper and transplantation,
+  principal binding, revision and priority conflicts, the 100-instance race,
+  idempotency retention and ambiguity recovery, and delete ownership;
+- real supervised subprocess behavior for discovery, candidate, and stored
+  instance launch contexts, configuration size, empty environment, deadline and
+  cancellation, revision retirement, cleanup uncertainty, and secret absence;
+- controlled Jellyfin HTTP behavior plus one disposable real Jellyfin
+  server/user/API-key connection;
+- real Connect and compiled-CLI provider CRUD flows with exact redacted output;
 - root TypeScript checks that execute the complete server suite.
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.

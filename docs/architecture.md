@@ -62,6 +62,7 @@ Accepted ADRs record only the choices and rationale below; their linked living a
 25. [ADR-0025 — Authorize generated RPC methods through a default-deny inventory](adr/0025-default-deny-rpc-authorization.md)
 26. [ADR-0026 — Normalize failures with Connect codes and standard Google RPC details](adr/0026-standard-google-rpc-error-details.md)
 27. [ADR-0027 — Separate request correlation from durable logical-operation idempotency](adr/0027-logical-operation-idempotency.md)
+28. [ADR-0028 — Domain-separate provider credential and principal protection](adr/0028-domain-separated-provider-protection.md)
 
 ## Invariants
 
@@ -77,6 +78,7 @@ Accepted ADRs record only the choices and rationale below; their linked living a
 10. Generated RPC methods are authorized through one default-deny descriptor inventory. See [ADR-0025](adr/0025-default-deny-rpc-authorization.md).
 11. Clients branch on Connect code and stable reason; application failures use standard Google RPC details. See [ADR-0026](adr/0026-standard-google-rpc-error-details.md).
 12. Request correlation is distinct from durable logical-operation idempotency. See [ADR-0027](adr/0027-logical-operation-idempotency.md).
+13. Recoverable provider credentials use versioned authenticated encryption under a provider-specific derived key, while immutable provider-principal bindings retain only keyed, instance-bound digests. See [ADR-0028](adr/0028-domain-separated-provider-protection.md).
 
 ## Subsystem architecture
 

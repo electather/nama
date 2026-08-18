@@ -96,6 +96,13 @@ List and search requests use `page_size` and `page_token` unless a method explic
 
 Tokens are opaque, short-lived, and bound to the principal, query, filters, sort, page size, and server-side position that created them. A continuation cannot change those inputs. Invalid, expired, or mismatched tokens fail with `INVALID_ARGUMENT` and reason `PAGE_TOKEN_INVALID`. Totals are not returned because providers and reconciliation cannot supply them consistently.
 
+Nama public page tokens use a versioned canonical JSON payload authenticated
+with HMAC-SHA-256 under the `nama/page-tokens/v1` master-key derivation. The
+payload binds the authenticated principal, fully qualified method, normalized
+query, page size, sort cursor, and a 15-minute expiry; unpadded base64url is the
+transport encoding. It contains no secret and is authenticated rather than
+persisted or encrypted.
+
 Plugin catalog and watch-state scans use an explicit `begin` versus `continuation` oneof. A continuation contains only the opaque token so callers cannot accidentally change a scan midway.
 
 ### Client metadata
@@ -216,6 +223,13 @@ returned schema.
 
 `configuration`, `configuration_patch`, and the provider schema use `google.protobuf.Struct`. A create sends the full configuration. An update sends only changed keys; omitted keys remain unchanged. `clear_configuration_fields` explicitly removes optional values. A key cannot appear in both the patch and clear list. Required keys cannot be cleared.
 
+The core validates the complete merged configuration against the accepted
+schema and limits its canonical UTF-8 JSON representation, including secrets,
+to 64 KiB. A schema `default` only prepopulates client controls; the core never
+materializes an omitted value, and a secret property may not declare a default.
+The core splits accepted secret and non-secret values before persistence, so no
+write-only value enters the JSONB configuration returned to management clients.
+
 `ProviderType` contains:
 
 - `id`, `display_name`, and `description`;
@@ -223,6 +237,13 @@ returned schema.
 - `configuration_schema`;
 - `schema_profile_version`; and
 - `schema_revision`.
+
+Provider types come only from a code-owned bundled-plugin registry. Bounded
+startup discovery validates provider identity, contract major, capabilities,
+and restricted schema before atomically persisting the last accepted metadata.
+A missing or incompatible plugin leaves that record intact and the type
+unavailable; database values never select an executable, argument, or stderr
+schema.
 
 Initial provider capabilities are `LIBRARY_READ`, `ARTWORK_RESOLVE`, `PLAYBACK_PLAN`, `PLAYBACK_OPEN`, `PLAYBACK_REPORT`, `PLAYBACK_REPORTS_USER_STATE`, `WATCH_STATE_READ`, `WATCHED_WRITE`, and `PROGRESS_WRITE`. `PLAYBACK_REPORTS_USER_STATE` describes a side effect: the provider's playback telemetry also changes its watched/progress state. Unknown capabilities are ignored. The core calls only advertised operations.
 
@@ -236,6 +257,13 @@ Initial provider capabilities are `LIBRARY_READ`, `ARTWORK_RESOLVE`, `PLAYBACK_P
 - opaque `revision`; and
 - `created_at` and `updated_at`.
 
+`status` is the last completed observation made with the current stored
+configuration revision. Its database write is conditional on that revision and
+does not change the resource revision or `updated_at`. A disabled instance
+projects `DISABLED` without erasing its prior observation. Candidate tests never
+change an existing instance's status; stored-instance tests and ordinary
+provider calls may.
+
 Secret values are write-only. They are omitted from returned `configuration`, diagnostics, errors, logs, and event metadata. A configured marker reveals only whether a value exists. Updating another field does not require resending existing secrets.
 
 Secret classification is monotonic
@@ -246,7 +274,22 @@ the property's type. A provider must introduce a new key plus an explicit
 migration to replace a secret field; a plugin update can never make stored
 ciphertext readable through management responses.
 
+Recoverable secret values use one versioned AES-256-GCM envelope per
+provider-instance and configuration key under the domain-separated protection
+defined by
+[ADR-0028](../adr/0028-domain-separated-provider-protection.md). Returned
+configured-secret markers are derived from credential-row presence without
+decrypting values. Startup authenticates envelopes individually; a damaged
+envelope makes only that provider instance unavailable, while master-key loss
+never falls back to plaintext or authorizes rebinding.
+
 Enabled instances have unique positive sync priorities. On create, an omitted priority receives the next lowest precedence after existing instances. An update may reorder it; a duplicate value returns a field-level `CONFLICT`. This field is the administrator-configured source-priority tie breaker required by watch-state reconciliation.
+
+Default-priority allocation and the global instance count are serialized under
+concurrent creates. An omitted priority is one greater than the current maximum
+across enabled and disabled instances. Re-enabling an instance whose priority
+now conflicts fails rather than moving another instance, and priority updates
+never renumber neighbors.
 
 The MVP permits at most 100 configured provider instances. Creating another returns `RESOURCE_EXHAUSTED` with reason `PROVIDER_INSTANCE_LIMIT_REACHED`. This hard bound keeps complete operator diagnostics unary without introducing a second pagination contract.
 
@@ -257,11 +300,31 @@ configuration or credential update may reconnect only as the same provider
 principal. Changing the remote principal requires a new provider instance so
 existing replica state cannot silently cross identities.
 
+Create validates one isolated candidate connection before any instance row
+exists and commits only a `CONNECTED` result with an opaque principal reference;
+failed candidates leave no draft. Display-name, priority, and disable-only
+updates are database-local. Any configuration or credential change and every
+disabled-to-enabled transition validates the full merged candidate as the
+existing principal before committing; failure preserves configuration,
+credentials, binding, status, and revision.
+
 Deleting an instance is allowed only after it is disabled and has no active playback session or sync run; otherwise it fails with `PROVIDER_INSTANCE_BUSY`. Delete invalidates unopened plans and atomically removes encrypted credentials, configuration, scheduler state, scan continuations, provider sources, and provider-to-canonical mappings for that instance. It never calls a destructive provider API and never cascades into canonical user state. Canonical items backed by another source remain. Items left without any source lose public library membership—browse, search, and `GetMedia` treat them as absent—while their internal Nama-owned state is retained indefinitely in the MVP. Garbage collection requires a separately reviewed lifecycle policy.
+
+Provider update and delete acquire a per-instance writer gate and recheck
+`expected_revision`. Configuration cutover closes old-revision admission,
+drains bounded in-flight plugin calls, requires certain process cleanup, and
+then commits the new snapshot. Delete performs the same fencing and cleanup
+before its transaction. Playback sessions may continue through their opaque
+session context; a sync run may finish its current plugin call but no later step
+may cross the instance revision.
 
 `ProviderConnectionTest` contains `status`, `summary`, optional `remote_name`, optional `remote_version`, and repeated discovered `capabilities`. Status is `CONNECTED`, `AUTHENTICATION_FAILED`, `UNREACHABLE`, or `INCOMPATIBLE`. Invalid request fields fail as `INVALID_ARGUMENT` with field violations; an expected remote connection outcome is returned as a test result so management clients can render it without parsing errors.
 
 `ListProviderTypes` orders by provider type ID. `ListProviderInstances` orders by creation time then opaque ID. Both follow the common page contract.
+
+Provider page tokens follow the common stateless HMAC contract. Type cursors
+bind the last provider-type ID; instance cursors bind creation time plus opaque
+ID. Neither cursor grants access or contains provider configuration.
 
 #### Restricted configuration schema
 
@@ -280,9 +343,21 @@ Deleting an instance is allowed only after it is disabled and has no active play
 
 Any keyword outside this profile is rejected rather than ignored.
 
-Clients derive controls from type, enum, format, title, description, default, and order. Client-side validation is an immediate UX aid. The core revalidates the restricted schema itself and remains authoritative. Provider-dependent and cross-field validation is returned through `BadRequest.FieldViolation` using paths such as `configuration.base_url`.
+Clients derive controls from type, enum, format, title, description, default,
+and order. `default` is an input affordance, not an implicit stored or effective
+value. Client-side validation is an immediate UX aid; the core revalidates the
+restricted schema and submitted configuration and remains authoritative.
+Provider-dependent and cross-field validation uses `BadRequest.FieldViolation`
+paths such as `configuration.base_url`.
 
-A provider type may change its schema additively. `schema_profile_version` identifies this Nama subset. `schema_revision` changes when the provider schema changes. Property keys remain stable. Making a new property required requires a server-supplied default or migration; otherwise it is a breaking management experience.
+A provider schema revision is accepted only when existing properties remain,
+types, formats, and `writeOnly` classifications are unchanged, enums only gain
+values, constraints are equal or looser, new properties are optional, and every
+persisted instance still validates. Titles, descriptions, examples, defaults,
+and display order may change. A new required property needs a code-owned
+migration that has already populated every instance; its data migration and
+installation metadata commit atomically. Any incompatible revision preserves
+the previous accepted schema and makes the provider type unavailable.
 
 ## Canonical media model
 
@@ -560,11 +635,27 @@ dominant.
 The stateless supervised process boundary is defined by [ADR-0006](../adr/0006-stateless-supervised-plugin-subprocesses.md). Its production transport is implemented: eager code-owned executable validation, descriptor-only handle acquisition, shared first-demand launch, protected per-launch authority and Unix socket, authenticated health and identity handshake, explicit caller deadlines, cancellation without replay, bounded recovery, structured stderr, and process-group cleanup. Production provider descriptors and method workflows remain unimplemented.
 
 
-Each plugin process represents exactly one installed provider type and, for provider operations, one configured or candidate instance. A discovery launch has no instance and serves only health and `GetInfo`; this is how the core obtains a schema before configuration exists. The core supplies candidate or stored configuration and credentials at launch through the supervised-process boundary; ordinary RPC request bodies never carry the provider's account credential. An instance also has one immutable MVP provider-user binding in its core-owned configuration: Jellyfin uses the explicitly configured user ID even with an API key, while Plex uses the token principal. Watch-state RPCs never infer a user from an API key or accept a caller-selected provider user. The process is stateless, owns no database or durable cursor, and may be killed and recreated between calls.
+Each plugin process receives one discriminated launch kind through the
+supervisor's size-bounded, versioned stdin envelope. Discovery has no provider
+context and serves health plus `GetInfo`. A candidate receives one proposed
+configuration, serves one `GetConnection`, and retires immediately. A stored
+instance receives one provider-instance ID, configuration revision, non-secret
+configuration, and separate secret map and may serve nearby calls until its
+bounded idle retirement. Ordinary RPC bodies, metadata, argv, and the empty
+child environment never transport provider credentials.
 
-Credential storage and any refresh key material belong to the core. Automatic provider credential refresh is not part of the MVP plugin contract. A provider that requires rotation cannot ask a stateless plugin to persist new credentials; its capability stays unavailable until an additive, core-owned credential-update design is approved.
+The canonical launch context is limited to 64 KiB and contains no database,
+master-key, administrator, device, other-instance, or public-operation
+authority. Stored calls acquire demand under instance ID plus revision; no
+process crosses durable configuration revisions. Credential storage and any
+refresh material belong to the core. Automatic provider credential refresh is
+outside the MVP until an additive core-owned update contract exists.
 
-Every plugin RPC requires the per-launch bearer. Calls carry explicit deadlines and cancellation. Plugin requests contain only the provider references and values needed for that operation. Plugin responses are untrusted input: the core validates their Protobuf constraints, normalized values, URL origins, header allowlist, and size bounds before storing or exposing any mapped data.
+Every plugin RPC requires the per-launch bearer. Calls carry explicit deadlines
+and cancellation. Plugin requests contain only the provider references and
+values needed for that operation. Plugin responses are untrusted input: the
+core validates their Protobuf constraints, normalized values, URL origins,
+header allowlist, and size bounds before storage or public mapping.
 
 ### Plugin HealthService
 
@@ -586,7 +677,20 @@ The existing `nama.plugin.v1.HealthService.Check` remains the additive anchor wi
 
 `GetInfo` does not require instance configuration or a successful provider connection and returns static information suitable for `ProviderService.ListProviderTypes`. The plugin schema follows exactly the restricted public profile; the core validates it before publishing it. `GetConnection` requires an instance or candidate launch.
 
-`PluginConnection` contains `status`, optional redacted `remote_name`, optional `remote_version`, optional opaque `provider_user_reference`, and repeated discovered capabilities. A connected state for a watch-capable plugin requires the user reference. The core stores it privately to enforce the instance's immutable user binding and never publishes it through `nama.api.v1`. Status is `CONNECTED`, `AUTHENTICATION_FAILED`, `UNREACHABLE`, or `INCOMPATIBLE`. Raw provider error bodies and credential-bearing URLs are never returned.
+`PluginConnection` contains `status`, optional redacted `remote_name`, optional `remote_version`, optional opaque `provider_user_reference`, and repeated discovered capabilities. Every connected candidate or configured instance requires that private reference; despite the wire field name, it carries the provider-principal identity that the core digests and never publishes through `nama.api.v1`. Status is `CONNECTED`, `AUTHENTICATION_FAILED`, `UNREACHABLE`, or `INCOMPATIBLE`. Raw provider error bodies and credential-bearing URLs are never returned.
+
+The initial Jellyfin schema requires absolute `base_url` with at most 2,048
+UTF-8 bytes, explicit `user_id` with at most 128 UTF-8 bytes, and write-only
+`api_key` with at most 4,096 UTF-8 bytes. `GetConnection` first reads
+unauthenticated public system information, then reads the configured user with
+Jellyfin's credentialed authorization header. It requires matching canonical
+server and user identities and a non-disabled user, and returns their versioned
+combination as the opaque principal reference. Jellyfin base URLs may use HTTP
+or HTTPS, private destinations, and one path prefix but no embedded credentials,
+query, or fragment. Requests refuse redirects and propagate the RPC
+cancellation signal so the API key never crosses the configured origin or path.
+Issue #29 advertises no media capability; issue #30 adds only capabilities it
+implements.
 
 ### Plugin media model
 
@@ -840,10 +944,14 @@ Clients first branch on Connect code, then on `ErrorInfo.reason`. They must fall
 | Playback session is terminal for a new event | `FAILED_PRECONDITION` | `PLAYBACK_SESSION_CLOSED` |
 | Same idempotency key was reused for another payload | `ALREADY_EXISTS` | `IDEMPOTENCY_KEY_REUSED` |
 | Expected provider revision is stale | `ABORTED` | `REVISION_MISMATCH` |
-| Updated credentials resolve to another provider user | `FAILED_PRECONDITION` | `PROVIDER_USER_CHANGED` |
+| Updated configuration resolves to another provider principal | `FAILED_PRECONDITION` | `PROVIDER_USER_CHANGED` |
+| Candidate provider credentials are rejected | `FAILED_PRECONDITION` | `PROVIDER_AUTHENTICATION_FAILED` |
+| Remote provider is incompatible | `FAILED_PRECONDITION` | `PROVIDER_INCOMPATIBLE` |
+| Stored provider credential cannot be authenticated | `UNAVAILABLE` | `PROVIDER_CREDENTIALS_UNAVAILABLE` |
 | Configured provider-instance limit is reached | `RESOURCE_EXHAUSTED` | `PROVIDER_INSTANCE_LIMIT_REACHED` |
 | Provider deletion is blocked by active work or enabled state | `FAILED_PRECONDITION` | `PROVIDER_INSTANCE_BUSY` |
-| Provider or plugin is temporarily unreachable | `UNAVAILABLE` | `PROVIDER_UNAVAILABLE` or `PLUGIN_UNAVAILABLE` |
+| Provider is temporarily unreachable | `UNAVAILABLE` | `PROVIDER_UNAVAILABLE` |
+| Plugin launch or runtime is unavailable | `UNAVAILABLE` | `PLUGIN_UNAVAILABLE` |
 | Plugin returned invalid or unsafe data | `INTERNAL` | `PLUGIN_RESPONSE_INVALID` |
 | Public or pairing rate limit exceeded | `RESOURCE_EXHAUSTED` | `RATE_LIMITED` |
 | Client cancelled | `CANCELLED` | `REQUEST_CANCELLED` |
@@ -874,15 +982,35 @@ These public mutations carry `operation_id` and are retried only with the same I
 
 `ReportPlayback` carries `event_id` plus session sequence. Each plugin watch-state mutation carries `mutation_id`; its enclosing `batch_id` groups diagnostics but does not make the batch atomic. Plugin open/close calls carry the public logical operation ID, and plugin report calls carry the public event ID.
 
-At the public boundary, an idempotency key is scoped to authenticated principal plus fully qualified method. Repeating the same logical request returns the original logical result. Reusing it with a different normalized payload returns `ALREADY_EXISTS` and `IDEMPOTENCY_KEY_REUSED`. The core stores a non-secret payload fingerprint, not plaintext credentials, for comparison.
+At the public boundary, an idempotency key is scoped to authenticated principal
+plus fully qualified method. Repeating the same logical request returns the
+original safe serialized result. Reusing it with a different normalized payload
+returns `ALREADY_EXISTS` and `IDEMPOTENCY_KEY_REUSED`. The core stores a
+domain-separated keyed HMAC of the canonical request, including secret values,
+never the plaintext request or credentials.
 
-Durable public mutation deduplication is retained for at least 24 hours. Pairing approval deduplication lasts at least through request expiry; playback deduplication lasts through session expiry and cleanup. These are minimum server guarantees, not instructions for clients to delay retries.
+Completed provider mutation results are retained for seven days and expired in
+bounded startup and opportunistic mutation batches. Database uniqueness
+arbitrates concurrent duplicates; duplicate read-only candidate connection
+tests may occur, but only one provider mutation and result commit. No database
+transaction, lock, or persisted pending-operation lease spans a provider call.
+Other public mutation classes retain at least their existing 24-hour,
+request-expiry, or session-expiry minimum.
 
 At the plugin boundary, operation, event, batch, and mutation IDs are correlation and recovery keys; they do not imply provider-native idempotency. The core prevents duplicate plugin calls when it has a recorded outcome. If provider commitment is ambiguous, the adapter follows the operation-specific re-read or cleanup rule and never automatically replays a Jellyfin playback-start call or other non-convergent telemetry.
 
 ### Concurrency
 
 - Provider update and delete require `expected_revision`. A stale value returns `ABORTED`; clients fetch the current instance before deciding whether to reapply edits.
+- Provider calls load one transactional configuration and credential snapshot
+  and acquire runtime demand under provider-instance ID plus revision. A stale
+  scheduled or request snapshot refetches or fails; it never launches an old
+  revision.
+- Configuration cutover and delete stop admission, drain bounded calls, and
+  require process cleanup before committing. Status observations commit only
+  while their captured revision remains current; last committed completion wins.
+- Provider create serializes count and omitted-priority allocation so the
+  100-instance bound and default ordering hold under concurrency.
 - Setup is process single-flight and permanently closes immediately after administrator creation commits.
 - Pairing approval is single-flight per pairing request. Only one logical device can result.
 - Only one sync run is active per provider instance. A trigger joins the active run.
@@ -890,6 +1018,13 @@ At the plugin boundary, operation, event, batch, and mutation IDs are correlatio
 - Plugin watch batches are the only specified non-atomic batch; every member has its own result.
 
 Cancellation and deadlines propagate from transport through the core to plugin/provider work. A cancelled mutation may already have committed. The client recovers by repeating the same operation ID or reading current state. A late playback lease is recorded and cleanup is attempted when its identity is known; a process crash before the provider returns an identity can rely only on provider expiry. The server never changes to a broader retry, overwrites a newer revision, or starts a duplicate sync merely because the original caller disappeared.
+
+After provider-process retirement, a lost database commit result keeps only that
+instance's gate closed. A fresh database read resolves the durable operation
+result and current revision: committed state reopens under the new truth, while
+an absent result plus the old revision reopens the old snapshot. Continued
+database unavailability returns `UNAVAILABLE`; it does not trigger setup's
+global fatal-ambiguity rule or blindly replay candidate/provider work.
 
 ## Compatibility policy
 
