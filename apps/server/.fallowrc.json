@@ -76,7 +76,7 @@
     "maxCognitive": 15,
     "maxCrap": 30,
     "maxUnitSize": 60,
-    "ignore": ["**/*.test.ts"],
+    "ignore": ["**/*.test.ts", "integration/tests/fixtures/**"],
     "suggestInlineSuppression": false
   },
   "audit": {
@@ -147,6 +147,7 @@
       { "name": "database", "patterns": ["src/database/**/*.ts"] },
       { "name": "setup", "patterns": ["src/setup/**/*.ts"] },
       { "name": "lifecycle", "patterns": ["src/lifecycle/**/*.ts"] },
+      { "name": "plugin", "patterns": ["src/plugin/**/*.ts"] },
       { "name": "transport", "patterns": ["src/http/**/*.ts"] },
       { "name": "contracts", "patterns": ["src/contracts/**/*.ts"] },
       { "name": "integration", "patterns": ["integration/**/*.ts"] },
@@ -166,6 +167,7 @@
           "lifecycle",
           "logging",
           "setup",
+          "plugin",
           "transport"
         ]
       },
@@ -178,6 +180,7 @@
       { "from": "database", "allow": ["configuration"] },
       { "from": "setup", "allow": ["database"] },
       { "from": "lifecycle", "allow": [] },
+      { "from": "plugin", "allow": ["logging"] },
       {
         "from": "transport",
         "allow": [
@@ -200,6 +203,7 @@
           "lifecycle",
           "logging",
           "setup",
+          "plugin",
           "transport"
         ]
       },
