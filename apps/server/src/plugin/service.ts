@@ -4,8 +4,8 @@ import type {
   MessageInitShape,
   MessageShape,
 } from "@bufbuild/protobuf";
-import { Effect, Exit, Semaphore } from "effect";
-import type { Fiber, Scope } from "effect";
+import { Effect, Exit, Fiber, Semaphore } from "effect";
+import type { Scope } from "effect";
 
 import { callSupervisedPlugin } from "./call.ts";
 import type { PluginCallFailure, SupervisedCall } from "./call.ts";
@@ -34,6 +34,10 @@ type PluginHandleCloseSelection =
       readonly fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>;
       readonly kind: "recovery";
       readonly prior: RunningPlugin | typeof ABSENT_PLUGIN;
+    }>
+  | Readonly<{
+      readonly fiber: Fiber.Fiber<void, PluginSupervisorCleanupFailure>;
+      readonly kind: "retirement";
     }>;
 
 interface PluginSupervisorOptions {
@@ -70,6 +74,9 @@ const selectPluginHandleClose = (state: PluginHandleState): PluginHandleCloseSel
         prior: lifecycle.prior,
       };
     }
+    case "retiring": {
+      return { fiber: lifecycle.fiber, kind: "retirement" };
+    }
     case "terminal": {
       return selectTerminalPluginClose(lifecycle.plugin);
     }
@@ -91,6 +98,9 @@ const closeSelectedPlugin = (
     }
     case "recovery": {
       return stopPluginRecovery(selection.fiber, selection.prior);
+    }
+    case "retirement": {
+      return Fiber.join(selection.fiber);
     }
     default: {
       return selection satisfies never;

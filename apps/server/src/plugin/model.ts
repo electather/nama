@@ -12,6 +12,7 @@ import type { Deferred, Effect, Fiber, Scope, Semaphore } from "effect";
 import type {
   PluginDeadlineFailure,
   PluginRpcFailure,
+  PluginSupervisorCleanupFailure,
   PluginUnavailableFailure,
 } from "./errors.ts";
 import type { PluginStderrEventDeclaration } from "./stderr.ts";
@@ -76,6 +77,13 @@ type PluginLifecycleState =
       readonly kind: "recovering";
       readonly owner: symbol;
       readonly prior: RunningPlugin | typeof ABSENT_PLUGIN;
+    }>
+  | Readonly<{
+      readonly completion: Deferred.Deferred<void, PluginUnavailableFailure>;
+      readonly fiber: Fiber.Fiber<void, PluginSupervisorCleanupFailure>;
+      readonly kind: "retiring";
+      readonly owner: symbol;
+      readonly plugin: RunningPlugin | typeof ABSENT_PLUGIN;
     }>
   | Readonly<{ readonly kind: "ready"; readonly plugin: RunningPlugin }>
   | Readonly<{

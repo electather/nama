@@ -296,9 +296,15 @@ const stop = async () => {
     return;
   }
   stopping = true;
-  if (mode === "ignore-termination") {
-    stopping = false;
-    return;
+  if (mode === "ignore-termination" || (mode === "wait-first-termination" && launchNumber === 1)) {
+    await appendFile(join(controlDirectory, "termination-signals.ndjson"), "SIGTERM\n", {
+      mode: 0o600,
+    });
+    if (mode === "ignore-termination") {
+      stopping = false;
+      return;
+    }
+    await waitForControlFile("termination-continue");
   }
   if (mode === "cleanup-failure") {
     await chmod(dirname(dirname(envelope.socket_path)), 0o500);

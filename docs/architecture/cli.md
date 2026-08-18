@@ -6,16 +6,16 @@ Status: issue #24 profiles, administrator setup, sign-in, and authentication sta
 
 `nama` is the public management interface for both terminal users and shell-capable agents. [ADR-0015](../adr/0015-thin-management-cli.md) keeps it a thin Go 1.26 client over generated Connect-Go services, not a second implementation of server behavior. Commands, flags, structured output, errors, and exit codes form a versioned public contract.
 
-The CLI remains useful without an interactive terminal. Every operation has a complete non-interactive form, and interactive affordances may only wrap those same operations later.
+The CLI remains useful without an interactive terminal. Every operation has a complete non-interactive form, and interactive affordances may only wrap those same operations.
 
 ## Scope and delivery
 
-The complete MVP management surface covers initial administrator setup, authentication and server profiles, plugin and Jellyfin configuration, synchronization status and triggering, device approval, health, and diagnostics. Command families enter with the server RPCs they exercise:
+The complete MVP management surface covers initial administrator setup, authentication and server profiles, provider configuration, synchronization status and triggering, device approval, health, and diagnostics. Command families enter with the server RPCs they exercise:
 
 - Milestone 0 created the compilable Cobra boundary and proved that generated public clients are consumable.
 - Issue #24 implements the shared CLI foundation, named profiles, administrator setup, sign-in, and authentication status.
 - Issue #25 completes help, version reporting, shell completion, machine schema, generated reference documentation, and semantic compatibility enforcement.
-- Health, diagnostics, plugin, Jellyfin, device, and synchronization commands enter only with their implemented API behavior.
+- Health, diagnostics, provider, plugin, Jellyfin, device, and synchronization commands enter only with their implemented API behavior.
 
 The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no management web application or CLI plugin framework in the MVP.
 
@@ -72,8 +72,15 @@ nama
 │   ├── logout
 │   └── status
 ├── profile
-├── plugin
-│   └── jellyfin
+├── provider
+│   ├── type
+│   │   └── list
+│   └── instance
+│       ├── list
+│       ├── get
+│       ├── create
+│       ├── update
+│       └── delete
 ├── sync
 │   ├── status
 │   └── run
@@ -86,6 +93,23 @@ nama
 ```
 
 Only commands backed by an implemented public RPC are added. Exact leaf commands, arguments, and flags are designed with those RPCs; this list reserves no unimplemented server behavior.
+
+Issue #29's provider commands are generic `ProviderService` clients; no
+Jellyfin-specific public command family exists. Create, update, and delete
+generate a random operation ID unless the caller supplies `--operation-id` for
+scripted retry or ambiguity recovery, and mutation JSON output includes the ID
+used. Update and delete require `--expected-revision`; the CLI never fetches a
+newer revision and silently overwrites it. Issue #31 may add provider-type
+inspection and explicit candidate or stored-instance connection tests over
+their existing RPCs.
+
+Human provider create and update may render the restricted configuration schema
+through ordinary prompts and mask `writeOnly` strings. Their non-interactive
+form reads a configuration or patch document from a file path or `-` for stdin.
+JSON mode never prompts. Provider secret values are never accepted in argv,
+environment variables, positional arguments, or inline JSON flags.
+`--clear <key>` names optional ordinary or secret fields without carrying their
+values.
 
 The canonical binary name is `nama`. The live Cobra tree now supplies complete human help, a global version flag, four shell-completion formats, machine schema version 1, the generated CLI reference, and the compatibility baseline.
 
@@ -175,6 +199,11 @@ CLI flag
 ```
 
 The shared global inputs are `--server`, `--profile`, and `--output`, with corresponding `NAMA_SERVER`, `NAMA_PROFILE`, and `NAMA_OUTPUT` variables. Profile configuration never contains passwords or tokens.
+
+Provider configuration documents are per-command input, not CLI configuration.
+They are never copied into profiles or the native administrator credential
+store. A caller that uses a file owns that file's permissions and deletion;
+stdin is the preferred automation path for write-only values.
 `profile set` ignores inherited profile selection but still resolves `--server` and `NAMA_SERVER`. `profile list` and `profile use` ignore both inherited profile and server selections because those inputs are irrelevant to their local configuration operations.
 
 The client permits plain HTTP only for loopback, private or link-local addresses, and `.local` discovery names, with the warning required by the authentication design. For these permitted plain-HTTP targets it bypasses environment proxies; HTTPS retains the caller's configured proxy behavior. Public names and addresses require HTTPS. Human rendering visibly escapes untrusted terminal controls returned by a server.

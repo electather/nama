@@ -1,0 +1,3 @@
+# Domain-separate provider credential and principal protection
+
+Nama derives distinct provider-credential and provider-principal keys from the configured 32-byte master key with HKDF-SHA-256. Recoverable provider secrets use per-key, versioned AES-256-GCM envelopes with fresh nonces and instance-, provider-type-, and configuration-key-bound authenticated data; immutable provider-principal bindings retain only keyed, instance-bound HMAC digests. This avoids plaintext and cross-purpose key reuse and deliberately makes master-key loss require instance replacement rather than rebinding, while deferring online key rotation until a concrete operational contract exists.
