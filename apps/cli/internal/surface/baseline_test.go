@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/electather/nama/apps/cli/internal/cli"
@@ -71,6 +72,38 @@ func TestGeneratedCLIReferenceMatchesTheCanonicalTree(t *testing.T) {
 		if bytes.Contains(got, []byte(text)) {
 			t.Errorf("generated reference contains unstable or unimplemented text %q", text)
 		}
+	}
+}
+
+func TestPasswordInputPublishesCanonicalContract(t *testing.T) {
+	const description = "Administrator password"
+	want := surface.Input{
+		Name:        "password",
+		Type:        "string",
+		Required:    true,
+		Secret:      true,
+		Description: description,
+		Sources: []surface.InputSource{
+			{
+				Kind:      surface.InputSourceKindHiddenPrompt,
+				Name:      "Password",
+				Condition: surface.InputSourceConditionHumanTerminal,
+			},
+			{
+				Kind:      surface.InputSourceKindStdinLine,
+				Name:      "stdin",
+				Condition: surface.InputSourceConditionNonterminal,
+			},
+			{
+				Kind:      surface.InputSourceKindRejected,
+				Name:      "terminal_stdin",
+				Condition: surface.InputSourceConditionJSONTerminal,
+			},
+		},
+	}
+
+	if got := surface.PasswordInput(description); !reflect.DeepEqual(got, want) {
+		t.Errorf("PasswordInput() = %#v, want %#v", got, want)
 	}
 }
 

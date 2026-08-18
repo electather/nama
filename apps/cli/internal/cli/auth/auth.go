@@ -47,18 +47,7 @@ JSON output with terminal stdin is rejected before the password is read.`,
 	}
 	login.Flags().StringVar(&email, "email", "", "Administrator email address (required)")
 	surface.SetFlag(login, "email", surface.FlagMetadata{Required: true})
-	surface.SetInputs(login, surface.Input{
-		Name:        "password",
-		Type:        "string",
-		Required:    true,
-		Secret:      true,
-		Description: "Administrator password",
-		Sources: []surface.InputSource{
-			{Kind: "hidden_prompt", Name: "Password", Condition: "human_terminal"},
-			{Kind: "stdin_line", Name: "stdin", Condition: "nonterminal"},
-			{Kind: "rejected", Name: "terminal_stdin", Condition: "json_terminal"},
-		},
-	})
+	surface.SetInputs(login, surface.PasswordInput("Administrator password"))
 	status := &cobra.Command{
 		Use:     "status",
 		Short:   "Report authentication status",
@@ -76,8 +65,8 @@ JSON output with terminal stdin is rejected before the password is read.`,
 		Secret:      true,
 		Description: "Administrator bearer credential",
 		Sources: []surface.InputSource{
-			{Kind: "environment", Name: "NAMA_TOKEN", Condition: "always"},
-			{Kind: "native_credential_store", Name: "operating_system", Condition: "NAMA_TOKEN_unset"},
+			{Kind: surface.InputSourceKindEnvironment, Name: "NAMA_TOKEN", Condition: surface.InputSourceConditionAlways},
+			{Kind: surface.InputSourceKindNativeCredentialStore, Name: "operating_system", Condition: surface.InputSourceConditionNAMATokenUnset},
 		},
 	})
 	command.AddCommand(login, status)

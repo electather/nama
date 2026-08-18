@@ -71,11 +71,33 @@ type Input struct {
 	Sources     []InputSource `json:"sources"`
 }
 
+// InputSourceKind identifies how a conditional input is supplied.
+type InputSourceKind string
+
+const (
+	InputSourceKindHiddenPrompt          InputSourceKind = "hidden_prompt"
+	InputSourceKindStdinLine             InputSourceKind = "stdin_line"
+	InputSourceKindEnvironment           InputSourceKind = "environment"
+	InputSourceKindNativeCredentialStore InputSourceKind = "native_credential_store"
+	InputSourceKindRejected              InputSourceKind = "rejected"
+)
+
+// InputSourceCondition identifies when an input source applies.
+type InputSourceCondition string
+
+const (
+	InputSourceConditionHumanTerminal  InputSourceCondition = "human_terminal"
+	InputSourceConditionNonterminal    InputSourceCondition = "nonterminal"
+	InputSourceConditionJSONTerminal   InputSourceCondition = "json_terminal"
+	InputSourceConditionAlways         InputSourceCondition = "always"
+	InputSourceConditionNAMATokenUnset InputSourceCondition = "NAMA_TOKEN_unset"
+)
+
 // InputSource describes one safe source or rejected terminal condition.
 type InputSource struct {
-	Kind      string `json:"kind"`
-	Name      string `json:"name"`
-	Condition string `json:"condition"`
+	Kind      InputSourceKind      `json:"kind"`
+	Name      string               `json:"name"`
+	Condition InputSourceCondition `json:"condition"`
 }
 
 // ExitCode publishes one process exit meaning and its stable error mappings.
@@ -101,6 +123,34 @@ func SetArguments(command *cobra.Command, arguments ...Argument) {
 // SetInputs attaches ordered conditional-input metadata to a command.
 func SetInputs(command *cobra.Command, inputs ...Input) {
 	setCommandAnnotation(command, inputsAnnotation, inputs)
+}
+
+// PasswordInput returns the shared password-input contract with command-specific copy.
+func PasswordInput(description string) Input {
+	return Input{
+		Name:        "password",
+		Type:        "string",
+		Required:    true,
+		Secret:      true,
+		Description: description,
+		Sources: []InputSource{
+			{
+				Kind:      InputSourceKindHiddenPrompt,
+				Name:      "Password",
+				Condition: InputSourceConditionHumanTerminal,
+			},
+			{
+				Kind:      InputSourceKindStdinLine,
+				Name:      "stdin",
+				Condition: InputSourceConditionNonterminal,
+			},
+			{
+				Kind:      InputSourceKindRejected,
+				Name:      "terminal_stdin",
+				Condition: InputSourceConditionJSONTerminal,
+			},
+		},
+	}
 }
 
 // SetFlag attaches public metadata to an existing local or persistent flag.

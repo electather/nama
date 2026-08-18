@@ -54,23 +54,12 @@ with terminal stdin is rejected before either secret is read.`,
 			Secret:      true,
 			Description: "One-time server bootstrap token",
 			Sources: []surface.InputSource{
-				{Kind: "hidden_prompt", Name: "Bootstrap token", Condition: "human_terminal"},
-				{Kind: "environment", Name: "NAMA_BOOTSTRAP_TOKEN", Condition: "nonterminal"},
-				{Kind: "rejected", Name: "terminal_stdin", Condition: "json_terminal"},
+				{Kind: surface.InputSourceKindHiddenPrompt, Name: "Bootstrap token", Condition: surface.InputSourceConditionHumanTerminal},
+				{Kind: surface.InputSourceKindEnvironment, Name: "NAMA_BOOTSTRAP_TOKEN", Condition: surface.InputSourceConditionNonterminal},
+				{Kind: surface.InputSourceKindRejected, Name: "terminal_stdin", Condition: surface.InputSourceConditionJSONTerminal},
 			},
 		},
-		surface.Input{
-			Name:        "password",
-			Type:        "string",
-			Required:    true,
-			Secret:      true,
-			Description: "Initial Administrator password",
-			Sources: []surface.InputSource{
-				{Kind: "hidden_prompt", Name: "Password", Condition: "human_terminal"},
-				{Kind: "stdin_line", Name: "stdin", Condition: "nonterminal"},
-				{Kind: "rejected", Name: "terminal_stdin", Condition: "json_terminal"},
-			},
-		},
+		surface.PasswordInput("Initial Administrator password"),
 	)
 	return command
 }
