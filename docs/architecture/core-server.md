@@ -16,7 +16,7 @@ This note is the canonical record for durable core-server boundaries. The implem
 - exact liveness and readiness routes before Connect delegation;
 - one native Node listener and one Effect managed request runtime for health and RPC callbacks;
 - runtime-controlled readiness and fatal post-bind failure;
-- one Effect-scoped authenticated plugin-subprocess supervisor; and
+- one Effect-scoped authenticated, on-demand plugin-subprocess supervisor with bounded idle retirement; and
 - deterministic signal shutdown, bounded drain, process-group termination, and resource finalization.
 
 The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; only Setup and Auth behavior is implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. The private plugin transport now launches, authenticates, handshakes with, calls, recovers, and terminates code-owned subprocesses, but no production provider descriptor or plugin method workflow is registered. Pairing, CLI setup/sign-in, client behavior, provider persistence, schedules, and exported tracing remain outside this runtime.
@@ -213,7 +213,7 @@ Normal logs are newline-delimited JSON on stdout. The configured threshold appli
 - `server.shutdown_failed`; and
 - `database.readiness_changed`.
 
-Plugin supervision additionally emits `plugin.recovery_attempt`, `plugin.process_exited`, `plugin.rpc_deadline_exceeded`, `plugin.recovery_exhausted`, `plugin.stderr_dropped`, and code-declared plugin events. Plugin lifecycle fields are restricted to `provider_type`, `provider_instance_id`, `recovery_attempt`, `exit_code`, and `signal`; code-declared plugin fields are finite numbers or allowlisted enum values. Bearers, socket paths, executable arguments, environment, configuration, raw stderr, and arbitrary process errors never enter records.
+Plugin supervision additionally emits `plugin.recovery_attempt`, `plugin.process_exited`, `plugin.rpc_deadline_exceeded`, `plugin.recovery_exhausted`, `plugin.process_idle_stopped`, `plugin.process_idle_stop_failed`, `plugin.stderr_dropped`, and code-declared plugin events. Successful idle retirement uses debug severity; failed idle cleanup uses error severity. Plugin lifecycle fields are restricted to `provider_type`, `provider_instance_id`, `recovery_attempt`, `exit_code`, and `signal`; code-declared plugin fields are finite numbers or allowlisted enum values. Bearers, socket paths, executable arguments, environment, configuration, raw stderr, and arbitrary process errors never enter records.
 
 Expected failures expose no arbitrary exception message or cause. An unexpected defect may include bounded stack frames after removing the exception message; sanitation must never serialize enumerable exception properties. Fatal post-bind failure emits exactly one `server.runtime_failed` record at `fatal` severity, so configured `warn`, `error`, and `fatal` thresholds cannot suppress the sole record.
 
@@ -251,6 +251,8 @@ mark accepting false
 ```
 
 An already-established connection sees readiness become 503 as soon as accepting is false, without a database probe. Finalizers are idempotent and tolerate partial acquisition. A finalizer failure emits `server.shutdown_failed` and exits non-zero.
+Plugin-handle finalization takes precedence over its 30-second idle grace. It interrupts an uncommitted timer, joins retirement already in progress rather than signaling the same process concurrently, and retries cleanup retained by a failed retirement. A second cleanup failure follows the same `server.shutdown_failed` and non-zero-exit contract; successful finalization leaves no owned process group, helper, socket, or launch directory.
+
 
 ## Implemented setup and authentication runtime ([ADR-0007](../adr/0007-private-better-auth-adapter.md), [ADR-0008](../adr/0008-fail-closed-setup-reconciliation.md))
 
@@ -299,7 +301,7 @@ is replayed blindly.
 The server test gate must continue to exercise behavior, not only generated contracts or compilation:
 
 - pure and Effect-scoped configuration, logging, routing, drain, deadline interruption, and finalization behavior;
-- a real disposable plugin subprocess covering descriptor-only supervision, shared first-demand launch, protected launch material, bearer authentication, handshake rejection, bounded recovery, cancellation, independent deadlines, no replay, structured stderr, process-group escalation, and artifact cleanup;
+- a real disposable plugin subprocess covering descriptor-only supervision, shared first-demand launch, protected launch material, bearer authentication, handshake rejection, bounded recovery, per-call demand, controlled idle timing, retirement races, cleanup-failure containment, scope-finalization retry, cancellation, independent deadlines, no replay, structured stderr, process-group escalation, safe lifecycle events, and artifact cleanup;
 - serial integration against disposable PostgreSQL with production migrations, prior-journal upgrade, constraints, the complete initialization state matrix, conditional repair failure, pool closure, and readiness loss/recovery;
 - the actual package entrypoint, both termination signals, migration-and-reconciliation-before-bind ordering, released listener ports, normalized startup and integrity failures, valid JSON output, and secret absence;
 - provider-management behavior against production migrations: installation
@@ -316,8 +318,8 @@ The server test gate must continue to exercise behavior, not only generated cont
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.
 
-The implemented coverage exercises generated-client and real-process setup/authentication flows plus the private plugin-supervision transport: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, descriptor-only handle acquisition, shared first-demand plugin launch, plugin launch authentication and authority rotation, recovery, call cancellation and independent deadlines, process-group cleanup, correlation, safe public errors and logs, readiness, and fatal runtime exit.
+The implemented coverage exercises generated-client and real-process setup/authentication flows plus the private plugin-supervision transport: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, descriptor-only handle acquisition, shared first-demand plugin launch, plugin launch authentication and authority rotation, recovery, call cancellation and independent deadlines, on-demand and idle lifecycle policy, failed-retirement containment and finalization, process-group cleanup, correlation, safe public errors and logs, readiness, and fatal runtime exit.
 
 ## Deferred work
 
-Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. Production provider descriptors and workflows, plugin idle retirement, persistence and credentials, Jellyfin behavior, pairing, media, playback, and synchronization belong to their owning milestones.
+Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. Production provider descriptors and workflows, persistence and credentials, Jellyfin behavior, pairing, media, playback, and synchronization belong to their owning milestones.

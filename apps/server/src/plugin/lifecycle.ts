@@ -1,15 +1,16 @@
 // oxlint-disable eslint/max-lines -- Demand, recovery, and retirement transitions stay with their shared lifecycle semaphore.
 import { Cause, Deferred, Effect, Exit, Fiber } from "effect";
 
-import { stopPlugin } from "./cleanup.ts";
+import { cleanupOwnedResources, makeCleanupOwnership, ownCleanup, stopPlugin } from "./cleanup.ts";
 import { HEALTHY_EPISODE_RESET_MILLISECONDS, PLUGIN_IDLE_GRACE_MILLISECONDS } from "./constants.ts";
 import { PluginSupervisorCleanupError, unavailable } from "./errors.ts";
 import type { PluginSupervisorCleanupFailure, PluginUnavailableFailure } from "./errors.ts";
 import { recoverPlugin } from "./launch.ts";
 import type { RecoveryPluginOptions, RecoveryResult } from "./launch.ts";
-import { pluginProcessExitLog } from "./logging.ts";
+import { pluginLifecycleMessage, pluginProcessExitLog } from "./logging.ts";
 import { ABSENT_PLUGIN } from "./model.ts";
 import type {
+  PluginCleanupOwnership,
   PluginHandleState,
   PluginLaunchDescriptor,
   PluginLogEmitter,
@@ -41,6 +42,7 @@ interface PluginRecoveryStart {
 }
 
 interface RecoveryEpisode extends PluginRecoveryStart {
+  readonly ownership: PluginCleanupOwnership;
   readonly owner: symbol;
   readonly priorLaunches: number;
 }
@@ -51,6 +53,21 @@ type RunningPluginSelection =
   | Readonly<{ readonly completion: RecoveryCompletion; readonly kind: "recovery" }>
   | Readonly<{ readonly kind: "ready"; readonly plugin: RunningPlugin }>
   | Readonly<{ readonly completion: RetirementCompletion; readonly kind: "retirement" }>;
+
+interface IdleRetirement {
+  readonly completion: RetirementCompletion;
+  readonly options: RecoveryOptions;
+  readonly owner: symbol;
+  readonly ownership: PluginCleanupOwnership;
+  readonly state: PluginHandleState;
+}
+
+interface IdleRetirementCommit {
+  readonly cleanup: Effect.Effect<void, PluginSupervisorCleanupFailure>;
+  readonly options: RecoveryOptions;
+  readonly ownership: PluginCleanupOwnership;
+  readonly state: PluginHandleState;
+}
 
 const interruptPluginRecovery = (
   fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>,
@@ -67,76 +84,226 @@ const interruptPluginRecovery = (
 
 const stopPluginRecovery = (
   fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>,
-  prior: RunningPlugin | typeof ABSENT_PLUGIN,
-): Effect.Effect<void, PluginSupervisorCleanupFailure> => {
-  const interruptRecovery = interruptPluginRecovery(fiber);
-  if (prior === ABSENT_PLUGIN) {
-    return interruptRecovery;
-  }
-  return Effect.gen(function* stopRecoveryAndPriorPlugin() {
-    const recoveryExit = yield* interruptRecovery.pipe(Effect.exit);
-    const priorExit = yield* stopPlugin(prior).pipe(Effect.exit);
+  ownership: PluginCleanupOwnership,
+): Effect.Effect<void, PluginSupervisorCleanupFailure> =>
+  Effect.gen(function* stopRecoveryAndOwnedResources() {
+    const recoveryExit = yield* interruptPluginRecovery(fiber).pipe(Effect.exit);
     if (Exit.isFailure(recoveryExit)) {
-      yield* Effect.failCause(recoveryExit.cause);
+      return yield* Effect.failCause(recoveryExit.cause);
     }
-    if (Exit.isFailure(priorExit)) {
-      yield* Effect.failCause(priorExit.cause);
-    }
+    return yield* cleanupOwnedResources(ownership);
   });
+type PluginHandleCloseSelection =
+  | Readonly<{ readonly kind: "none" }>
+  | Readonly<{
+      readonly cleanup: Effect.Effect<void, PluginSupervisorCleanupFailure>;
+      readonly kind: "cleanup";
+    }>
+  | Readonly<{
+      readonly fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>;
+      readonly kind: "recovery";
+      readonly ownership: PluginCleanupOwnership;
+    }>
+  | Readonly<{
+      readonly fiber: Fiber.Fiber<void>;
+      readonly kind: "retirement";
+      readonly ownership: PluginCleanupOwnership;
+    }>;
+
+interface PluginHandleClosure {
+  readonly idleTimer: Fiber.Fiber<void> | undefined;
+  readonly selection: PluginHandleCloseSelection;
+}
+
+const selectTerminalPluginClose = (
+  plugin: RunningPlugin | typeof ABSENT_PLUGIN,
+): PluginHandleCloseSelection => {
+  if (plugin === ABSENT_PLUGIN) {
+    return { kind: "none" };
+  }
+  return { cleanup: stopPlugin(plugin), kind: "cleanup" };
 };
 
-const completeIdlePluginRetirement = (
+const closeSelectionForLifecycle = (
+  lifecycle: PluginHandleState["lifecycle"],
+): PluginHandleCloseSelection => {
+  switch (lifecycle.kind) {
+    case "absent":
+    case "closed": {
+      return { kind: "none" };
+    }
+    case "ready": {
+      return { cleanup: stopPlugin(lifecycle.plugin), kind: "cleanup" };
+    }
+    case "recovering": {
+      return {
+        fiber: lifecycle.fiber,
+        kind: "recovery",
+        ownership: lifecycle.ownership,
+      };
+    }
+    case "retiring": {
+      return {
+        fiber: lifecycle.fiber,
+        kind: "retirement",
+        ownership: lifecycle.ownership,
+      };
+    }
+    case "retirement_failed": {
+      return { cleanup: cleanupOwnedResources(lifecycle.ownership), kind: "cleanup" };
+    }
+    case "terminal": {
+      return selectTerminalPluginClose(lifecycle.plugin);
+    }
+    default: {
+      return lifecycle satisfies never;
+    }
+  }
+};
+
+const selectPluginHandleClose = (state: PluginHandleState): PluginHandleClosure => {
+  const { lifecycle } = state;
+  const idleTimer = state.idleTimer?.fiber;
+  state.idleTimer = undefined;
+  state.lifecycle = { kind: "closed" };
+  return { idleTimer, selection: closeSelectionForLifecycle(lifecycle) };
+};
+
+const closeSelectedPlugin = (
+  selection: PluginHandleCloseSelection,
+): Effect.Effect<void, PluginSupervisorCleanupFailure> => {
+  switch (selection.kind) {
+    case "none": {
+      return Effect.void;
+    }
+    case "cleanup": {
+      return selection.cleanup;
+    }
+    case "recovery": {
+      return stopPluginRecovery(selection.fiber, selection.ownership);
+    }
+    case "retirement": {
+      return Fiber.join(selection.fiber).pipe(
+        Effect.andThen(cleanupOwnedResources(selection.ownership)),
+      );
+    }
+    default: {
+      return selection satisfies never;
+    }
+  }
+};
+
+const closePluginHandle = (
   state: PluginHandleState,
-  owner: symbol,
-  completion: RetirementCompletion,
+): Effect.Effect<void, PluginSupervisorCleanupFailure> =>
+  state.lifecycleSemaphore
+    .withPermits(SINGLE_LIFECYCLE_PERMIT)(Effect.sync(() => selectPluginHandleClose(state)))
+    .pipe(
+      Effect.flatMap(({ idleTimer, selection }) => {
+        const close = closeSelectedPlugin(selection);
+        if (idleTimer === undefined) {
+          return close;
+        }
+        return Fiber.interrupt(idleTimer).pipe(Effect.asVoid, Effect.andThen(close));
+      }),
+    );
+
+const completeIdlePluginRetirement = ({
+  completion,
+  options,
+  state,
+}: IdleRetirement): Effect.Effect<void> => {
+  state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
+  state.lifecycle = { kind: "absent" };
+  options.emit(
+    Effect.logDebug(pluginLifecycleMessage(options.descriptor, "plugin.process_idle_stopped")),
+  );
+  return Deferred.done(completion, Exit.void).pipe(Effect.asVoid);
+};
+
+const failIdlePluginRetirement = ({
+  completion,
+  options,
+  ownership,
+  state,
+}: IdleRetirement): Effect.Effect<void> => {
+  const failure = unavailable("plugin_exited");
+  state.lifecycle = { failure, kind: "retirement_failed", ownership };
+  options.emit(
+    Effect.logError(pluginLifecycleMessage(options.descriptor, "plugin.process_idle_stop_failed")),
+  );
+  return Deferred.fail(completion, failure).pipe(Effect.asVoid);
+};
+
+// fallow-ignore-next-line code-duplication -- Retirement completion and recovery acquisition preserve distinct ownership transitions.
+const finishIdlePluginRetirement = (
+  retirement: IdleRetirement,
+  exit: Exit.Exit<void, PluginSupervisorCleanupFailure>,
 ): Effect.Effect<void> =>
-  state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
+  retirement.state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
     Effect.uninterruptible(
       Effect.suspend(() => {
-        const { lifecycle } = state;
-        if (lifecycle.kind !== "retiring" || lifecycle.owner !== owner) {
+        const { lifecycle } = retirement.state;
+        if (lifecycle.kind !== "retiring" || lifecycle.owner !== retirement.owner) {
           return Effect.void;
         }
-        state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
-        state.lifecycle = { kind: "absent" };
-        return Deferred.done(completion, Exit.void).pipe(Effect.asVoid);
+        if (Exit.isSuccess(exit)) {
+          return completeIdlePluginRetirement(retirement);
+        }
+        return failIdlePluginRetirement(retirement);
       }),
     ),
   );
 
-const commitIdleRetirement = (
-  state: PluginHandleState,
-  plugin: RunningPlugin | typeof ABSENT_PLUGIN,
-  cleanup: Effect.Effect<void, PluginSupervisorCleanupFailure>,
-): Effect.Effect<void> =>
+const commitIdleRetirement = ({
+  cleanup,
+  options,
+  ownership,
+  state,
+}: IdleRetirementCommit): Effect.Effect<void> =>
   Effect.uninterruptible(
     Effect.gen(function* commitRetirement() {
       const completion = yield* Deferred.make<void, PluginUnavailableFailure>();
       const owner = Symbol("plugin-retirement");
+      const retirementState: IdleRetirement = {
+        completion,
+        options,
+        owner,
+        ownership,
+        state,
+      };
       const retirement = cleanup.pipe(
-        Effect.andThen(completeIdlePluginRetirement(state, owner, completion)),
-        Effect.onExit((exit) => {
-          if (Exit.isSuccess(exit)) {
-            return Effect.void;
-          }
-          return Deferred.fail(completion, unavailable("plugin_exited")).pipe(Effect.asVoid);
-        }),
+        Effect.exit,
+        Effect.flatMap((exit) => finishIdlePluginRetirement(retirementState, exit)),
       );
       const fiber = yield* Effect.forkDetach(retirement, { startImmediately: false });
       state.idleTimer = undefined;
-      state.lifecycle = { completion, fiber, kind: "retiring", owner, plugin };
+      state.lifecycle = { completion, fiber, kind: "retiring", owner, ownership };
     }),
   );
 
-const retireIdlePlugin = (state: PluginHandleState, owner: symbol): Effect.Effect<void> =>
+const ownsExpiredIdleTimer = (state: PluginHandleState, owner: symbol): boolean =>
+  state.activeDemand === NO_ACTIVE_DEMAND && state.idleTimer?.owner === owner;
+
+type CommittedPluginRetirement = Extract<
+  PluginHandleState["lifecycle"],
+  { readonly kind: "retiring" } | { readonly kind: "retirement_failed" }
+>;
+
+const retirementAlreadyCommitted = (
+  lifecycle: PluginHandleState["lifecycle"],
+): lifecycle is CommittedPluginRetirement =>
+  lifecycle.kind === "retiring" || lifecycle.kind === "retirement_failed";
+
+const retireIdlePlugin = (
+  state: PluginHandleState,
+  owner: symbol,
+  options: RecoveryOptions,
+): Effect.Effect<void> =>
   state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
     // oxlint-disable-next-line eslint/max-statements -- Retirement validates timer ownership and commits one lifecycle transition.
     Effect.suspend(() => {
-      if (
-        state.activeDemand !== NO_ACTIVE_DEMAND ||
-        state.idleTimer === undefined ||
-        state.idleTimer.owner !== owner
-      ) {
+      if (!ownsExpiredIdleTimer(state, owner)) {
         return Effect.void;
       }
       const { lifecycle } = state;
@@ -144,12 +311,17 @@ const retireIdlePlugin = (state: PluginHandleState, owner: symbol): Effect.Effec
         state.idleTimer = undefined;
         return Effect.void;
       }
-      if (lifecycle.kind === "retiring") {
+      if (retirementAlreadyCommitted(lifecycle)) {
         return Effect.void;
       }
       if (lifecycle.kind === "recovering") {
-        const cleanup = stopPluginRecovery(lifecycle.fiber, lifecycle.prior);
-        return commitIdleRetirement(state, lifecycle.prior, cleanup);
+        const cleanup = stopPluginRecovery(lifecycle.fiber, lifecycle.ownership);
+        return commitIdleRetirement({
+          cleanup,
+          options,
+          ownership: lifecycle.ownership,
+          state,
+        });
       }
       const resetLifecycle = Effect.sync(() => {
         state.idleTimer = undefined;
@@ -159,15 +331,25 @@ const retireIdlePlugin = (state: PluginHandleState, owner: symbol): Effect.Effec
       if (lifecycle.kind === "absent" || lifecycle.plugin === ABSENT_PLUGIN) {
         return resetLifecycle;
       }
-      return commitIdleRetirement(state, lifecycle.plugin, stopPlugin(lifecycle.plugin));
+      const ownership = makeCleanupOwnership();
+      ownCleanup(ownership, stopPlugin(lifecycle.plugin));
+      return commitIdleRetirement({
+        cleanup: cleanupOwnedResources(ownership),
+        options,
+        ownership,
+        state,
+      });
     }),
   );
 
-const startPluginIdleTimer = (state: PluginHandleState): Effect.Effect<void> =>
+const startPluginIdleTimer = (
+  state: PluginHandleState,
+  options: RecoveryOptions,
+): Effect.Effect<void> =>
   Effect.gen(function* startIdleTimer() {
     const owner = Symbol("plugin-idle-timer");
     const retirement = Effect.sleep(PLUGIN_IDLE_GRACE_MILLISECONDS).pipe(
-      Effect.andThen(retireIdlePlugin(state, owner)),
+      Effect.andThen(retireIdlePlugin(state, owner, options)),
     );
     const fiber = yield* Effect.forkIn(retirement, state.scope, {
       startImmediately: false,
@@ -199,7 +381,10 @@ const acquirePluginDemand = (
       }),
     );
 
-const releasePluginDemand = (state: PluginHandleState): Effect.Effect<void> =>
+const releasePluginDemand = (
+  state: PluginHandleState,
+  options: RecoveryOptions,
+): Effect.Effect<void> =>
   state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
     Effect.gen(function* releaseDemand() {
       if (state.activeDemand === NO_ACTIVE_DEMAND) {
@@ -209,32 +394,34 @@ const releasePluginDemand = (state: PluginHandleState): Effect.Effect<void> =>
       if (
         state.activeDemand === NO_ACTIVE_DEMAND &&
         state.lifecycle.kind !== "closed" &&
-        state.lifecycle.kind !== "retiring"
+        state.lifecycle.kind !== "retiring" &&
+        state.lifecycle.kind !== "retirement_failed"
       ) {
-        yield* startPluginIdleTimer(state);
+        yield* startPluginIdleTimer(state, options);
       }
     }),
   );
 
 const withPluginDemand = <Success, Failure, Requirements>(
   state: PluginHandleState,
+  options: RecoveryOptions,
   operation: Effect.Effect<Success, Failure, Requirements>,
 ): Effect.Effect<Success, Failure | PluginUnavailableFailure, Requirements> =>
   Effect.acquireUseRelease(
     acquirePluginDemand(state),
     () => operation,
-    () => releasePluginDemand(state),
+    () => releasePluginDemand(state, options),
   );
 
 const stopPriorPlugin = (
-  plugin: RunningPlugin | typeof ABSENT_PLUGIN,
+  ownership: PluginCleanupOwnership,
   graceMilliseconds: number,
 ): Effect.Effect<void, PluginUnavailableFailure> => {
-  if (plugin === ABSENT_PLUGIN) {
+  if (ownership.target === undefined) {
     return Effect.void;
   }
   return Effect.sleep(graceMilliseconds).pipe(
-    Effect.andThen(stopPlugin(plugin)),
+    Effect.andThen(cleanupOwnedResources(ownership)),
     Effect.mapError(() => unavailable("plugin_exited")),
   );
 };
@@ -271,50 +458,56 @@ const markPluginRecoveryFailed = (
   episode: RecoveryEpisode,
   failure: PluginUnavailableFailure,
 ): Effect.Effect<void> => {
-  const { owner, prior, state } = episode;
+  const { owner, ownership, prior, state } = episode;
   return state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
     Effect.sync(() => {
       const { lifecycle } = state;
-      if (lifecycle.kind === "recovering" && lifecycle.owner === owner) {
-        state.lifecycle = { failure, kind: "terminal", plugin: prior };
+      if (lifecycle.kind !== "recovering" || lifecycle.owner !== owner) {
+        return;
       }
+      if (ownership.target === undefined) {
+        state.lifecycle = { failure, kind: "terminal", plugin: prior };
+        return;
+      }
+      state.lifecycle = { failure, kind: "retirement_failed", ownership };
     }),
   );
 };
 
 const releaseUncommittedRecovery = (
-  result: RecoveryResult,
+  ownership: PluginCleanupOwnership,
   exit: Exit.Exit<RunningPlugin, PluginUnavailableFailure>,
 ): Effect.Effect<void> => {
   if (Exit.isSuccess(exit)) {
     return Effect.void;
   }
-  return stopPlugin(result.plugin).pipe(Effect.orDie);
+  return cleanupOwnedResources(ownership).pipe(Effect.orDie);
 };
 
 const recoveryProcess = (
   episode: RecoveryEpisode,
 ): Effect.Effect<RunningPlugin, PluginUnavailableFailure> => {
-  const { graceMilliseconds, options, prior, priorLaunches } = episode;
+  const { graceMilliseconds, options, ownership, priorLaunches } = episode;
   const { descriptor, effectiveUserId, emit, runtimeRoot, spawnProcess } = options;
   const recoveryOptions: RecoveryPluginOptions = {
     descriptor,
     effectiveUserId,
     emit,
+    ownership,
     priorLaunches,
     runtimeRoot,
     spawnProcess,
   };
-  const launch = stopPriorPlugin(prior, graceMilliseconds).pipe(
+  const launch = stopPriorPlugin(ownership, graceMilliseconds).pipe(
     Effect.andThen(recoverPlugin(recoveryOptions)),
   );
   return Effect.uninterruptibleMask((restore) => {
     const acquire = restore(launch);
     const use = (result: RecoveryResult) =>
       Effect.uninterruptible(markPluginRecovered(episode, result));
-    return Effect.acquireUseRelease(acquire, use, releaseUncommittedRecovery).pipe(
-      Effect.tapError((failure) => markPluginRecoveryFailed(episode, failure)),
-    );
+    return Effect.acquireUseRelease(acquire, use, (_result, exit) =>
+      releaseUncommittedRecovery(ownership, exit),
+    ).pipe(Effect.tapError((failure) => markPluginRecoveryFailed(episode, failure)));
   });
 };
 
@@ -327,10 +520,15 @@ const forkPluginRecovery = ({
   Effect.uninterruptible(
     Effect.gen(function* forkPluginRecoveryProcess() {
       const completion = yield* Deferred.make<RunningPlugin, PluginUnavailableFailure>();
+      const ownership = makeCleanupOwnership();
+      if (prior !== ABSENT_PLUGIN) {
+        ownCleanup(ownership, stopPlugin(prior));
+      }
       const episode: RecoveryEpisode = {
         graceMilliseconds,
         options,
         owner: Symbol("plugin-recovery"),
+        ownership,
         prior,
         priorLaunches: state.launchesInEpisode,
         state,
@@ -344,6 +542,7 @@ const forkPluginRecovery = ({
         fiber,
         kind: "recovering",
         owner: episode.owner,
+        ownership,
         prior,
       };
       return completion;
@@ -456,11 +655,26 @@ const awaitRunningPluginSelection = (
   return Effect.succeed(selection.plugin);
 };
 
+const selectReadyPlugin = (
+  state: PluginHandleState,
+  options: RecoveryOptions,
+  plugin: RunningPlugin,
+): Effect.Effect<RunningPluginSelection> => {
+  if (plugin.child.exitCode === null && plugin.child.signalCode === null) {
+    return Effect.succeed({ kind: "ready", plugin });
+  }
+  return forkPluginRecovery({
+    graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
+    options,
+    prior: plugin,
+    state,
+  }).pipe(Effect.map((completion) => ({ completion, kind: "recovery" as const })));
+};
+
 const selectRunningPlugin = (
   state: PluginHandleState,
   options: RecoveryOptions,
 ): Effect.Effect<RunningPluginSelection, PluginUnavailableFailure> =>
-  // oxlint-disable-next-line eslint/max-statements -- Exhaustive selection keeps every lifecycle transition under the semaphore.
   Effect.suspend<RunningPluginSelection, PluginUnavailableFailure, never>(() => {
     const { lifecycle } = state;
     switch (lifecycle.kind) {
@@ -481,22 +695,12 @@ const selectRunningPlugin = (
       case "retiring": {
         return Effect.succeed({ completion: lifecycle.completion, kind: "retirement" });
       }
+      case "retirement_failed":
       case "terminal": {
         return Effect.fail(lifecycle.failure);
       }
       case "ready": {
-        if (
-          lifecycle.plugin.child.exitCode === null &&
-          lifecycle.plugin.child.signalCode === null
-        ) {
-          return Effect.succeed({ kind: "ready", plugin: lifecycle.plugin });
-        }
-        return forkPluginRecovery({
-          graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
-          options,
-          prior: lifecycle.plugin,
-          state,
-        }).pipe(Effect.map((completion) => ({ completion, kind: "recovery" as const })));
+        return selectReadyPlugin(state, options, lifecycle.plugin);
       }
       default: {
         return lifecycle satisfies never;
@@ -512,5 +716,5 @@ const ensureRunningPlugin = (
     .withPermits(SINGLE_LIFECYCLE_PERMIT)(selectRunningPlugin(state, options))
     .pipe(Effect.flatMap((selection) => awaitRunningPluginSelection(selection, state, options)));
 
-export { beginPluginRecovery, ensureRunningPlugin, stopPluginRecovery, withPluginDemand };
+export { beginPluginRecovery, closePluginHandle, ensureRunningPlugin, withPluginDemand };
 export type { BeginRecoveryOptions, RecoveryOptions };

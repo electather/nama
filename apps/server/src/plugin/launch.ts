@@ -1,6 +1,6 @@
 import { Effect, Exit } from "effect";
 
-import { stopPlugin } from "./cleanup.ts";
+import { cleanupOwnedResources, ownCleanup, stopPlugin } from "./cleanup.ts";
 import {
   HANDSHAKE_TIMEOUT_MILLISECONDS,
   LAUNCH_PROTOCOL_REJECTION_EXIT_CODE,
@@ -12,6 +12,7 @@ import { pluginLifecycleMessage } from "./logging.ts";
 import type {
   AcquiredPluginProcess,
   PluginLaunchDescriptor,
+  PluginCleanupOwnership,
   PluginLogEmitter,
   PluginSpawnProcess,
   ProcessExit,
@@ -31,18 +32,11 @@ interface RecoveryResult {
   readonly plugin: RunningPlugin;
 }
 
-interface LaunchPluginOptions {
-  readonly descriptor: PluginLaunchDescriptor;
-  readonly effectiveUserId: number | undefined;
-  readonly emit: PluginLogEmitter;
-  readonly runtimeRoot: string;
-  readonly spawnProcess: PluginSpawnProcess;
-}
-
 interface RecoveryPluginOptions {
   readonly descriptor: PluginLaunchDescriptor;
   readonly effectiveUserId: number | undefined;
   readonly emit: PluginLogEmitter;
+  readonly ownership: PluginCleanupOwnership;
   readonly priorLaunches: number;
   readonly runtimeRoot: string;
   readonly spawnProcess: PluginSpawnProcess;
@@ -86,41 +80,45 @@ const launchAttempt = (
     yield* establishPluginConnection(acquired.plugin, descriptor);
     return acquired.plugin;
   });
-const removeFailedAcquisition = (launchDirectory: string): Effect.Effect<void> =>
-  removePath(launchDirectory).pipe(Effect.orDie);
 
 const acquirePlugin = (
-  options: LaunchPluginOptions,
+  options: RecoveryPluginOptions,
   launchDirectory: string,
 ): Effect.Effect<AcquiredPluginProcess, PluginUnavailableFailure> => {
   const processOptions: AcquirePluginProcessOptions = { ...options, launchDirectory };
   return acquirePluginProcess(processOptions).pipe(
-    Effect.onError(() => removeFailedAcquisition(launchDirectory)),
+    Effect.tap((acquired) =>
+      Effect.sync(() => {
+        ownCleanup(options.ownership, stopPlugin(acquired.plugin));
+      }),
+    ),
+    Effect.onError(() => cleanupOwnedResources(options.ownership).pipe(Effect.orDie)),
   );
 };
 
 const cleanupFailedLaunch = (
   exit: Exit.Exit<RunningPlugin, PluginUnavailableFailure>,
-  plugin: RunningPlugin,
+  ownership: PluginCleanupOwnership,
 ) => {
   if (Exit.isSuccess(exit)) {
     return Effect.void;
   }
-  return stopPlugin(plugin).pipe(Effect.orDie);
+  return cleanupOwnedResources(ownership).pipe(Effect.orDie);
 };
 
 const launchPlugin = (
-  options: LaunchPluginOptions,
+  options: RecoveryPluginOptions,
 ): Effect.Effect<RunningPlugin, PluginUnavailableFailure> =>
   validateExecutable(options.descriptor.executable, options.effectiveUserId).pipe(
     Effect.andThen(
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* launchPluginProcess() {
           const launchDirectory = yield* makeLaunchDirectory(options.runtimeRoot);
+          ownCleanup(options.ownership, removePath(launchDirectory));
           const acquired = yield* acquirePlugin(options, launchDirectory);
           const attempt = launchAttempt(acquired, options.descriptor, options.emit);
           return yield* restore(attempt).pipe(
-            Effect.onExit((exit) => cleanupFailedLaunch(exit, acquired.plugin)),
+            Effect.onExit((exit) => cleanupFailedLaunch(exit, options.ownership)),
           );
         }),
       ),

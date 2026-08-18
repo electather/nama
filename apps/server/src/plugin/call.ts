@@ -60,7 +60,7 @@ const callWithDeadline = <Input extends DescMessage, Output extends DescMessage>
   );
   const deadlineExceeded = Effect.fail(new PluginDeadlineExceeded());
   const deadline = Effect.sleep(deadlineMilliseconds).pipe(Effect.andThen(deadlineExceeded));
-  return Effect.raceFirst(withPluginDemand(state, operation), deadline).pipe(
+  return Effect.raceFirst(withPluginDemand(state, options, operation), deadline).pipe(
     Effect.tapError((failure) =>
       recoverFromCallFailure({ failure, options, selectedPlugin, state }),
     ),

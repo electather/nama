@@ -320,3 +320,6 @@ const stop = async () => {
 };
 process.on("SIGINT", () => void stop());
 process.on("SIGTERM", () => void stop());
+await appendFile(join(controlDirectory, "termination-ready.ndjson"), `${launchNumber}\n`, {
+  mode: 0o600,
+});
