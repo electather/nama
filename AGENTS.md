@@ -2,8 +2,8 @@
 
 Nama is a self-hosted, iOS-first Jellyfin control plane. It has a TypeScript/Node core, a Go CLI, generated Swift bindings for a future universal app targeting iOS, tvOS, and macOS, and a first-party Jellyfin plugin; no Apple client application is currently checked in. The core is not a media relay: media travels directly from a provider to the client through safe, short-lived locators.
 
-- `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements administrator setup and authentication over the durable Better Auth schema. Device pairing, CLI setup/sign-in, and client behavior remain unimplemented.
-- `apps/cli/` — Go public-API client surface; no administrator setup or sign-in flow is implemented.
+- `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements Administrator setup and authentication over the durable Better Auth schema. Device pairing and client behavior remain unimplemented.
+- `apps/cli/` — Go public-API client surface; named server profiles, Administrator setup and sign-in, and authentication status are implemented. The remaining management command families are unimplemented.
 - `plugins/jellyfin/` — first-party TypeScript provider-adapter source; no provider runtime is implemented.
 - `proto/` — authoritative Protobuf schemas and generation configuration.
 - `gen/` — committed, Buf-owned generated bindings.
