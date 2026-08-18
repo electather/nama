@@ -1,10 +1,10 @@
 // oxlint-disable eslint/max-lines -- Demand, recovery, and retirement transitions stay with their shared lifecycle semaphore.
-import { Deferred, Effect, Exit, Fiber } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber } from "effect";
 
 import { stopPlugin } from "./cleanup.ts";
 import { HEALTHY_EPISODE_RESET_MILLISECONDS, PLUGIN_IDLE_GRACE_MILLISECONDS } from "./constants.ts";
-import { unavailable } from "./errors.ts";
-import type { PluginUnavailableFailure } from "./errors.ts";
+import { PluginSupervisorCleanupError, unavailable } from "./errors.ts";
+import type { PluginSupervisorCleanupFailure, PluginUnavailableFailure } from "./errors.ts";
 import { recoverPlugin } from "./launch.ts";
 import type { RecoveryPluginOptions, RecoveryResult } from "./launch.ts";
 import { pluginProcessExitLog } from "./logging.ts";
@@ -52,6 +52,39 @@ type RunningPluginSelection =
   | Readonly<{ readonly kind: "ready"; readonly plugin: RunningPlugin }>
   | Readonly<{ readonly completion: RetirementCompletion; readonly kind: "retirement" }>;
 
+const interruptPluginRecovery = (
+  fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>,
+): Effect.Effect<void, PluginSupervisorCleanupFailure> =>
+  Fiber.interrupt(fiber).pipe(
+    Effect.andThen(Fiber.await(fiber)),
+    Effect.flatMap((exit) => {
+      if (Exit.isFailure(exit) && Cause.hasDies(exit.cause)) {
+        return Effect.fail(new PluginSupervisorCleanupError());
+      }
+      return Effect.void;
+    }),
+  );
+
+const stopPluginRecovery = (
+  fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>,
+  prior: RunningPlugin | typeof ABSENT_PLUGIN,
+): Effect.Effect<void, PluginSupervisorCleanupFailure> => {
+  const interruptRecovery = interruptPluginRecovery(fiber);
+  if (prior === ABSENT_PLUGIN) {
+    return interruptRecovery;
+  }
+  return Effect.gen(function* stopRecoveryAndPriorPlugin() {
+    const recoveryExit = yield* interruptRecovery.pipe(Effect.exit);
+    const priorExit = yield* stopPlugin(prior).pipe(Effect.exit);
+    if (Exit.isFailure(recoveryExit)) {
+      yield* Effect.failCause(recoveryExit.cause);
+    }
+    if (Exit.isFailure(priorExit)) {
+      yield* Effect.failCause(priorExit.cause);
+    }
+  });
+};
+
 const completeIdlePluginRetirement = (
   state: PluginHandleState,
   owner: symbol,
@@ -71,15 +104,16 @@ const completeIdlePluginRetirement = (
     ),
   );
 
-const commitIdlePluginRetirement = (
+const commitIdleRetirement = (
   state: PluginHandleState,
-  plugin: RunningPlugin,
+  plugin: RunningPlugin | typeof ABSENT_PLUGIN,
+  cleanup: Effect.Effect<void, PluginSupervisorCleanupFailure>,
 ): Effect.Effect<void> =>
   Effect.uninterruptible(
     Effect.gen(function* commitRetirement() {
       const completion = yield* Deferred.make<void, PluginUnavailableFailure>();
       const owner = Symbol("plugin-retirement");
-      const retirement = stopPlugin(plugin).pipe(
+      const retirement = cleanup.pipe(
         Effect.andThen(completeIdlePluginRetirement(state, owner, completion)),
         Effect.onExit((exit) => {
           if (Exit.isSuccess(exit)) {
@@ -110,22 +144,22 @@ const retireIdlePlugin = (state: PluginHandleState, owner: symbol): Effect.Effec
         state.idleTimer = undefined;
         return Effect.void;
       }
-      if (lifecycle.kind === "recovering" || lifecycle.kind === "retiring") {
+      if (lifecycle.kind === "retiring") {
         return Effect.void;
+      }
+      if (lifecycle.kind === "recovering") {
+        const cleanup = stopPluginRecovery(lifecycle.fiber, lifecycle.prior);
+        return commitIdleRetirement(state, lifecycle.prior, cleanup);
       }
       const resetLifecycle = Effect.sync(() => {
         state.idleTimer = undefined;
         state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
         state.lifecycle = { kind: "absent" };
       });
-      if (lifecycle.kind === "absent") {
+      if (lifecycle.kind === "absent" || lifecycle.plugin === ABSENT_PLUGIN) {
         return resetLifecycle;
       }
-      const { plugin } = lifecycle;
-      if (plugin === ABSENT_PLUGIN) {
-        return resetLifecycle;
-      }
-      return commitIdlePluginRetirement(state, plugin);
+      return commitIdleRetirement(state, lifecycle.plugin, stopPlugin(lifecycle.plugin));
     }),
   );
 
@@ -335,6 +369,36 @@ const beginPluginRecovery = (
     }),
   );
 
+const handleUnexpectedPluginExit = (
+  state: PluginHandleState,
+  options: RecoveryOptions,
+  plugin: RunningPlugin,
+): Effect.Effect<void> =>
+  state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
+    Effect.suspend(() => {
+      const { lifecycle } = state;
+      if (lifecycle.kind !== "ready" || lifecycle.plugin !== plugin) {
+        return Effect.void;
+      }
+      if (state.activeDemand !== NO_ACTIVE_DEMAND) {
+        return forkPluginRecovery({
+          graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
+          options,
+          prior: plugin,
+          state,
+        }).pipe(Effect.asVoid);
+      }
+      return stopPlugin(plugin).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            state.lifecycle = { kind: "absent" };
+          }),
+        ),
+        Effect.orDie,
+      );
+    }),
+  );
+
 const forkPluginExitWatcher = (
   state: PluginHandleState,
   options: RecoveryOptions,
@@ -346,11 +410,7 @@ const forkPluginExitWatcher = (
         return Effect.void;
       }
       options.emit(pluginProcessExitLog(options.descriptor, processExit));
-      return beginPluginRecovery(state, {
-        ...options,
-        graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
-        plugin,
-      });
+      return handleUnexpectedPluginExit(state, options, plugin);
     }),
     Effect.forkIn(state.scope, { startImmediately: false }),
     Effect.asVoid,
@@ -452,5 +512,5 @@ const ensureRunningPlugin = (
     .withPermits(SINGLE_LIFECYCLE_PERMIT)(selectRunningPlugin(state, options))
     .pipe(Effect.flatMap((selection) => awaitRunningPluginSelection(selection, state, options)));
 
-export { beginPluginRecovery, ensureRunningPlugin, withPluginDemand };
+export { beginPluginRecovery, ensureRunningPlugin, stopPluginRecovery, withPluginDemand };
 export type { BeginRecoveryOptions, RecoveryOptions };

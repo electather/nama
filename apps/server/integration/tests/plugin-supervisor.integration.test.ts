@@ -7,6 +7,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   symlink,
   watch,
@@ -153,6 +154,28 @@ const awaitProcessExit = (processId: number) =>
           error !== null &&
           "code" in error &&
           error.code === "ESRCH"
+        ) {
+          return;
+        }
+        throw error;
+      }
+      const nextTurn = Promise.withResolvers<void>();
+      setImmediate(nextTurn.resolve);
+      await nextTurn.promise;
+    }
+  });
+
+const awaitPathRemoval = (path: string) =>
+  Effect.promise(async () => {
+    while (true) {
+      try {
+        await lstat(path);
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "ENOENT"
         ) {
           return;
         }
@@ -386,9 +409,11 @@ it.effect("keeps committed retirement shared when one waiting caller times out",
 
         const survivingCall = yield* Effect.forkChild(
           plugin.call(PluginService.method.getConnection, {}, 10_000),
+          { startImmediately: true },
         );
         const expiringCall = yield* Effect.forkChild(
           plugin.call(PluginService.method.getConnection, {}, 100),
+          { startImmediately: true },
         );
         yield* TestClock.adjust(100);
 
@@ -518,6 +543,93 @@ it.effect("starts the idle interval after a plugin RPC deadline", () =>
   ),
 );
 
+it.effect("interrupts unfinished recovery when idle grace expires", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.suspend(() => {
+      const lines: string[] = [];
+      let recoveryProcessId: number | undefined;
+      let spawnAttempts = 0;
+      const spawnProcess = ((...arguments_: Parameters<typeof spawnChild>) => {
+        spawnAttempts += 1;
+        const child = Reflect.apply(spawnChild, undefined, arguments_);
+        if (spawnAttempts === 2) {
+          recoveryProcessId = child.pid;
+          const originalOnce = child.once.bind(child);
+          child.once = ((event: string | symbol, listener: (...arguments_: unknown[]) => void) => {
+            if (event === "spawn") {
+              return child;
+            }
+            return Reflect.apply(originalOnce, child, [event, listener]) as typeof child;
+          }) as typeof child.once;
+        }
+        return child;
+      }) as typeof spawnChild;
+      return Effect.scoped(
+        Effect.gen(function* recoveryIdleExpiryTest() {
+          const supervisor = yield* PluginSupervisor;
+          const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+          yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+          const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
+          if (firstLaunch === undefined) {
+            return yield* Effect.die("fixture launch record missing");
+          }
+          const runtimeRoot = dirname(dirname(firstLaunch.socketPath));
+
+          process.kill(firstLaunch.pid, "SIGKILL");
+          yield* awaitProcessExit(firstLaunch.pid);
+          yield* awaitPathRemoval(dirname(firstLaunch.socketPath));
+
+          const initiatingCall = yield* Effect.forkChild(
+            plugin.call(PluginService.method.getConnection, {}, 150),
+          );
+          yield* awaitCondition(() =>
+            lines.some(
+              (line) =>
+                line.includes('"event":"plugin.recovery_attempt"') &&
+                line.includes('"recovery_attempt":2'),
+            ),
+          );
+          yield* TestClock.adjust(100);
+          yield* awaitCondition(() => recoveryProcessId !== undefined);
+          const partialProcessId = recoveryProcessId;
+          if (partialProcessId === undefined) {
+            return yield* Effect.die("partial recovery process missing");
+          }
+          yield* TestClock.adjust(50);
+          expect(yield* Fiber.join(initiatingCall).pipe(Effect.flip)).toMatchObject({
+            _tag: "PluginDeadlineExceeded",
+          });
+
+          yield* TestClock.adjust(29_999);
+          expect(() => process.kill(partialProcessId, 0)).not.toThrow();
+          const partialLaunches = yield* Effect.promise(() => readdir(runtimeRoot));
+          expect(partialLaunches).toHaveLength(1);
+          const partialLaunch = partialLaunches[0];
+          if (partialLaunch === undefined) {
+            return yield* Effect.die("partial recovery launch directory missing");
+          }
+          const partialLaunchDirectory = join(runtimeRoot, partialLaunch);
+
+          yield* TestClock.adjust(1);
+          yield* awaitProcessExit(partialProcessId);
+          yield* awaitPathRemoval(partialLaunchDirectory);
+          expect(() => process.kill(partialProcessId, 0)).toThrow(
+            expect.objectContaining({ code: "ESRCH" }),
+          );
+          expect(yield* Effect.promise(() => readdir(runtimeRoot))).toHaveLength(0);
+        }).pipe(
+          Effect.provide(PluginSupervisor.layer({ spawnProcess })),
+          Effect.provide(
+            configuredLoggingLayer(loggingConfig, (line) => {
+              lines.push(line);
+            }),
+          ),
+        ),
+      );
+    }),
+  ),
+);
+
 it.live("recovers a killed ready plugin with fresh launch authority", () =>
   withControlDirectory((controlDirectory) =>
     Effect.scoped(
@@ -559,15 +671,23 @@ it.effect("bounds a recovery episode to three launches with 100/500ms backoff", 
         const call = yield* Effect.forkChild(
           plugin.call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS),
         );
-        yield* awaitLaunchCount(controlDirectory, 1);
+        const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (firstLaunch === undefined) {
+          return yield* Effect.die("first launch record missing");
+        }
         yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
+        yield* awaitProcessExit(firstLaunch.pid);
         yield* Effect.yieldNow;
 
         yield* TestClock.adjust(99);
         expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
         yield* TestClock.adjust(1);
-        yield* awaitLaunchCount(controlDirectory, 2);
+        const secondLaunch = (yield* awaitLaunchCount(controlDirectory, 2))[1];
+        if (secondLaunch === undefined) {
+          return yield* Effect.die("second launch record missing");
+        }
         yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 2);
+        yield* awaitProcessExit(secondLaunch.pid);
         yield* Effect.yieldNow;
 
         yield* TestClock.adjust(499);
@@ -924,62 +1044,97 @@ it.live("does not retry deterministic handshake rejections", () =>
   ),
 );
 
-it.live("recovers an unexpected ready-process exit without waiting for a call", () =>
+it.effect("leaves an unexpectedly exited idle plugin absent", () =>
   withControlDirectory((controlDirectory) =>
-    Effect.scoped(
-      Effect.gen(function* proactiveRecoveryTest() {
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
-        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
-        const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
-        if (firstLaunch === undefined) {
-          return yield* Effect.die("fixture launch record missing");
-        }
+    Effect.suspend(() => {
+      const lines: string[] = [];
+      let spawnAttempts = 0;
+      const spawnProcess = ((...arguments_: Parameters<typeof spawnChild>) => {
+        spawnAttempts += 1;
+        return Reflect.apply(spawnChild, undefined, arguments_);
+      }) as typeof spawnChild;
+      return Effect.scoped(
+        Effect.gen(function* idleExitTest() {
+          const supervisor = yield* PluginSupervisor;
+          const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+          yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+          const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
+          if (firstLaunch === undefined) {
+            return yield* Effect.die("fixture launch record missing");
+          }
 
-        process.kill(firstLaunch.pid, "SIGKILL");
-        const launches = yield* awaitLaunchCount(controlDirectory, 2);
-        const replacementLaunch = launches[1];
-        if (replacementLaunch === undefined) {
-          return yield* Effect.die("replacement launch record missing");
-        }
+          process.kill(firstLaunch.pid, "SIGKILL");
+          yield* awaitProcessExit(firstLaunch.pid);
+          yield* awaitPathRemoval(dirname(firstLaunch.socketPath));
+          yield* TestClock.adjust(100);
+          yield* Effect.yieldNow;
 
-        expect(replacementLaunch.bearer).not.toBe(firstLaunch.bearer);
-        const staleFailure = yield* directHealthCheck(
-          replacementLaunch.socketPath,
-          `Bearer ${firstLaunch.bearer}`,
-        ).pipe(Effect.flip);
-        expect(ConnectError.from(staleFailure).code).toBe(Code.Unauthenticated);
-        const health = yield* directHealthCheck(
-          replacementLaunch.socketPath,
-          `Bearer ${replacementLaunch.bearer}`,
-        );
-        expect(health.status).toBe(ServingStatus.SERVING);
-        const retiredLaunchFailure = yield* Effect.tryPromise({
-          catch: (error) => error,
-          try: () => lstat(dirname(firstLaunch.socketPath)),
-        }).pipe(Effect.flip);
-        expect(retiredLaunchFailure).toMatchObject({ code: "ENOENT" });
-      }).pipe(Effect.provide(PluginSupervisor.layer())),
-    ),
+          const retiredLaunchFailure = yield* Effect.tryPromise({
+            catch: (error) => error,
+            try: () => lstat(dirname(firstLaunch.socketPath)),
+          }).pipe(Effect.flip);
+          expect(retiredLaunchFailure).toMatchObject({ code: "ENOENT" });
+          expect(spawnAttempts).toBe(1);
+          yield* awaitCondition(() =>
+            lines.some((line) => line.includes('"event":"plugin.process_exited"')),
+          );
+          const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+          expect(records).toContainEqual(
+            expect.objectContaining({
+              event: "plugin.process_exited",
+              level: "warn",
+              provider_type: "fixture",
+              signal: "SIGKILL",
+            }),
+          );
+          const output = lines.join("");
+          expect(output).not.toContain(firstLaunch.bearer);
+          expect(output).not.toContain(firstLaunch.socketPath);
+          expect(output).not.toContain(controlDirectory);
+        }).pipe(
+          Effect.provide(PluginSupervisor.layer({ spawnProcess })),
+          Effect.provide(
+            configuredLoggingLayer(loggingConfig, (line) => {
+              lines.push(line);
+            }),
+          ),
+        ),
+      );
+    }),
   ),
 );
 
-it.live("recovers a replacement that exits after its handshake", () =>
+it.live("recovers a replacement that exits after its handshake during active demand", () =>
   withControlDirectory((controlDirectory) =>
     Effect.scoped(
       Effect.gen(function* replacementExitRecoveryTest() {
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
-          fixtureDescriptor(controlDirectory, "exit-after-ready-during-recovery"),
+          fixtureDescriptor(controlDirectory, "block-and-exit-after-ready-during-recovery"),
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
         if (firstLaunch === undefined) {
           return yield* Effect.die("fixture launch record missing");
         }
+        const blockedCall = yield* Effect.forkChild(
+          plugin.call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS),
+        );
+        yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1);
 
         process.kill(firstLaunch.pid, "SIGKILL");
+        expect(yield* Fiber.join(blockedCall).pipe(Effect.flip)).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
+        const recoveryCall = yield* Effect.forkChild(
+          plugin.call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS),
+        );
         const launches = yield* awaitLaunchCount(controlDirectory, 3);
+        expect(yield* Fiber.join(recoveryCall).pipe(Effect.flip)).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
         const recoveredLaunch = launches[2];
         if (recoveredLaunch === undefined) {
           return yield* Effect.die("recovered launch record missing");
@@ -1181,9 +1336,10 @@ it.live("shares one recovery launch across concurrent callers", () =>
   ),
 );
 
-it.live("keeps each caller deadline while sharing a slow recovery", () =>
-  withControlDirectory((controlDirectory) =>
-    Effect.scoped(
+it.effect("finishes demand-initiated recovery during idle grace", () =>
+  withControlDirectory((controlDirectory) => {
+    const lines: string[] = [];
+    return Effect.scoped(
       Effect.gen(function* recoveryDeadlineTest() {
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
@@ -1196,18 +1352,40 @@ it.live("keeps each caller deadline while sharing a slow recovery", () =>
         }
         process.kill(firstLaunch.pid, "SIGKILL");
         yield* awaitProcessExit(firstLaunch.pid);
-        yield* awaitLaunchCount(controlDirectory, 2);
+        yield* awaitPathRemoval(dirname(firstLaunch.socketPath));
 
-        const failure = yield* plugin
-          .call(PluginService.method.getConnection, {}, 50)
-          .pipe(Effect.flip);
-        expect(failure).toMatchObject({ _tag: "PluginDeadlineExceeded" });
+        const initiatingCall = yield* Effect.forkChild(
+          plugin.call(PluginService.method.getConnection, {}, 150),
+        );
+        yield* awaitCondition(() =>
+          lines.some(
+            (line) =>
+              line.includes('"event":"plugin.recovery_attempt"') &&
+              line.includes('"recovery_attempt":2'),
+          ),
+        );
+        yield* TestClock.adjust(100);
+        const recoveryLaunch = (yield* awaitLaunchCount(controlDirectory, 2))[1];
+        if (recoveryLaunch === undefined) {
+          return yield* Effect.die("recovery launch record missing");
+        }
+        yield* TestClock.adjust(50);
+        expect(yield* Fiber.join(initiatingCall).pipe(Effect.flip)).toMatchObject({
+          _tag: "PluginDeadlineExceeded",
+        });
 
         yield* Effect.promise(() =>
           writeFile(join(controlDirectory, "recovery-continue"), "", {
             mode: 0o600,
           }),
         );
+        yield* awaitFileLineCount(controlDirectory, "ready.ndjson", 1);
+        const recoveredHealth = yield* directHealthCheck(
+          recoveryLaunch.socketPath,
+          `Bearer ${recoveryLaunch.bearer}`,
+        );
+        expect(recoveredHealth.status).toBe(ServingStatus.SERVING);
+        yield* Effect.yieldNow;
         const response = yield* plugin.call(
           PluginService.method.getConnection,
           {},
@@ -1215,18 +1393,26 @@ it.live("keeps each caller deadline while sharing a slow recovery", () =>
         );
         expect(response.connection?.status).toBe(1);
         expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(2);
-      }).pipe(Effect.provide(PluginSupervisor.layer())),
-    ),
-  ),
+      }).pipe(
+        Effect.provide(PluginSupervisor.layer()),
+        Effect.provide(
+          configuredLoggingLayer(loggingConfig, (line) => {
+            lines.push(line);
+          }),
+        ),
+      ),
+    );
+  }),
 );
 
-it.effect("resets the three-launch recovery budget after 60 healthy seconds", () =>
-  withControlDirectory((controlDirectory) =>
-    Effect.scoped(
-      Effect.gen(function* recoveryResetTest() {
+it.effect("preserves and resets the bounded episode across idle expiry", () =>
+  withControlDirectory((controlDirectory) => {
+    const lines: string[] = [];
+    return Effect.scoped(
+      Effect.gen(function* idleRecoveryEpisodeTest() {
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
-          fixtureDescriptor(controlDirectory, "reset-episode"),
+          fixtureDescriptor(controlDirectory, "idle-bounded-recovery"),
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
@@ -1234,22 +1420,106 @@ it.effect("resets the three-launch recovery budget after 60 healthy seconds", ()
           return yield* Effect.die("fixture launch record missing");
         }
 
-        yield* TestClock.adjust(29_999);
-        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
-        yield* TestClock.adjust(29_999);
-        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
-        yield* TestClock.adjust(2);
         process.kill(firstLaunch.pid, "SIGKILL");
-        yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
-        yield* TestClock.adjust(100);
-        yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 2);
-        yield* TestClock.adjust(500);
-        const launches = yield* awaitLaunchCount(controlDirectory, 4);
+        yield* awaitProcessExit(firstLaunch.pid);
+        yield* awaitPathRemoval(dirname(firstLaunch.socketPath));
 
-        expect(launches).toHaveLength(4);
-      }).pipe(Effect.provide(PluginSupervisor.layer())),
-    ),
-  ),
+        const remainingEpisodeCall = yield* Effect.forkChild(
+          plugin.call(PluginService.method.getConnection, {}, 10_000),
+        );
+        yield* awaitCondition(() =>
+          lines.some(
+            (line) =>
+              line.includes('"event":"plugin.recovery_attempt"') &&
+              line.includes('"recovery_attempt":2'),
+          ),
+        );
+        yield* TestClock.adjust(100);
+        const secondLaunch = (yield* awaitLaunchCount(controlDirectory, 2))[1];
+        if (secondLaunch === undefined) {
+          return yield* Effect.die("second launch record missing");
+        }
+        yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
+        yield* awaitProcessExit(secondLaunch.pid);
+        yield* awaitCondition(() =>
+          lines.some(
+            (line) =>
+              line.includes('"event":"plugin.recovery_attempt"') &&
+              line.includes('"recovery_attempt":3'),
+          ),
+        );
+        yield* TestClock.adjust(500);
+        const thirdLaunch = (yield* awaitLaunchCount(controlDirectory, 3))[2];
+        if (thirdLaunch === undefined) {
+          return yield* Effect.die("third launch record missing");
+        }
+        yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 2);
+        yield* awaitProcessExit(thirdLaunch.pid);
+        expect(yield* Fiber.join(remainingEpisodeCall).pipe(Effect.flip)).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
+
+        expect(
+          yield* plugin
+            .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
+            .pipe(Effect.flip),
+        ).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(3);
+
+        yield* TestClock.adjust(30_001);
+        yield* Effect.yieldNow;
+        const freshEpisodeCall = yield* Effect.forkChild(
+          plugin.call(PluginService.method.getConnection, {}, 10_000),
+        );
+        const fourthLaunch = (yield* awaitLaunchCount(controlDirectory, 4))[3];
+        if (fourthLaunch === undefined) {
+          return yield* Effect.die("fourth launch record missing");
+        }
+        yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 3);
+        yield* awaitProcessExit(fourthLaunch.pid);
+        yield* awaitCondition(
+          () =>
+            lines.filter(
+              (line) =>
+                line.includes('"event":"plugin.recovery_attempt"') &&
+                line.includes('"recovery_attempt":2'),
+            ).length >= 2,
+        );
+        yield* TestClock.adjust(100);
+        const fifthLaunch = (yield* awaitLaunchCount(controlDirectory, 5))[4];
+        if (fifthLaunch === undefined) {
+          return yield* Effect.die("fifth launch record missing");
+        }
+        yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 4);
+        yield* awaitProcessExit(fifthLaunch.pid);
+        yield* awaitCondition(
+          () =>
+            lines.filter(
+              (line) =>
+                line.includes('"event":"plugin.recovery_attempt"') &&
+                line.includes('"recovery_attempt":3'),
+            ).length >= 2,
+        );
+        yield* TestClock.adjust(500);
+        const response = yield* Fiber.join(freshEpisodeCall);
+
+        expect(response.connection?.status).toBe(1);
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(6);
+        expect(yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1)).toHaveLength(1);
+      }).pipe(
+        Effect.provide(PluginSupervisor.layer()),
+        Effect.provide(
+          configuredLoggingLayer(loggingConfig, (line) => {
+            lines.push(line);
+          }),
+        ),
+      ),
+    );
+  }),
 );
 
 it.effect("rejects unsafe executable files before spawning them", () =>
@@ -1627,7 +1897,7 @@ it.live("emits safe allowlisted plugin lifecycle records", () =>
       Effect.gen(function* pluginLifecycleLoggingTest() {
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise({
-          ...fixtureDescriptor(controlDirectory),
+          ...fixtureDescriptor(controlDirectory, "crash-connection"),
           providerInstanceId: "provider-instance",
         });
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
@@ -1635,7 +1905,14 @@ it.live("emits safe allowlisted plugin lifecycle records", () =>
         if (firstLaunch === undefined) {
           return yield* Effect.die("fixture launch record missing");
         }
-        process.kill(firstLaunch.pid, "SIGKILL");
+        expect(
+          yield* plugin
+            .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
+            .pipe(Effect.flip),
+        ).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
         yield* awaitLaunchCount(controlDirectory, 2);
         yield* awaitCondition(
           () =>
@@ -1841,8 +2118,22 @@ it.effect("records recovery exhaustion exactly once", () =>
         );
 
         yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
+        yield* awaitCondition(() =>
+          lines.some(
+            (line) =>
+              line.includes('"event":"plugin.recovery_attempt"') &&
+              line.includes('"recovery_attempt":2'),
+          ),
+        );
         yield* TestClock.adjust(100);
         yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 2);
+        yield* awaitCondition(() =>
+          lines.some(
+            (line) =>
+              line.includes('"event":"plugin.recovery_attempt"') &&
+              line.includes('"recovery_attempt":3'),
+          ),
+        );
         yield* TestClock.adjust(500);
         yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 3);
         yield* Fiber.join(call).pipe(Effect.flip);

@@ -83,7 +83,7 @@ type PluginLifecycleState =
       readonly fiber: Fiber.Fiber<void, PluginSupervisorCleanupFailure>;
       readonly kind: "retiring";
       readonly owner: symbol;
-      readonly plugin: RunningPlugin;
+      readonly plugin: RunningPlugin | typeof ABSENT_PLUGIN;
     }>
   | Readonly<{ readonly kind: "ready"; readonly plugin: RunningPlugin }>
   | Readonly<{
