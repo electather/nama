@@ -54,6 +54,9 @@ const callWithDeadline = <Input extends DescMessage, Output extends DescMessage>
       }),
     ),
     Effect.flatMap((plugin) => callPlugin({ deadlineMilliseconds, method, plugin, request })),
+    Effect.tapError((failure) =>
+      recoverFromCallFailure({ failure, options, selectedPlugin, state }),
+    ),
   );
   const deadlineExceeded = Effect.fail(new PluginDeadlineExceeded());
   const deadline = Effect.sleep(deadlineMilliseconds).pipe(Effect.andThen(deadlineExceeded));

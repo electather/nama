@@ -4,14 +4,14 @@ import type {
   MessageInitShape,
   MessageShape,
 } from "@bufbuild/protobuf";
-import { Cause, Effect, Exit, Fiber, Semaphore } from "effect";
-import type { Scope } from "effect";
+import { Effect, Exit, Semaphore } from "effect";
+import type { Fiber, Scope } from "effect";
 
 import { callSupervisedPlugin } from "./call.ts";
 import type { PluginCallFailure, SupervisedCall } from "./call.ts";
 import { stopPlugin } from "./cleanup.ts";
-import { PluginSupervisorCleanupError } from "./errors.ts";
 import type { PluginSupervisorCleanupFailure, PluginUnavailableFailure } from "./errors.ts";
+import { stopPluginRecovery } from "./lifecycle.ts";
 import { ABSENT_PLUGIN } from "./model.ts";
 import type {
   PluginHandleState,
@@ -52,18 +52,6 @@ const selectTerminalPluginClose = (
   }
   return { kind: "plugin", plugin };
 };
-const interruptPluginRecovery = (
-  fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>,
-): Effect.Effect<void, PluginSupervisorCleanupFailure> =>
-  Fiber.interrupt(fiber).pipe(
-    Effect.andThen(Fiber.await(fiber)),
-    Effect.flatMap((exit) => {
-      if (Exit.isFailure(exit) && Cause.hasDies(exit.cause)) {
-        return Effect.fail(new PluginSupervisorCleanupError());
-      }
-      return Effect.void;
-    }),
-  );
 
 const selectPluginHandleClose = (state: PluginHandleState): PluginHandleCloseSelection => {
   const { lifecycle } = state;
@@ -102,21 +90,7 @@ const closeSelectedPlugin = (
       return stopPlugin(selection.plugin);
     }
     case "recovery": {
-      const interruptRecovery = interruptPluginRecovery(selection.fiber);
-      const { prior } = selection;
-      if (prior === ABSENT_PLUGIN) {
-        return interruptRecovery;
-      }
-      return Effect.gen(function* closeRecoveryAndPriorPlugin() {
-        const recoveryExit = yield* interruptRecovery.pipe(Effect.exit);
-        const priorExit = yield* stopPlugin(prior).pipe(Effect.exit);
-        if (Exit.isFailure(recoveryExit)) {
-          yield* Effect.failCause(recoveryExit.cause);
-        }
-        if (Exit.isFailure(priorExit)) {
-          yield* Effect.failCause(priorExit.cause);
-        }
-      });
+      return stopPluginRecovery(selection.fiber, selection.prior);
     }
     default: {
       return selection satisfies never;

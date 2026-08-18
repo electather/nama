@@ -102,7 +102,8 @@ if (
   mode === "always-exit-before-ready" ||
   mode === "exit-before-ready" ||
   (mode === "recover-twice" && launchNumber <= 2) ||
-  (mode === "reset-episode" && (launchNumber === 2 || launchNumber === 3))
+  (mode === "reset-episode" && (launchNumber === 2 || launchNumber === 3)) ||
+  (mode === "idle-bounded-recovery" && launchNumber >= 2 && launchNumber <= 5)
 ) {
   await appendFile(join(controlDirectory, "exits.ndjson"), `${launchNumber}\n`, {
     mode: 0o600,
@@ -190,7 +191,8 @@ const handler = connectNodeAdapter({
         await appendFile(join(controlDirectory, "requests.ndjson"), "1\n", { mode: 0o600 });
         if (
           mode === "block-connection" ||
-          (mode === "block-first-connection" && connectionRequestCount === 1)
+          (mode === "block-first-connection" && connectionRequestCount === 1) ||
+          mode === "block-and-exit-after-ready-during-recovery"
         ) {
           const blockedRequest = Promise.withResolvers();
           context.signal.addEventListener(
@@ -244,7 +246,11 @@ const handler = connectNodeAdapter({
           schemaProfileVersion: 1,
           schemaRevision: "fixture-1",
         };
-        if (mode === "exit-after-ready-during-recovery" && launchNumber === 2) {
+        if (
+          (mode === "exit-after-ready-during-recovery" ||
+            mode === "block-and-exit-after-ready-during-recovery") &&
+          launchNumber === 2
+        ) {
           setImmediate(() => process.kill(process.pid, "SIGKILL"));
         }
         return { pluginInfo };
@@ -263,6 +269,10 @@ server.once("error", listening.reject);
 server.listen(envelope.socket_path, listening.resolve);
 await listening.promise;
 await chmod(envelope.socket_path, mode === "insecure-socket" ? 0o666 : 0o600);
+
+if (mode === "wait-recovery" && launchNumber > 1) {
+  await appendFile(join(controlDirectory, "ready.ndjson"), `${launchNumber}\n`, { mode: 0o600 });
+}
 
 if (mode === "stdout-secret") {
   process.stdout.write("stdout-secret-must-not-appear\n");
