@@ -367,6 +367,53 @@ it.effect("resets the full idle interval when demand returns before expiry", () 
   ),
 );
 
+it.effect("keeps committed retirement shared when one waiting caller times out", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* committedRetirementTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(
+          fixtureDescriptor(controlDirectory, "wait-first-termination"),
+        );
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (firstLaunch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+
+        yield* TestClock.adjust(30_000);
+        yield* awaitFileLineCount(controlDirectory, "termination-signals.ndjson", 1);
+
+        const survivingCall = yield* Effect.forkChild(
+          plugin.call(PluginService.method.getConnection, {}, 10_000),
+        );
+        const expiringCall = yield* Effect.forkChild(
+          plugin.call(PluginService.method.getConnection, {}, 100),
+        );
+        yield* TestClock.adjust(100);
+
+        const expiringExitAtDeadline = expiringCall.pollUnsafe();
+        expect(() => process.kill(firstLaunch.pid, 0)).not.toThrow();
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+
+        yield* Effect.promise(() =>
+          writeFile(join(controlDirectory, "termination-continue"), "", { mode: 0o600 }),
+        );
+        const expiringFailure = yield* Fiber.join(expiringCall).pipe(Effect.flip);
+        const response = yield* Fiber.join(survivingCall);
+        const launches = yield* awaitLaunchCount(controlDirectory, 2);
+        const requests = yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1);
+
+        expect(expiringExitAtDeadline).toBeDefined();
+        expect(expiringFailure).toMatchObject({ _tag: "PluginDeadlineExceeded" });
+        expect(response.connection?.status).toBe(1);
+        expect(launches).toHaveLength(2);
+        expect(requests).toHaveLength(1);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
 it.effect("keeps a blocked call alive and starts the idle interval after interruption", () =>
   withControlDirectory((controlDirectory) =>
     Effect.scoped(
@@ -446,6 +493,7 @@ it.effect("starts the idle interval after a plugin RPC deadline", () =>
           _tag: "PluginDeadlineExceeded",
         });
         yield* awaitFileLineCount(controlDirectory, "cancellations.ndjson", 1);
+        yield* Effect.yieldNow;
 
         yield* TestClock.adjust(1000);
         yield* awaitProcessExit(firstLaunch.pid);
