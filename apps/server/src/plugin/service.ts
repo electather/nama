@@ -4,42 +4,25 @@ import type {
   MessageInitShape,
   MessageShape,
 } from "@bufbuild/protobuf";
-import { Effect, Exit, Fiber, Semaphore } from "effect";
+import { Effect, Exit, Semaphore } from "effect";
 import type { Scope } from "effect";
 
 import { callSupervisedPlugin } from "./call.ts";
 import type { PluginCallFailure, SupervisedCall } from "./call.ts";
-import { stopPlugin } from "./cleanup.ts";
 import type { PluginSupervisorCleanupFailure, PluginUnavailableFailure } from "./errors.ts";
-import { stopPluginRecovery } from "./lifecycle.ts";
-import { ABSENT_PLUGIN } from "./model.ts";
+import { closePluginHandle } from "./lifecycle.ts";
 import type {
   PluginHandleState,
   PluginLaunchDescriptor,
   PluginLogEmitter,
   PluginSpawnProcess,
   PluginSupervisorService,
-  RunningPlugin,
   SupervisedPlugin,
 } from "./model.ts";
 import { validatePluginDescriptor } from "./validation.ts";
 
 const INITIAL_LAUNCH_COUNT = 0;
 const LIFECYCLE_SEMAPHORE_PERMITS = 1;
-
-type PluginHandleCloseSelection =
-  | Readonly<{ readonly kind: "none" }>
-  | Readonly<{ readonly kind: "plugin"; readonly plugin: RunningPlugin }>
-  | Readonly<{
-      readonly fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>;
-      readonly kind: "recovery";
-      readonly prior: RunningPlugin | typeof ABSENT_PLUGIN;
-    }>
-  | Readonly<{
-      readonly fiber: Fiber.Fiber<void, PluginSupervisorCleanupFailure>;
-      readonly kind: "retirement";
-    }>;
-
 interface PluginSupervisorOptions {
   readonly activeHandles: Set<PluginHandleState>;
   readonly effectiveUserId: number | undefined;
@@ -47,73 +30,6 @@ interface PluginSupervisorOptions {
   readonly runtimeRoot: string;
   readonly spawnProcess: PluginSpawnProcess;
 }
-
-const selectTerminalPluginClose = (
-  plugin: RunningPlugin | typeof ABSENT_PLUGIN,
-): PluginHandleCloseSelection => {
-  if (plugin === ABSENT_PLUGIN) {
-    return { kind: "none" };
-  }
-  return { kind: "plugin", plugin };
-};
-
-const selectPluginHandleClose = (state: PluginHandleState): PluginHandleCloseSelection => {
-  const { lifecycle } = state;
-  state.lifecycle = { kind: "closed" };
-  if (lifecycle.kind === "absent" || lifecycle.kind === "closed") {
-    return { kind: "none" };
-  }
-  switch (lifecycle.kind) {
-    case "ready": {
-      return { kind: "plugin", plugin: lifecycle.plugin };
-    }
-    case "recovering": {
-      return {
-        fiber: lifecycle.fiber,
-        kind: "recovery",
-        prior: lifecycle.prior,
-      };
-    }
-    case "retiring": {
-      return { fiber: lifecycle.fiber, kind: "retirement" };
-    }
-    case "terminal": {
-      return selectTerminalPluginClose(lifecycle.plugin);
-    }
-    default: {
-      return lifecycle satisfies never;
-    }
-  }
-};
-
-const closeSelectedPlugin = (
-  selection: PluginHandleCloseSelection,
-): Effect.Effect<void, PluginSupervisorCleanupFailure> => {
-  switch (selection.kind) {
-    case "none": {
-      return Effect.void;
-    }
-    case "plugin": {
-      return stopPlugin(selection.plugin);
-    }
-    case "recovery": {
-      return stopPluginRecovery(selection.fiber, selection.prior);
-    }
-    case "retirement": {
-      return Fiber.join(selection.fiber);
-    }
-    default: {
-      return selection satisfies never;
-    }
-  }
-};
-
-const closePluginHandle = (
-  state: PluginHandleState,
-): Effect.Effect<void, PluginSupervisorCleanupFailure> =>
-  state.lifecycleSemaphore
-    .withPermits(LIFECYCLE_SEMAPHORE_PERMITS)(Effect.sync(() => selectPluginHandleClose(state)))
-    .pipe(Effect.flatMap(closeSelectedPlugin));
 
 const closeActivePluginHandles = (
   activeHandles: ReadonlySet<PluginHandleState>,

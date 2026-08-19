@@ -68,6 +68,13 @@ interface AcquiredPluginProcess {
   readonly launched: Promise<void>;
   readonly plugin: RunningPlugin;
 }
+interface PluginCleanupTarget {
+  readonly cleanup: Effect.Effect<void, PluginSupervisorCleanupFailure>;
+  readonly owner: symbol;
+}
+interface PluginCleanupOwnership {
+  target: PluginCleanupTarget | undefined;
+}
 type PluginLifecycleState =
   | Readonly<{ readonly kind: "absent" }>
   | Readonly<{ readonly kind: "closed" }>
@@ -76,14 +83,20 @@ type PluginLifecycleState =
       readonly fiber: Fiber.Fiber<RunningPlugin, PluginUnavailableFailure>;
       readonly kind: "recovering";
       readonly owner: symbol;
+      readonly ownership: PluginCleanupOwnership;
       readonly prior: RunningPlugin | typeof ABSENT_PLUGIN;
     }>
   | Readonly<{
       readonly completion: Deferred.Deferred<void, PluginUnavailableFailure>;
-      readonly fiber: Fiber.Fiber<void, PluginSupervisorCleanupFailure>;
+      readonly fiber: Fiber.Fiber<void>;
       readonly kind: "retiring";
       readonly owner: symbol;
-      readonly plugin: RunningPlugin | typeof ABSENT_PLUGIN;
+      readonly ownership: PluginCleanupOwnership;
+    }>
+  | Readonly<{
+      readonly failure: PluginUnavailableFailure;
+      readonly kind: "retirement_failed";
+      readonly ownership: PluginCleanupOwnership;
     }>
   | Readonly<{ readonly kind: "ready"; readonly plugin: RunningPlugin }>
   | Readonly<{
@@ -115,6 +128,8 @@ const ABSENT_PLUGIN = Symbol("absent-plugin");
 export { ABSENT_PLUGIN };
 export type {
   AcquiredPluginProcess,
+  PluginCleanupOwnership,
+  PluginCleanupTarget,
   PluginHandleState,
   PluginLifecycleState,
   PluginLaunchDescriptor,

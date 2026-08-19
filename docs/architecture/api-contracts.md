@@ -643,6 +643,10 @@ instance receives one provider-instance ID, configuration revision, non-secret
 configuration, and separate secret map and may serve nearby calls until its
 bounded idle retirement. Ordinary RPC bodies, metadata, argv, and the empty
 child environment never transport provider credentials.
+One valid call holds supervisor demand through lifecycle waiting and RPC completion. Zero demand starts a fixed 30-second grace; intervening demand resets the full interval, while expiry retires the complete process group and launch artifacts before a later call may launch a fresh incarnation. Demand arriving after retirement commits joins that teardown within its existing caller deadline.
+
+Cleanup uncertainty is private lifecycle state, not a plugin or public wire status. Failed idle cleanup retains ownership sufficient to prohibit a duplicate launch, maps later calls to the existing plugin-unavailable contract, emits no background retry, and is retried only by scope finalization. Finalization bypasses idle grace and joins cleanup already in progress; persistent failure follows the existing server-shutdown failure contract.
+
 
 The canonical launch context is limited to 64 KiB and contains no database,
 master-key, administrator, device, other-instance, or public-operation

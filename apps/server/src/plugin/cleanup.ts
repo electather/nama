@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { PROCESS_TERMINATION_TIMEOUT_MILLISECONDS } from "./constants.ts";
 import { PluginSupervisorCleanupError } from "./errors.ts";
 import type { PluginSupervisorCleanupFailure } from "./errors.ts";
-import type { RunningPlugin } from "./model.ts";
+import type { PluginCleanupOwnership, PluginCleanupTarget, RunningPlugin } from "./model.ts";
 import { removePath } from "./runtime.ts";
 
 const PROCESS_SIGNAL_PROBE = 0;
@@ -16,6 +16,31 @@ const isMissingProcessError = (error: unknown): boolean => {
   const { code } = error;
   return code === "ESRCH";
 };
+const makeCleanupOwnership = (): PluginCleanupOwnership => ({ target: undefined });
+
+const clearOwnedCleanup = (ownership: PluginCleanupOwnership, owner: symbol): Effect.Effect<void> =>
+  Effect.sync(() => {
+    if (ownership.target?.owner === owner) {
+      ownership.target = undefined;
+    }
+  });
+
+const ownCleanup = (
+  ownership: PluginCleanupOwnership,
+  cleanup: Effect.Effect<void, PluginSupervisorCleanupFailure>,
+): void => {
+  const owner = Symbol("plugin-cleanup");
+  const target: PluginCleanupTarget = {
+    cleanup: cleanup.pipe(Effect.tap(() => clearOwnedCleanup(ownership, owner))),
+    owner,
+  };
+  ownership.target = target;
+};
+
+const cleanupOwnedResources = (
+  ownership: PluginCleanupOwnership,
+): Effect.Effect<void, PluginSupervisorCleanupFailure> =>
+  Effect.suspend(() => ownership.target?.cleanup ?? Effect.void);
 
 const signalProcessGroup = (plugin: RunningPlugin, signal: NodeJS.Signals): void => {
   const processId = plugin.child.pid;
@@ -112,4 +137,4 @@ const stopPlugin = (plugin: RunningPlugin): Effect.Effect<void, PluginSupervisor
     yield* removePath(plugin.launchDirectory);
   });
 
-export { stopPlugin };
+export { cleanupOwnedResources, makeCleanupOwnership, ownCleanup, stopPlugin };
