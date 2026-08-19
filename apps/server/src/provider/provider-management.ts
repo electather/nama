@@ -1,4 +1,4 @@
-// oxlint-disable import/max-dependencies, eslint/max-lines, eslint/max-lines-per-function, eslint/max-params, eslint/max-statements, eslint/no-continue, eslint/no-ternary, eslint/no-underscore-dangle, eslint/prefer-destructuring, eslint/sort-keys, unicorn/no-useless-undefined -- The deep provider-management owner keeps schema validation, secret splitting, candidate verification, idempotency, and both pagination state machines explicit in one security boundary.
+// oxlint-disable import/max-dependencies, eslint/max-lines, eslint/max-lines-per-function, eslint/max-params, eslint/max-statements, eslint/no-continue, eslint/no-ternary, eslint/no-underscore-dangle, eslint/prefer-destructuring, unicorn/no-useless-undefined -- The deep provider-management owner keeps schema validation, secret splitting, candidate verification, idempotency, and both pagination state machines explicit in one security boundary.
 import { randomUUID } from "node:crypto";
 
 import { PluginConnectionStatus, PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
@@ -555,8 +555,8 @@ const deserializeInstanceRecord = (value: JsonObject): ProviderInstanceRecord | 
     return undefined;
   }
   return {
-    configuredSecretKeys,
     configuration,
+    configuredSecretKeys,
     createdAt,
     credentialsAvailable: value["credentials_available"],
     displayName: value["display_name"],
@@ -958,10 +958,10 @@ class ProviderManagement extends contextService<ProviderManagement, ProviderMana
       const supervisor = yield* PluginSupervisor;
       const service = yield* makeProviderManagement({
         discover: (provider) => discoverProvider(supervisor, provider),
-        verifyCandidate: (provider, configuration, credentials) =>
-          verifyProviderCandidate(supervisor, provider, configuration, credentials),
         masterKey: Redacted.value(config.security.masterKey),
         persistence: database.providers,
+        verifyCandidate: (provider, configuration, credentials) =>
+          verifyProviderCandidate(supervisor, provider, configuration, credentials),
       });
       return ProviderManagement.of(service);
     }),
