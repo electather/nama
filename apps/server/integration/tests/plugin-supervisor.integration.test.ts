@@ -92,7 +92,7 @@ const withControlDirectory = <Success, Failure, Requirements>(
   use: (controlDirectory: string) => Effect.Effect<Success, Failure, Requirements>,
 ) =>
   Effect.acquireUseRelease(
-    Effect.promise(() => mkdtemp(join(tmpdir(), "nama-plugin-test-"))),
+    Effect.promise(() => mkdtemp(join(tmpdir(), "np-"))),
     use,
     (controlDirectory) =>
       Effect.promise(() => rm(controlDirectory, { force: true, recursive: true })),
@@ -215,6 +215,31 @@ const directHealthCheck = (socketPath: string, authorization?: string) => {
     try: () => client.check({}, { headers }),
   });
 };
+
+const directConnectionCheck = (socketPath: string) => {
+  const client = createClient(
+    PluginService,
+    createConnectTransport({
+      baseUrl: "http://localhost",
+      httpVersion: "1.1",
+      nodeOptions: { socketPath },
+    }),
+  );
+  return Effect.tryPromise({
+    catch: (error) => error,
+    try: () => client.getConnection({}),
+  });
+};
+
+const findPluginSocket = (temporaryDirectory: string) =>
+  Effect.promise(async () => {
+    const paths = await readdir(temporaryDirectory, { recursive: true });
+    const relativeSocketPath = paths.find((path) => path.endsWith(".sock"));
+    if (relativeSocketPath === undefined) {
+      throw new Error("plugin socket not found");
+    }
+    return join(temporaryDirectory, relativeSocketPath);
+  });
 
 const awaitCondition = (condition: () => boolean) =>
   Effect.promise(async () => {
@@ -375,6 +400,30 @@ it.live("runs the production Jellyfin discovery contract without provider contex
         type: "object",
       });
     }).pipe(Effect.provide(PluginSupervisor.layer())),
+  ),
+);
+
+it.live("authenticates unimplemented production Jellyfin plugin methods", () =>
+  withControlDirectory((temporaryDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinUnimplementedMethodAuthenticationTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(
+          {
+            arguments: [JELLYFIN_PLUGIN_PATH],
+            executable: process.execPath,
+            expectedProviderType: "jellyfin",
+            stderrEvents: [],
+          },
+          { kind: "discovery" },
+        );
+        yield* plugin.call(PluginService.method.getInfo, {}, CALL_DEADLINE_MILLISECONDS);
+        const socketPath = yield* findPluginSocket(temporaryDirectory);
+        const failure = yield* directConnectionCheck(socketPath).pipe(Effect.flip);
+
+        expect(ConnectError.from(failure).code).toBe(Code.Unauthenticated);
+      }).pipe(Effect.provide(PluginSupervisor.layer({ temporaryDirectory }))),
+    ),
   ),
 );
 

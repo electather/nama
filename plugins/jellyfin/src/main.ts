@@ -120,6 +120,10 @@ const makeHandler = (launch: DiscoveryLaunchDocument) =>
         },
       });
       router.service(PluginService, {
+        getConnection: (_request, context) => {
+          requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
+          throw new ConnectError("connection unavailable", Code.Unimplemented);
+        },
         getInfo: (_request, context) => {
           requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
           return { pluginInfo: jellyfinPluginInfo };

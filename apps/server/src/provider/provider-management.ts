@@ -96,25 +96,14 @@ const storedInstancesMatchSchema = (
   persistence: ProviderPersistence,
   installation: StoredProviderInstallation,
 ): Effect.Effect<boolean, ProviderPersistenceFailure> =>
-  Effect.gen(function* storedInstanceSchemaValidation() {
-    const instanceIds = yield* persistence.listInstallationInstanceIds(installation.providerTypeId);
-    for (const instanceId of instanceIds) {
-      const instance = yield* persistence.loadInstance(instanceId);
-      const completeConfiguration = {
-        ...instance.configuration,
-        ...instance.credentials,
-      };
-      if (
-        !configurationMatchesRestrictedSchema(
-          installation.configurationSchema,
-          completeConfiguration,
-        )
-      ) {
-        return false;
-      }
-    }
-    return true;
-  }).pipe(Effect.catchTag("ProviderCredentialsUnavailable", () => Effect.succeed(false)));
+  persistence.loadInstallationConfigurations(installation.providerTypeId).pipe(
+    Effect.map((configurations) =>
+      configurations.every((configuration) =>
+        configurationMatchesRestrictedSchema(installation.configurationSchema, configuration),
+      ),
+    ),
+    Effect.catchTag("ProviderCredentialsUnavailable", () => Effect.succeed(false)),
+  );
 
 const reconcileProvider = (
   persistence: ProviderPersistence,

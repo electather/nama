@@ -147,10 +147,16 @@ it.live("persists non-secret configuration and restores every encrypted credenti
         Effect.gen(function* providerPersistenceRoundTrip() {
           yield* acceptJellyfinInstallation(database.providers);
           yield* database.providers.createInstance(makeInstanceInput(INSTANCE_ID, 1));
+          const secondInstance = makeInstanceInput("provider-instance-second", 2);
+          yield* database.providers.createInstance({
+            ...secondInstance,
+            configuration: { base_url: "https://second.example.test/" },
+            credentials: { api_key: "second-provider-secret" },
+          });
           const instance = yield* database.providers.loadInstance(INSTANCE_ID);
-          const instanceIds =
-            yield* database.providers.listInstallationInstanceIds(PROVIDER_TYPE_ID);
-          return { instance, instanceIds };
+          const configurations =
+            yield* database.providers.loadInstallationConfigurations(PROVIDER_TYPE_ID);
+          return { configurations, instance };
         }),
       );
 
@@ -158,14 +164,24 @@ it.live("persists non-secret configuration and restores every encrypted credenti
         configurationStored:
           stored.instance.configuration["base_url"] === "https://jellyfin.example.test/",
         credentialRecovered: stored.instance.credentials["api_key"] === SECRET_VALUE,
-        instanceEnumerated:
-          stored.instanceIds.length === 1 && stored.instanceIds[0] === INSTANCE_ID,
+        installationConfigurationsLoaded:
+          stored.configurations.length === 2 &&
+          stored.configurations.some(
+            (configuration) =>
+              configuration["api_key"] === SECRET_VALUE &&
+              configuration["base_url"] === "https://jellyfin.example.test/",
+          ) &&
+          stored.configurations.some(
+            (configuration) =>
+              configuration["api_key"] === "second-provider-secret" &&
+              configuration["base_url"] === "https://second.example.test/",
+          ),
         providerTypeRetained: stored.instance.providerTypeId === PROVIDER_TYPE_ID,
         revisionRetained: stored.instance.revision === REVISION,
       }).toEqual({
         configurationStored: true,
         credentialRecovered: true,
-        instanceEnumerated: true,
+        installationConfigurationsLoaded: true,
         providerTypeRetained: true,
         revisionRetained: true,
       });

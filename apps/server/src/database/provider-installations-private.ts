@@ -1,6 +1,7 @@
 import { and, asc, eq, gt, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 
+import { loadInstallationConfigurations } from "./provider-installation-configurations-private.ts";
 import { persistenceFailure } from "./provider-persistence-model-private.ts";
 import type {
   ProviderInstallationListInput,
@@ -8,11 +9,10 @@ import type {
   ProviderPersistenceFailure,
   StoredProviderInstallation,
 } from "./provider-persistence-model-private.ts";
-import { providerInstallation, providerInstance } from "./provider-schema.ts";
+import { providerInstallation } from "./provider-schema.ts";
 
 const FIRST_ROW = 0;
 const MAXIMUM_INSTALLATION_READ = 101;
-const MAXIMUM_PROVIDER_INSTANCES = 100;
 const SINGLE_ROW_LIMIT = 1;
 
 const installationSelection = Object.freeze({
@@ -40,26 +40,6 @@ const loadInstallation = (
         .where(eq(providerInstallation.providerTypeId, providerTypeId))
         .limit(SINGLE_ROW_LIMIT);
       return rows.at(FIRST_ROW);
-    },
-  });
-
-const listInstallationInstanceIds = (
-  context: ProviderPersistenceContext,
-  providerTypeId: string,
-): Effect.Effect<readonly string[], ProviderPersistenceFailure> =>
-  Effect.tryPromise({
-    catch: persistenceFailure,
-    try: async () => {
-      const rows = await context.database
-        .select({ id: providerInstance.id })
-        .from(providerInstance)
-        .where(eq(providerInstance.providerTypeId, providerTypeId))
-        .orderBy(asc(providerInstance.id))
-        .limit(MAXIMUM_INSTALLATION_READ);
-      if (rows.length > MAXIMUM_PROVIDER_INSTANCES) {
-        throw new RangeError("provider instance limit exceeded");
-      }
-      return rows.map(({ id }) => id);
     },
   });
 
@@ -112,4 +92,4 @@ const listInstallations = (
     },
   });
 
-export { listInstallationInstanceIds, listInstallations, loadInstallation };
+export { listInstallations, loadInstallation, loadInstallationConfigurations };

@@ -115,9 +115,12 @@ interface ProviderPersistence {
   readonly loadInstallation: (
     providerTypeId: string,
   ) => Effect.Effect<StoredProviderInstallation | undefined, ProviderPersistenceFailure>;
-  readonly listInstallationInstanceIds: (
+  readonly loadInstallationConfigurations: (
     providerTypeId: string,
-  ) => Effect.Effect<readonly string[], ProviderPersistenceFailure>;
+  ) => Effect.Effect<
+    readonly JsonObject[],
+    ProviderCredentialsFailure | ProviderPersistenceFailure
+  >;
   readonly loadInstance: (
     providerInstanceId: string,
   ) => Effect.Effect<

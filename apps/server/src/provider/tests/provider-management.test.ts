@@ -61,9 +61,9 @@ const makePersistence = (initial?: ProviderInstallationInput) => {
         accepted += 1;
         installation = input;
       }),
-    listInstallationInstanceIds: () => Effect.succeed([]),
     listInstallations: () => Effect.succeed(installation === undefined ? [] : [installation]),
     loadInstallation: () => Effect.succeed(installation),
+    loadInstallationConfigurations: () => Effect.succeed([]),
   } satisfies ProviderPersistence;
   return {
     accepted: () => accepted,
@@ -175,18 +175,14 @@ it.effect("preserves accepted metadata when a stored instance fails the discover
   const persistence = makePersistence(previous);
   const providers = {
     ...persistence.providers,
-    listInstallationInstanceIds: () => Effect.succeed(["instance-invalid"]),
-    loadInstance: () =>
-      Effect.succeed({
-        configuration: { base_url: 42 },
-        credentials: { api_key: "credential" },
-        displayName: "Invalid instance",
-        enabled: true,
-        id: "instance-invalid",
-        providerTypeId: "jellyfin",
-        revision: "revision-1",
-        syncPriority: 1,
-      }),
+    loadInstallationConfigurations: () =>
+      Effect.succeed([
+        {
+          api_key: "credential",
+          base_url: 42,
+          user_id: "user",
+        },
+      ]),
   } satisfies ProviderPersistence;
   return Effect.scoped(
     Effect.gen(function* storedInstanceCompatibilityTest() {
@@ -256,7 +252,6 @@ it.effect("binds provider list continuations to administrator, page size, and cu
           left.providerTypeId.localeCompare(right.providerTypeId),
         );
       }),
-    listInstallationInstanceIds: () => Effect.succeed([]),
     listInstallations: (input: {
       readonly afterProviderTypeId?: string;
       readonly limit: number;
@@ -274,6 +269,7 @@ it.effect("binds provider list continuations to administrator, page size, and cu
       Effect.succeed(
         installations.find((installation) => installation.providerTypeId === providerTypeId),
       ),
+    loadInstallationConfigurations: () => Effect.succeed([]),
   } satisfies ProviderPersistence;
   return Effect.scoped(
     Effect.gen(function* paginatedProviderTypesTest() {
@@ -316,7 +312,8 @@ it.effect("binds provider list continuations to administrator, page size, and cu
         })
         .pipe(Effect.flip);
       expect(crossPageSize).toMatchObject({ _tag: "PageTokenInvalid" });
-      const tampered = `${firstPage.nextPageToken.slice(0, -1)}A`;
+      const replacement = firstPage.nextPageToken.endsWith("A") ? "B" : "A";
+      const tampered = `${firstPage.nextPageToken.slice(0, -1)}${replacement}`;
       const tampering = yield* service
         .listProviderTypes({
           administratorId: "administrator-a",

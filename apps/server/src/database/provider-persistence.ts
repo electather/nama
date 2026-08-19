@@ -8,9 +8,9 @@ import {
   matchesPrincipal,
 } from "./provider-credentials-private.ts";
 import {
-  listInstallationInstanceIds,
   listInstallations,
   loadInstallation,
+  loadInstallationConfigurations,
 } from "./provider-installations-private.ts";
 import {
   acceptInstallation,
@@ -66,10 +66,10 @@ const makeProviderPersistence = (
         acceptInstallation: (input) => acceptInstallation(context, input),
         createInstance: (input) => createInstance(context, input),
         deleteInstance: (input) => deleteInstance(context, input),
-        listInstallationInstanceIds: (providerTypeId) =>
-          listInstallationInstanceIds(context, providerTypeId),
         listInstallations: (input) => listInstallations(context, input),
         loadInstallation: (providerTypeId) => loadInstallation(context, providerTypeId),
+        loadInstallationConfigurations: (providerTypeId) =>
+          loadInstallationConfigurations(context, providerTypeId),
         loadInstance: (providerInstanceId) => loadInstance(context, providerInstanceId),
         matchesPrincipal: (providerInstanceId, principalReference) =>
           matchesPrincipal(context, providerInstanceId, principalReference),
