@@ -4,18 +4,17 @@ import type {
   MessageInitShape,
   MessageShape,
 } from "@bufbuild/protobuf";
-import { Effect, Exit, Semaphore } from "effect";
-import type { Scope } from "effect";
+import { Effect, Exit } from "effect";
+import type { Scope, Semaphore } from "effect";
 
 import { callSupervisedPlugin } from "./call.ts";
-import type { SupervisedCall } from "./call.ts";
 import { unavailable } from "./errors.ts";
 import type { PluginSupervisorCleanupFailure, PluginUnavailableFailure } from "./errors.ts";
 import { preparePluginLaunch } from "./launch-document.ts";
-import { retirePluginHandle } from "./lifecycle.ts";
+import { makePluginLifecycle } from "./lifecycle.ts";
+import type { PluginLifecycleHandle } from "./lifecycle.ts";
 import type {
   PluginCallFailure,
-  PluginHandleState,
   PreparedPluginLaunch,
   PluginLaunch,
   PluginLaunchDescriptor,
@@ -26,20 +25,19 @@ import type {
 } from "./model.ts";
 import { validatePluginDescriptor } from "./validation.ts";
 
-const INITIAL_LAUNCH_COUNT = 0;
 const INITIAL_INSTANCE_LEASE_COUNT = 1;
 const SINGLE_SEMAPHORE_PERMIT = 1;
 const NO_INSTANCE_LEASES = 0;
 interface InstanceHandleEntry {
   leases: number;
   readonly documentContext: string;
+  readonly lifecycle: PluginLifecycleHandle;
   readonly providerInstanceId: string;
   readonly revision: string;
-  readonly state: PluginHandleState;
 }
 
 interface PluginSupervisorOptions {
-  readonly activeHandles: Set<PluginHandleState>;
+  readonly activeHandles: Set<PluginLifecycleHandle>;
   readonly effectiveUserId: number | undefined;
   readonly emit: PluginLogEmitter;
   readonly instanceHandles: Map<string, InstanceHandleEntry>;
@@ -51,20 +49,18 @@ interface PluginSupervisorOptions {
 
 interface PluginHandleLease {
   readonly instance: InstanceHandleEntry | undefined;
-  readonly state: PluginHandleState;
+  readonly lifecycle: PluginLifecycleHandle;
 }
 
 interface SupervisedPluginConstruction {
-  readonly descriptor: PluginLaunchDescriptor;
   readonly launch: PreparedPluginLaunch;
-  readonly options: PluginSupervisorOptions;
-  readonly state: PluginHandleState;
+  readonly lifecycle: PluginLifecycleHandle;
 }
 
 const closeActivePluginHandles = (
-  activeHandles: ReadonlySet<PluginHandleState>,
+  activeHandles: ReadonlySet<PluginLifecycleHandle>,
 ): Effect.Effect<void, PluginSupervisorCleanupFailure> =>
-  Effect.forEach(activeHandles, (state) => retirePluginHandle(state).pipe(Effect.exit), {
+  Effect.forEach(activeHandles, (lifecycle) => lifecycle.retire().pipe(Effect.exit), {
     concurrency: "unbounded",
   }).pipe(
     Effect.flatMap((exits) => {
@@ -76,33 +72,42 @@ const closeActivePluginHandles = (
     }),
   );
 
-const newPluginHandleState = (scope: PluginHandleState["scope"]): PluginHandleState => ({
-  activeDemand: 0,
-  admission: { kind: "open" },
-  idleTimer: undefined,
-  launchesInEpisode: INITIAL_LAUNCH_COUNT,
-  lifecycle: { kind: "absent" },
-  lifecycleSemaphore: Semaphore.makeUnsafe(SINGLE_SEMAPHORE_PERMIT),
-  scope,
-});
+const acquirePluginLifecycle = (
+  options: PluginSupervisorOptions,
+  descriptor: PluginLaunchDescriptor,
+  launch: PreparedPluginLaunch,
+): PluginLifecycleHandle => {
+  const { effectiveUserId, emit, runtimeRoot, scope, spawnProcess } = options;
+  return makePluginLifecycle({
+    descriptor,
+    effectiveUserId,
+    emit,
+    launch,
+    runtimeRoot,
+    scope,
+    spawnProcess,
+  });
+};
 
 const acquireIsolatedPluginHandle = (
   options: PluginSupervisorOptions,
+  descriptor: PluginLaunchDescriptor,
+  launch: PreparedPluginLaunch,
 ): Effect.Effect<PluginHandleLease> =>
   Effect.sync(() => {
-    const state = newPluginHandleState(options.scope);
-    options.activeHandles.add(state);
-    return { instance: undefined, state };
+    const lifecycle = acquirePluginLifecycle(options, descriptor, launch);
+    options.activeHandles.add(lifecycle);
+    return { instance: undefined, lifecycle };
   });
 
 const closeReplacedInstance = (
   options: PluginSupervisorOptions,
   entry: InstanceHandleEntry,
 ): Effect.Effect<void, PluginUnavailableFailure> =>
-  retirePluginHandle(entry.state).pipe(
+  entry.lifecycle.retire().pipe(
     Effect.tap(() =>
       Effect.sync(() => {
-        options.activeHandles.delete(entry.state);
+        options.activeHandles.delete(entry.lifecycle);
       }),
     ),
     Effect.mapError(() => unavailable("plugin_exited")),
@@ -110,23 +115,25 @@ const closeReplacedInstance = (
 
 const registerInstancePluginHandle = (
   options: PluginSupervisorOptions,
+  descriptor: PluginLaunchDescriptor,
   launch: Extract<PreparedPluginLaunch, Readonly<{ readonly kind: "instance" }>>,
 ): PluginHandleLease => {
-  const state = newPluginHandleState(options.scope);
+  const lifecycle = acquirePluginLifecycle(options, descriptor, launch);
   const entry: InstanceHandleEntry = {
     documentContext: launch.documentContext,
     leases: INITIAL_INSTANCE_LEASE_COUNT,
+    lifecycle,
     providerInstanceId: launch.providerInstanceId,
     revision: launch.revision,
-    state,
   };
   options.instanceHandles.set(launch.providerInstanceId, entry);
-  options.activeHandles.add(state);
-  return { instance: entry, state };
+  options.activeHandles.add(lifecycle);
+  return { instance: entry, lifecycle };
 };
 
 const acquireInstancePluginHandle = (
   options: PluginSupervisorOptions,
+  descriptor: PluginLaunchDescriptor,
   launch: Extract<PreparedPluginLaunch, Readonly<{ readonly kind: "instance" }>>,
 ): Effect.Effect<PluginHandleLease, PluginUnavailableFailure> =>
   options.registrySemaphore.withPermits(SINGLE_SEMAPHORE_PERMIT)(
@@ -137,30 +144,34 @@ const acquireInstancePluginHandle = (
           return yield* Effect.fail(unavailable("launch_document_invalid"));
         }
         current.leases += INITIAL_INSTANCE_LEASE_COUNT;
-        return { instance: current, state: current.state };
+        return { instance: current, lifecycle: current.lifecycle };
       }
       if (current !== undefined) {
         yield* closeReplacedInstance(options, current);
       }
-      return registerInstancePluginHandle(options, launch);
+      return registerInstancePluginHandle(options, descriptor, launch);
     }),
   );
 
 const acquirePluginHandle = (
   options: PluginSupervisorOptions,
+  descriptor: PluginLaunchDescriptor,
   launch: PreparedPluginLaunch,
 ): Effect.Effect<PluginHandleLease, PluginUnavailableFailure> => {
   if (launch.kind === "instance") {
-    return acquireInstancePluginHandle(options, launch);
+    return acquireInstancePluginHandle(options, descriptor, launch);
   }
-  return acquireIsolatedPluginHandle(options);
+  return acquireIsolatedPluginHandle(options, descriptor, launch);
 };
 
-const releaseIsolatedPluginHandle = (options: PluginSupervisorOptions, state: PluginHandleState) =>
-  retirePluginHandle(state).pipe(
+const releaseIsolatedPluginHandle = (
+  options: PluginSupervisorOptions,
+  lifecycle: PluginLifecycleHandle,
+) =>
+  lifecycle.retire().pipe(
     Effect.tap(() =>
       Effect.sync(() => {
-        options.activeHandles.delete(state);
+        options.activeHandles.delete(lifecycle);
       }),
     ),
   );
@@ -179,25 +190,23 @@ const releaseInstancePluginHandle = (
         entry.leases === NO_INSTANCE_LEASES &&
         options.instanceHandles.get(entry.providerInstanceId) === entry
       ) {
-        yield* retirePluginHandle(entry.state);
+        yield* entry.lifecycle.retire();
         options.instanceHandles.delete(entry.providerInstanceId);
-        options.activeHandles.delete(entry.state);
+        options.activeHandles.delete(entry.lifecycle);
       }
     }),
   );
 
 const releasePluginHandle = (options: PluginSupervisorOptions, lease: PluginHandleLease) => {
   if (lease.instance === undefined) {
-    return releaseIsolatedPluginHandle(options, lease.state).pipe(Effect.orDie);
+    return releaseIsolatedPluginHandle(options, lease.lifecycle).pipe(Effect.orDie);
   }
   return releaseInstancePluginHandle(options, lease.instance).pipe(Effect.orDie);
 };
 
 const makeSupervisedPlugin = ({
-  descriptor,
   launch,
-  options,
-  state,
+  lifecycle,
 }: SupervisedPluginConstruction): SupervisedPlugin => {
   let candidateAttempted = false;
   return Object.freeze({
@@ -206,16 +215,13 @@ const makeSupervisedPlugin = ({
       request: MessageInitShape<Input>,
       deadlineMilliseconds: number,
     ): Effect.Effect<MessageShape<Output>, PluginCallFailure> => {
-      const invoke = (): Effect.Effect<MessageShape<Output>, PluginCallFailure> => {
-        const call: SupervisedCall<Input, Output> = {
+      const invoke = (): Effect.Effect<MessageShape<Output>, PluginCallFailure> =>
+        callSupervisedPlugin({
           deadlineMilliseconds,
+          lifecycle,
           method,
-          options: { ...options, descriptor, launch },
           request,
-          state,
-        };
-        return callSupervisedPlugin(call);
-      };
+        });
       if (launch.kind !== "candidate") {
         return invoke();
       }
@@ -230,8 +236,12 @@ const makeSupervisedPlugin = ({
   });
 };
 
-const pluginHandleResource = (options: PluginSupervisorOptions, launch: PreparedPluginLaunch) =>
-  Effect.acquireRelease(acquirePluginHandle(options, launch), (lease) =>
+const pluginHandleResource = (
+  options: PluginSupervisorOptions,
+  descriptor: PluginLaunchDescriptor,
+  launch: PreparedPluginLaunch,
+) =>
+  Effect.acquireRelease(acquirePluginHandle(options, descriptor, launch), (lease) =>
     releasePluginHandle(options, lease),
   );
 
@@ -243,13 +253,11 @@ const supervisePlugin = (
   validatePluginDescriptor(descriptor, options.effectiveUserId).pipe(
     Effect.andThen(preparePluginLaunch(descriptor, launch)),
     Effect.flatMap((prepared) =>
-      pluginHandleResource(options, prepared).pipe(
+      pluginHandleResource(options, descriptor, prepared).pipe(
         Effect.map((lease) =>
           makeSupervisedPlugin({
-            descriptor,
             launch: prepared,
-            options,
-            state: lease.state,
+            lifecycle: lease.lifecycle,
           }),
         ),
       ),
