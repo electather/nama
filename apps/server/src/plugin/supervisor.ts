@@ -2,8 +2,8 @@ import { tmpdir } from "node:os";
 
 import { Context, Effect, FiberSet, Layer, Semaphore } from "effect";
 
+import type { PluginLifecycleHandle } from "./lifecycle.ts";
 import type {
-  PluginHandleState,
   PluginLogEmitter,
   PluginSupervisorLayerOptions,
   PluginSupervisorService,
@@ -30,7 +30,7 @@ const makePluginSupervisorLayer = ({
       );
       const scope = yield* Effect.scope;
       const runLogEffect = yield* FiberSet.makeRuntime<never, void, never>();
-      const activeHandles = new Set<PluginHandleState>();
+      const activeHandles = new Set<PluginLifecycleHandle>();
       yield* Effect.addFinalizer(() => closeActivePluginHandles(activeHandles).pipe(Effect.orDie));
       const emit: PluginLogEmitter = (effect) => {
         runLogEffect(effect);
