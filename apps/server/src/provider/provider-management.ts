@@ -1261,37 +1261,43 @@ const persistProviderUpdate = (
     ),
   );
 
-const reopenDurableInstanceAdmission = (
+const reopenFailedProviderUpdate = (
+  failure: ProviderMutationFailure,
   persistence: ProviderPersistence,
-  providerInstanceId: string,
+  lockedCurrent: ProviderInstanceRecord,
   admissionFence: InstanceAdmissionFence,
-): Effect.Effect<void> =>
-  persistence.loadInstanceRecord(providerInstanceId).pipe(
+): Effect.Effect<void, ProviderCommitAmbiguousFailure> => {
+  if (failure._tag === "ProviderValidationFailed") {
+    return lockedCurrent.enabled ? admissionFence.open(lockedCurrent.revision) : Effect.void;
+  }
+  return persistence.loadInstanceRecord(lockedCurrent.id).pipe(
     Effect.flatMap((current) =>
       current?.enabled === true ? admissionFence.open(current.revision) : Effect.void,
     ),
-    Effect.catchTag("ProviderPersistenceError", () => Effect.void),
+    Effect.catchTag("ProviderPersistenceError", () => Effect.fail(new ProviderCommitAmbiguous({}))),
   );
+};
 
 const recoverReplayAdmission = (
   ambiguousInstances: Set<string>,
   fenceInstance: InstanceCutoverFence,
   input: UpdateProviderInstanceInput,
   result: ProviderInstanceRecord,
-): Effect.Effect<void, ProviderPluginUnavailableFailure, Scope.Scope> => {
-  if (!ambiguousInstances.has(input.providerInstanceId)) {
-    return Effect.void;
-  }
-  return Effect.gen(function* reopenReplayRevision() {
-    const admissionFence = yield* fenceInstance(input.providerInstanceId, false).pipe(
-      Effect.mapError(() => new ProviderPluginUnavailable({})),
-    );
-    if (result.enabled) {
-      yield* admissionFence.open(result.revision);
+): Effect.Effect<void, ProviderPluginUnavailableFailure, Scope.Scope> =>
+  Effect.suspend(() => {
+    if (!ambiguousInstances.has(input.providerInstanceId)) {
+      return Effect.void;
     }
-    ambiguousInstances.delete(input.providerInstanceId);
+    return Effect.gen(function* reopenReplayRevision() {
+      const admissionFence = yield* fenceInstance(input.providerInstanceId, false).pipe(
+        Effect.mapError(() => new ProviderPluginUnavailable({})),
+      );
+      if (result.enabled) {
+        yield* admissionFence.open(result.revision);
+      }
+      ambiguousInstances.delete(input.providerInstanceId);
+    });
   });
-};
 
 const commitProviderUpdate = (
   commit: ProviderUpdateCommitInput,
@@ -1326,15 +1332,18 @@ const commitProviderUpdate = (
     const admissionFence = yield* fenceInstance(input.providerInstanceId, requiresCutover).pipe(
       Effect.mapError(() => new ProviderPluginUnavailable({})),
     );
-    const result = yield* persistProviderUpdate(commit, lockedCurrent, admissionFence).pipe(
-      Effect.tapError(() =>
-        reopenDurableInstanceAdmission(persistence, input.providerInstanceId, admissionFence),
-      ),
+    return yield* persistProviderUpdate(commit, lockedCurrent, admissionFence).pipe(
+      Effect.matchEffect({
+        onFailure: (failure) =>
+          reopenFailedProviderUpdate(failure, persistence, lockedCurrent, admissionFence).pipe(
+            Effect.andThen(Effect.fail(failure)),
+          ),
+        onSuccess: (result) =>
+          result.enabled
+            ? admissionFence.open(result.revision).pipe(Effect.as(result))
+            : Effect.succeed(result),
+      }),
     );
-    if (result.enabled) {
-      yield* admissionFence.open(result.revision);
-    }
-    return result;
   });
 
 interface InitialProviderUpdateInput {
