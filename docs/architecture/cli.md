@@ -1,6 +1,6 @@
 # Management CLI
 
-Status: issue #24 profiles, Administrator setup/sign-in, and authentication status; issue #25's complete public process contract; and issue #76's authenticated provider-type listing are implemented and verified. The remaining MVP command families are unfinished.
+Status: issue #24 profiles, Administrator setup/sign-in, and authentication status; issue #25's complete public process contract; issue #76's authenticated provider-type listing; and issue #77's provider-instance create/list/get commands are implemented and verified. The remaining MVP command families are unfinished.
 
 ## Purpose
 
@@ -16,7 +16,8 @@ The complete MVP management surface covers initial administrator setup, authenti
 - Issue #24 implements the shared CLI foundation, named profiles, administrator setup, sign-in, and authentication status.
 - Issue #25 completes help, version reporting, shell completion, machine schema, generated reference documentation, and semantic compatibility enforcement.
 - Issue #76 adds the provider-neutral `nama provider type list` command over the implemented authenticated RPC.
-- Health, diagnostics, provider-instance, device, and synchronization commands enter only with their implemented API behavior; no Jellyfin-specific family is added.
+- Issue #77 adds provider-neutral instance create, list, and get commands over the verified candidate and encrypted persistence flow.
+- Health, diagnostics, provider-instance update/delete, device, and synchronization commands enter only with their implemented API behavior; no Jellyfin-specific family is added.
 
 The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no management web application or CLI plugin framework in the MVP.
 
@@ -95,14 +96,14 @@ nama
 
 Only commands backed by an implemented public RPC are added. Exact leaf commands, arguments, and flags are designed with those RPCs; this list reserves no unimplemented server behavior.
 
-Issue #29's provider commands are generic `ProviderService` clients; no
-Jellyfin-specific public command family exists. Create, update, and delete
-generate a random operation ID unless the caller supplies `--operation-id` for
-scripted retry or ambiguity recovery, and mutation JSON output includes the ID
-used. Update and delete require `--expected-revision`; the CLI never fetches a
-newer revision and silently overwrites it. Issue #31 may add provider-type
-inspection and explicit candidate or stored-instance connection tests over
-their existing RPCs.
+Provider commands are generic `ProviderService` clients; no Jellyfin-specific
+public command family exists. Implemented create generates a random operation
+ID unless the caller supplies `--operation-id` for scripted retry or ambiguity
+recovery, and mutation JSON output includes the ID used. Future update and
+delete commands retain the same rule and require `--expected-revision`; the CLI
+will never fetch a newer revision and silently overwrite it. Issue #31 may add
+provider-type inspection and explicit candidate or stored-instance connection
+tests over their existing RPCs.
 
 Human provider create and update may render the restricted configuration schema
 through ordinary prompts and mask `writeOnly` strings. Their non-interactive
@@ -112,7 +113,7 @@ environment variables, positional arguments, or inline JSON flags.
 `--clear <key>` names optional ordinary or secret fields without carrying their
 values.
 
-The canonical binary name is `nama`. The live Cobra tree now supplies complete human help, a global version flag, four shell-completion formats, machine schema version 1, the generated CLI reference, the compatibility baseline, and authenticated provider-type listing.
+The canonical binary name is `nama`. The live Cobra tree now supplies complete human help, a global version flag, four shell-completion formats, machine schema version 1, the generated CLI reference, the compatibility baseline, authenticated provider-type listing, and provider-instance create/list/get.
 
 ## Output contract
 
@@ -255,11 +256,11 @@ The implemented surface is tested in process through the real Cobra tree with in
 - terminal and non-interactive secret input plus native-credential semantics;
 - generated-client metadata, deadlines, and method-specific bearer attachment over test Connect handlers;
 - setup recovery, sign-in replacement, authentication status, revocation, cleanup, and typed errors;
-- provider-type page input, authenticated profile selection, accepted schema mapping, and human/JSON rendering;
+- provider-type and provider-instance page input, authenticated profile selection, accepted schema mapping, file/stdin configuration, operation IDs, and human/JSON rendering;
 - exact JSON stream behavior plus human warning and prompt placement, exit codes, and secret redaction; and
-- compiled-binary status and production server/PostgreSQL/Jellyfin-discovery flows using a process-injected credential.
+- compiled-binary production server/PostgreSQL/Jellyfin flows covering discovery, verified encrypted create, list/get, validation, authentication rejection, principal mismatch, connection refusal, idempotent retry, pagination, and concurrent creates.
 
-The owning Go check runs formatting, vet, Staticcheck, tests, compilation, generated-reference drift, and schema-v1 semantic compatibility. Focused in-process and compiled-binary coverage verifies help, local output precedence, version/header identity, all completion formats, schema ordering and metadata, exit mappings, provider-type rendering, secret redaction, and exact JSON stream placement. A disposable Node server and PostgreSQL flow verifies real provider discovery through the compiled CLI; the macOS Keychain flow separately verifies Administrator setup and stored-credential status and is not portable keyring evidence.
+The owning Go check runs formatting, vet, Staticcheck, tests, compilation, generated-reference drift, and schema-v1 semantic compatibility. Focused in-process and compiled-binary coverage verifies help, local output precedence, version/header identity, all completion formats, schema ordering and metadata, exit mappings, provider rendering, secret redaction, and exact JSON stream placement. A disposable Node server and PostgreSQL flow verifies real provider discovery and provider-instance create/list/get through the compiled CLI; the macOS Keychain flow separately verifies Administrator setup and stored-credential status and is not portable keyring evidence.
 
 ## Deferred
 

@@ -4,8 +4,11 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -226,6 +229,9 @@ func NewRootCommand(dependencies Dependencies) *cobra.Command {
 			InvalidArguments: runtime.invalidArguments,
 		}),
 		providercommand.NewCommand(providercommand.Handlers{
+			CreateInstance:   runtime.createProviderInstance,
+			GetInstance:      runtime.getProviderInstance,
+			ListInstances:    runtime.listProviderInstances,
 			ListTypes:        runtime.listProviderTypes,
 			InvalidArguments: runtime.invalidArguments,
 		}),
@@ -514,6 +520,120 @@ func (r *runtime) listProviderTypes(command *cobra.Command, pageSize uint32, pag
 		}
 		return result, nil
 	})
+}
+func (r *runtime) listProviderInstances(command *cobra.Command, pageSize uint32, pageToken string) error {
+	return r.execute(command, true, func(state commandState) (any, error) {
+		if err := r.requireProfile(command, state); err != nil {
+			return nil, err
+		}
+		providerClient, err := r.providerClient(state)
+		if err != nil {
+			return nil, err
+		}
+		result, err := app.ListProviderInstances(
+			command.Context(),
+			app.ListProviderInstancesInput{
+				Profile:   state.resolved.Profile,
+				Server:    state.resolved.Server,
+				PageSize:  pageSize,
+				PageToken: pageToken,
+			},
+			providerClient,
+			r.dependencies.Credentials,
+		)
+		if err != nil {
+			return nil, classifyLocalError(err)
+		}
+		return result, nil
+	})
+}
+
+func (r *runtime) getProviderInstance(command *cobra.Command, providerInstanceID string) error {
+	return r.execute(command, true, func(state commandState) (any, error) {
+		if err := r.requireProfile(command, state); err != nil {
+			return nil, err
+		}
+		providerClient, err := r.providerClient(state)
+		if err != nil {
+			return nil, err
+		}
+		result, err := app.GetProviderInstance(
+			command.Context(),
+			app.GetProviderInstanceInput{
+				Profile:            state.resolved.Profile,
+				ProviderInstanceID: providerInstanceID,
+				Server:             state.resolved.Server,
+			},
+			providerClient,
+			r.dependencies.Credentials,
+		)
+		if err != nil {
+			return nil, classifyLocalError(err)
+		}
+		return result, nil
+	})
+}
+
+func (r *runtime) createProviderInstance(
+	command *cobra.Command,
+	input providercommand.CreateInstanceInput,
+) error {
+	return r.execute(command, true, func(state commandState) (any, error) {
+		if err := r.requireProfile(command, state); err != nil {
+			return nil, err
+		}
+		configuration, err := readProviderConfiguration(command, input.ConfigurationPath)
+		if err != nil {
+			return nil, clierror.InvalidArgument(err)
+		}
+		providerClient, err := r.providerClient(state)
+		if err != nil {
+			return nil, err
+		}
+		result, err := app.CreateProviderInstance(
+			command.Context(),
+			app.CreateProviderInstanceInput{
+				Profile:        state.resolved.Profile,
+				Server:         state.resolved.Server,
+				OperationID:    input.OperationID,
+				ProviderTypeID: input.ProviderTypeID,
+				DisplayName:    input.DisplayName,
+				Configuration:  configuration,
+				Enabled:        input.Enabled,
+				SyncPriority:   input.SyncPriority,
+			},
+			providerClient,
+			r.dependencies.Credentials,
+		)
+		if err != nil {
+			return nil, classifyLocalError(err)
+		}
+		return result, nil
+	})
+}
+
+func readProviderConfiguration(command *cobra.Command, path string) (map[string]any, error) {
+	var reader io.Reader = command.InOrStdin()
+	var file *os.File
+	if path != "-" {
+		opened, err := os.Open(path)
+		if err != nil {
+			return nil, errors.New("configuration could not be read")
+		}
+		file = opened
+		reader = opened
+		defer file.Close()
+	}
+	decoder := json.NewDecoder(reader)
+	var configuration map[string]any
+	if err := decoder.Decode(&configuration); err != nil || configuration == nil {
+		return nil, errors.New("configuration must be one JSON object")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return nil, errors.New("configuration must contain exactly one JSON object")
+	}
+	return configuration, nil
 }
 
 func (r *runtime) execute(command *cobra.Command, includeWarning bool, action func(commandState) (any, error)) error {

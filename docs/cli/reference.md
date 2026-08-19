@@ -321,6 +321,135 @@ None.
 
 None.
 
+## `nama provider instance`
+
+Manage configured provider instances
+
+### Arguments
+
+None.
+
+### Effective flags
+
+| Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |
+| `--output` | `string` | no | inherited | `NAMA_OUTPUT` | `human` | `human`, `json` | Select human or json output (env: NAMA_OUTPUT) |
+| `--profile` | `string` | no | inherited | `NAMA_PROFILE` | `` | — | Select a server profile (env: NAMA_PROFILE) |
+| `--server` | `string` | no | inherited | `NAMA_SERVER` | `` | — | Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER) |
+| `--version` | `bool` | no | inherited | — | `false` | — | Print the Nama CLI semantic version |
+
+### Conditional inputs
+
+None.
+
+## `nama provider instance create`
+
+Create a verified provider instance
+
+Read one complete JSON configuration from a file path or - for standard input, verify the candidate connection, and create a provider-neutral instance. Secret values belong only in that document.
+
+### Arguments
+
+| Name | Type | Required | Variadic | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- |
+| `provider-type-id` | `string` | yes | no | — | Opaque installed provider type ID |
+
+### Effective flags
+
+| Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `--configuration` | `string` | yes | local | — | `` | — | Read the complete JSON configuration from this file path or - for standard input (required) |
+| `--display-name` | `string` | yes | local | — | `` | — | Provider instance display name (required) |
+| `--enabled` | `bool` | no | local | — | `true` | — | Create the provider instance enabled |
+| `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |
+| `--operation-id` | `string` | no | local | — | `` | — | Reuse this opaque operation ID for an exact retry; omitted generates one |
+| `--output` | `string` | no | inherited | `NAMA_OUTPUT` | `human` | `human`, `json` | Select human or json output (env: NAMA_OUTPUT) |
+| `--profile` | `string` | no | inherited | `NAMA_PROFILE` | `` | — | Select a server profile (env: NAMA_PROFILE) |
+| `--server` | `string` | no | inherited | `NAMA_SERVER` | `` | — | Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER) |
+| `--sync-priority` | `uint32` | no | local | — | `0` | — | Set a positive synchronization priority; omitted allocates the next priority |
+| `--version` | `bool` | no | inherited | — | `false` | — | Print the Nama CLI semantic version |
+
+### Conditional inputs
+
+| Name | Type | Required | Secret | Description |
+| --- | --- | --- | --- | --- |
+| `bearer` | `string` | yes | yes | Administrator bearer credential |
+
+Sources:
+
+- `bearer`:
+  - kind `environment`; source `NAMA_TOKEN`; condition `always`
+  - kind `native_credential_store`; source `operating_system`; condition `NAMA_TOKEN_unset`
+
+## `nama provider instance get`
+
+Inspect one provider instance
+
+Inspect one provider-neutral instance without returning write-only configuration values or credentials.
+
+### Arguments
+
+| Name | Type | Required | Variadic | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- |
+| `provider-instance-id` | `string` | yes | no | — | Opaque provider instance ID |
+
+### Effective flags
+
+| Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |
+| `--output` | `string` | no | inherited | `NAMA_OUTPUT` | `human` | `human`, `json` | Select human or json output (env: NAMA_OUTPUT) |
+| `--profile` | `string` | no | inherited | `NAMA_PROFILE` | `` | — | Select a server profile (env: NAMA_PROFILE) |
+| `--server` | `string` | no | inherited | `NAMA_SERVER` | `` | — | Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER) |
+| `--version` | `bool` | no | inherited | — | `false` | — | Print the Nama CLI semantic version |
+
+### Conditional inputs
+
+| Name | Type | Required | Secret | Description |
+| --- | --- | --- | --- | --- |
+| `bearer` | `string` | yes | yes | Administrator bearer credential |
+
+Sources:
+
+- `bearer`:
+  - kind `environment`; source `NAMA_TOKEN`; condition `always`
+  - kind `native_credential_store`; source `operating_system`; condition `NAMA_TOKEN_unset`
+
+## `nama provider instance list`
+
+List provider instances
+
+List one page of provider-neutral instances without returning write-only configuration values or credentials.
+
+### Arguments
+
+None.
+
+### Effective flags
+
+| Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |
+| `--output` | `string` | no | inherited | `NAMA_OUTPUT` | `human` | `human`, `json` | Select human or json output (env: NAMA_OUTPUT) |
+| `--page-size` | `uint32` | no | local | — | `0` | — | Request up to 100 provider instances; zero uses the server default |
+| `--page-token` | `string` | no | local | — | `` | — | Continue an earlier provider instance list |
+| `--profile` | `string` | no | inherited | `NAMA_PROFILE` | `` | — | Select a server profile (env: NAMA_PROFILE) |
+| `--server` | `string` | no | inherited | `NAMA_SERVER` | `` | — | Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER) |
+| `--version` | `bool` | no | inherited | — | `false` | — | Print the Nama CLI semantic version |
+
+### Conditional inputs
+
+| Name | Type | Required | Secret | Description |
+| --- | --- | --- | --- | --- |
+| `bearer` | `string` | yes | yes | Administrator bearer credential |
+
+Sources:
+
+- `bearer`:
+  - kind `environment`; source `NAMA_TOKEN`; condition `always`
+  - kind `native_credential_store`; source `operating_system`; condition `NAMA_TOKEN_unset`
+
 ## `nama provider type`
 
 Inspect installed provider types
@@ -452,9 +581,9 @@ Sources:
 | ---: | --- | --- |
 | 0 | success | — |
 | 1 | unexpected failure or cancellation | `canceled`, `credential_cleanup_failed`, `credential_store_unavailable`, `data_loss`, `internal`, `request_cancelled`, `unexpected_failure`, `unimplemented`, `unknown` |
-| 2 | invalid arguments or configuration | `invalid_argument`, `invalid_configuration`, `out_of_range`, `unsafe_transport`, `validation_failed` |
+| 2 | invalid arguments or configuration | `invalid_argument`, `invalid_configuration`, `out_of_range`, `page_token_invalid`, `unsafe_transport`, `validation_failed` |
 | 3 | authentication failure | `authentication_failed`, `credential_invalid`, `unauthenticated` |
 | 4 | permission denied | `permission_denied` |
-| 5 | resource not found | `not_found`, `profile_not_found` |
-| 6 | conflict or invalid state | `aborted`, `already_exists`, `already_initialized`, `failed_precondition`, `not_initialized`, `setup_in_progress` |
-| 7 | network or API unavailable, rate limited, or resource exhausted | `authentication_unavailable`, `deadline_exceeded`, `network_unavailable`, `rate_limited`, `resource_exhausted`, `session_revocation_unconfirmed`, `setup_unavailable`, `unavailable` |
+| 5 | resource not found | `not_found`, `profile_not_found`, `resource_not_found` |
+| 6 | conflict or invalid state | `aborted`, `already_exists`, `already_initialized`, `failed_precondition`, `idempotency_key_reused`, `not_initialized`, `provider_authentication_failed`, `provider_incompatible`, `setup_in_progress` |
+| 7 | network or API unavailable, rate limited, or resource exhausted | `authentication_unavailable`, `deadline_exceeded`, `network_unavailable`, `plugin_unavailable`, `provider_instance_limit_reached`, `provider_unavailable`, `rate_limited`, `resource_exhausted`, `session_revocation_unconfirmed`, `setup_unavailable`, `unavailable` |

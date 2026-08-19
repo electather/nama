@@ -57,6 +57,9 @@ const setupCoordinator: SetupCoordinatorService = Object.freeze({
 });
 
 const providerManagement: ProviderManagementService = Object.freeze({
+  createProviderInstance: () => Effect.die("provider creation is outside dispatch coverage"),
+  getProviderInstance: () => Effect.die("provider read is outside dispatch coverage"),
+  listProviderInstances: () => Effect.die("provider list is outside dispatch coverage"),
   listProviderTypes: () =>
     Effect.succeed({
       nextPageToken: "",

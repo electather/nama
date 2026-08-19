@@ -20,6 +20,10 @@ const PROTOBUF_RETRY_DELAY = Object.freeze({
   nanos: 234_000_000,
   seconds: 1n,
 });
+const PROVIDER_RETRY_DELAY = Object.freeze({
+  nanos: 0,
+  seconds: 5n,
+});
 const ERROR_DETAIL_COUNT = 1;
 const FIRST_ERROR_DETAIL_INDEX = 0;
 const FIELD_VIOLATION_LIMIT = 50;
@@ -252,6 +256,41 @@ const mappedFailureCases = [
     [UNSAFE_FAILURE_DETAIL],
   ],
   [
+    "provider resource absence",
+    { _tag: "ProviderResourceNotFound" },
+    Code.NotFound,
+    "RESOURCE_NOT_FOUND",
+    [],
+  ],
+  [
+    "provider credential rejection",
+    { _tag: "ProviderAuthenticationFailed" },
+    Code.FailedPrecondition,
+    "PROVIDER_AUTHENTICATION_FAILED",
+    [],
+  ],
+  [
+    "provider incompatibility",
+    { _tag: "ProviderIncompatible" },
+    Code.FailedPrecondition,
+    "PROVIDER_INCOMPATIBLE",
+    [],
+  ],
+  [
+    "provider instance limit",
+    { _tag: "ProviderInstanceLimitReached" },
+    Code.ResourceExhausted,
+    "PROVIDER_INSTANCE_LIMIT_REACHED",
+    [],
+  ],
+  [
+    "provider operation key reuse",
+    { _tag: "IdempotencyKeyReused" },
+    Code.AlreadyExists,
+    "IDEMPOTENCY_KEY_REUSED",
+    [],
+  ],
+  [
     "arbitrary defect",
     new ConnectError(UNSAFE_FAILURE_DETAIL, Code.Unknown),
     Code.Internal,
@@ -276,3 +315,39 @@ for (const [
     expectPublicErrorDoesNotExpose(error, unsafeValues);
   });
 }
+
+test.each([
+  ["provider unavailability", { _tag: "ProviderUnavailable" }, "PROVIDER_UNAVAILABLE"],
+  ["plugin unavailability", { _tag: "ProviderPluginUnavailable" }, "PLUGIN_UNAVAILABLE"],
+] as const)("normalizeConnectFailure adds retry guidance for %s", (_title, failure, reason) => {
+  const error = normalizeConnectFailure(REQUEST_ID, failure);
+
+  expectApplicationIdentity(error, Code.Unavailable, reason);
+  const retry = error.findDetails(RetryInfoSchema);
+  expect(retry).toHaveLength(ERROR_DETAIL_COUNT);
+  expect(retry[FIRST_ERROR_DETAIL_INDEX]?.retryDelay).toMatchObject(PROVIDER_RETRY_DELAY);
+});
+
+test("normalizeConnectFailure preserves provider configuration field violations", () => {
+  const error = normalizeConnectFailure(REQUEST_ID, {
+    _tag: "ProviderValidationFailed",
+    violations: [
+      {
+        description: "is required",
+        field: "configuration.api_key",
+        reason: "REQUIRED",
+      },
+    ],
+  });
+
+  expectApplicationIdentity(error, Code.InvalidArgument, "VALIDATION_FAILED");
+  expect(
+    error.findDetails(BadRequestSchema)[FIRST_ERROR_DETAIL_INDEX]?.fieldViolations,
+  ).toMatchObject([
+    {
+      description: "is required",
+      field: "configuration.api_key",
+      reason: "REQUIRED",
+    },
+  ]);
+});

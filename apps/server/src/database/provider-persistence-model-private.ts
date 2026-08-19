@@ -33,13 +33,41 @@ interface ProviderInstallationListInput {
 }
 
 type StoredProviderInstallation = ProviderInstallationInput;
+interface ProviderInstanceCursor {
+  readonly createdAt: Date;
+  readonly providerInstanceId: string;
+}
+
+interface ProviderInstanceListInput {
+  readonly after?: ProviderInstanceCursor;
+  readonly limit: number;
+}
+
+interface ProviderInstanceRecord {
+  readonly configuredSecretKeys: readonly string[];
+  readonly configuration: JsonObject;
+  readonly createdAt: Date;
+  readonly credentialsAvailable: boolean;
+  readonly displayName: string;
+  readonly enabled: boolean;
+  readonly id: string;
+  readonly observation: Readonly<{
+    readonly status: ProviderObservationStatus;
+    readonly summary: string;
+  }>;
+  readonly providerTypeId: string;
+  readonly revision: string;
+  readonly syncPriority: number;
+  readonly updatedAt: Date;
+}
 
 interface ProviderOperationInput {
   readonly administratorUserId: string;
   readonly canonicalRequest: Uint8Array;
   readonly method: ProviderMutationMethod;
   readonly operationId: string;
-  readonly serializedResult: JsonObject;
+  readonly serializedResult?: JsonObject;
+  readonly serializeResult?: (instance: ProviderInstanceRecord) => JsonObject;
 }
 
 interface ProviderInstanceInput {
@@ -94,6 +122,14 @@ const ProviderPersistenceError = taggedError("ProviderPersistenceError")<Record<
 const ProviderCredentialsUnavailable = taggedError("ProviderCredentialsUnavailable")<
   Record<string, never>
 >;
+const ProviderInstanceLimitReached = taggedError("ProviderInstanceLimitReached")<
+  Record<string, never>
+>;
+const ProviderSyncPriorityConflict = taggedError("ProviderSyncPriorityConflict")<
+  Record<string, never>
+>;
+type ProviderInstanceLimitFailure = InstanceType<typeof ProviderInstanceLimitReached>;
+type ProviderSyncPriorityConflictFailure = InstanceType<typeof ProviderSyncPriorityConflict>;
 const ProviderOperationKeyReused = taggedError("ProviderOperationKeyReused")<Record<string, never>>;
 type ProviderPersistenceFailure = InstanceType<typeof ProviderPersistenceError>;
 type ProviderCredentialsFailure = InstanceType<typeof ProviderCredentialsUnavailable>;
@@ -105,10 +141,16 @@ interface ProviderPersistence {
   ) => Effect.Effect<void, ProviderPersistenceFailure>;
   readonly createInstance: (
     input: ProviderInstanceInput,
-  ) => Effect.Effect<void, ProviderPersistenceFailure>;
+  ) => Effect.Effect<
+    ProviderInstanceRecord,
+    ProviderInstanceLimitFailure | ProviderPersistenceFailure | ProviderSyncPriorityConflictFailure
+  >;
   readonly deleteInstance: (
     input: ProviderInstanceDeletionInput,
   ) => Effect.Effect<boolean, ProviderPersistenceFailure>;
+  readonly listInstances: (
+    input: ProviderInstanceListInput,
+  ) => Effect.Effect<readonly ProviderInstanceRecord[], ProviderPersistenceFailure>;
   readonly listInstallations: (
     input: ProviderInstallationListInput,
   ) => Effect.Effect<readonly StoredProviderInstallation[], ProviderPersistenceFailure>;
@@ -121,6 +163,9 @@ interface ProviderPersistence {
     readonly JsonObject[],
     ProviderCredentialsFailure | ProviderPersistenceFailure
   >;
+  readonly loadInstanceRecord: (
+    providerInstanceId: string,
+  ) => Effect.Effect<ProviderInstanceRecord | undefined, ProviderPersistenceFailure>;
   readonly loadInstance: (
     providerInstanceId: string,
   ) => Effect.Effect<
@@ -172,7 +217,12 @@ export {
   type ProviderCredentialsFailure,
   type ProviderDatabase,
   type ProviderInstanceDeletionInput,
+  type ProviderInstanceCursor,
+  type ProviderInstanceListInput,
+  type ProviderInstanceRecord,
+  type ProviderInstanceLimitFailure,
   type ProviderInstanceInput,
+  type ProviderSyncPriorityConflictFailure,
   type ProviderInstallationListInput,
   type StoredProviderInstallation,
   type ProviderInstallationInput,
@@ -187,6 +237,8 @@ export {
   type ProviderPersistenceFailure,
   type StoredProviderInstance,
   ProviderOperationKeyReused,
+  ProviderInstanceLimitReached,
+  ProviderSyncPriorityConflict,
   credentialFailure,
   operationLookupFailure,
   persistenceFailure,

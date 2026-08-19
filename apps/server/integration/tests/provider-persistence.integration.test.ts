@@ -1102,7 +1102,13 @@ it.live("holds the 100-instance limit across concurrent transactions", () =>
           return result.rows.at(0)?.count;
         }),
       );
+      const serviceFailure = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        database.providers
+          .createInstance(makeInstanceInput("service-limit", 102))
+          .pipe(Effect.flip),
+      );
 
+      expect(serviceFailure._tag).toBe("ProviderInstanceLimitReached");
       expect(race).toEqual({ committed: 1, rejectedByLimit: true });
       expect(count).toBe(100);
     }),
@@ -1291,6 +1297,53 @@ it.live("derives provider-principal and operation HMACs in separate key domains"
       );
 
       expect(separated).toBe(true);
+    }),
+  ),
+);
+
+it.live("returns safe instance reads from the atomic encrypted create transaction", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* safeInstanceReadTest() {
+      yield* initializeProviderDatabase(databaseUrl);
+      const result = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* safeInstanceReadDatabaseTest() {
+          yield* acceptJellyfinInstallation(database.providers);
+          const input = makeInstanceInput("safe-instance");
+          const created = yield* database.providers.createInstance({
+            ...input,
+            operation: {
+              administratorUserId: input.operation.administratorUserId,
+              canonicalRequest: input.operation.canonicalRequest,
+              method: input.operation.method,
+              operationId: input.operation.operationId,
+              serializeResult: (instance) => ({
+                id: instance.id,
+                sync_priority: instance.syncPriority,
+              }),
+            },
+          });
+          const loaded = yield* database.providers.loadInstanceRecord(created.id);
+          const listed = yield* database.providers.listInstances({ limit: 101 });
+          const operation = yield* database.providers.readOperationResult({
+            administratorUserId: input.operation.administratorUserId,
+            canonicalRequest: input.operation.canonicalRequest,
+            method: input.operation.method,
+            operationId: input.operation.operationId,
+          });
+          return { created, listed, loaded, operation };
+        }),
+      );
+
+      expect(result.created.configuration).toEqual({
+        base_url: "https://jellyfin.example.test/",
+      });
+      expect(result.created.configuredSecretKeys).toEqual(["api_key"]);
+      expect(result.loaded).toEqual(result.created);
+      expect(result.listed).toEqual([result.created]);
+      expect(result.operation).toEqual({
+        id: "safe-instance",
+        sync_priority: 1,
+      });
     }),
   ),
 );

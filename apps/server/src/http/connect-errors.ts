@@ -1,3 +1,4 @@
+// oxlint-disable eslint/max-lines -- Public failure normalization keeps the complete allowlisted tag, detail, and retry mapping in one auditable boundary.
 import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import {
@@ -12,6 +13,7 @@ const MILLISECONDS_PER_SECOND = 1000n;
 const NANOSECONDS_PER_MILLISECOND = 1_000_000;
 const PUBLIC_ERROR_MESSAGE = "The request could not be completed.";
 const ZERO_MILLISECONDS = 0;
+const PROVIDER_RETRY_DELAY_MILLISECONDS = 5000;
 
 type PublicErrorReason =
   | "ALREADY_INITIALIZED"
@@ -22,7 +24,14 @@ type PublicErrorReason =
   | "INTERNAL"
   | "NOT_INITIALIZED"
   | "PERMISSION_DENIED"
+  | "IDEMPOTENCY_KEY_REUSED"
   | "PAGE_TOKEN_INVALID"
+  | "PLUGIN_UNAVAILABLE"
+  | "PROVIDER_AUTHENTICATION_FAILED"
+  | "PROVIDER_INCOMPATIBLE"
+  | "PROVIDER_INSTANCE_LIMIT_REACHED"
+  | "PROVIDER_UNAVAILABLE"
+  | "RESOURCE_NOT_FOUND"
   | "RATE_LIMITED"
   | "REQUEST_CANCELLED"
   | "SESSION_REVOCATION_UNCONFIRMED"
@@ -49,6 +58,14 @@ type TaggedFailureTag =
   | "NotInitialized"
   | "PermissionDenied"
   | "PageTokenInvalid"
+  | "IdempotencyKeyReused"
+  | "ProviderAuthenticationFailed"
+  | "ProviderIncompatible"
+  | "ProviderInstanceLimitReached"
+  | "ProviderPluginUnavailable"
+  | "ProviderResourceNotFound"
+  | "ProviderUnavailable"
+  | "ProviderValidationFailed"
   | "PrivateAuthenticationDefect"
   | "RequestCancelled"
   | "SessionRevocationUnconfirmed"
@@ -85,6 +102,10 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
     code: Code.DeadlineExceeded,
     reason: "DEADLINE_EXCEEDED",
   },
+  IdempotencyKeyReused: {
+    code: Code.AlreadyExists,
+    reason: "IDEMPOTENCY_KEY_REUSED",
+  },
   InvalidBearer: {
     code: Code.Unauthenticated,
     reason: "CREDENTIAL_INVALID",
@@ -112,6 +133,34 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
   PrivateAuthenticationDefect: {
     code: Code.Internal,
     reason: "INTERNAL",
+  },
+  ProviderAuthenticationFailed: {
+    code: Code.FailedPrecondition,
+    reason: "PROVIDER_AUTHENTICATION_FAILED",
+  },
+  ProviderIncompatible: {
+    code: Code.FailedPrecondition,
+    reason: "PROVIDER_INCOMPATIBLE",
+  },
+  ProviderInstanceLimitReached: {
+    code: Code.ResourceExhausted,
+    reason: "PROVIDER_INSTANCE_LIMIT_REACHED",
+  },
+  ProviderPluginUnavailable: {
+    code: Code.Unavailable,
+    reason: "PLUGIN_UNAVAILABLE",
+  },
+  ProviderResourceNotFound: {
+    code: Code.NotFound,
+    reason: "RESOURCE_NOT_FOUND",
+  },
+  ProviderUnavailable: {
+    code: Code.Unavailable,
+    reason: "PROVIDER_UNAVAILABLE",
+  },
+  ProviderValidationFailed: {
+    code: Code.InvalidArgument,
+    reason: "VALIDATION_FAILED",
   },
   RequestCancelled: {
     code: Code.Canceled,
@@ -241,10 +290,77 @@ const createRateLimitError = (requestId: string, retryAfterMilliseconds: number)
     requestId,
   });
 
+const providerFieldViolation = (violation: unknown): PreNormalizedFieldViolation | undefined => {
+  if (typeof violation !== "object" || violation === null) {
+    return undefined;
+  }
+
+  const description = dataPropertyValue(violation, "description");
+  const field = dataPropertyValue(violation, "field");
+  const reason = dataPropertyValue(violation, "reason");
+  if (typeof description !== "string" || typeof field !== "string" || typeof reason !== "string") {
+    return undefined;
+  }
+
+  return { description, field, reason };
+};
+
+const providerFieldViolations = (
+  value: unknown,
+): readonly PreNormalizedFieldViolation[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const violations: PreNormalizedFieldViolation[] = [];
+  for (const rawViolation of value) {
+    const violation = providerFieldViolation(rawViolation);
+    if (violation === undefined) {
+      return undefined;
+    }
+    violations.push(violation);
+  }
+  return violations;
+};
+
+const providerValidationError = (requestId: string, failure: unknown): ConnectError | undefined => {
+  if (
+    taggedFailureTag(failure) !== "ProviderValidationFailed" ||
+    typeof failure !== "object" ||
+    failure === null
+  ) {
+    return undefined;
+  }
+
+  const violations = providerFieldViolations(dataPropertyValue(failure, "violations"));
+  if (violations === undefined) {
+    return undefined;
+  }
+  return createValidationError(requestId, violations);
+};
+
 const normalizeConnectFailure = (requestId: string, failure: unknown): ConnectError => {
+  const validation = providerValidationError(requestId, failure);
+  if (validation !== undefined) {
+    return validation;
+  }
   const tag = taggedFailureTag(failure);
   if (tag === undefined) {
     return createApplicationError({ code: Code.Internal, reason: "INTERNAL", requestId });
+  }
+  if (tag === "ProviderPluginUnavailable" || tag === "ProviderUnavailable") {
+    return createApplicationError({
+      ...TAGGED_FAILURE_MAPPINGS[tag],
+      extraDetails: [
+        {
+          desc: RetryInfoSchema,
+          value: create(RetryInfoSchema, {
+            retryDelay: retryDelayFromMilliseconds(PROVIDER_RETRY_DELAY_MILLISECONDS),
+          }),
+        },
+      ],
+      requestId,
+    });
   }
 
   return createApplicationError({

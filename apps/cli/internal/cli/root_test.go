@@ -683,7 +683,7 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 	if len(stderr) != 0 {
 		t.Errorf("human schema stderr = %q, want empty", stderr)
 	}
-	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama provider type list", "nama schema"} {
+	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama provider instance create", "nama provider type list", "nama schema"} {
 		if !bytes.Contains(human, []byte(command)) {
 			t.Errorf("human schema inventory omits %q:\n%s", command, human)
 		}
@@ -721,6 +721,10 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		"nama profile set",
 		"nama profile use",
 		"nama provider",
+		"nama provider instance",
+		"nama provider instance create",
+		"nama provider instance get",
+		"nama provider instance list",
 		"nama provider type",
 		"nama provider type list",
 		"nama schema",
@@ -821,6 +825,20 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		t.Errorf("provider bearer required = %#v, want %t", got, want)
 	}
 
+	providerCreateFlags := schemaObjectsByName(t, byPath["nama provider instance create"]["flags"], "provider instance create flags")
+	for _, name := range []string{"configuration", "display-name"} {
+		if got, want := providerCreateFlags[name]["required"], true; got != want {
+			t.Errorf("provider create %s required = %#v, want %t", name, got, want)
+		}
+	}
+	if got, want := providerCreateFlags["enabled"]["default"], "true"; got != want {
+		t.Errorf("provider create enabled default = %#v, want %q", got, want)
+	}
+	providerCreateArguments := schemaObjectList(t, byPath["nama provider instance create"]["arguments"], "provider instance create arguments")
+	if got, want := providerCreateArguments[0]["name"], "provider-type-id"; got != want {
+		t.Errorf("provider create argument name = %#v, want %q", got, want)
+	}
+
 	setupInputs := schemaObjectsByName(t, byPath["nama setup"]["inputs"], "setup inputs")
 	for _, name := range []string{"bootstrap_token", "password"} {
 		input, ok := setupInputs[name]
@@ -875,6 +893,14 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		clierror.CodeSetupInProgress:              6,
 		clierror.CodeSetupUnavailable:             7,
 		clierror.CodeValidationFailed:             2,
+		clierror.CodeIdempotencyKeyReused:         6,
+		clierror.CodePageTokenInvalid:             2,
+		clierror.CodePluginUnavailable:            7,
+		clierror.CodeProviderAuthenticationFailed: 6,
+		clierror.CodeProviderIncompatible:         6,
+		clierror.CodeProviderInstanceLimitReached: 7,
+		clierror.CodeProviderUnavailable:          7,
+		clierror.CodeResourceNotFound:             5,
 		clierror.CodeUnknown:                      1,
 		clierror.CodeCancelled:                    1,
 		clierror.CodeNotFound:                     5,
