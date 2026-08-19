@@ -1,7 +1,6 @@
-// oxlint-disable eslint/max-lines-per-function, eslint/max-params, eslint/max-statements, eslint/no-magic-numbers, promise/avoid-new, promise/prefer-await-to-callbacks, typescript/no-unsafe-type-assertion, unicorn/max-nested-calls -- The real subprocess and controlled HTTP exchange keep launch, socket, fetch, deadline, and cleanup boundaries observable.
+// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, promise/avoid-new, promise/prefer-await-to-callbacks, unicorn/max-nested-calls -- The real subprocess and controlled HTTP exchange keep launch, socket, fetch, deadline, and cleanup boundaries observable.
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 
 import { expect, it } from "@effect/vitest";
@@ -80,7 +79,10 @@ const acquireControlledJellyfin = Effect.acquireRelease(
         server.once("error", reject);
         server.listen(0, "127.0.0.1", resolve);
       });
-      const address = server.address() as AddressInfo;
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("Controlled Jellyfin server did not bind to a TCP address");
+      }
       const origin = `http://127.0.0.1:${address.port}`;
       return {
         baseUrl: `${origin}/jellyfin`,
@@ -106,9 +108,15 @@ const acquireControlledJellyfin = Effect.acquireRelease(
 );
 const candidateConnection = (
   supervisor: PluginSupervisor["Service"],
-  baseUrl: string,
-  userId: string = USER_ID,
-  deadlineMilliseconds: number = CALL_DEADLINE_MILLISECONDS,
+  {
+    baseUrl,
+    userId = USER_ID,
+    deadlineMilliseconds = CALL_DEADLINE_MILLISECONDS,
+  }: {
+    readonly baseUrl: string;
+    readonly deadlineMilliseconds?: number;
+    readonly userId?: string;
+  },
 ) =>
   Effect.scoped(
     supervisor
@@ -187,17 +195,15 @@ it.live(
       Effect.gen(function* jellyfinCandidateFailureTest() {
         const jellyfin = yield* acquireControlledJellyfin;
         const supervisor = yield* PluginSupervisor;
-        const mappedLoopback = yield* candidateConnection(
-          supervisor,
-          jellyfin.baseUrl.replace("127.0.0.1", "[::ffff:127.0.0.1]"),
-        );
+        const mappedLoopback = yield* candidateConnection(supervisor, {
+          baseUrl: jellyfin.baseUrl.replace("127.0.0.1", "[::ffff:127.0.0.1]"),
+        });
         expect(mappedLoopback.connection?.status).toBe(PluginConnectionStatus.CONNECTED);
         const mappedRequestCount = jellyfin.requests.length;
 
-        const publicDestination = yield* candidateConnection(
-          supervisor,
-          "https://public.example.test",
-        );
+        const publicDestination = yield* candidateConnection(supervisor, {
+          baseUrl: "https://public.example.test",
+        });
         expect(publicDestination.connection?.status).toBe(PluginConnectionStatus.INCOMPATIBLE);
         expect(jellyfin.requests).toHaveLength(mappedRequestCount);
         for (const unsafeBaseUrl of [
@@ -206,27 +212,29 @@ it.live(
           `${jellyfin.origin}/jellyfin#fragment`,
           jellyfin.origin.replace("http://", "http://embedded@"),
         ]) {
-          const unsafe = yield* candidateConnection(supervisor, unsafeBaseUrl);
+          const unsafe = yield* candidateConnection(supervisor, { baseUrl: unsafeBaseUrl });
           expect(unsafe.connection?.status).toBe(PluginConnectionStatus.INCOMPATIBLE);
         }
         expect(jellyfin.requests).toHaveLength(mappedRequestCount);
 
-        const redirect = yield* candidateConnection(supervisor, `${jellyfin.origin}/redirect`);
+        const redirect = yield* candidateConnection(supervisor, {
+          baseUrl: `${jellyfin.origin}/redirect`,
+        });
         expect(redirect.connection?.status).toBe(PluginConnectionStatus.INCOMPATIBLE);
         expect(jellyfin.requests.at(-1)).toEqual({
           authorization: undefined,
           url: "/redirect/System/Info/Public",
         });
 
-        const disabled = yield* candidateConnection(supervisor, `${jellyfin.origin}/disabled`);
+        const disabled = yield* candidateConnection(supervisor, {
+          baseUrl: `${jellyfin.origin}/disabled`,
+        });
         expect(disabled.connection?.status).toBe(PluginConnectionStatus.INCOMPATIBLE);
 
-        const deadlineFailure = yield* candidateConnection(
-          supervisor,
-          `${jellyfin.origin}/hanging`,
-          USER_ID,
-          50,
-        ).pipe(Effect.flip);
+        const deadlineFailure = yield* candidateConnection(supervisor, {
+          baseUrl: `${jellyfin.origin}/hanging`,
+          deadlineMilliseconds: 50,
+        }).pipe(Effect.flip);
         expect(deadlineFailure).toMatchObject({ _tag: "PluginDeadlineExceeded" });
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),

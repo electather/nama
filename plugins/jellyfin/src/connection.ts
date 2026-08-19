@@ -1,4 +1,4 @@
-// oxlint-disable eslint/init-declarations, eslint/max-lines-per-function, eslint/max-statements, eslint/no-await-in-loop, eslint/no-magic-numbers, eslint/no-ternary, unicorn/prefer-string-raw, unicorn/prefer-string-replace-all -- The native fetch adapter keeps private-address, redirect, bounded-body, cancellation, identity, and safe-status policy explicit.
+// oxlint-disable eslint/init-declarations, eslint/max-lines-per-function, eslint/max-statements, eslint/no-await-in-loop, eslint/no-magic-numbers, eslint/no-ternary, unicorn/prefer-string-raw -- The native fetch adapter keeps private-address, redirect, bounded-body, cancellation, identity, and safe-status policy explicit.
 import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 
@@ -80,7 +80,7 @@ const isPrivateIpv6 = (hostname: string): boolean => {
 };
 
 const isPrivateHostname = (hostname: string): boolean => {
-  const normalized = hostname.replace(/^\[|\]$/gu, "").toLowerCase();
+  const normalized = hostname.replaceAll(/^\[|\]$/gu, "").toLowerCase();
   const addressFamily = isIP(normalized);
   if (addressFamily === 4) {
     return isPrivateIpv4(normalized);

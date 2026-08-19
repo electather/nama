@@ -1,4 +1,4 @@
-// oxlint-disable import/max-dependencies, eslint/max-lines-per-function, eslint/max-params, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary, eslint/prefer-destructuring, eslint/sort-keys, promise/avoid-new, promise/prefer-await-to-callbacks, typescript/consistent-return, typescript/no-unsafe-assignment, typescript/no-unsafe-type-assertion, typescript/require-array-sort-compare, typescript/strict-boolean-expressions, typescript/strict-void-return -- This executable flow keeps the CLI, server, PostgreSQL, subprocess, controlled HTTP provider, and exact process streams visible in one scenario.
+// oxlint-disable import/max-dependencies, eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary, eslint/prefer-destructuring, eslint/sort-keys, promise/avoid-new, promise/prefer-await-to-callbacks, typescript/consistent-return, typescript/no-unsafe-assignment, typescript/no-unsafe-type-assertion, typescript/strict-boolean-expressions, typescript/strict-void-return -- This executable flow keeps the CLI, server, PostgreSQL, subprocess, controlled HTTP provider, and exact process streams visible in one scenario.
 import { execFile, spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -42,6 +42,13 @@ interface NamaResult {
 interface NamaFailureResult extends NamaResult {
   readonly exitCode: number;
 }
+
+const requiredString = (value: unknown): string => {
+  if (typeof value !== "string") {
+    throw new TypeError("expected string value");
+  }
+  return value;
+};
 
 const withNamaBinary = <Success, Failure, Requirements>(
   use: (
@@ -89,12 +96,17 @@ const runNama = (
       return { stderr: result.stderr, stdout: result.stdout };
     },
   });
-const runNamaWithInput = (
-  binary: string,
-  environment: NodeJS.ProcessEnv,
-  arguments_: readonly string[],
-  input: string,
-): Effect.Effect<NamaResult, unknown> =>
+const runNamaWithInput = ({
+  binary,
+  environment,
+  arguments_,
+  input,
+}: Readonly<{
+  readonly binary: string;
+  readonly environment: NodeJS.ProcessEnv;
+  readonly arguments_: readonly string[];
+  readonly input: string;
+}>): Effect.Effect<NamaResult, unknown> =>
   Effect.tryPromise({
     catch: (error) => error,
     try: () =>
@@ -353,10 +365,10 @@ it.live(
             yield* Effect.promise(() =>
               writeFile(configurationPath, configurationDocument, { mode: 0o600 }),
             );
-            const created = yield* runNamaWithInput(
+            const created = yield* runNamaWithInput({
               binary,
               environment,
-              [
+              arguments_: [
                 "provider",
                 "instance",
                 "create",
@@ -372,8 +384,8 @@ it.live(
                 "--output",
                 "json",
               ],
-              configurationDocument,
-            );
+              input: configurationDocument,
+            });
             expect(created.stderr).toBe("");
             expect(created.stdout).not.toContain("provider-api-key-sentinel");
             const createdPayload: unknown = JSON.parse(created.stdout);
@@ -681,12 +693,16 @@ it.live(
             expect(secondInstancePagePayload.data.provider_instances).toHaveLength(1);
             expect(secondInstancePagePayload.data.next_page_token).toBeUndefined();
             const pagedInstanceIds = [
-              firstInstancePagePayload.data.provider_instances[0]?.["id"],
-              secondInstancePagePayload.data.provider_instances[0]?.["id"],
-            ].toSorted();
+              requiredString(firstInstancePagePayload.data.provider_instances[0]?.["id"]),
+              requiredString(secondInstancePagePayload.data.provider_instances[0]?.["id"]),
+            ].toSorted((left, right) => left.localeCompare(right));
             const racedInstanceId =
               committed?.status === "fulfilled" ? committed.value.providerInstance?.id : undefined;
-            expect(pagedInstanceIds).toEqual([providerInstanceId, racedInstanceId].toSorted());
+            expect(pagedInstanceIds).toEqual(
+              [providerInstanceId, requiredString(racedInstanceId)].toSorted((left, right) =>
+                left.localeCompare(right),
+              ),
+            );
             expectNamaFailure(
               yield* runNamaFailure(binary, environment, [
                 "provider",

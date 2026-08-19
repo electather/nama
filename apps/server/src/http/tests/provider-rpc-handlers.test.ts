@@ -1,4 +1,4 @@
-// oxlint-disable eslint/init-declarations, eslint/max-lines-per-function, eslint/sort-keys -- The real Connect route test keeps authentication, Struct decoding, handler mapping, and safe response projection in one flow.
+// oxlint-disable eslint/max-lines-per-function -- This end-to-end Connect route test keeps authentication, Struct decoding, handler mapping, and safe response projection in one flow.
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { expect, it } from "@effect/vitest";
@@ -22,16 +22,18 @@ const CREATED_AT = new Date("2026-08-19T12:00:00.000Z");
 it.effect("maps provider create configuration and returns only safe instance fields", () =>
   Effect.scoped(
     Effect.gen(function* providerCreateHandlerTest() {
-      let receivedConfiguration: Readonly<Record<string, unknown>> | undefined;
+      const received = {
+        configuration: undefined as Readonly<Record<string, unknown>> | undefined,
+      };
       const providerManagement: ProviderManagementService = Object.freeze({
         createProviderInstance: (input: CreateProviderInstanceInput) => {
-          receivedConfiguration = input.configuration;
+          received.configuration = input.configuration;
           return Effect.succeed({
-            configuredSecretKeys: ["api_key"],
             configuration: {
               base_url: "http://127.0.0.1:8096",
               user_id: "provider-user",
             },
+            configuredSecretKeys: ["api_key"],
             createdAt: CREATED_AT,
             credentialsAvailable: true,
             displayName: input.displayName,
@@ -79,7 +81,7 @@ it.effect("maps provider create configuration and returns only safe instance fie
           { headers: { authorization: "Bearer administrator-bearer" } },
         ),
       );
-      expect(receivedConfiguration).toEqual({
+      expect(received.configuration).toEqual({
         api_key: "credential-sentinel",
         base_url: "http://127.0.0.1:8096",
         user_id: "provider-user",

@@ -1,4 +1,4 @@
-// oxlint-disable import/max-dependencies, eslint/max-lines, eslint/max-lines-per-function, eslint/max-params, eslint/max-statements, eslint/no-continue, eslint/no-magic-numbers, eslint/no-ternary, eslint/no-underscore-dangle, eslint/prefer-destructuring, eslint/sort-keys, unicorn/no-useless-undefined -- The deep provider-management owner keeps schema validation, secret splitting, candidate verification, idempotency, and both pagination state machines explicit in one security boundary.
+// oxlint-disable import/max-dependencies, eslint/max-lines, eslint/max-lines-per-function, eslint/max-params, eslint/max-statements, eslint/no-continue, eslint/no-ternary, eslint/no-underscore-dangle, eslint/prefer-destructuring, eslint/sort-keys, unicorn/no-useless-undefined -- The deep provider-management owner keeps schema validation, secret splitting, candidate verification, idempotency, and both pagination state machines explicit in one security boundary.
 import { randomUUID } from "node:crypto";
 
 import { PluginConnectionStatus, PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
@@ -39,6 +39,7 @@ const LAST_ITEM = -1;
 const DEFAULT_PAGE_SIZE = 50;
 const MAXIMUM_PAGE_SIZE = 100;
 const NEXT_ROW = 1;
+const INSTANCE_CURSOR_KEY_COUNT = 2;
 const PAGE_TOKEN_LIFETIME_MILLISECONDS = 900_000;
 const CREATE_PROVIDER_INSTANCE_METHOD =
   "nama.api.v1.ProviderService.CreateProviderInstance" as const;
@@ -162,11 +163,11 @@ type CandidateVerification = (
 interface ProviderManagementService {
   readonly createProviderInstance: (
     input: CreateProviderInstanceInput,
-    // fallow-ignore-next-line private-type-leak -- Consumers branch on stable owner-local failure tags rather than concrete classes.
   ) => Effect.Effect<ProviderInstanceRecord, ProviderMutationFailure>;
-  readonly getProviderInstance: (input: GetProviderInstanceInput) => Effect.Effect<
+  readonly getProviderInstance: (
+    input: GetProviderInstanceInput,
+  ) => Effect.Effect<
     ProviderInstanceRecord,
-    // fallow-ignore-next-line private-type-leak -- Not-found normalization remains private to the deep provider owner.
     ProviderPersistenceFailure | ProviderResourceNotFoundFailure
   >;
   readonly listProviderInstances: (
@@ -258,7 +259,6 @@ const verifyProviderCandidate = (
 interface ProviderManagementDependencies {
   readonly discover: ProviderDiscovery;
   readonly masterKey: string;
-  // fallow-ignore-next-line private-type-leak -- Candidate verification is injected only for owner-level behavior tests.
   readonly verifyCandidate?: CandidateVerification;
   readonly persistence: ProviderPersistence;
 }
@@ -593,7 +593,7 @@ const parseInstanceCursor = (cursor: string): ProviderInstanceListInput["after"]
     const providerInstanceId = value["provider_instance_id"];
     const createdAt = typeof createdAtValue === "string" ? new Date(createdAtValue) : new Date(NaN);
     if (
-      keys.length !== 2 ||
+      keys.length !== INSTANCE_CURSOR_KEY_COUNT ||
       typeof providerInstanceId !== "string" ||
       providerInstanceId.length === ZERO ||
       !Number.isFinite(createdAt.getTime())
@@ -970,13 +970,24 @@ class ProviderManagement extends contextService<ProviderManagement, ProviderMana
 
 export { ProviderManagement, makeProviderManagement };
 export type {
+  CandidateVerification,
   CreateProviderInstanceInput,
   GetProviderInstanceInput,
   ListProviderInstancesInput,
   ListProviderInstancesResult,
   ListProviderTypesInput,
   ListProviderTypesResult,
-  ProviderManagementDependencies,
+  IdempotencyKeyReuseFailure,
+  ProviderAuthenticationFailure,
+  ProviderIncompatibleFailure,
+  ProviderInstanceLimitFailure,
   ProviderDiscovery,
+  ProviderManagementDependencies,
   ProviderManagementService,
+  ProviderMutationFailure,
+  ProviderPluginUnavailableFailure,
+  ProviderResourceNotFoundFailure,
+  ProviderUnavailableFailure,
+  ProviderValidationFailure,
+  VerifiedProviderCandidate,
 };

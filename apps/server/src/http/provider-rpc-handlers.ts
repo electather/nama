@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-lines-per-function, eslint/no-ternary -- The thin generated-service mapping remains one complete provider-neutral route inventory.
+// oxlint-disable eslint/max-lines-per-function -- The thin generated-service mapping remains one complete provider-neutral route inventory.
 import { create } from "@bufbuild/protobuf";
 import type {
   JsonObject as ProtobufJsonObject,
@@ -82,9 +82,10 @@ const providerInstanceStatus = (instance: ProviderInstanceRecord): ProviderInsta
   if (!instance.credentialsAvailable || instance.observation.status === "unavailable") {
     return ProviderInstanceStatus.UNAVAILABLE;
   }
-  return instance.observation.status === "authentication_failed"
-    ? ProviderInstanceStatus.AUTHENTICATION_FAILED
-    : ProviderInstanceStatus.HEALTHY;
+  if (instance.observation.status === "authentication_failed") {
+    return ProviderInstanceStatus.AUTHENTICATION_FAILED;
+  }
+  return ProviderInstanceStatus.HEALTHY;
 };
 
 const providerInstanceMessage = (instance: ProviderInstanceRecord) => ({
@@ -120,6 +121,7 @@ const createProviderServiceHandlers = ({
           enabled: request.enabled,
           operationId: request.operationId,
           providerTypeId: request.providerTypeId,
+          // oxlint-disable-next-line eslint/no-ternary -- Omitting an unspecified sync priority preserves the management input contract.
           ...(request.syncPriority === undefined ? {} : { syncPriority: request.syncPriority }),
         })
         .pipe(

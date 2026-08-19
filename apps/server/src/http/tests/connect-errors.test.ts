@@ -1,4 +1,3 @@
-// oxlint-disable eslint/no-magic-numbers -- Protocol-detail assertions keep exact codes, counts, and duration parts visible.
 import { Code, ConnectError } from "@connectrpc/connect";
 import {
   BadRequestSchema,
@@ -20,6 +19,10 @@ const RETRY_DELAY_MILLISECONDS = 1234;
 const PROTOBUF_RETRY_DELAY = Object.freeze({
   nanos: 234_000_000,
   seconds: 1n,
+});
+const PROVIDER_RETRY_DELAY = Object.freeze({
+  nanos: 0,
+  seconds: 5n,
 });
 const ERROR_DETAIL_COUNT = 1;
 const FIRST_ERROR_DETAIL_INDEX = 0;
@@ -321,8 +324,8 @@ test.each([
 
   expectApplicationIdentity(error, Code.Unavailable, reason);
   const retry = error.findDetails(RetryInfoSchema);
-  expect(retry).toHaveLength(1);
-  expect(retry[0]?.retryDelay).toMatchObject({ nanos: 0, seconds: 5n });
+  expect(retry).toHaveLength(ERROR_DETAIL_COUNT);
+  expect(retry[FIRST_ERROR_DETAIL_INDEX]?.retryDelay).toMatchObject(PROVIDER_RETRY_DELAY);
 });
 
 test("normalizeConnectFailure preserves provider configuration field violations", () => {
@@ -338,7 +341,9 @@ test("normalizeConnectFailure preserves provider configuration field violations"
   });
 
   expectApplicationIdentity(error, Code.InvalidArgument, "VALIDATION_FAILED");
-  expect(error.findDetails(BadRequestSchema)[0]?.fieldViolations).toMatchObject([
+  expect(
+    error.findDetails(BadRequestSchema)[FIRST_ERROR_DETAIL_INDEX]?.fieldViolations,
+  ).toMatchObject([
     {
       description: "is required",
       field: "configuration.api_key",

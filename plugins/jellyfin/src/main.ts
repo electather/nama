@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-statements, eslint/no-magic-numbers -- The stdin boundary keeps byte accounting, schema byte limits, and exact launch-document rejection explicit.
+// oxlint-disable eslint/max-statements -- The stdin boundary keeps byte accounting and exact launch-document rejection explicit.
 import { timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
 import { chmod } from "node:fs/promises";
@@ -14,6 +14,9 @@ import { getJellyfinConnection } from "./connection.ts";
 import { jellyfinPluginInfo } from "./info.ts";
 
 const MAXIMUM_LAUNCH_DOCUMENT_BYTES = 65_536;
+const MAXIMUM_BASE_URL_BYTES = 2048;
+const MAXIMUM_USER_ID_BYTES = 128;
+const MAXIMUM_API_KEY_BYTES = 4096;
 const LAUNCH_DOCUMENT_VERSION = 2;
 const EXIT_CONFIGURATION_ERROR = 64;
 const EMPTY_LENGTH = 0;
@@ -108,13 +111,13 @@ const providerContext = (
     !hasExactKeys(credentials, ["api_key"]) ||
     typeof configuration["base_url"] !== "string" ||
     Buffer.byteLength(configuration["base_url"], "utf8") === EMPTY_LENGTH ||
-    Buffer.byteLength(configuration["base_url"], "utf8") > 2048 ||
+    Buffer.byteLength(configuration["base_url"], "utf8") > MAXIMUM_BASE_URL_BYTES ||
     typeof configuration["user_id"] !== "string" ||
     Buffer.byteLength(configuration["user_id"], "utf8") === EMPTY_LENGTH ||
-    Buffer.byteLength(configuration["user_id"], "utf8") > 128 ||
+    Buffer.byteLength(configuration["user_id"], "utf8") > MAXIMUM_USER_ID_BYTES ||
     typeof credentials["api_key"] !== "string" ||
     Buffer.byteLength(credentials["api_key"], "utf8") === EMPTY_LENGTH ||
-    Buffer.byteLength(credentials["api_key"], "utf8") > 4096
+    Buffer.byteLength(credentials["api_key"], "utf8") > MAXIMUM_API_KEY_BYTES
   ) {
     return undefined;
   }

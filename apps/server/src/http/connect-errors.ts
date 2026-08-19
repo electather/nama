@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-lines, eslint/max-statements, eslint/sort-keys -- Public failure normalization keeps the complete allowlisted tag, detail, and retry mapping in one auditable boundary.
+// oxlint-disable eslint/max-lines -- Public failure normalization keeps the complete allowlisted tag, detail, and retry mapping in one auditable boundary.
 import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import {
@@ -102,6 +102,10 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
     code: Code.DeadlineExceeded,
     reason: "DEADLINE_EXCEEDED",
   },
+  IdempotencyKeyReused: {
+    code: Code.AlreadyExists,
+    reason: "IDEMPOTENCY_KEY_REUSED",
+  },
   InvalidBearer: {
     code: Code.Unauthenticated,
     reason: "CREDENTIAL_INVALID",
@@ -118,10 +122,6 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
     code: Code.FailedPrecondition,
     reason: "NOT_INITIALIZED",
   },
-  IdempotencyKeyReused: {
-    code: Code.AlreadyExists,
-    reason: "IDEMPOTENCY_KEY_REUSED",
-  },
   PageTokenInvalid: {
     code: Code.InvalidArgument,
     reason: "PAGE_TOKEN_INVALID",
@@ -129,6 +129,10 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
   PermissionDenied: {
     code: Code.PermissionDenied,
     reason: "PERMISSION_DENIED",
+  },
+  PrivateAuthenticationDefect: {
+    code: Code.Internal,
+    reason: "INTERNAL",
   },
   ProviderAuthenticationFailed: {
     code: Code.FailedPrecondition,
@@ -157,10 +161,6 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
   ProviderValidationFailed: {
     code: Code.InvalidArgument,
     reason: "VALIDATION_FAILED",
-  },
-  PrivateAuthenticationDefect: {
-    code: Code.Internal,
-    reason: "INTERNAL",
   },
   RequestCancelled: {
     code: Code.Canceled,
@@ -290,7 +290,39 @@ const createRateLimitError = (requestId: string, retryAfterMilliseconds: number)
     requestId,
   });
 
-// fallow-ignore-next-line complexity -- Provider field details are structurally allowlisted before entering public protobuf errors.
+const providerFieldViolation = (violation: unknown): PreNormalizedFieldViolation | undefined => {
+  if (typeof violation !== "object" || violation === null) {
+    return undefined;
+  }
+
+  const description = dataPropertyValue(violation, "description");
+  const field = dataPropertyValue(violation, "field");
+  const reason = dataPropertyValue(violation, "reason");
+  if (typeof description !== "string" || typeof field !== "string" || typeof reason !== "string") {
+    return undefined;
+  }
+
+  return { description, field, reason };
+};
+
+const providerFieldViolations = (
+  value: unknown,
+): readonly PreNormalizedFieldViolation[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const violations: PreNormalizedFieldViolation[] = [];
+  for (const rawViolation of value) {
+    const violation = providerFieldViolation(rawViolation);
+    if (violation === undefined) {
+      return undefined;
+    }
+    violations.push(violation);
+  }
+  return violations;
+};
+
 const providerValidationError = (requestId: string, failure: unknown): ConnectError | undefined => {
   if (
     taggedFailureTag(failure) !== "ProviderValidationFailed" ||
@@ -299,27 +331,10 @@ const providerValidationError = (requestId: string, failure: unknown): ConnectEr
   ) {
     return undefined;
   }
-  const value = dataPropertyValue(failure, "violations");
-  if (!Array.isArray(value)) {
+
+  const violations = providerFieldViolations(dataPropertyValue(failure, "violations"));
+  if (violations === undefined) {
     return undefined;
-  }
-  const violationValues: readonly unknown[] = value;
-  const violations: PreNormalizedFieldViolation[] = [];
-  for (const violation of violationValues) {
-    if (typeof violation !== "object" || violation === null) {
-      return undefined;
-    }
-    const description = dataPropertyValue(violation, "description");
-    const field = dataPropertyValue(violation, "field");
-    const reason = dataPropertyValue(violation, "reason");
-    if (
-      typeof description !== "string" ||
-      typeof field !== "string" ||
-      typeof reason !== "string"
-    ) {
-      return undefined;
-    }
-    violations.push({ description, field, reason });
   }
   return createValidationError(requestId, violations);
 };

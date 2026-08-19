@@ -1,4 +1,4 @@
-// oxlint-disable eslint/init-declarations, eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary, eslint/sort-keys, unicorn/no-useless-undefined -- Provider-management fixtures keep reconciliation, secret splitting, candidate admission, and token-boundary assertions explicit.
+// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary -- Provider-management fixtures keep reconciliation, secret splitting, candidate admission, and token-boundary assertions explicit.
 import { expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 
@@ -50,6 +50,10 @@ const incompatibleDiscovery = (() =>
   Effect.fail(
     new PluginUnavailable({ reason: "contract_unsupported" }),
   )) satisfies ProviderDiscovery;
+
+const noOperationResult: ProviderPersistence["readOperationResult"] = () =>
+  // oxlint-disable-next-line unicorn/no-useless-undefined -- The fixture must explicitly model an absent operation result.
+  Effect.succeed(undefined);
 
 const makePersistence = (initial?: ProviderInstallationInput) => {
   let installation = initial;
@@ -330,15 +334,17 @@ it.effect("splits write-only configuration and returns an idempotent safe instan
   const persistence = makePersistence();
   const createdAt = new Date("2026-08-19T12:00:00.000Z");
   let persistedCredentials: Readonly<Record<string, string>> = {};
-  let serializedResult: Readonly<Record<string, unknown>> | undefined;
+  const serializedResult: {
+    result?: Readonly<Record<string, unknown>>;
+  } = {};
   const providers = {
     ...persistence.providers,
     createInstance: (input: Parameters<ProviderPersistence["createInstance"]>[0]) =>
       Effect.sync(() => {
         persistedCredentials = input.credentials;
         const instance = {
-          configuredSecretKeys: Object.keys(input.credentials),
           configuration: input.configuration,
+          configuredSecretKeys: Object.keys(input.credentials),
           createdAt,
           credentialsAvailable: true,
           displayName: input.displayName,
@@ -350,10 +356,13 @@ it.effect("splits write-only configuration and returns an idempotent safe instan
           syncPriority: input.syncPriority ?? 1,
           updatedAt: createdAt,
         };
-        serializedResult = input.operation.serializeResult?.(instance);
+        const result = input.operation.serializeResult?.(instance);
+        if (result !== undefined) {
+          serializedResult.result = result;
+        }
         return instance;
       }),
-    readOperationResult: () => Effect.succeed(undefined),
+    readOperationResult: noOperationResult,
   } satisfies ProviderPersistence;
   return Effect.scoped(
     Effect.gen(function* createProviderInstanceTest() {
@@ -382,7 +391,7 @@ it.effect("splits write-only configuration and returns an idempotent safe instan
         user_id: "provider-user",
       });
       expect(persistedCredentials).toEqual({ api_key: "credential-sentinel" });
-      expect(serializedResult).not.toContain("credential-sentinel");
+      expect(serializedResult.result).not.toContain("credential-sentinel");
       expect(created.configuredSecretKeys).toEqual(["api_key"]);
     }),
   );
@@ -392,7 +401,7 @@ it.effect("rejects Jellyfin UTF-8 bounds before launching a candidate", () => {
   const persistence = makePersistence();
   const providers = {
     ...persistence.providers,
-    readOperationResult: () => Effect.succeed(undefined),
+    readOperationResult: noOperationResult,
   } satisfies ProviderPersistence;
   let candidateCalls = 0;
   return Effect.scoped(
