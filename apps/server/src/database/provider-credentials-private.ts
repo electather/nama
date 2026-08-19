@@ -135,15 +135,14 @@ const authenticateStoredCredentials = async (
   database: ProviderDatabase,
   keys: ProtectionKeys,
 ): Promise<Set<string>> => {
-  const unavailableInstances = new Set<string>();
   const instances = await storedProtectionInstances(database);
-  for (const instance of instances) {
-    // oxlint-disable-next-line eslint/no-await-in-loop -- Authenticate one instance at a time to bound recovered secret material.
+  return instances.reduce<Promise<Set<string>>>(async (priorInstances, instance) => {
+    const unavailableInstances = await priorInstances;
     if (!(await authenticateStoredInstance(database, keys, instance))) {
       unavailableInstances.add(instance.id);
     }
-  }
-  return unavailableInstances;
+    return unavailableInstances;
+  }, Promise.resolve(new Set<string>()));
 };
 
 const installationConfigurationSchema = async (
