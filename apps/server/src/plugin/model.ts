@@ -64,14 +64,19 @@ interface SupervisedPlugin {
   ) => Effect.Effect<MessageShape<Output>, PluginCallFailure>;
 }
 
+interface PluginInstanceFence {
+  readonly open: (revision: string) => Effect.Effect<void>;
+}
+
 interface PluginSupervisorService {
   readonly supervise: (
     descriptor: PluginLaunchDescriptor,
     launch: PluginLaunch,
   ) => Effect.Effect<SupervisedPlugin, PluginUnavailableFailure, Scope.Scope>;
-  readonly retireInstance: (
+  readonly fenceInstance: (
     providerInstanceId: string,
-  ) => Effect.Effect<void, PluginUnavailableFailure>;
+    retireCurrent: boolean,
+  ) => Effect.Effect<PluginInstanceFence, PluginUnavailableFailure, Scope.Scope>;
 }
 
 interface PluginSupervisorLayerOptions {
@@ -113,6 +118,7 @@ export type {
   PluginSpawnProcess,
   PluginSupervisorLayerOptions,
   PluginCallFailure,
+  PluginInstanceFence,
   PluginSupervisorService,
   PreparedPluginLaunch,
   ProcessExit,

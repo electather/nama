@@ -190,7 +190,14 @@ type CandidateVerification = (
   | ProviderUnavailableFailure
 >;
 
-type InstanceRetirement = (providerInstanceId: string) => Effect.Effect<void, PluginCallFailure>;
+interface InstanceAdmissionFence {
+  readonly open: (revision: string) => Effect.Effect<void>;
+}
+
+type InstanceCutoverFence = (
+  providerInstanceId: string,
+  retireCurrent: boolean,
+) => Effect.Effect<InstanceAdmissionFence, PluginCallFailure, Scope.Scope>;
 
 interface ProviderManagementService {
   readonly createProviderInstance: (
@@ -215,6 +222,9 @@ interface ProviderManagementService {
     input: ListProviderTypesInput,
   ) => Effect.Effect<ListProviderTypesResult, PageTokenInvalidFailure | ProviderPersistenceFailure>;
 }
+const noopInstanceAdmissionFence: InstanceAdmissionFence = Object.freeze({
+  open: () => Effect.void,
+});
 
 const pageTokenFailure = (error: unknown): PageTokenInvalidFailure => {
   if (error instanceof PageTokenInvalid) {
@@ -312,7 +322,7 @@ interface ProviderManagementDependencies {
   readonly masterKey: string;
   readonly verifyCandidate?: CandidateVerification;
   readonly persistence: ProviderPersistence;
-  readonly retireInstance?: InstanceRetirement;
+  readonly fenceInstance?: InstanceCutoverFence;
 }
 
 const storedInstancesMatchSchema = (
@@ -595,21 +605,49 @@ const configurationClearViolations = (
       );
     }
   }
-  return violations.slice(ZERO, MAXIMUM_FIELD_VIOLATIONS);
+  return violations;
 };
 
 const updateConfigurationViolations = (
   split: readonly ProviderFieldViolation[],
   input: UpdateProviderInstanceInput,
-): readonly ProviderFieldViolation[] =>
-  split.map((violation) => {
+): readonly ProviderFieldViolation[] => {
+  const cleared = new Set(input.clearConfigurationFields);
+  return split.flatMap((violation) => {
     const key = violation.field.startsWith("configuration.")
       ? violation.field.slice("configuration.".length)
       : undefined;
-    return key !== undefined && Object.hasOwn(input.configurationPatch, key)
-      ? { ...violation, field: `configuration_patch.${key}` }
-      : violation;
+    if (key !== undefined && cleared.has(key)) {
+      return [];
+    }
+    return [
+      key !== undefined && Object.hasOwn(input.configurationPatch, key)
+        ? { ...violation, field: `configuration_patch.${key}` }
+        : violation,
+    ];
   });
+};
+
+const orderedProviderViolations = (
+  violations: readonly ProviderFieldViolation[],
+): ProviderFieldViolation[] =>
+  [...violations]
+    .toSorted((left, right) => {
+      if (left.field < right.field) {
+        return LAST_ITEM;
+      }
+      if (left.field > right.field) {
+        return NEXT_ROW;
+      }
+      if (left.reason < right.reason) {
+        return LAST_ITEM;
+      }
+      if (left.reason > right.reason) {
+        return NEXT_ROW;
+      }
+      return ZERO;
+    })
+    .slice(ZERO, MAXIMUM_FIELD_VIOLATIONS);
 
 const changedCredentials = (
   properties: JsonObject,
@@ -643,10 +681,7 @@ const mergeProviderConfigurationUpdate = (
   if (updateSchema === undefined) {
     return [fieldViolation("configuration_patch", "UNSUPPORTED_VALUE")];
   }
-  const violations = configurationClearViolations(updateSchema, input);
-  if (violations.length > ZERO) {
-    return [...violations];
-  }
+  const clearViolations = configurationClearViolations(updateSchema, input);
   const merged: Record<string, JsonValue> = {
     ...stored.configuration,
     ...stored.credentials,
@@ -657,7 +692,13 @@ const mergeProviderConfigurationUpdate = (
   }
   const split = splitProviderConfiguration(schema, merged);
   if (Array.isArray(split)) {
-    return [...updateConfigurationViolations(split, input)];
+    return orderedProviderViolations([
+      ...clearViolations,
+      ...updateConfigurationViolations(split, input),
+    ]);
+  }
+  if (clearViolations.length > ZERO) {
+    return orderedProviderViolations(clearViolations);
   }
   return {
     ...split,
@@ -1008,16 +1049,23 @@ const createProviderInstance = (
     (canonicalRequest) => Effect.sync(() => canonicalRequest.fill(ZERO)),
   );
 
+const canonicalOptionalValue = (value: JsonValue | undefined): JsonObject => {
+  if (value === undefined) {
+    return { present: false };
+  }
+  return { present: true, value };
+};
+
 const canonicalUpdateRequest = (input: UpdateProviderInstanceInput): Buffer =>
   Buffer.from(
     canonicalJson({
       clear_configuration_fields: [...input.clearConfigurationFields].toSorted(),
       configuration_patch: input.configurationPatch,
-      display_name: input.displayName ?? "absent",
-      enabled: input.enabled ?? "absent",
+      display_name: canonicalOptionalValue(input.displayName),
+      enabled: canonicalOptionalValue(input.enabled),
       expected_revision: input.expectedRevision,
       provider_instance_id: input.providerInstanceId,
-      sync_priority: input.syncPriority ?? "absent",
+      sync_priority: canonicalOptionalValue(input.syncPriority),
     }),
     "utf8",
   );
@@ -1109,15 +1157,13 @@ interface ProviderUpdateCommitInput {
   readonly persistence: ProviderPersistence;
   readonly preparedConfiguration: MergedUpdateConfiguration | undefined;
   readonly reenabled: boolean;
-  readonly retireInstance: InstanceRetirement;
+  readonly fenceInstance: InstanceCutoverFence;
 }
 
-const recoverProviderUpdateCommit = ({
-  ambiguousInstances,
-  canonicalRequest,
-  input,
-  persistence,
-}: ProviderUpdateCommitInput) => {
+const recoverProviderUpdateCommit = (
+  { ambiguousInstances, canonicalRequest, input, persistence }: ProviderUpdateCommitInput,
+  admissionFence: InstanceAdmissionFence,
+) => {
   ambiguousInstances.add(input.providerInstanceId);
   const ambiguousFailure = Effect.fail(new ProviderCommitAmbiguous({}));
   return operationResult(
@@ -1132,12 +1178,13 @@ const recoverProviderUpdateCommit = ({
         return Effect.succeed(durableResult);
       }
       return persistence.loadInstanceRecord(input.providerInstanceId).pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            ambiguousInstances.delete(input.providerInstanceId);
-          }),
-        ),
-        Effect.andThen(ambiguousFailure),
+        Effect.flatMap((current) => {
+          ambiguousInstances.delete(input.providerInstanceId);
+          if (current?.enabled === true) {
+            return admissionFence.open(current.revision).pipe(Effect.andThen(ambiguousFailure));
+          }
+          return ambiguousFailure;
+        }),
       );
     }),
     Effect.catchTag("ProviderPersistenceError", () => ambiguousFailure),
@@ -1175,6 +1222,7 @@ const providerUpdatePersistenceInput = (
   }
   return {
     ...configurationUpdate,
+    carryObservationForward: !hasConfigurationChange && !commit.reenabled,
     clearCredentialKeys: resolved.clearCredentialKeys,
     credentialChanges: resolved.credentialChanges,
     displayName: resolved.displayName,
@@ -1197,6 +1245,7 @@ const providerUpdatePersistenceInput = (
 const persistProviderUpdate = (
   commit: ProviderUpdateCommitInput,
   lockedCurrent: ProviderInstanceRecord,
+  admissionFence: InstanceAdmissionFence,
 ) =>
   commit.persistence.updateInstance(providerUpdatePersistenceInput(commit, lockedCurrent)).pipe(
     Effect.catchTag("ProviderRevisionMismatch", () => Effect.fail(new RevisionMismatch({}))),
@@ -1207,12 +1256,14 @@ const persistProviderUpdate = (
         }),
       ),
     ),
-    Effect.catchTag("ProviderPersistenceError", () => recoverProviderUpdateCommit(commit)),
+    Effect.catchTag("ProviderPersistenceError", () =>
+      recoverProviderUpdateCommit(commit, admissionFence),
+    ),
   );
 
 const commitProviderUpdate = (
   commit: ProviderUpdateCommitInput,
-): Effect.Effect<ProviderInstanceRecord, ProviderMutationFailure> =>
+): Effect.Effect<ProviderInstanceRecord, ProviderMutationFailure, Scope.Scope> =>
   Effect.gen(function* commitPreparedProviderUpdate() {
     const {
       ambiguousInstances,
@@ -1221,7 +1272,7 @@ const commitProviderUpdate = (
       input,
       persistence,
       reenabled,
-      retireInstance,
+      fenceInstance,
     } = commit;
     const recoveringAmbiguity = ambiguousInstances.has(input.providerInstanceId);
     const committedReplay = yield* operationResult(
@@ -1240,12 +1291,14 @@ const commitProviderUpdate = (
     }
     const requiresCutover =
       hasConfigurationChange || reenabled || (lockedCurrent.enabled && input.enabled === false);
-    if (requiresCutover) {
-      yield* retireInstance(input.providerInstanceId).pipe(
-        Effect.mapError(() => new ProviderPluginUnavailable({})),
-      );
+    const admissionFence = yield* fenceInstance(input.providerInstanceId, requiresCutover).pipe(
+      Effect.mapError(() => new ProviderPluginUnavailable({})),
+    );
+    const result = yield* persistProviderUpdate(commit, lockedCurrent, admissionFence);
+    if (result.enabled) {
+      yield* admissionFence.open(result.revision);
     }
-    return yield* persistProviderUpdate(commit, lockedCurrent);
+    return result;
   });
 
 interface InitialProviderUpdateInput {
@@ -1310,7 +1363,7 @@ const updateProviderInstance = (
   ambiguousInstances: Set<string>,
   providerStatuses: ReadonlyMap<string, ProviderDiscoveryStatus>,
   verifyCandidate: CandidateVerification,
-  retireInstance: InstanceRetirement,
+  fenceInstance: InstanceCutoverFence,
   gate: Semaphore.Semaphore,
   input: UpdateProviderInstanceInput,
 ): Effect.Effect<ProviderInstanceRecord, ProviderMutationFailure> =>
@@ -1336,20 +1389,18 @@ const updateProviderInstance = (
           reenabled: initial.reenabled,
           verifyCandidate,
         });
-        return yield* gate.withPermits(WRITER_GATE_PERMITS)(
-          Effect.uninterruptible(
-            commitProviderUpdate({
-              ambiguousInstances,
-              canonicalRequest,
-              hasConfigurationChange: initial.hasConfigurationChange,
-              input,
-              persistence,
-              preparedConfiguration,
-              reenabled: initial.reenabled,
-              retireInstance,
-            }),
-          ),
-        );
+        const commit = commitProviderUpdate({
+          ambiguousInstances,
+          canonicalRequest,
+          fenceInstance,
+          hasConfigurationChange: initial.hasConfigurationChange,
+          input,
+          persistence,
+          preparedConfiguration,
+          reenabled: initial.reenabled,
+        });
+        const scopedCommit = Effect.scoped(commit);
+        return yield* gate.withPermits(WRITER_GATE_PERMITS)(Effect.uninterruptible(scopedCommit));
       }).pipe(
         Effect.mapError((failure) =>
           failure._tag === "ProviderPersistenceError" &&
@@ -1439,9 +1490,9 @@ const listProviderTypes = (
 
 const makeProviderManagement = ({
   discover,
+  fenceInstance,
   masterKey,
   persistence,
-  retireInstance,
   verifyCandidate,
 }: ProviderManagementDependencies): Effect.Effect<
   ProviderManagementService,
@@ -1481,7 +1532,8 @@ const makeProviderManagement = ({
     const candidateVerifier: CandidateVerification =
       verifyCandidate ??
       (() => Effect.die(new Error("provider candidate verifier is unavailable")));
-    const instanceRetirement: InstanceRetirement = retireInstance ?? (() => Effect.void);
+    const instanceFence: InstanceCutoverFence =
+      fenceInstance ?? (() => Effect.succeed(noopInstanceAdmissionFence));
     return Object.freeze({
       createProviderInstance: (input: CreateProviderInstanceInput) =>
         createProviderInstance(persistence, providerStatuses, candidateVerifier, input),
@@ -1497,7 +1549,7 @@ const makeProviderManagement = ({
           ambiguousInstances,
           providerStatuses,
           candidateVerifier,
-          instanceRetirement,
+          instanceFence,
           instanceGate(input.providerInstanceId),
           input,
         ),
@@ -1517,9 +1569,10 @@ class ProviderManagement extends contextService<ProviderManagement, ProviderMana
       const supervisor = yield* PluginSupervisor;
       const service = yield* makeProviderManagement({
         discover: (provider) => discoverProvider(supervisor, provider),
+        fenceInstance: (providerInstanceId, retireCurrent) =>
+          supervisor.fenceInstance(providerInstanceId, retireCurrent),
         masterKey: Redacted.value(config.security.masterKey),
         persistence: database.providers,
-        retireInstance: (providerInstanceId) => supervisor.retireInstance(providerInstanceId),
         verifyCandidate: (provider, configuration, credentials) =>
           verifyProviderCandidate(supervisor, provider, configuration, credentials),
       });
@@ -1541,7 +1594,8 @@ export type {
   ProviderAuthenticationFailure,
   ProviderCommitAmbiguousFailure,
   ProviderCredentialsUnavailableFailure,
-  InstanceRetirement,
+  InstanceAdmissionFence,
+  InstanceCutoverFence,
   ProviderIncompatibleFailure,
   ProviderInstanceLimitFailure,
   ProviderDiscovery,

@@ -88,6 +88,7 @@ interface ProviderInstanceInput {
 }
 
 interface ProviderInstanceUpdateInput {
+  readonly carryObservationForward: boolean;
   readonly clearCredentialKeys: readonly string[];
   readonly configuration?: JsonObject;
   readonly credentialChanges: Readonly<Record<string, string>>;
@@ -130,6 +131,29 @@ interface StoredProviderInstance {
   readonly revision: string;
   readonly syncPriority: number;
 }
+
+const STATUS_SUMMARY_NOT_OBSERVED = "Connection not yet observed";
+
+const providerObservationForRevision = (
+  input: Readonly<{
+    readonly currentRevision: string;
+    readonly observationRevision: string;
+    readonly status: string;
+    readonly summary: string;
+  }>,
+): ProviderInstanceRecord["observation"] => {
+  if (
+    input.status !== "authentication_failed" &&
+    input.status !== "healthy" &&
+    input.status !== "unavailable"
+  ) {
+    throw new Error("provider instance observation is invalid");
+  }
+  if (input.observationRevision !== input.currentRevision) {
+    return { status: "unavailable", summary: STATUS_SUMMARY_NOT_OBSERVED };
+  }
+  return { status: input.status, summary: input.summary };
+};
 
 const taggedError = Data.TaggedError;
 const ProviderPersistenceError = taggedError("ProviderPersistenceError")<Record<string, never>>;
@@ -269,4 +293,5 @@ export {
   credentialFailure,
   operationLookupFailure,
   persistenceFailure,
+  providerObservationForRevision,
 };

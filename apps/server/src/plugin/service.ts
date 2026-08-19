@@ -10,6 +10,7 @@ import type { Scope, Semaphore } from "effect";
 import { callSupervisedPlugin } from "./call.ts";
 import { unavailable } from "./errors.ts";
 import type { PluginSupervisorCleanupFailure, PluginUnavailableFailure } from "./errors.ts";
+import { closeInstanceEntry, fenceInstancePlugin } from "./instance-fence.ts";
 import { preparePluginLaunch } from "./launch-document.ts";
 import { makePluginLifecycle } from "./lifecycle.ts";
 import type { PluginLifecycleHandle } from "./lifecycle.ts";
@@ -40,6 +41,7 @@ interface PluginSupervisorOptions {
   readonly activeHandles: Set<PluginLifecycleHandle>;
   readonly effectiveUserId: number | undefined;
   readonly emit: PluginLogEmitter;
+  readonly instanceAdmissions: Map<string, string | undefined>;
   readonly instanceHandles: Map<string, InstanceHandleEntry>;
   readonly registrySemaphore: Semaphore.Semaphore;
   readonly runtimeRoot: string;
@@ -100,34 +102,6 @@ const acquireIsolatedPluginHandle = (
     return { instance: undefined, lifecycle };
   });
 
-const closeReplacedInstance = (
-  options: PluginSupervisorOptions,
-  entry: InstanceHandleEntry,
-): Effect.Effect<void, PluginUnavailableFailure> =>
-  entry.lifecycle.retire().pipe(
-    Effect.tap(() =>
-      Effect.sync(() => {
-        options.activeHandles.delete(entry.lifecycle);
-      }),
-    ),
-    Effect.mapError(() => unavailable("plugin_exited")),
-  );
-
-const retireInstancePlugin = (
-  options: PluginSupervisorOptions,
-  providerInstanceId: string,
-): Effect.Effect<void, PluginUnavailableFailure> =>
-  options.registrySemaphore.withPermits(SINGLE_SEMAPHORE_PERMIT)(
-    Effect.gen(function* retireInstance() {
-      const current = options.instanceHandles.get(providerInstanceId);
-      if (current === undefined) {
-        return;
-      }
-      yield* closeReplacedInstance(options, current);
-      options.instanceHandles.delete(providerInstanceId);
-    }),
-  );
-
 const registerInstancePluginHandle = (
   options: PluginSupervisorOptions,
   descriptor: PluginLaunchDescriptor,
@@ -146,6 +120,20 @@ const registerInstancePluginHandle = (
   return { instance: entry, lifecycle };
 };
 
+const requireAdmittedInstanceRevision = (
+  options: PluginSupervisorOptions,
+  launch: Extract<PreparedPluginLaunch, Readonly<{ readonly kind: "instance" }>>,
+): Effect.Effect<void, PluginUnavailableFailure> => {
+  const admittedRevision = options.instanceAdmissions.get(launch.providerInstanceId);
+  if (
+    options.instanceAdmissions.has(launch.providerInstanceId) &&
+    admittedRevision !== launch.revision
+  ) {
+    return Effect.fail(unavailable("plugin_exited"));
+  }
+  return Effect.void;
+};
+
 const acquireInstancePluginHandle = (
   options: PluginSupervisorOptions,
   descriptor: PluginLaunchDescriptor,
@@ -153,6 +141,7 @@ const acquireInstancePluginHandle = (
 ): Effect.Effect<PluginHandleLease, PluginUnavailableFailure> =>
   options.registrySemaphore.withPermits(SINGLE_SEMAPHORE_PERMIT)(
     Effect.gen(function* acquireInstanceHandle() {
+      yield* requireAdmittedInstanceRevision(options, launch);
       const current = options.instanceHandles.get(launch.providerInstanceId);
       if (current !== undefined && current.revision === launch.revision) {
         if (current.documentContext !== launch.documentContext) {
@@ -162,7 +151,7 @@ const acquireInstancePluginHandle = (
         return { instance: current, lifecycle: current.lifecycle };
       }
       if (current !== undefined) {
-        yield* closeReplacedInstance(options, current);
+        yield* closeInstanceEntry(options.activeHandles, current);
       }
       return registerInstancePluginHandle(options, descriptor, launch);
     }),
@@ -281,8 +270,8 @@ const supervisePlugin = (
 
 const makePluginSupervisor = (options: PluginSupervisorOptions): PluginSupervisorService =>
   Object.freeze({
-    retireInstance: (providerInstanceId: string) =>
-      retireInstancePlugin(options, providerInstanceId),
+    fenceInstance: (providerInstanceId: string, retireCurrent: boolean) =>
+      fenceInstancePlugin(options, providerInstanceId, retireCurrent),
     supervise: (descriptor: PluginLaunchDescriptor, launch: PluginLaunch) =>
       supervisePlugin(options, descriptor, launch),
   });

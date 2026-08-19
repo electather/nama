@@ -12,6 +12,7 @@ import {
   ProviderRevisionMismatch,
   ProviderSyncPriorityConflict,
   persistenceFailure,
+  providerObservationForRevision,
 } from "./provider-persistence-model-private.ts";
 import type {
   ProviderDatabase,
@@ -479,12 +480,31 @@ const replaceUpdatedCredentials = async ({
   return configuredSecretKeys;
 };
 
+const carryObservationForward = async ({
+  input,
+  transaction,
+}: PersistUpdatedTransactionInput): Promise<void> => {
+  if (!input.carryObservationForward) {
+    return;
+  }
+  await transaction
+    .update(providerInstanceObservation)
+    .set({ instanceRevision: input.revision })
+    .where(
+      and(
+        eq(providerInstanceObservation.providerInstanceId, input.providerInstanceId),
+        eq(providerInstanceObservation.instanceRevision, input.expectedRevision),
+      ),
+    );
+};
+
 const loadUpdatedObservation = async ({
   input,
   transaction,
 }: PersistUpdatedTransactionInput): Promise<ProviderInstanceRecord["observation"]> => {
   const observations = await transaction
     .select({
+      instanceRevision: providerInstanceObservation.instanceRevision,
       status: providerInstanceObservation.status,
       summary: providerInstanceObservation.summary,
     })
@@ -492,15 +512,15 @@ const loadUpdatedObservation = async ({
     .where(eq(providerInstanceObservation.providerInstanceId, input.providerInstanceId))
     .limit(SINGLE_ROW_LIMIT);
   const observation = observations.at(FIRST_INDEX);
-  if (
-    observation === undefined ||
-    (observation.status !== "authentication_failed" &&
-      observation.status !== "healthy" &&
-      observation.status !== "unavailable")
-  ) {
-    throw new Error("provider instance observation is invalid");
+  if (observation === undefined) {
+    throw new Error("provider instance observation is missing");
   }
-  return { status: observation.status, summary: observation.summary };
+  return providerObservationForRevision({
+    currentRevision: input.revision,
+    observationRevision: observation.instanceRevision,
+    status: observation.status,
+    summary: observation.summary,
+  });
 };
 
 const persistUpdatedOperationResult = async (
@@ -539,6 +559,7 @@ const persistUpdatedInstance = ({
     };
     const stored = await updateProviderInstanceRow(transactionInput);
     const configuredSecretKeys = await replaceUpdatedCredentials(transactionInput);
+    await carryObservationForward(transactionInput);
     const observation = await loadUpdatedObservation(transactionInput);
     const result: ProviderInstanceRecord = {
       configuration: stored.configuration,

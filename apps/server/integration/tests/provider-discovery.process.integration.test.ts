@@ -527,7 +527,7 @@ it.live(
               configured_secrets: [{ configured: true, key: "api_key" }],
               enabled: true,
               revision: expect.any(String),
-              status: "healthy",
+              status: "unavailable",
             });
             expect(reenabled.stdout).not.toContain("provider-api-key-sentinel");
 

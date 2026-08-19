@@ -748,12 +748,18 @@ it.effect("retires runtime admission before committing a disable-only update", (
     Effect.gen(function* disableInstanceTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: (_providerInstanceId, retireCurrent) =>
+          Effect.sync(() => {
+            transitions.push(`fence:${String(retireCurrent)}`);
+            return {
+              open: (revision: string) =>
+                Effect.sync(() => {
+                  transitions.push(`open:${revision}`);
+                }),
+            };
+          }),
         masterKey: MASTER_KEY,
         persistence: providers,
-        retireInstance: () =>
-          Effect.sync(() => {
-            transitions.push("retire");
-          }),
         verifyCandidate: () =>
           Effect.sync(() => {
             candidateCalls += 1;
@@ -772,7 +778,7 @@ it.effect("retires runtime admission before committing a disable-only update", (
 
       expect(disabled.enabled).toBe(false);
       expect(candidateCalls).toBe(0);
-      expect(transitions).toEqual(["retire", "commit"]);
+      expect(transitions).toEqual(["fence:true", "commit"]);
     }),
   );
 });
@@ -802,6 +808,8 @@ it.effect("keeps an ambiguous instance update unavailable until durable recovery
   let commitFailed = false;
   let databaseAvailable = true;
   let updateCalls = 0;
+  const fenceRetireFlags: boolean[] = [];
+  const openedRevisions: string[] = [];
   const providers = {
     ...persistence.providers,
     loadInstanceRecord: () =>
@@ -828,6 +836,16 @@ it.effect("keeps an ambiguous instance update unavailable until durable recovery
     Effect.gen(function* ambiguousUpdateRecoveryTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: (_providerInstanceId, retireCurrent) =>
+          Effect.sync(() => {
+            fenceRetireFlags.push(retireCurrent);
+            return {
+              open: (revision: string) =>
+                Effect.sync(() => {
+                  openedRevisions.push(revision);
+                }),
+            };
+          }),
         masterKey: MASTER_KEY,
         persistence: providers,
       });
@@ -848,6 +866,8 @@ it.effect("keeps an ambiguous instance update unavailable until durable recovery
       const recovered = yield* service.updateProviderInstance(request);
       expect(recovered).toMatchObject({ displayName: "Family" });
       expect(updateCalls).toBe(2);
+      expect(fenceRetireFlags).toEqual([false, false]);
+      expect(openedRevisions).toEqual([recovered.revision]);
     }),
   );
 });
@@ -967,9 +987,9 @@ it.effect("leaves the durable snapshot unchanged when runtime cleanup fails", ()
     Effect.gen(function* cleanupFailureTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: () => Effect.fail(new PluginUnavailable({ reason: "plugin_exited" })),
         masterKey: MASTER_KEY,
         persistence: providers,
-        retireInstance: () => Effect.fail(new PluginUnavailable({ reason: "plugin_exited" })),
       });
       const failure = yield* service
         .updateProviderInstance({
@@ -986,6 +1006,158 @@ it.effect("leaves the durable snapshot unchanged when runtime cleanup fails", ()
       expect(failure).toMatchObject({ _tag: "ProviderPluginUnavailable" });
       expect(commitCalls).toBe(0);
       expect(current).toMatchObject({ enabled: true, revision: "revision-1" });
+    }),
+  );
+});
+
+it.effect("returns every update violation in deterministic field order", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  const current = {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      optional_note: "current",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: true,
+    id: "provider-instance",
+    observation: { status: "healthy" as const, summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+  let candidateCalls = 0;
+  const providers = {
+    ...persistence.providers,
+    loadInstance: () =>
+      Effect.succeed({
+        configuration: current.configuration,
+        credentials: { api_key: "credential" },
+        displayName: current.displayName,
+        enabled: current.enabled,
+        id: current.id,
+        providerTypeId: current.providerTypeId,
+        revision: current.revision,
+        syncPriority: current.syncPriority,
+      }),
+    loadInstanceRecord: () => Effect.succeed(current),
+    readOperationResult: noOperationResult,
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* completeUpdateValidationTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+        verifyCandidate: () =>
+          Effect.sync(() => {
+            candidateCalls += 1;
+            return { principalReference: "unexpected" };
+          }),
+      });
+      const failure = yield* service
+        .updateProviderInstance({
+          administratorId: "administrator-a",
+          clearConfigurationFields: ["base_url"],
+          configurationPatch: {
+            base_url: 42,
+            optional_note: 42,
+          },
+          expectedRevision: "revision-1",
+          operationId: "invalid-update",
+          providerInstanceId: "provider-instance",
+        })
+        .pipe(Effect.flip);
+
+      expect(failure).toMatchObject({
+        _tag: "ProviderValidationFailed",
+        violations: [
+          { field: "clear_configuration_fields[0]", reason: "CONFLICT" },
+          { field: "clear_configuration_fields[0]", reason: "UNSUPPORTED_VALUE" },
+          { field: "configuration_patch.base_url", reason: "CONFLICT" },
+          { field: "configuration_patch.optional_note", reason: "UNSUPPORTED_VALUE" },
+        ],
+      });
+      expect(candidateCalls).toBe(0);
+    }),
+  );
+});
+
+it.effect("distinguishes an omitted display name from the literal absent", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  const current = {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: true,
+    id: "provider-instance",
+    observation: { status: "healthy" as const, summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+  const taggedError = Data.TaggedError;
+  const OperationKeyReused = taggedError("ProviderOperationKeyReused")<Record<string, never>>;
+  const durableCanonicalRequest: { value?: Buffer } = {};
+  const providers = {
+    ...persistence.providers,
+    loadInstanceRecord: () => Effect.succeed(current),
+    readOperationResult: (lookup: Parameters<ProviderPersistence["readOperationResult"]>[0]) => {
+      if (durableCanonicalRequest.value === undefined) {
+        return noOperationResult(lookup);
+      }
+      if (durableCanonicalRequest.value.equals(lookup.canonicalRequest)) {
+        return noOperationResult(lookup);
+      }
+      return Effect.fail(new OperationKeyReused({}));
+    },
+    updateInstance: (input: Parameters<ProviderPersistence["updateInstance"]>[0]) =>
+      Effect.sync(() => {
+        durableCanonicalRequest.value = Buffer.from(input.operation.canonicalRequest);
+        return {
+          ...current,
+          enabled: input.enabled,
+          revision: input.revision,
+          updatedAt: new Date("2026-08-19T12:01:00.000Z"),
+        };
+      }),
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* optionalPresenceIdempotencyTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+      const request = {
+        administratorId: "administrator-a",
+        clearConfigurationFields: [],
+        configurationPatch: {},
+        enabled: false,
+        expectedRevision: "revision-1",
+        operationId: "presence-operation",
+        providerInstanceId: "provider-instance",
+      } as const;
+      yield* service.updateProviderInstance(request);
+      const failure = yield* service
+        .updateProviderInstance({ ...request, displayName: "absent" })
+        .pipe(Effect.flip);
+
+      expect(failure).toMatchObject({ _tag: "IdempotencyKeyReused" });
     }),
   );
 });

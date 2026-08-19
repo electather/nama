@@ -722,7 +722,7 @@ it.live("reuses an instance only for its exact ID and revision", () =>
         if (replacementLaunch === undefined) {
           return yield* Effect.die("replacement launch record missing");
         }
-        yield* supervisor.retireInstance("opaque-instance");
+        yield* supervisor.fenceInstance("opaque-instance", true);
         yield* awaitProcessExit(replacementLaunch.pid);
         const retiredCall = yield* replacement
           .call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS)
@@ -730,6 +730,73 @@ it.live("reuses an instance only for its exact ID and revision", () =>
         expect(retiredCall).toMatchObject({
           _tag: "PluginUnavailable",
           reason: "plugin_exited",
+        });
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.live("holds instance admission closed until the fenced revision opens", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* fencedInstanceAdmissionTest() {
+        const supervisor = yield* PluginSupervisor;
+        const launchDescriptor = fixtureDescriptor(controlDirectory);
+        const first = yield* supervisor.supervise(launchDescriptor, {
+          configuration: { base_url: "fixture-configuration" },
+          credentials: { api_key: "fixture-credential" },
+          kind: "instance",
+          providerInstanceId: "fenced-instance",
+          revision: "revision-1",
+        });
+        yield* first.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (firstLaunch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+
+        const fenceScope = yield* Scope.make();
+        const fence = yield* Scope.provide(fenceScope)(
+          supervisor.fenceInstance("fenced-instance", true),
+        );
+        yield* awaitProcessExit(firstLaunch.pid);
+        const staleAdmission = yield* Effect.forkChild(
+          Effect.scoped(
+            supervisor
+              .supervise(launchDescriptor, {
+                configuration: { base_url: "fixture-configuration" },
+                credentials: { api_key: "fixture-credential" },
+                kind: "instance",
+                providerInstanceId: "fenced-instance",
+                revision: "revision-1",
+              })
+              .pipe(
+                Effect.flatMap((plugin) =>
+                  plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS),
+                ),
+              ),
+          ).pipe(Effect.exit),
+        );
+        yield* Effect.sleep("50 millis");
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+
+        yield* fence.open("revision-2");
+        yield* Scope.close(fenceScope, Exit.void);
+        const staleExit = yield* Fiber.join(staleAdmission);
+        expect(Exit.isFailure(staleExit)).toBe(true);
+
+        const replacement = yield* supervisor.supervise(launchDescriptor, {
+          configuration: { base_url: "fixture-configuration" },
+          credentials: { api_key: "fixture-credential" },
+          kind: "instance",
+          providerInstanceId: "fenced-instance",
+          revision: "revision-2",
+        });
+        yield* replacement.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        const launches = yield* awaitLaunchCount(controlDirectory, 2);
+        expect(launches[1]).toMatchObject({
+          providerInstanceId: "fenced-instance",
+          revision: "revision-2",
         });
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),

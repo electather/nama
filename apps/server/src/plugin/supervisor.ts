@@ -39,6 +39,7 @@ const makePluginSupervisorLayer = ({
         activeHandles,
         effectiveUserId,
         emit,
+        instanceAdmissions: new Map(),
         instanceHandles: new Map(),
         registrySemaphore: Semaphore.makeUnsafe(REGISTRY_SEMAPHORE_PERMITS),
         runtimeRoot,

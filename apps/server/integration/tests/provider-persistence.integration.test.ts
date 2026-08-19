@@ -177,6 +177,7 @@ const collectUpdatedProviderFacts = (
     });
     const staleFailure = yield* providers
       .updateInstance({
+        carryObservationForward: true,
         clearCredentialKeys: [],
         credentialChanges: {},
         displayName: "Stale",
@@ -268,6 +269,7 @@ it.live("atomically replaces credentials and fences revisions during provider up
           const originalNonce = yield* credentialNonce(databaseUrl);
           const canonicalRequest = Buffer.from('{"credential":"replacement"}', "utf8");
           const updated = yield* database.providers.updateInstance({
+            carryObservationForward: false,
             clearCredentialKeys: [],
             configuration: { base_url: "https://replacement.example.test/" },
             credentialChanges: { api_key: "replacement-provider-secret" },
@@ -307,6 +309,10 @@ it.live("atomically replaces credentials and fences revisions during provider up
         updated: {
           configuration: { base_url: "https://replacement.example.test/" },
           displayName: "Family",
+          observation: {
+            status: "unavailable",
+            summary: "Connection not yet observed",
+          },
           revision: "revision-2",
         },
       });
