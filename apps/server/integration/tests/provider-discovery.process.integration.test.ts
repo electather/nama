@@ -49,6 +49,22 @@ const requiredString = (value: unknown): string => {
   }
   return value;
 };
+const providerInstanceFromNamaResult = (result: NamaResult): Readonly<Record<string, unknown>> => {
+  const responsePayload: unknown = JSON.parse(result.stdout);
+  if (
+    typeof responsePayload !== "object" ||
+    responsePayload === null ||
+    !("data" in responsePayload) ||
+    typeof responsePayload.data !== "object" ||
+    responsePayload.data === null ||
+    !("provider_instance" in responsePayload.data) ||
+    typeof responsePayload.data.provider_instance !== "object" ||
+    responsePayload.data.provider_instance === null
+  ) {
+    throw new TypeError("expected a provider-instance mutation response");
+  }
+  return responsePayload.data.provider_instance as Readonly<Record<string, unknown>>;
+};
 
 const withNamaBinary = <Success, Failure, Requirements>(
   use: (
@@ -168,58 +184,68 @@ const expectNamaFailure = (result: NamaFailureResult, exitCode: number, code: st
 };
 
 const withControlledJellyfin = <Success, Failure, Requirements>(
-  use: (baseUrl: string) => Effect.Effect<Success, Failure, Requirements>,
+  use: (
+    fixture: Readonly<{ readonly baseUrl: string; readonly requestCount: () => number }>,
+  ) => Effect.Effect<Success, Failure, Requirements>,
 ) =>
   Effect.acquireUseRelease(
     Effect.promise(
       () =>
-        new Promise<Readonly<{ readonly baseUrl: string; readonly server: Server }>>(
-          (resolve, reject) => {
-            const server = createServer((request, response) => {
-              if (request.url === "/System/Info/Public") {
-                response.setHeader("content-type", "application/json");
-                response.end(
-                  JSON.stringify({
-                    Id: "provider-server-id",
-                    ServerName: "Provider Test Jellyfin",
-                    Version: "10.11.0",
-                  }),
-                );
-                return;
-              }
-              const authorization = request.headers.authorization;
-              const userId = request.url?.startsWith("/Users/")
-                ? request.url.slice("/Users/".length)
-                : undefined;
-              if (
-                userId !== undefined &&
-                authorization === 'MediaBrowser Token="provider-api-key-sentinel"'
-              ) {
-                response.setHeader("content-type", "application/json");
-                response.end(
-                  JSON.stringify({
-                    Id: userId === "mismatch-user" ? "another-user" : userId,
-                    Policy: { IsDisabled: userId === "disabled-user" },
-                    ServerId: "provider-server-id",
-                  }),
-                );
-                return;
-              }
-              response.statusCode = 401;
-              response.end();
+        new Promise<
+          Readonly<{
+            readonly baseUrl: string;
+            readonly requestCount: () => number;
+            readonly server: Server;
+          }>
+        >((resolve, reject) => {
+          let requestCount = 0;
+          const server = createServer((request, response) => {
+            requestCount += 1;
+            if (request.url === "/System/Info/Public") {
+              response.setHeader("content-type", "application/json");
+              response.end(
+                JSON.stringify({
+                  Id: "provider-server-id",
+                  ServerName: "Provider Test Jellyfin",
+                  Version: "10.11.0",
+                }),
+              );
+              return;
+            }
+            const authorization = request.headers.authorization;
+            const userId = request.url?.startsWith("/Users/")
+              ? request.url.slice("/Users/".length)
+              : undefined;
+            if (
+              userId !== undefined &&
+              (authorization === 'MediaBrowser Token="provider-api-key-sentinel"' ||
+                authorization === 'MediaBrowser Token="replacement-provider-api-key-sentinel"')
+            ) {
+              response.setHeader("content-type", "application/json");
+              response.end(
+                JSON.stringify({
+                  Id: userId === "mismatch-user" ? "another-user" : userId,
+                  Policy: { IsDisabled: userId === "disabled-user" },
+                  ServerId: "provider-server-id",
+                }),
+              );
+              return;
+            }
+            response.statusCode = 401;
+            response.end();
+          });
+          server.once("error", reject);
+          server.listen(0, "127.0.0.1", () => {
+            const address = server.address() as AddressInfo;
+            resolve({
+              baseUrl: `http://127.0.0.1:${address.port}`,
+              requestCount: () => requestCount,
+              server,
             });
-            server.once("error", reject);
-            server.listen(0, "127.0.0.1", () => {
-              const address = server.address() as AddressInfo;
-              resolve({
-                baseUrl: `http://127.0.0.1:${address.port}`,
-                server,
-              });
-            });
-          },
-        ),
+          });
+        }),
     ),
-    ({ baseUrl }) => use(baseUrl),
+    ({ baseUrl, requestCount }) => use({ baseUrl, requestCount }),
     ({ server }) =>
       Effect.promise(
         () =>
@@ -238,7 +264,7 @@ const withControlledJellyfin = <Success, Failure, Requirements>(
 it.live(
   "lists production-reconciled Jellyfin provider metadata through the compiled CLI",
   () =>
-    withControlledJellyfin((jellyfinBaseUrl) =>
+    withControlledJellyfin(({ baseUrl: jellyfinBaseUrl, requestCount }) =>
       withIsolatedDatabase((databaseUrl) =>
         withNamaBinary(({ binary, home }) =>
           Effect.gen(function* providerDiscoveryProcessTest() {
@@ -422,6 +448,282 @@ it.live(
               return yield* Effect.die(new Error("expected an opaque provider instance ID"));
             }
 
+            const createdRevision = requiredString(createdInstance["revision"]);
+            const requestsAfterCreate = requestCount();
+            const metadataUpdated = yield* runNama(binary, environment, [
+              "provider",
+              "instance",
+              "update",
+              providerInstanceId,
+              "--expected-revision",
+              createdRevision,
+              "--display-name",
+              "Family Room",
+              "--sync-priority",
+              "2",
+              "--operation-id",
+              "provider-metadata-update",
+              "--profile",
+              "local",
+              "--output",
+              "json",
+            ]);
+            const metadataInstance = providerInstanceFromNamaResult(metadataUpdated);
+            expect(metadataInstance).toMatchObject({
+              display_name: "Family Room",
+              revision: expect.any(String),
+              sync_priority: 2,
+            });
+            expect(requestCount()).toBe(requestsAfterCreate);
+
+            const metadataRevision = requiredString(metadataInstance["revision"]);
+            const disabled = yield* runNama(binary, environment, [
+              "provider",
+              "instance",
+              "update",
+              providerInstanceId,
+              "--expected-revision",
+              metadataRevision,
+              "--enabled=false",
+              "--operation-id",
+              "provider-disable-update",
+              "--profile",
+              "local",
+              "--output",
+              "json",
+            ]);
+            const disabledInstance = providerInstanceFromNamaResult(disabled);
+            expect(disabledInstance).toMatchObject({
+              enabled: false,
+              revision: expect.any(String),
+              status: "disabled",
+            });
+            expect(requestCount()).toBe(requestsAfterCreate);
+
+            const reenabled = yield* runNamaWithInput({
+              binary,
+              environment,
+              arguments_: [
+                "provider",
+                "instance",
+                "update",
+                providerInstanceId,
+                "--expected-revision",
+                requiredString(disabledInstance["revision"]),
+                "--enabled=true",
+                "--configuration",
+                "-",
+                "--operation-id",
+                "provider-reenable-update",
+                "--profile",
+                "local",
+                "--output",
+                "json",
+              ],
+              input: JSON.stringify({ base_url: jellyfinBaseUrl }),
+            });
+            const reenabledInstance = providerInstanceFromNamaResult(reenabled);
+            expect(reenabledInstance).toMatchObject({
+              configured_secrets: [{ configured: true, key: "api_key" }],
+              enabled: true,
+              revision: expect.any(String),
+              status: "healthy",
+            });
+            expect(reenabled.stdout).not.toContain("provider-api-key-sentinel");
+
+            const replacementPatch = JSON.stringify({
+              api_key: "replacement-provider-api-key-sentinel",
+            });
+            const replacementArguments = [
+              "provider",
+              "instance",
+              "update",
+              providerInstanceId,
+              "--expected-revision",
+              requiredString(reenabledInstance["revision"]),
+              "--configuration",
+              "-",
+              "--operation-id",
+              "provider-credential-update",
+              "--profile",
+              "local",
+              "--output",
+              "json",
+            ] as const;
+            const replaced = yield* runNamaWithInput({
+              binary,
+              environment,
+              arguments_: replacementArguments,
+              input: replacementPatch,
+            });
+            const replacedInstance = providerInstanceFromNamaResult(replaced);
+            expect(replacedInstance).toMatchObject({
+              configured_secrets: [{ configured: true, key: "api_key" }],
+              revision: expect.any(String),
+            });
+            expect(replaced.stdout).not.toContain("replacement-provider-api-key-sentinel");
+            const replacementRetry = yield* runNamaWithInput({
+              binary,
+              environment,
+              arguments_: replacementArguments,
+              input: replacementPatch,
+            });
+            expect(replacementRetry.stdout).toBe(replaced.stdout);
+            yield* Effect.promise(() =>
+              writeFile(configurationPath, JSON.stringify({ api_key: "different-credential" }), {
+                mode: 0o600,
+              }),
+            );
+            const reusedOperation = yield* runNamaFailure(binary, environment, [
+              "provider",
+              "instance",
+              "update",
+              providerInstanceId,
+              "--expected-revision",
+              requiredString(reenabledInstance["revision"]),
+              "--configuration",
+              configurationPath,
+              "--operation-id",
+              "provider-credential-update",
+              "--profile",
+              "local",
+              "--output",
+              "json",
+            ]);
+            expectNamaFailure(reusedOperation, 6, "idempotency_key_reused");
+            const requiredClear = yield* runNamaFailure(binary, environment, [
+              "provider",
+              "instance",
+              "update",
+              providerInstanceId,
+              "--expected-revision",
+              requiredString(replacedInstance["revision"]),
+              "--clear",
+              "user_id",
+              "--operation-id",
+              "provider-clear-update",
+              "--profile",
+              "local",
+              "--output",
+              "json",
+            ]);
+            expectNamaFailure(requiredClear, 2, "validation_failed");
+
+            const staleUpdate = yield* runNamaFailure(binary, environment, [
+              "provider",
+              "instance",
+              "update",
+              providerInstanceId,
+              "--expected-revision",
+              metadataRevision,
+              "--display-name",
+              "Stale",
+              "--operation-id",
+              "provider-stale-update",
+              "--profile",
+              "local",
+              "--output",
+              "json",
+            ]);
+            expectNamaFailure(staleUpdate, 6, "revision_mismatch");
+
+            yield* Effect.promise(() =>
+              writeFile(configurationPath, JSON.stringify({ user_id: "other-user" }), {
+                mode: 0o600,
+              }),
+            );
+            const changedPrincipal = yield* runNamaFailure(binary, environment, [
+              "provider",
+              "instance",
+              "update",
+              providerInstanceId,
+              "--expected-revision",
+              requiredString(replacedInstance["revision"]),
+              "--configuration",
+              configurationPath,
+              "--operation-id",
+              "provider-principal-update",
+              "--profile",
+              "local",
+              "--output",
+              "json",
+            ]);
+            expectNamaFailure(changedPrincipal, 6, "provider_user_changed");
+            const afterRejectedUpdate = yield* runNama(binary, environment, [
+              "provider",
+              "instance",
+              "get",
+              providerInstanceId,
+              "--profile",
+              "local",
+              "--output",
+              "json",
+            ]);
+            const durableAfterRejection = providerInstanceFromNamaResult(afterRejectedUpdate);
+            expect(durableAfterRejection).toMatchObject({
+              configured_secrets: [{ configured: true, key: "api_key" }],
+              configuration: {
+                base_url: jellyfinBaseUrl,
+                user_id: "provider-user-id",
+              },
+              revision: replacedInstance["revision"],
+            });
+
+            const concurrentUpdates = yield* Effect.promise(() =>
+              Promise.allSettled([
+                providerClient.updateProviderInstance(
+                  {
+                    configurationPatch: {},
+                    displayName: "Concurrent A",
+                    expectedRevision: requiredString(replacedInstance["revision"]),
+                    operationId: "provider-concurrent-update-a",
+                    providerInstanceId,
+                  },
+                  callOptions(`Bearer ${token}`),
+                ),
+                providerClient.updateProviderInstance(
+                  {
+                    configurationPatch: {},
+                    displayName: "Concurrent B",
+                    expectedRevision: requiredString(replacedInstance["revision"]),
+                    operationId: "provider-concurrent-update-b",
+                    providerInstanceId,
+                  },
+                  callOptions(`Bearer ${token}`),
+                ),
+              ]),
+            );
+            const concurrentSuccesses = concurrentUpdates.filter(
+              (result) => result.status === "fulfilled",
+            );
+            const concurrentFailures = concurrentUpdates.filter(
+              (result) => result.status === "rejected",
+            );
+            expect(concurrentSuccesses).toHaveLength(1);
+            expect(concurrentFailures).toHaveLength(1);
+            const concurrentSuccess = concurrentSuccesses[0];
+            if (concurrentSuccess === undefined || concurrentSuccess.status !== "fulfilled") {
+              return yield* Effect.die(new Error("expected one successful concurrent update"));
+            }
+            const winningInstance = concurrentSuccess.value.providerInstance;
+            if (winningInstance === undefined) {
+              return yield* Effect.die(new Error("expected the winning provider instance"));
+            }
+            const winningDisplayName = winningInstance.displayName;
+            const winningRevision = winningInstance.revision;
+            const concurrentFailure = concurrentFailures[0];
+            if (
+              concurrentFailure === undefined ||
+              concurrentFailure.status !== "rejected" ||
+              !(concurrentFailure.reason instanceof ConnectError)
+            ) {
+              return yield* Effect.die(new Error("expected one revision conflict"));
+            }
+            expect(concurrentFailure.reason.code).toBe(Code.Aborted);
+            expect(concurrentFailure.reason.findDetails(ErrorInfoSchema)[0]?.reason).toBe(
+              "REVISION_MISMATCH",
+            );
+
             yield* Effect.promise(() =>
               writeFile(
                 configurationPath,
@@ -547,8 +849,25 @@ it.live(
             ]);
             expect(instances.stderr).toBe("");
             const instanceListPayload: unknown = JSON.parse(instances.stdout);
-            expect(instanceListPayload).toEqual({
-              data: { provider_instances: [createdInstance] },
+            if (
+              typeof instanceListPayload !== "object" ||
+              instanceListPayload === null ||
+              !("data" in instanceListPayload) ||
+              typeof instanceListPayload.data !== "object" ||
+              instanceListPayload.data === null ||
+              !("provider_instances" in instanceListPayload.data) ||
+              !Array.isArray(instanceListPayload.data.provider_instances)
+            ) {
+              return yield* Effect.die(new Error("expected a provider-instance list"));
+            }
+            expect(instanceListPayload.data.provider_instances).toHaveLength(1);
+            expect(instanceListPayload.data.provider_instances[0]).toMatchObject({
+              display_name: winningDisplayName,
+              id: providerInstanceId,
+              revision: winningRevision,
+              sync_priority: 2,
+            });
+            expect(instanceListPayload).toMatchObject({
               warnings: [
                 {
                   code: "insecure_transport",
@@ -568,14 +887,12 @@ it.live(
               "json",
             ]);
             expect(inspected.stderr).toBe("");
-            expect(JSON.parse(inspected.stdout)).toEqual({
-              data: { provider_instance: createdInstance },
-              warnings: [
-                {
-                  code: "insecure_transport",
-                  message: "Plain HTTP is not encrypted.",
-                },
-              ],
+            const inspectedInstance = providerInstanceFromNamaResult(inspected);
+            expect(inspectedInstance).toMatchObject({
+              display_name: winningDisplayName,
+              id: providerInstanceId,
+              revision: winningRevision,
+              sync_priority: 2,
             });
             const race = yield* Effect.promise(() =>
               Promise.allSettled([
@@ -590,7 +907,7 @@ it.live(
                     enabled: true,
                     operationId: "race-operation-a",
                     providerTypeId: "jellyfin",
-                    syncPriority: 2,
+                    syncPriority: 3,
                   },
                   callOptions(`Bearer ${token}`),
                 ),
@@ -605,7 +922,7 @@ it.live(
                     enabled: true,
                     operationId: "race-operation-b",
                     providerTypeId: "jellyfin",
-                    syncPriority: 2,
+                    syncPriority: 3,
                   },
                   callOptions(`Bearer ${token}`),
                 ),
@@ -619,7 +936,7 @@ it.live(
               committed?.status === "fulfilled"
                 ? committed.value.providerInstance?.syncPriority
                 : undefined,
-            ).toBe(2);
+            ).toBe(3);
             if (conflicted?.status !== "rejected") {
               return yield* Effect.die(new Error("expected one concurrent priority conflict"));
             }
@@ -770,7 +1087,7 @@ it.live(
               defaultPriorityResults
                 .map((result) => result.providerInstance?.syncPriority)
                 .toSorted((left, right) => (left ?? 0) - (right ?? 0)),
-            ).toEqual([4, 5]);
+            ).toEqual([5, 6]);
             const generatedOperation = yield* runNama(binary, environment, [
               "provider",
               "instance",

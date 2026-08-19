@@ -87,6 +87,20 @@ interface ProviderInstanceInput {
   readonly syncPriority?: number;
 }
 
+interface ProviderInstanceUpdateInput {
+  readonly clearCredentialKeys: readonly string[];
+  readonly configuration?: JsonObject;
+  readonly credentialChanges: Readonly<Record<string, string>>;
+  readonly displayName: string;
+  readonly enabled: boolean;
+  readonly expectedRevision: string;
+  readonly operation: ProviderOperationInput;
+  readonly providerInstanceId: string;
+  readonly providerTypeId: string;
+  readonly revision: string;
+  readonly syncPriority: number;
+}
+
 interface ProviderInstanceDeletionInput {
   readonly operation: ProviderOperationInput;
   readonly providerInstanceId: string;
@@ -130,6 +144,8 @@ const ProviderSyncPriorityConflict = taggedError("ProviderSyncPriorityConflict")
 >;
 type ProviderInstanceLimitFailure = InstanceType<typeof ProviderInstanceLimitReached>;
 type ProviderSyncPriorityConflictFailure = InstanceType<typeof ProviderSyncPriorityConflict>;
+const ProviderRevisionMismatch = taggedError("ProviderRevisionMismatch")<Record<string, never>>;
+type ProviderRevisionMismatchFailure = InstanceType<typeof ProviderRevisionMismatch>;
 const ProviderOperationKeyReused = taggedError("ProviderOperationKeyReused")<Record<string, never>>;
 type ProviderPersistenceFailure = InstanceType<typeof ProviderPersistenceError>;
 type ProviderCredentialsFailure = InstanceType<typeof ProviderCredentialsUnavailable>;
@@ -144,6 +160,14 @@ interface ProviderPersistence {
   ) => Effect.Effect<
     ProviderInstanceRecord,
     ProviderInstanceLimitFailure | ProviderPersistenceFailure | ProviderSyncPriorityConflictFailure
+  >;
+  readonly updateInstance: (
+    input: ProviderInstanceUpdateInput,
+  ) => Effect.Effect<
+    ProviderInstanceRecord,
+    | ProviderPersistenceFailure
+    | ProviderRevisionMismatchFailure
+    | ProviderSyncPriorityConflictFailure
   >;
   readonly deleteInstance: (
     input: ProviderInstanceDeletionInput,
@@ -222,6 +246,8 @@ export {
   type ProviderInstanceRecord,
   type ProviderInstanceLimitFailure,
   type ProviderInstanceInput,
+  type ProviderInstanceUpdateInput,
+  type ProviderRevisionMismatchFailure,
   type ProviderSyncPriorityConflictFailure,
   type ProviderInstallationListInput,
   type StoredProviderInstallation,
@@ -238,6 +264,7 @@ export {
   type StoredProviderInstance,
   ProviderOperationKeyReused,
   ProviderInstanceLimitReached,
+  ProviderRevisionMismatch,
   ProviderSyncPriorityConflict,
   credentialFailure,
   operationLookupFailure,

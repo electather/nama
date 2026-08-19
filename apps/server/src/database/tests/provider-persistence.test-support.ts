@@ -21,6 +21,7 @@ const unusedProviderPersistence = Object.freeze({
   matchesPrincipal: unexpectedPersistenceOperation("unexpected provider principal comparison"),
   readOperationResult: unexpectedPersistenceOperation("unexpected provider operation-result read"),
   recordObservation: unexpectedPersistenceOperation("unexpected provider observation persistence"),
+  updateInstance: unexpectedPersistenceOperation("unexpected provider instance update"),
 }) satisfies ProviderPersistence;
 
 export { unusedProviderPersistence };

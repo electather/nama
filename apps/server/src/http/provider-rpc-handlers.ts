@@ -13,9 +13,13 @@ import {
   GetProviderInstanceResponseSchema,
   ListProviderInstancesResponseSchema,
   ListProviderTypesResponseSchema,
+  UpdateProviderInstanceResponseSchema,
   ProviderInstanceStatus,
 } from "../../../../gen/ts/src/nama/api/v1/provider_pb.js";
-import type { ProviderService } from "../../../../gen/ts/src/nama/api/v1/provider_pb.js";
+import type {
+  ProviderService,
+  UpdateProviderInstanceRequest,
+} from "../../../../gen/ts/src/nama/api/v1/provider_pb.js";
 import type { ProviderInstanceRecord } from "../database/provider-persistence.ts";
 import type { JsonObject, JsonValue } from "../database/provider-schema.ts";
 import type { ProviderManagementService } from "../provider/provider-management.ts";
@@ -30,6 +34,22 @@ type ProviderServiceHandlerDependencies = Readonly<{
 const privateAuthenticationDefect = Object.freeze({
   _tag: "PrivateAuthenticationDefect" as const,
 });
+
+const optionalProviderUpdateInput = (
+  request: UpdateProviderInstanceRequest,
+): Readonly<{ displayName?: string; enabled?: boolean; syncPriority?: number }> => {
+  const optionalInput: { displayName?: string; enabled?: boolean; syncPriority?: number } = {};
+  if (request.displayName !== undefined) {
+    optionalInput.displayName = request.displayName;
+  }
+  if (request.enabled !== undefined) {
+    optionalInput.enabled = request.enabled;
+  }
+  if (request.syncPriority !== undefined) {
+    optionalInput.syncPriority = request.syncPriority;
+  }
+  return optionalInput;
+};
 
 const isJsonArray = (value: JsonValue): value is readonly JsonValue[] => Array.isArray(value);
 
@@ -205,6 +225,34 @@ const createProviderServiceHandlers = ({
                 schemaProfileVersion: providerType.schemaProfileVersion,
                 schemaRevision: providerType.schemaRevision,
               })),
+            }),
+          ),
+        ),
+      context.signal,
+    );
+  },
+  // fallow-ignore-next-line code-duplication -- Every generated route independently enforces request-local Administrator presence.
+  updateProviderInstance: (request, context) => {
+    const administrator = getRequestAdministrator(context.values);
+    if (administrator === undefined) {
+      return requestRuntime.runPromise(Effect.fail(privateAuthenticationDefect), context.signal);
+    }
+    const optionalInput = optionalProviderUpdateInput(request);
+    return requestRuntime.runPromise(
+      providerManagement
+        .updateProviderInstance({
+          ...optionalInput,
+          administratorId: administrator.id,
+          clearConfigurationFields: [...request.clearConfigurationFields],
+          configurationPatch: internalJsonObject(request.configurationPatch ?? {}),
+          expectedRevision: request.expectedRevision,
+          operationId: request.operationId,
+          providerInstanceId: request.providerInstanceId,
+        })
+        .pipe(
+          Effect.map((providerInstance) =>
+            create(UpdateProviderInstanceResponseSchema, {
+              providerInstance: providerInstanceMessage(providerInstance),
             }),
           ),
         ),

@@ -19,6 +19,7 @@ import { withIsolatedDatabase } from "./postgres.test-support.ts";
 const ADMINISTRATOR_ID = "provider-administrator";
 const DELETE_METHOD = "nama.api.v1.ProviderService.DeleteProviderInstance" as const;
 const CREATE_METHOD = "nama.api.v1.ProviderService.CreateProviderInstance" as const;
+const UPDATE_METHOD = "nama.api.v1.ProviderService.UpdateProviderInstance" as const;
 const INSTANCE_ID = "provider-instance-1";
 const PROVIDER_TYPE_ID = "jellyfin";
 const REVISION = "revision-1";
@@ -138,6 +139,73 @@ const seedProviderInstallationOrder = (providers: ProviderPersistence) =>
     yield* acceptJellyfinInstallation(providers, "removed");
   });
 
+const credentialNonce = (databaseUrl: string) =>
+  withPool(databaseUrl, (pool) =>
+    Effect.promise(async () => {
+      const response = await pool.query<{ readonly nonce: Buffer }>(
+        "SELECT nonce FROM provider_credential WHERE provider_instance_id = $1 AND configuration_key = 'api_key'",
+        [INSTANCE_ID],
+      );
+      return response.rows.at(0)?.nonce;
+    }),
+  );
+
+const collectUpdatedProviderFacts = (
+  databaseUrl: string,
+  providers: ProviderPersistence,
+  canonicalRequest: Uint8Array,
+) =>
+  Effect.gen(function* collectUpdatedProviderState() {
+    const oldObservationApplied = yield* providers.recordObservation({
+      providerInstanceId: INSTANCE_ID,
+      revision: REVISION,
+      status: "unavailable",
+      summary: "Stale",
+    });
+    const newObservationApplied = yield* providers.recordObservation({
+      providerInstanceId: INSTANCE_ID,
+      revision: "revision-2",
+      status: "healthy",
+      summary: "Current",
+    });
+    const stored = yield* providers.loadInstance(INSTANCE_ID);
+    const replay = yield* providers.readOperationResult({
+      administratorUserId: ADMINISTRATOR_ID,
+      canonicalRequest,
+      method: UPDATE_METHOD,
+      operationId: "provider-update-operation",
+    });
+    const staleFailure = yield* providers
+      .updateInstance({
+        clearCredentialKeys: [],
+        credentialChanges: {},
+        displayName: "Stale",
+        enabled: true,
+        expectedRevision: REVISION,
+        operation: {
+          administratorUserId: ADMINISTRATOR_ID,
+          canonicalRequest: Buffer.from('{"display_name":"Stale"}', "utf8"),
+          method: UPDATE_METHOD,
+          operationId: "stale-provider-update",
+          serializedResult: { revision: "unreachable" },
+        },
+        providerInstanceId: INSTANCE_ID,
+        providerTypeId: PROVIDER_TYPE_ID,
+        revision: "revision-3",
+        syncPriority: 1,
+      })
+      .pipe(Effect.flip);
+    const replacementNonce = yield* credentialNonce(databaseUrl);
+    return {
+      newObservationApplied,
+      oldObservationApplied,
+      replacementNonce,
+      replay,
+      staleFailure,
+      stored,
+    };
+  });
+
 it.live("persists non-secret configuration and restores every encrypted credential", () =>
   withIsolatedDatabase((databaseUrl) =>
     Effect.gen(function* encryptedRoundTripTest() {
@@ -184,6 +252,75 @@ it.live("persists non-secret configuration and restores every encrypted credenti
         installationConfigurationsLoaded: true,
         providerTypeRetained: true,
         revisionRetained: true,
+      });
+    }),
+  ),
+);
+
+it.live("atomically replaces credentials and fences revisions during provider update", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* providerUpdatePersistenceTest() {
+      yield* initializeProviderDatabase(databaseUrl);
+      const result = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* updateProviderPersistence() {
+          yield* acceptJellyfinInstallation(database.providers);
+          yield* database.providers.createInstance(makeInstanceInput(INSTANCE_ID, 1));
+          const originalNonce = yield* credentialNonce(databaseUrl);
+          const canonicalRequest = Buffer.from('{"credential":"replacement"}', "utf8");
+          const updated = yield* database.providers.updateInstance({
+            clearCredentialKeys: [],
+            configuration: { base_url: "https://replacement.example.test/" },
+            credentialChanges: { api_key: "replacement-provider-secret" },
+            displayName: "Family",
+            enabled: true,
+            expectedRevision: REVISION,
+            operation: {
+              administratorUserId: ADMINISTRATOR_ID,
+              canonicalRequest,
+              method: UPDATE_METHOD,
+              operationId: "provider-update-operation",
+              serializedResult: { revision: "revision-2" },
+            },
+            providerInstanceId: INSTANCE_ID,
+            providerTypeId: PROVIDER_TYPE_ID,
+            revision: "revision-2",
+            syncPriority: 1,
+          });
+          const facts = yield* collectUpdatedProviderFacts(
+            databaseUrl,
+            database.providers,
+            canonicalRequest,
+          );
+          return { ...facts, originalNonce, updated };
+        }),
+      );
+
+      expect({
+        stored: result.stored,
+        updated: result.updated,
+      }).toMatchObject({
+        stored: {
+          configuration: { base_url: "https://replacement.example.test/" },
+          credentials: { api_key: "replacement-provider-secret" },
+          revision: "revision-2",
+        },
+        updated: {
+          configuration: { base_url: "https://replacement.example.test/" },
+          displayName: "Family",
+          revision: "revision-2",
+        },
+      });
+      expect(result.replacementNonce).not.toEqual(result.originalNonce);
+      expect({
+        newObservationApplied: result.newObservationApplied,
+        oldObservationApplied: result.oldObservationApplied,
+        replay: result.replay,
+        staleFailure: result.staleFailure,
+      }).toMatchObject({
+        newObservationApplied: true,
+        oldObservationApplied: false,
+        replay: { revision: "revision-2" },
+        staleFailure: { _tag: "ProviderRevisionMismatch" },
       });
     }),
   ),

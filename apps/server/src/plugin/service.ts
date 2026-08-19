@@ -113,6 +113,21 @@ const closeReplacedInstance = (
     Effect.mapError(() => unavailable("plugin_exited")),
   );
 
+const retireInstancePlugin = (
+  options: PluginSupervisorOptions,
+  providerInstanceId: string,
+): Effect.Effect<void, PluginUnavailableFailure> =>
+  options.registrySemaphore.withPermits(SINGLE_SEMAPHORE_PERMIT)(
+    Effect.gen(function* retireInstance() {
+      const current = options.instanceHandles.get(providerInstanceId);
+      if (current === undefined) {
+        return;
+      }
+      yield* closeReplacedInstance(options, current);
+      options.instanceHandles.delete(providerInstanceId);
+    }),
+  );
+
 const registerInstancePluginHandle = (
   options: PluginSupervisorOptions,
   descriptor: PluginLaunchDescriptor,
@@ -266,6 +281,8 @@ const supervisePlugin = (
 
 const makePluginSupervisor = (options: PluginSupervisorOptions): PluginSupervisorService =>
   Object.freeze({
+    retireInstance: (providerInstanceId: string) =>
+      retireInstancePlugin(options, providerInstanceId),
     supervise: (descriptor: PluginLaunchDescriptor, launch: PluginLaunch) =>
       supervisePlugin(options, descriptor, launch),
   });

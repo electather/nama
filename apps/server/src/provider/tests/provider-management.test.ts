@@ -1,6 +1,6 @@
 // oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary -- Provider-management fixtures keep reconciliation, secret splitting, candidate admission, and token-boundary assertions explicit.
 import { expect, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 
 import type {
   ProviderInstallationInput,
@@ -23,6 +23,7 @@ const jellyfinSchema = {
       writeOnly: true,
     },
     base_url: { format: "uri", maxLength: 2048, minLength: 1, type: "string" },
+    optional_note: { maxLength: 128, minLength: 1, type: "string" },
     user_id: { maxLength: 128, minLength: 1, type: "string" },
   },
   required: ["base_url", "user_id", "api_key"],
@@ -448,6 +449,543 @@ it.effect("rejects Jellyfin UTF-8 bounds before launching a candidate", () => {
       }
 
       expect(candidateCalls).toBe(0);
+    }),
+  );
+});
+
+it.effect("updates metadata without verifying a provider candidate", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  const current = {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: true,
+    id: "provider-instance",
+    observation: { status: "healthy" as const, summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+  let candidateCalls = 0;
+  const persistedUpdate: { value?: Parameters<ProviderPersistence["updateInstance"]>[0] } = {};
+  const providers = {
+    ...persistence.providers,
+    loadInstanceRecord: () => Effect.succeed(current),
+    readOperationResult: noOperationResult,
+    updateInstance: (input: Parameters<ProviderPersistence["updateInstance"]>[0]) =>
+      Effect.sync(() => {
+        persistedUpdate.value = input;
+        return {
+          ...current,
+          displayName: input.displayName,
+          revision: input.revision,
+          syncPriority: input.syncPriority,
+          updatedAt: new Date("2026-08-19T12:01:00.000Z"),
+        };
+      }),
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* updateMetadataTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+        verifyCandidate: () =>
+          Effect.sync(() => {
+            candidateCalls += 1;
+            return { principalReference: "unexpected" };
+          }),
+      });
+      const updated = yield* service.updateProviderInstance({
+        administratorId: "administrator-a",
+        clearConfigurationFields: [],
+        configurationPatch: {},
+        displayName: "Family Room",
+        expectedRevision: "revision-1",
+        operationId: "update-operation",
+        providerInstanceId: "provider-instance",
+        syncPriority: 2,
+      });
+
+      expect(updated).toMatchObject({
+        displayName: "Family Room",
+        syncPriority: 2,
+      });
+      expect(updated.revision).not.toBe("revision-1");
+      expect(candidateCalls).toBe(0);
+      expect(persistedUpdate.value).toMatchObject({
+        credentialChanges: {},
+        displayName: "Family Room",
+        enabled: true,
+        expectedRevision: "revision-1",
+        providerInstanceId: "provider-instance",
+        syncPriority: 2,
+      });
+      expect(Object.hasOwn(persistedUpdate.value ?? {}, "configuration")).toBe(false);
+    }),
+  );
+});
+
+it.effect("re-enables a patched instance with its retained credential and principal", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  const current = {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: false,
+    id: "provider-instance",
+    observation: { status: "healthy" as const, summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+  const persistedUpdate: { value?: Parameters<ProviderPersistence["updateInstance"]>[0] } = {};
+  const providers = {
+    ...persistence.providers,
+    loadInstance: () =>
+      Effect.succeed({
+        configuration: current.configuration,
+        credentials: { api_key: "retained-credential" },
+        displayName: current.displayName,
+        enabled: current.enabled,
+        id: current.id,
+        providerTypeId: current.providerTypeId,
+        revision: current.revision,
+        syncPriority: current.syncPriority,
+      }),
+    loadInstanceRecord: () => Effect.succeed(current),
+    matchesPrincipal: (_providerInstanceId: string, principalReference: string) =>
+      Effect.succeed(principalReference === "same-principal"),
+    readOperationResult: noOperationResult,
+    updateInstance: (input: Parameters<ProviderPersistence["updateInstance"]>[0]) =>
+      Effect.sync(() => {
+        persistedUpdate.value = input;
+        return {
+          ...current,
+          configuration: input.configuration ?? current.configuration,
+          enabled: input.enabled,
+          revision: input.revision,
+          updatedAt: new Date("2026-08-19T12:01:00.000Z"),
+        };
+      }),
+  } satisfies ProviderPersistence;
+  const candidateInputs: Readonly<{
+    configuration: Readonly<Record<string, unknown>>;
+    credentials: Readonly<Record<string, string>>;
+  }>[] = [];
+
+  return Effect.scoped(
+    Effect.gen(function* reenablePatchedInstanceTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+        verifyCandidate: (_provider, configuration, credentials) =>
+          Effect.sync(() => {
+            candidateInputs.push({ configuration, credentials });
+            return { principalReference: "same-principal" };
+          }),
+      });
+      const updated = yield* service.updateProviderInstance({
+        administratorId: "administrator-a",
+        clearConfigurationFields: [],
+        configurationPatch: { base_url: "http://127.0.0.1:9096" },
+        enabled: true,
+        expectedRevision: "revision-1",
+        operationId: "reenable-operation",
+        providerInstanceId: "provider-instance",
+      });
+
+      expect(updated).toMatchObject({
+        configuration: { base_url: "http://127.0.0.1:9096", user_id: "provider-user" },
+        enabled: true,
+      });
+      expect(candidateInputs).toEqual([
+        {
+          configuration: {
+            base_url: "http://127.0.0.1:9096",
+            user_id: "provider-user",
+          },
+          credentials: { api_key: "retained-credential" },
+        },
+      ]);
+      expect(persistedUpdate.value).toMatchObject({
+        clearCredentialKeys: [],
+        configuration: {
+          base_url: "http://127.0.0.1:9096",
+          user_id: "provider-user",
+        },
+        credentialChanges: {},
+        enabled: true,
+      });
+    }),
+  );
+});
+
+it.effect("rejects a credential replacement that changes the provider principal", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  const current = {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: true,
+    id: "provider-instance",
+    observation: { status: "healthy" as const, summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+  const providers = {
+    ...persistence.providers,
+    loadInstance: () =>
+      Effect.succeed({
+        configuration: current.configuration,
+        credentials: { api_key: "existing-credential" },
+        displayName: current.displayName,
+        enabled: current.enabled,
+        id: current.id,
+        providerTypeId: current.providerTypeId,
+        revision: current.revision,
+        syncPriority: current.syncPriority,
+      }),
+    loadInstanceRecord: () => Effect.succeed(current),
+    matchesPrincipal: () => Effect.succeed(false),
+    readOperationResult: noOperationResult,
+  } satisfies ProviderPersistence;
+  let verifiedCredentials: Readonly<Record<string, string>> = {};
+
+  return Effect.scoped(
+    Effect.gen(function* changedProviderPrincipalTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+        verifyCandidate: (_provider, _configuration, credentials) =>
+          Effect.sync(() => {
+            verifiedCredentials = credentials;
+            return { principalReference: "different-principal" };
+          }),
+      });
+      const failure = yield* service
+        .updateProviderInstance({
+          administratorId: "administrator-a",
+          clearConfigurationFields: [],
+          configurationPatch: { api_key: "replacement-credential" },
+          expectedRevision: "revision-1",
+          operationId: "replacement-operation",
+          providerInstanceId: "provider-instance",
+        })
+        .pipe(Effect.flip);
+
+      expect(failure).toMatchObject({ _tag: "ProviderUserChanged" });
+      expect(verifiedCredentials).toEqual({ api_key: "replacement-credential" });
+      expect(current.revision).toBe("revision-1");
+    }),
+  );
+});
+
+it.effect("retires runtime admission before committing a disable-only update", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  const current = {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: true,
+    id: "provider-instance",
+    observation: { status: "healthy" as const, summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+  const transitions: string[] = [];
+  let candidateCalls = 0;
+  const providers = {
+    ...persistence.providers,
+    loadInstanceRecord: () => Effect.succeed(current),
+    readOperationResult: noOperationResult,
+    updateInstance: (input: Parameters<ProviderPersistence["updateInstance"]>[0]) =>
+      Effect.sync(() => {
+        transitions.push("commit");
+        return {
+          ...current,
+          enabled: input.enabled,
+          revision: input.revision,
+          updatedAt: new Date("2026-08-19T12:01:00.000Z"),
+        };
+      }),
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* disableInstanceTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+        retireInstance: () =>
+          Effect.sync(() => {
+            transitions.push("retire");
+          }),
+        verifyCandidate: () =>
+          Effect.sync(() => {
+            candidateCalls += 1;
+            return { principalReference: "unexpected" };
+          }),
+      });
+      const disabled = yield* service.updateProviderInstance({
+        administratorId: "administrator-a",
+        clearConfigurationFields: [],
+        configurationPatch: {},
+        enabled: false,
+        expectedRevision: "revision-1",
+        operationId: "disable-operation",
+        providerInstanceId: "provider-instance",
+      });
+
+      expect(disabled.enabled).toBe(false);
+      expect(candidateCalls).toBe(0);
+      expect(transitions).toEqual(["retire", "commit"]);
+    }),
+  );
+});
+
+it.effect("keeps an ambiguous instance update unavailable until durable recovery", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  const current = {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: true,
+    id: "provider-instance",
+    observation: { status: "healthy" as const, summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+  const taggedError = Data.TaggedError;
+  const PersistenceUnavailable = taggedError("ProviderPersistenceError")<Record<string, never>>;
+  let commitFailed = false;
+  let databaseAvailable = true;
+  let updateCalls = 0;
+  const providers = {
+    ...persistence.providers,
+    loadInstanceRecord: () =>
+      databaseAvailable ? Effect.succeed(current) : Effect.fail(new PersistenceUnavailable({})),
+    readOperationResult: (lookup) =>
+      databaseAvailable ? noOperationResult(lookup) : Effect.fail(new PersistenceUnavailable({})),
+    updateInstance: (input: Parameters<ProviderPersistence["updateInstance"]>[0]) => {
+      updateCalls += 1;
+      if (!commitFailed) {
+        commitFailed = true;
+        databaseAvailable = false;
+        return Effect.fail(new PersistenceUnavailable({}));
+      }
+      return Effect.succeed({
+        ...current,
+        displayName: input.displayName,
+        revision: input.revision,
+        updatedAt: new Date("2026-08-19T12:01:00.000Z"),
+      });
+    },
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* ambiguousUpdateRecoveryTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+      const request = {
+        administratorId: "administrator-a",
+        clearConfigurationFields: [],
+        configurationPatch: {},
+        displayName: "Family",
+        expectedRevision: "revision-1",
+        operationId: "ambiguous-operation",
+        providerInstanceId: "provider-instance",
+      } as const;
+      const failure = yield* service.updateProviderInstance(request).pipe(Effect.flip);
+      expect(failure).toMatchObject({ _tag: "ProviderCommitAmbiguous" });
+      expect(current).toMatchObject({ displayName: "Home", revision: "revision-1" });
+
+      databaseAvailable = true;
+      const recovered = yield* service.updateProviderInstance(request);
+      expect(recovered).toMatchObject({ displayName: "Family" });
+      expect(updateCalls).toBe(2);
+    }),
+  );
+});
+
+it.effect("clears an optional configuration field without clearing retained secrets", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  const current = {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      optional_note: "remove me",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: true,
+    id: "provider-instance",
+    observation: { status: "healthy" as const, summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+  const persistedUpdate: { value?: Parameters<ProviderPersistence["updateInstance"]>[0] } = {};
+  const providers = {
+    ...persistence.providers,
+    loadInstance: () =>
+      Effect.succeed({
+        configuration: current.configuration,
+        credentials: { api_key: "retained-credential" },
+        displayName: current.displayName,
+        enabled: current.enabled,
+        id: current.id,
+        providerTypeId: current.providerTypeId,
+        revision: current.revision,
+        syncPriority: current.syncPriority,
+      }),
+    loadInstanceRecord: () => Effect.succeed(current),
+    matchesPrincipal: () => Effect.succeed(true),
+    readOperationResult: noOperationResult,
+    updateInstance: (input: Parameters<ProviderPersistence["updateInstance"]>[0]) =>
+      Effect.sync(() => {
+        persistedUpdate.value = input;
+        return {
+          ...current,
+          configuration: input.configuration ?? current.configuration,
+          revision: input.revision,
+          updatedAt: new Date("2026-08-19T12:01:00.000Z"),
+        };
+      }),
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* clearOptionalConfigurationTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+        verifyCandidate: () => Effect.succeed({ principalReference: "same-principal" }),
+      });
+      const updated = yield* service.updateProviderInstance({
+        administratorId: "administrator-a",
+        clearConfigurationFields: ["optional_note"],
+        configurationPatch: {},
+        expectedRevision: "revision-1",
+        operationId: "clear-operation",
+        providerInstanceId: "provider-instance",
+      });
+
+      expect(updated.configuration).toEqual({
+        base_url: "http://127.0.0.1:8096",
+        user_id: "provider-user",
+      });
+      expect(persistedUpdate.value).toMatchObject({
+        clearCredentialKeys: [],
+        credentialChanges: {},
+      });
+    }),
+  );
+});
+
+it.effect("leaves the durable snapshot unchanged when runtime cleanup fails", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  const current = {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: true,
+    id: "provider-instance",
+    observation: { status: "healthy" as const, summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+  let commitCalls = 0;
+  const providers = {
+    ...persistence.providers,
+    loadInstanceRecord: () => Effect.succeed(current),
+    readOperationResult: noOperationResult,
+    updateInstance: () =>
+      Effect.sync(() => {
+        commitCalls += 1;
+        return current;
+      }),
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* cleanupFailureTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+        retireInstance: () => Effect.fail(new PluginUnavailable({ reason: "plugin_exited" })),
+      });
+      const failure = yield* service
+        .updateProviderInstance({
+          administratorId: "administrator-a",
+          clearConfigurationFields: [],
+          configurationPatch: {},
+          enabled: false,
+          expectedRevision: "revision-1",
+          operationId: "disable-operation",
+          providerInstanceId: "provider-instance",
+        })
+        .pipe(Effect.flip);
+
+      expect(failure).toMatchObject({ _tag: "ProviderPluginUnavailable" });
+      expect(commitCalls).toBe(0);
+      expect(current).toMatchObject({ enabled: true, revision: "revision-1" });
     }),
   );
 });

@@ -69,6 +69,9 @@ interface PluginSupervisorService {
     descriptor: PluginLaunchDescriptor,
     launch: PluginLaunch,
   ) => Effect.Effect<SupervisedPlugin, PluginUnavailableFailure, Scope.Scope>;
+  readonly retireInstance: (
+    providerInstanceId: string,
+  ) => Effect.Effect<void, PluginUnavailableFailure>;
 }
 
 interface PluginSupervisorLayerOptions {

@@ -9,6 +9,7 @@ import type { AuthenticationService } from "../../authentication/authentication-
 import type {
   CreateProviderInstanceInput,
   ProviderManagementService,
+  UpdateProviderInstanceInput,
 } from "../../provider/provider-management.ts";
 import { makeDatabase, startServer } from "./http-server.test-support.ts";
 
@@ -18,12 +19,14 @@ const ADMINISTRATOR = Object.freeze({
   id: "administrator-1",
 });
 const CREATED_AT = new Date("2026-08-19T12:00:00.000Z");
+const DEFAULT_SYNC_PRIORITY = 1;
 
-it.effect("maps provider create configuration and returns only safe instance fields", () =>
+it.effect("maps provider create and update requests to safe instance responses", () =>
   Effect.scoped(
     Effect.gen(function* providerCreateHandlerTest() {
       const received = {
         configuration: undefined as Readonly<Record<string, unknown>> | undefined,
+        update: undefined as UpdateProviderInstanceInput | undefined,
       };
       const providerManagement: ProviderManagementService = Object.freeze({
         createProviderInstance: (input: CreateProviderInstanceInput) => {
@@ -42,13 +45,33 @@ it.effect("maps provider create configuration and returns only safe instance fie
             observation: { status: "healthy" as const, summary: "Connected" },
             providerTypeId: input.providerTypeId,
             revision: "revision-1",
-            syncPriority: 1,
+            syncPriority: DEFAULT_SYNC_PRIORITY,
             updatedAt: CREATED_AT,
           });
         },
         getProviderInstance: () => Effect.die("unexpected provider get"),
         listProviderInstances: () => Effect.die("unexpected provider list"),
         listProviderTypes: () => Effect.die("unexpected provider type list"),
+        updateProviderInstance: (input: UpdateProviderInstanceInput) => {
+          received.update = input;
+          return Effect.succeed({
+            configuration: {
+              base_url: "http://127.0.0.1:9096",
+              user_id: "provider-user",
+            },
+            configuredSecretKeys: ["api_key"],
+            createdAt: CREATED_AT,
+            credentialsAvailable: true,
+            displayName: input.displayName ?? "Home",
+            enabled: input.enabled ?? true,
+            id: input.providerInstanceId,
+            observation: { status: "healthy" as const, summary: "Connected" },
+            providerTypeId: "jellyfin",
+            revision: "revision-2",
+            syncPriority: input.syncPriority ?? DEFAULT_SYNC_PRIORITY,
+            updatedAt: new Date("2026-08-19T12:01:00.000Z"),
+          });
+        },
       });
       const authentication: AuthenticationService = Object.freeze({
         consumeGlobalSignInBudget: Effect.die("unexpected sign-in limit"),
@@ -81,21 +104,73 @@ it.effect("maps provider create configuration and returns only safe instance fie
           { headers: { authorization: "Bearer administrator-bearer" } },
         ),
       );
-      expect(received.configuration).toEqual({
-        api_key: "credential-sentinel",
-        base_url: "http://127.0.0.1:8096",
-        user_id: "provider-user",
-      });
-      expect(response.providerInstance).toMatchObject({
+      expect({
+        configuration: received.configuration,
+        providerInstance: response.providerInstance,
+        secretExposed: Object.hasOwn(response.providerInstance?.configuration ?? {}, "api_key"),
+      }).toMatchObject({
         configuration: {
+          api_key: "credential-sentinel",
           base_url: "http://127.0.0.1:8096",
           user_id: "provider-user",
         },
-        configuredSecrets: [{ configured: true, key: "api_key" }],
-        id: "provider-instance-1",
-        status: ProviderInstanceStatus.HEALTHY,
+        providerInstance: {
+          configuration: {
+            base_url: "http://127.0.0.1:8096",
+            user_id: "provider-user",
+          },
+          configuredSecrets: [{ configured: true, key: "api_key" }],
+          id: "provider-instance-1",
+          status: ProviderInstanceStatus.HEALTHY,
+        },
+        secretExposed: false,
       });
-      expect(response.providerInstance?.configuration).not.toHaveProperty("api_key");
+      const updated = yield* Effect.promise(() =>
+        client.updateProviderInstance(
+          {
+            clearConfigurationFields: ["optional_note"],
+            configurationPatch: { base_url: "http://127.0.0.1:9096" },
+            displayName: "Family Room",
+            enabled: false,
+            expectedRevision: "revision-1",
+            operationId: "operation-2",
+            providerInstanceId: "provider-instance-1",
+            syncPriority: 2,
+          },
+          { headers: { authorization: "Bearer administrator-bearer" } },
+        ),
+      );
+      expect({
+        input: received.update,
+        providerInstance: updated.providerInstance,
+        secretExposed: Object.hasOwn(updated.providerInstance?.configuration ?? {}, "api_key"),
+      }).toMatchObject({
+        input: {
+          administratorId: ADMINISTRATOR.id,
+          clearConfigurationFields: ["optional_note"],
+          configurationPatch: { base_url: "http://127.0.0.1:9096" },
+          displayName: "Family Room",
+          enabled: false,
+          expectedRevision: "revision-1",
+          operationId: "operation-2",
+          providerInstanceId: "provider-instance-1",
+          syncPriority: 2,
+        },
+        providerInstance: {
+          configuration: {
+            base_url: "http://127.0.0.1:9096",
+            user_id: "provider-user",
+          },
+          configuredSecrets: [{ configured: true, key: "api_key" }],
+          displayName: "Family Room",
+          enabled: false,
+          id: "provider-instance-1",
+          revision: "revision-2",
+          status: ProviderInstanceStatus.DISABLED,
+          syncPriority: 2,
+        },
+        secretExposed: false,
+      });
     }),
   ),
 );

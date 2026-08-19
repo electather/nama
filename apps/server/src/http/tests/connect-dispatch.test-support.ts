@@ -65,6 +65,7 @@ const providerManagement: ProviderManagementService = Object.freeze({
       nextPageToken: "",
       providerTypes: [],
     }),
+  updateProviderInstance: () => Effect.die("provider update is outside dispatch coverage"),
 });
 
 const requestValidator: RequestValidator = Object.freeze({

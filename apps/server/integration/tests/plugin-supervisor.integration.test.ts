@@ -718,6 +718,19 @@ it.live("reuses an instance only for its exact ID and revision", () =>
           providerInstanceId: "opaque-instance",
           revision: "revision-2",
         });
+        const replacementLaunch = launches[1];
+        if (replacementLaunch === undefined) {
+          return yield* Effect.die("replacement launch record missing");
+        }
+        yield* supervisor.retireInstance("opaque-instance");
+        yield* awaitProcessExit(replacementLaunch.pid);
+        const retiredCall = yield* replacement
+          .call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS)
+          .pipe(Effect.flip);
+        expect(retiredCall).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
   ),

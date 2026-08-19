@@ -290,6 +290,28 @@ const mappedFailureCases = [
     "IDEMPOTENCY_KEY_REUSED",
     [],
   ],
+  ["stale provider revision", { _tag: "RevisionMismatch" }, Code.Aborted, "REVISION_MISMATCH", []],
+  [
+    "changed provider principal",
+    { _tag: "ProviderUserChanged" },
+    Code.FailedPrecondition,
+    "PROVIDER_USER_CHANGED",
+    [],
+  ],
+  [
+    "unreadable provider credentials",
+    { _tag: "ProviderCredentialsUnavailable" },
+    Code.Unavailable,
+    "PROVIDER_CREDENTIALS_UNAVAILABLE",
+    [],
+  ],
+  [
+    "ambiguous provider update commit",
+    { _tag: "ProviderCommitAmbiguous" },
+    Code.Unavailable,
+    "INTERNAL",
+    [],
+  ],
   [
     "arbitrary defect",
     new ConnectError(UNSAFE_FAILURE_DETAIL, Code.Unknown),

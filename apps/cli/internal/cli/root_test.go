@@ -683,7 +683,7 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 	if len(stderr) != 0 {
 		t.Errorf("human schema stderr = %q, want empty", stderr)
 	}
-	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama provider instance create", "nama provider type list", "nama schema"} {
+	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama provider instance create", "nama provider instance update", "nama provider type list", "nama schema"} {
 		if !bytes.Contains(human, []byte(command)) {
 			t.Errorf("human schema inventory omits %q:\n%s", command, human)
 		}
@@ -725,6 +725,7 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		"nama provider instance create",
 		"nama provider instance get",
 		"nama provider instance list",
+		"nama provider instance update",
 		"nama provider type",
 		"nama provider type list",
 		"nama schema",
@@ -839,6 +840,20 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		t.Errorf("provider create argument name = %#v, want %q", got, want)
 	}
 
+	providerUpdateFlags := schemaObjectsByName(t, byPath["nama provider instance update"]["flags"], "provider instance update flags")
+	if got, want := providerUpdateFlags["expected-revision"]["required"], true; got != want {
+		t.Errorf("provider update expected revision required = %#v, want %t", got, want)
+	}
+	for _, name := range []string{"clear", "configuration", "display-name", "enabled", "operation-id", "sync-priority"} {
+		if got, want := providerUpdateFlags[name]["required"], false; got != want {
+			t.Errorf("provider update %s required = %#v, want %t", name, got, want)
+		}
+	}
+	providerUpdateArguments := schemaObjectList(t, byPath["nama provider instance update"]["arguments"], "provider instance update arguments")
+	if got, want := providerUpdateArguments[0]["name"], "provider-instance-id"; got != want {
+		t.Errorf("provider update argument name = %#v, want %q", got, want)
+	}
+
 	setupInputs := schemaObjectsByName(t, byPath["nama setup"]["inputs"], "setup inputs")
 	for _, name := range []string{"bootstrap_token", "password"} {
 		input, ok := setupInputs[name]
@@ -871,48 +886,51 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		}
 	}
 	wantErrorExits := map[string]int{
-		clierror.CodeUnexpectedFailure:            1,
-		clierror.CodeInvalidArgument:              2,
-		clierror.CodeInvalidConfiguration:         2,
-		clierror.CodeProfileNotFound:              5,
-		clierror.CodeCredentialStoreUnavailable:   1,
-		clierror.CodeCredentialCleanupFailed:      1,
-		clierror.CodeUnsafeTransport:              2,
-		clierror.CodeNetworkUnavailable:           7,
-		clierror.CodeAlreadyInitialized:           6,
-		clierror.CodeAuthenticationFailed:         3,
-		clierror.CodeAuthenticationUnavailable:    7,
-		clierror.CodeCredentialInvalid:            3,
-		clierror.CodeDeadlineExceeded:             7,
-		clierror.CodeInternal:                     1,
-		clierror.CodeNotInitialized:               6,
-		clierror.CodePermissionDenied:             4,
-		clierror.CodeRateLimited:                  7,
-		clierror.CodeRequestCancelled:             1,
-		clierror.CodeSessionRevocationUnconfirmed: 7,
-		clierror.CodeSetupInProgress:              6,
-		clierror.CodeSetupUnavailable:             7,
-		clierror.CodeValidationFailed:             2,
-		clierror.CodeIdempotencyKeyReused:         6,
-		clierror.CodePageTokenInvalid:             2,
-		clierror.CodePluginUnavailable:            7,
-		clierror.CodeProviderAuthenticationFailed: 6,
-		clierror.CodeProviderIncompatible:         6,
-		clierror.CodeProviderInstanceLimitReached: 7,
-		clierror.CodeProviderUnavailable:          7,
-		clierror.CodeResourceNotFound:             5,
-		clierror.CodeUnknown:                      1,
-		clierror.CodeCancelled:                    1,
-		clierror.CodeNotFound:                     5,
-		clierror.CodeAlreadyExists:                6,
-		clierror.CodeResourceExhausted:            7,
-		clierror.CodeFailedPrecondition:           6,
-		clierror.CodeAborted:                      6,
-		clierror.CodeOutOfRange:                   2,
-		clierror.CodeUnimplemented:                1,
-		clierror.CodeUnavailable:                  7,
-		clierror.CodeDataLoss:                     1,
-		clierror.CodeUnauthenticated:              3,
+		clierror.CodeUnexpectedFailure:              1,
+		clierror.CodeInvalidArgument:                2,
+		clierror.CodeInvalidConfiguration:           2,
+		clierror.CodeProfileNotFound:                5,
+		clierror.CodeCredentialStoreUnavailable:     1,
+		clierror.CodeCredentialCleanupFailed:        1,
+		clierror.CodeUnsafeTransport:                2,
+		clierror.CodeNetworkUnavailable:             7,
+		clierror.CodeAlreadyInitialized:             6,
+		clierror.CodeAuthenticationFailed:           3,
+		clierror.CodeAuthenticationUnavailable:      7,
+		clierror.CodeCredentialInvalid:              3,
+		clierror.CodeDeadlineExceeded:               7,
+		clierror.CodeInternal:                       1,
+		clierror.CodeNotInitialized:                 6,
+		clierror.CodePermissionDenied:               4,
+		clierror.CodeRateLimited:                    7,
+		clierror.CodeRequestCancelled:               1,
+		clierror.CodeSessionRevocationUnconfirmed:   7,
+		clierror.CodeSetupInProgress:                6,
+		clierror.CodeSetupUnavailable:               7,
+		clierror.CodeValidationFailed:               2,
+		clierror.CodeIdempotencyKeyReused:           6,
+		clierror.CodePageTokenInvalid:               2,
+		clierror.CodePluginUnavailable:              7,
+		clierror.CodeProviderAuthenticationFailed:   6,
+		clierror.CodeProviderCredentialsUnavailable: 7,
+		clierror.CodeProviderIncompatible:           6,
+		clierror.CodeProviderInstanceLimitReached:   7,
+		clierror.CodeProviderUserChanged:            6,
+		clierror.CodeProviderUnavailable:            7,
+		clierror.CodeRevisionMismatch:               6,
+		clierror.CodeResourceNotFound:               5,
+		clierror.CodeUnknown:                        1,
+		clierror.CodeCancelled:                      1,
+		clierror.CodeNotFound:                       5,
+		clierror.CodeAlreadyExists:                  6,
+		clierror.CodeResourceExhausted:              7,
+		clierror.CodeFailedPrecondition:             6,
+		clierror.CodeAborted:                        6,
+		clierror.CodeOutOfRange:                     2,
+		clierror.CodeUnimplemented:                  1,
+		clierror.CodeUnavailable:                    7,
+		clierror.CodeDataLoss:                       1,
+		clierror.CodeUnauthenticated:                3,
 	}
 	if !reflect.DeepEqual(errorExits, wantErrorExits) {
 		t.Errorf("error exit mappings = %#v, want %#v", errorExits, wantErrorExits)
