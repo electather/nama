@@ -11,6 +11,7 @@ import { Database } from "../../database/database.ts";
 import { databaseSchema } from "../../database/schema.ts";
 import { unusedProviderPersistence } from "../../database/tests/provider-persistence.test-support.ts";
 import { RuntimeControl } from "../../lifecycle/runtime-control.ts";
+import { ProviderManagement } from "../../provider/provider-management.ts";
 import { HttpServer } from "../http-server.ts";
 import { HOST, reservePort } from "./network.test-support.ts";
 
@@ -78,6 +79,10 @@ const defaultSetupCoordinator = SetupCoordinator.of({
   getStatus: Effect.succeed(true),
 });
 
+const defaultProviderManagement = ProviderManagement.of({
+  listProviderTypes: () => Effect.succeed({ nextPageToken: "", providerTypes: [] }),
+});
+
 const makeHttpServerTestDependencies = (
   config: Config["Service"],
   database: Database["Service"],
@@ -87,6 +92,7 @@ const makeHttpServerTestDependencies = (
     Layer.succeed(Authentication, defaultAuthentication),
     Layer.succeed(Config, config),
     Layer.succeed(Database, database),
+    Layer.succeed(ProviderManagement, defaultProviderManagement),
     runtimeControlLayer,
     Layer.succeed(SetupCoordinator, defaultSetupCoordinator),
   );
@@ -133,6 +139,7 @@ const serverLayerWithDatabase = (
     databaseLayer,
     Logger.layer([capture]),
     Layer.succeed(RuntimeControl, options.runtimeControl ?? defaultRuntimeControl),
+    Layer.succeed(ProviderManagement, defaultProviderManagement),
     Layer.succeed(SetupCoordinator, options.setupCoordinator ?? defaultSetupCoordinator),
   );
   return makeHttpServerLayer(options.emitStopping).pipe(Layer.provide(dependencies));

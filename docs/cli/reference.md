@@ -297,6 +297,86 @@ Select the profile name supplied as <name> as the default for later commands.
 
 None.
 
+## `nama provider`
+
+Manage provider resources
+
+Discover and manage provider-neutral resources recognized by the selected Nama server.
+
+### Arguments
+
+None.
+
+### Effective flags
+
+| Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |
+| `--output` | `string` | no | inherited | `NAMA_OUTPUT` | `human` | `human`, `json` | Select human or json output (env: NAMA_OUTPUT) |
+| `--profile` | `string` | no | inherited | `NAMA_PROFILE` | `` | — | Select a server profile (env: NAMA_PROFILE) |
+| `--server` | `string` | no | inherited | `NAMA_SERVER` | `` | — | Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER) |
+| `--version` | `bool` | no | inherited | — | `false` | — | Print the Nama CLI semantic version |
+
+### Conditional inputs
+
+None.
+
+## `nama provider type`
+
+Inspect installed provider types
+
+### Arguments
+
+None.
+
+### Effective flags
+
+| Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |
+| `--output` | `string` | no | inherited | `NAMA_OUTPUT` | `human` | `human`, `json` | Select human or json output (env: NAMA_OUTPUT) |
+| `--profile` | `string` | no | inherited | `NAMA_PROFILE` | `` | — | Select a server profile (env: NAMA_PROFILE) |
+| `--server` | `string` | no | inherited | `NAMA_SERVER` | `` | — | Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER) |
+| `--version` | `bool` | no | inherited | — | `false` | — | Print the Nama CLI semantic version |
+
+### Conditional inputs
+
+None.
+
+## `nama provider type list`
+
+List installed provider types
+
+List the provider-neutral types and accepted configuration schemas recognized by the selected authenticated Nama server.
+
+### Arguments
+
+None.
+
+### Effective flags
+
+| Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |
+| `--output` | `string` | no | inherited | `NAMA_OUTPUT` | `human` | `human`, `json` | Select human or json output (env: NAMA_OUTPUT) |
+| `--page-size` | `uint32` | no | local | — | `0` | — | Request up to 100 provider types; zero uses the server default |
+| `--page-token` | `string` | no | local | — | `` | — | Continue an earlier provider type list |
+| `--profile` | `string` | no | inherited | `NAMA_PROFILE` | `` | — | Select a server profile (env: NAMA_PROFILE) |
+| `--server` | `string` | no | inherited | `NAMA_SERVER` | `` | — | Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER) |
+| `--version` | `bool` | no | inherited | — | `false` | — | Print the Nama CLI semantic version |
+
+### Conditional inputs
+
+| Name | Type | Required | Secret | Description |
+| --- | --- | --- | --- | --- |
+| `bearer` | `string` | yes | yes | Administrator bearer credential |
+
+Sources:
+
+- `bearer`:
+  - kind `environment`; source `NAMA_TOKEN`; condition `always`
+  - kind `native_credential_store`; source `operating_system`; condition `NAMA_TOKEN_unset`
+
 ## `nama schema`
 
 Describe the public CLI command contract

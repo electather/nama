@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-lines-per-function, eslint/no-magic-numbers, eslint/no-underscore-dangle, eslint/no-useless-escape, sort-keys, typescript/no-unsafe-type-assertion, unicorn/max-nested-calls -- Production-migration security scenarios keep exact PostgreSQL faults, cryptographic dimensions, and sentinels visible.
+// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-underscore-dangle, eslint/no-useless-escape, sort-keys, typescript/no-unsafe-type-assertion, unicorn/max-nested-calls -- Production-migration security scenarios keep exact PostgreSQL faults, cryptographic dimensions, and sentinels visible.
 import { expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { Pool } from "pg";
@@ -140,20 +140,71 @@ it.live("persists non-secret configuration and restores every encrypted credenti
         Effect.gen(function* providerPersistenceRoundTrip() {
           yield* acceptJellyfinInstallation(database.providers);
           yield* database.providers.createInstance(makeInstanceInput(INSTANCE_ID, 1));
-          return yield* database.providers.loadInstance(INSTANCE_ID);
+          const instance = yield* database.providers.loadInstance(INSTANCE_ID);
+          const instanceIds =
+            yield* database.providers.listInstallationInstanceIds(PROVIDER_TYPE_ID);
+          return { instance, instanceIds };
         }),
       );
 
       expect({
-        configurationStored: stored.configuration["base_url"] === "https://jellyfin.example.test/",
-        credentialRecovered: stored.credentials["api_key"] === SECRET_VALUE,
-        providerTypeRetained: stored.providerTypeId === PROVIDER_TYPE_ID,
-        revisionRetained: stored.revision === REVISION,
+        configurationStored:
+          stored.instance.configuration["base_url"] === "https://jellyfin.example.test/",
+        credentialRecovered: stored.instance.credentials["api_key"] === SECRET_VALUE,
+        instanceEnumerated:
+          stored.instanceIds.length === 1 && stored.instanceIds[0] === INSTANCE_ID,
+        providerTypeRetained: stored.instance.providerTypeId === PROVIDER_TYPE_ID,
+        revisionRetained: stored.instance.revision === REVISION,
       }).toEqual({
         configurationStored: true,
         credentialRecovered: true,
+        instanceEnumerated: true,
         providerTypeRetained: true,
         revisionRetained: true,
+      });
+    }),
+  ),
+);
+
+it.live("reads accepted provider installations in stable keyset order", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* installationReadTest() {
+      yield* initializeProviderDatabase(databaseUrl);
+      const result = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* installationReadPersistence() {
+          yield* acceptJellyfinInstallation(database.providers, "zeta");
+          yield* acceptJellyfinInstallation(database.providers, "jellyfin");
+          yield* acceptJellyfinInstallation(database.providers, "alpha");
+          yield* acceptJellyfinInstallation(database.providers, "removed");
+          const providerTypeIds = ["alpha", "jellyfin", "zeta"];
+          const firstPage = yield* database.providers.listInstallations({
+            limit: 2,
+            providerTypeIds,
+          });
+          const cursor = firstPage.at(-1)?.providerTypeId;
+          if (cursor === undefined) {
+            return yield* Effect.die(new Error("expected a provider installation cursor"));
+          }
+          const secondPage = yield* database.providers.listInstallations({
+            afterProviderTypeId: cursor,
+            limit: 2,
+            providerTypeIds,
+          });
+          const installation = yield* database.providers.loadInstallation("jellyfin");
+          return { firstPage, installation, secondPage };
+        }),
+      );
+
+      expect(result.firstPage.map(({ providerTypeId }) => providerTypeId)).toEqual([
+        "alpha",
+        "jellyfin",
+      ]);
+      expect(result.secondPage.map(({ providerTypeId }) => providerTypeId)).toEqual(["zeta"]);
+      expect(result.installation).toMatchObject({
+        displayName: "Jellyfin",
+        pluginBuildVersion: "1.0.0",
+        providerTypeId: "jellyfin",
+        schemaRevision: "schema-1",
       });
     }),
   ),

@@ -182,8 +182,8 @@ class SetupCoordinator extends contextService<SetupCoordinator, SetupCoordinator
   );
 }
 
-const makeSetupAuthenticationLayer = (
-  foundationLayer: Layer.Layer<Config | Database, unknown>,
+const makeSetupAuthenticationLayer = <Foundation>(
+  foundationLayer: Layer.Layer<Config | Database | Foundation, unknown>,
   runtimeControlLayer: Layer.Layer<RuntimeControl>,
 ) => {
   const runtimeDependencies = Layer.mergeAll(foundationLayer, runtimeControlLayer);

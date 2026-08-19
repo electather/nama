@@ -30,6 +30,7 @@ import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 import type { PluginStderrEventDeclaration } from "../../src/plugin/supervisor.ts";
 
 const FIXTURE_PATH = join(import.meta.dirname, "fixtures/plugin-subprocess.mjs");
+const JELLYFIN_PLUGIN_PATH = join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts");
 const loggingConfig = Config.of({
   database: Object.freeze({ maxConnections: 1, url: Redacted.make("unused") }),
   logging: Object.freeze({ level: "info" as const }),
@@ -307,6 +308,73 @@ it.live("launches discovery without provider context", () =>
         });
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
+  ),
+);
+
+it.live("runs the production Jellyfin discovery contract without provider context", () =>
+  Effect.scoped(
+    Effect.gen(function* jellyfinDiscoveryTest() {
+      const supervisor = yield* PluginSupervisor;
+      const plugin = yield* supervisor.supervise(
+        {
+          arguments: [JELLYFIN_PLUGIN_PATH],
+          executable: process.execPath,
+          expectedProviderType: "jellyfin",
+          stderrEvents: [],
+        },
+        { kind: "discovery" },
+      );
+
+      const health = yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+      const response = yield* plugin.call(
+        PluginService.method.getInfo,
+        {},
+        CALL_DEADLINE_MILLISECONDS,
+      );
+
+      expect(health.status).toBe(ServingStatus.SERVING);
+      expect(response.pluginInfo).toMatchObject({
+        buildVersion: "0.0.0-dev",
+        capabilities: [],
+        contractMajor: 1,
+        description: "Connect Nama to a Jellyfin server.",
+        displayName: "Jellyfin",
+        providerTypeId: "jellyfin",
+        schemaProfileVersion: 1,
+        schemaRevision: "1",
+      });
+      expect(response.pluginInfo?.configurationSchema).toEqual({
+        additionalProperties: false,
+        properties: {
+          api_key: {
+            format: "password",
+            maxLength: 4096,
+            minLength: 1,
+            title: "API key",
+            type: "string",
+            writeOnly: true,
+            "x-nama-order": 3,
+          },
+          base_url: {
+            format: "uri",
+            maxLength: 2048,
+            minLength: 1,
+            title: "Base URL",
+            type: "string",
+            "x-nama-order": 1,
+          },
+          user_id: {
+            maxLength: 128,
+            minLength: 1,
+            title: "User ID",
+            type: "string",
+            "x-nama-order": 2,
+          },
+        },
+        required: ["base_url", "user_id", "api_key"],
+        type: "object",
+      });
+    }).pipe(Effect.provide(PluginSupervisor.layer())),
   ),
 );
 

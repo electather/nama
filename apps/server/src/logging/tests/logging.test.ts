@@ -114,3 +114,46 @@ it.effect("preserves bootstrap initialization as a stable failure tag", () =>
     });
   }),
 );
+
+it.effect("records only the safe provider discovery identity and status", () =>
+  Effect.gen(function* providerDiscoveryLoggingTest() {
+    const lines: string[] = [];
+    const loggingLayer = configuredLoggingLayer(config, (line) => {
+      lines.push(line);
+    });
+    yield* Effect.logInfo({
+      event: "provider.discovery_completed",
+      providerType: "jellyfin",
+      status: "incompatible",
+    }).pipe(Effect.provide(loggingLayer));
+
+    expect(lines).toHaveLength(SINGLE_RECORD_COUNT);
+    const record = recordFromLine(lines[READY_RECORD_INDEX] ?? "");
+    expect(record).toEqual({
+      event: "provider.discovery_completed",
+      level: "info",
+      provider_type: "jellyfin",
+      status: "incompatible",
+      timestamp: record["timestamp"],
+    });
+  }),
+);
+
+it.effect("drops unrecognized provider discovery status values", () =>
+  Effect.gen(function* unsafeProviderStatusLoggingTest() {
+    const lines: string[] = [];
+    const loggingLayer = configuredLoggingLayer(config, (line) => {
+      lines.push(line);
+    });
+    yield* Effect.logInfo({
+      event: "provider.discovery_completed",
+      providerType: "jellyfin",
+      status: "api-key-sentinel",
+    }).pipe(Effect.provide(loggingLayer));
+
+    expect(lines).toHaveLength(SINGLE_RECORD_COUNT);
+    const record = recordFromLine(lines[READY_RECORD_INDEX] ?? "");
+    expect(record).not.toHaveProperty("status");
+    expect(lines.join("")).not.toContain("api-key-sentinel");
+  }),
+);

@@ -18,6 +18,13 @@ const KNOWN_ERROR_TAGS: Readonly<Record<string, true>> = Object.freeze({
   ShutdownError: true,
 });
 
+const PROVIDER_DISCOVERY_STATUSES: Readonly<Record<string, true>> = Object.freeze({
+  available: true,
+  incompatible: true,
+  unavailable: true,
+});
+type ProviderDiscoveryStatus = "available" | "incompatible" | "unavailable";
+
 interface EventMessage {
   readonly code?: number;
   readonly durationMs?: number;
@@ -32,6 +39,7 @@ interface EventMessage {
   readonly requestId?: string;
   readonly sanitizedStackFrames?: readonly string[];
   readonly signal?: string;
+  readonly status?: ProviderDiscoveryStatus;
 }
 
 // fallow-ignore-next-line code-duplication -- The log boundary intentionally maps camelCase Effect messages to snake_case JSON records.
@@ -51,6 +59,7 @@ interface LogRecord {
   rpc_method?: string;
   sanitized_stack_frames?: readonly string[];
   signal?: string;
+  status?: string;
   timestamp: string;
 }
 
@@ -139,6 +148,17 @@ const addPluginFields = (record: LogRecord, eventMessage: EventMessage): void =>
   }
 };
 
+const providerDiscoveryStatus = (eventMessage: EventMessage): string | undefined => {
+  if (
+    eventMessage.event === "provider.discovery_completed" &&
+    eventMessage.status !== undefined &&
+    PROVIDER_DISCOVERY_STATUSES[eventMessage.status] === true
+  ) {
+    return eventMessage.status;
+  }
+  return undefined;
+};
+
 const addFailureEventFields = (record: LogRecord, eventMessage: EventMessage): void => {
   addOptionalField(record, "error_tag", eventMessage.errorTag);
   addOptionalField(record, "exit_code", eventMessage.exitCode);
@@ -147,6 +167,7 @@ const addFailureEventFields = (record: LogRecord, eventMessage: EventMessage): v
   addOptionalField(record, "recovery_attempt", eventMessage.recoveryAttempt);
   addOptionalField(record, "sanitized_stack_frames", eventMessage.sanitizedStackFrames);
   addOptionalField(record, "signal", eventMessage.signal);
+  addOptionalField(record, "status", providerDiscoveryStatus(eventMessage));
   addPluginFields(record, eventMessage);
 };
 
@@ -180,4 +201,4 @@ const recordFor = (
   return record;
 };
 export { errorTag, recordFor, sanitizedStackFrames };
-export type { EventMessage, LogRecord };
+export type { EventMessage, LogRecord, ProviderDiscoveryStatus };

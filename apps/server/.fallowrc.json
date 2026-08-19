@@ -148,6 +148,7 @@
       { "name": "setup", "patterns": ["src/setup/**/*.ts"] },
       { "name": "lifecycle", "patterns": ["src/lifecycle/**/*.ts"] },
       { "name": "plugin", "patterns": ["src/plugin/**/*.ts"] },
+      { "name": "provider", "patterns": ["src/provider/**/*.ts"] },
       { "name": "transport", "patterns": ["src/http/**/*.ts"] },
       { "name": "contracts", "patterns": ["src/contracts/**/*.ts"] },
       { "name": "integration", "patterns": ["integration/**/*.ts", "integration/**/*.mjs"] },
@@ -167,8 +168,8 @@
           "lifecycle",
           "logging",
           "plugin",
+          "provider",
           "setup",
-          "plugin",
           "transport"
         ]
       },
@@ -184,6 +185,10 @@
       { "from": "lifecycle", "allow": [] },
       { "from": "plugin", "allow": ["logging"] },
       {
+        "from": "provider",
+        "allow": ["configuration", "database", "plugin"]
+      },
+      {
         "from": "transport",
         "allow": [
           "authentication",
@@ -191,7 +196,8 @@
           "contracts",
           "database",
           "lifecycle",
-          "logging"
+          "logging",
+          "provider"
         ]
       },
       { "from": "contracts", "allow": [] },
@@ -205,8 +211,8 @@
           "lifecycle",
           "logging",
           "plugin",
+          "provider",
           "setup",
-          "plugin",
           "transport"
         ]
       },

@@ -56,6 +56,8 @@ const expectHealthy = (runningProcess: RunningProcess) =>
   });
 const expectLifecycleOutput = (runningProcess: RunningProcess, databaseUrl: string): void => {
   expect(eventsFrom(runningProcess)).toEqual([
+    "plugin.recovery_attempt",
+    "provider.discovery_completed",
     "server.ready",
     "database.readiness_changed",
     "server.stopping",

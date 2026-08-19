@@ -26,6 +26,14 @@ interface ProviderInstallationInput {
   readonly schemaRevision: string;
 }
 
+interface ProviderInstallationListInput {
+  readonly afterProviderTypeId?: string;
+  readonly limit: number;
+  readonly providerTypeIds: readonly string[];
+}
+
+type StoredProviderInstallation = ProviderInstallationInput;
+
 interface ProviderOperationInput {
   readonly administratorUserId: string;
   readonly canonicalRequest: Uint8Array;
@@ -101,6 +109,15 @@ interface ProviderPersistence {
   readonly deleteInstance: (
     input: ProviderInstanceDeletionInput,
   ) => Effect.Effect<boolean, ProviderPersistenceFailure>;
+  readonly listInstallations: (
+    input: ProviderInstallationListInput,
+  ) => Effect.Effect<readonly StoredProviderInstallation[], ProviderPersistenceFailure>;
+  readonly loadInstallation: (
+    providerTypeId: string,
+  ) => Effect.Effect<StoredProviderInstallation | undefined, ProviderPersistenceFailure>;
+  readonly listInstallationInstanceIds: (
+    providerTypeId: string,
+  ) => Effect.Effect<readonly string[], ProviderPersistenceFailure>;
   readonly loadInstance: (
     providerInstanceId: string,
   ) => Effect.Effect<
@@ -153,6 +170,8 @@ export {
   type ProviderDatabase,
   type ProviderInstanceDeletionInput,
   type ProviderInstanceInput,
+  type ProviderInstallationListInput,
+  type StoredProviderInstallation,
   type ProviderInstallationInput,
   type ProviderMutationMethod,
   type ProviderObservationInput,

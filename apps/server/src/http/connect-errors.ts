@@ -22,6 +22,7 @@ type PublicErrorReason =
   | "INTERNAL"
   | "NOT_INITIALIZED"
   | "PERMISSION_DENIED"
+  | "PAGE_TOKEN_INVALID"
   | "RATE_LIMITED"
   | "REQUEST_CANCELLED"
   | "SESSION_REVOCATION_UNCONFIRMED"
@@ -47,6 +48,7 @@ type TaggedFailureTag =
   | "MissingAuthorityInventory"
   | "NotInitialized"
   | "PermissionDenied"
+  | "PageTokenInvalid"
   | "PrivateAuthenticationDefect"
   | "RequestCancelled"
   | "SessionRevocationUnconfirmed"
@@ -98,6 +100,10 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
   NotInitialized: {
     code: Code.FailedPrecondition,
     reason: "NOT_INITIALIZED",
+  },
+  PageTokenInvalid: {
+    code: Code.InvalidArgument,
+    reason: "PAGE_TOKEN_INVALID",
   },
   PermissionDenied: {
     code: Code.PermissionDenied,
