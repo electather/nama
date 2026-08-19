@@ -8,11 +8,7 @@ import { Effect, Exit } from "effect";
 
 import { RPC_TIMEOUT_RECOVERY_GRACE_MILLISECONDS } from "./constants.ts";
 import { PluginDeadlineExceeded, PluginUnavailable, unavailable } from "./errors.ts";
-import type {
-  PluginDeadlineFailure,
-  PluginRpcFailure,
-  PluginUnavailableFailure,
-} from "./errors.ts";
+import type { PluginUnavailableFailure } from "./errors.ts";
 import {
   beginPluginRecovery,
   ensureRunningPlugin,
@@ -23,7 +19,7 @@ import {
 import type { RecoveryOptions } from "./lifecycle.ts";
 import { pluginLifecycleMessage } from "./logging.ts";
 import { ABSENT_PLUGIN } from "./model.ts";
-import type { PluginHandleState, RunningPlugin } from "./model.ts";
+import type { PluginCallFailure, PluginHandleState, RunningPlugin } from "./model.ts";
 import { callPlugin } from "./protocol.ts";
 
 const NON_POSITIVE_DEADLINE_MILLISECONDS = 0;
@@ -50,7 +46,6 @@ interface CallRecovery {
   readonly state: PluginHandleState;
 }
 
-type PluginCallFailure = PluginDeadlineFailure | PluginRpcFailure | PluginUnavailableFailure;
 const restorePluginCallExit = <Success, Failure>(
   exit: Exit.Exit<Success, Failure>,
 ): Effect.Effect<Success, Failure> => {
@@ -160,4 +155,4 @@ const callSupervisedPlugin = <Input extends DescMessage, Output extends DescMess
   return callWithDeadline(call);
 };
 export { callSupervisedPlugin };
-export type { PluginCallFailure, SupervisedCall };
+export type { SupervisedCall };

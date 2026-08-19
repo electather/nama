@@ -7,6 +7,7 @@ import { Effect, Option } from "effect";
 import type { AuthenticationService } from "../../authentication/authentication-service.ts";
 import type { SetupCoordinatorService } from "../../authentication/setup-coordinator.ts";
 import type { RequestValidator } from "../../contracts/request-validation.ts";
+import type { ProviderManagementService } from "../../provider/provider-management.ts";
 import { createConnectRequestListener } from "../connect-dispatch.ts";
 import type { RequestRuntime } from "../request-runtime.ts";
 import { EPHEMERAL_PORT, HOST, HTTP_NOT_FOUND } from "./network.test-support.ts";
@@ -55,6 +56,14 @@ const setupCoordinator: SetupCoordinatorService = Object.freeze({
   getStatus: Effect.succeed(true),
 });
 
+const providerManagement: ProviderManagementService = Object.freeze({
+  listProviderTypes: () =>
+    Effect.succeed({
+      nextPageToken: "",
+      providerTypes: [],
+    }),
+});
+
 const requestValidator: RequestValidator = Object.freeze({
   validate: () => validRequestValidation,
 });
@@ -63,6 +72,7 @@ const createTestConnectRequestListener = (): RequestListener =>
   createConnectRequestListener({
     authentication,
     monotonicNow: () => TEST_MONOTONIC_TIME,
+    providerManagement,
     requestIdFactory: () => SERVER_REQUEST_ID,
     requestRuntime,
     requestValidator,

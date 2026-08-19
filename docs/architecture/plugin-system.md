@@ -16,7 +16,7 @@ Idle cleanup failure is contained as handle lifecycle state. The handle retains 
 
 Effect scope owns shutdown: signal the complete process group, wait two seconds, escalate to `SIGKILL`, reap it, and remove launch artifacts before the runtime root and database finalize. Stdout is discarded. Stderr accepts only declared newline-delimited JSON records up to 4 KiB with numeric or enumerated fields, levels `debug` through `error`, and a 20-record/second token bucket with burst 40; malformed, undeclared, oversized, and excess records produce at most one safe drop event per launch. Successful idle retirement emits one debug `plugin.process_idle_stopped` record; failed idle cleanup emits one error `plugin.process_idle_stop_failed` record. Lifecycle logs expose only provider identity, attempt, exit, signal, and declared fields—never bearers, socket paths, arguments, environment, configuration, or raw stderr.
 
-The disposable real subprocess fixture verifies all three launch documents, malformed and oversized context rejection, empty child environments, context confinement to stdin, one-shot candidate cleanup, exact instance-revision reuse and fencing, descriptor-only handle acquisition, shared first-demand launch, authenticated transport, bounded recovery, per-call demand and deadlines, idle timing, retirement races, cleanup-failure containment, scope-finalization retry, no replay, process-group termination, safe logging, and artifact cleanup. Resource limits beyond process-group containment, provider connectivity, production Jellyfin behavior, credential persistence, schedules, and container packaging remain unimplemented in their owning milestones. Windows transport and persistent or background native-media plugins remain deferred until a real plugin requires them.
+The disposable real subprocess fixture verifies all three launch documents, malformed and oversized context rejection, empty child environments, context confinement to stdin, one-shot candidate cleanup, exact instance-revision reuse and fencing, descriptor-only handle acquisition, shared first-demand launch, authenticated transport, bounded recovery, per-call demand and deadlines, idle timing, retirement races, cleanup-failure containment, scope-finalization retry, no replay, process-group termination, safe logging, and artifact cleanup. The production Jellyfin discovery executable is separately exercised through the same supervisor. Resource limits beyond process-group containment, provider-instance connection behavior, schedules, and container packaging remain unimplemented in their owning milestones. Windows transport remains deferred.
 
 The implemented provider launch protocol creates a mode-`0700` runtime directory and gives each launch a new 32-byte bearer and socket path through the single launch document, followed by EOF:
 
@@ -30,12 +30,29 @@ The supervisor keys current instance admission by opaque instance ID and exact r
 
 Every registered RPC requires the per-launch bearer and carries an explicit deadline and cancellation. The core validates untrusted plugin responses before storing or exposing mapped data. Future credential loading will wipe mutable decrypted byte buffers after launch-document delivery; immutable JavaScript strings are not claimed to be zeroizable, and provider plaintext remains confined to the isolated child until exit or garbage collection.
 
-## Jellyfin connection profile
+## Jellyfin discovery and target connection profile
 
-The issue #29 Jellyfin executable implements only health, `GetInfo`, and `GetConnection`. Its restricted schema requires `base_url`, explicit `user_id`, and write-only `api_key`; it advertises no library, playback, or watch-state capability until issue #30.
+The production Jellyfin executable currently implements authenticated health
+and `GetInfo` for context-free discovery. It declares provider type `jellyfin`,
+contract major `1`, no media capabilities, and a restricted schema requiring
+`base_url`, `user_id`, and write-only `api_key`. Startup validates and persists
+that information before the public provider-type list becomes available.
 
-`GetConnection` reads unauthenticated public system information, then reads the configured user with Jellyfin's credentialed authorization header. A connected result requires a non-empty server identity, the returned configured user on that same server, and a non-disabled user. The plugin combines canonical Jellyfin server and user identities into one versioned opaque provider-principal reference; the core converts it immediately to the non-recoverable binding digest required by [ADR-0021](../adr/0021-immutable-provider-principal-binding.md) and [ADR-0028](../adr/0028-domain-separated-provider-protection.md).
+Issue #77 extends the executable with `GetConnection`. That operation will read
+unauthenticated public system information, then read the configured user with
+Jellyfin's credentialed authorization header. A connected result requires a
+non-empty server identity, the returned configured user on that same server,
+and a non-disabled user. The plugin will combine canonical Jellyfin server and
+user identities into one versioned opaque provider-principal reference; the
+core will convert it immediately to the non-recoverable binding digest required
+by [ADR-0021](../adr/0021-immutable-provider-principal-binding.md) and
+[ADR-0028](../adr/0028-domain-separated-provider-protection.md).
 
-Jellyfin base URLs may use HTTP or HTTPS, private and link-local destinations, and one path prefix. They may not contain credentials, a query, or a fragment. The plugin normalizes the trailing slash, uses native Node fetch with the RPC cancellation signal, and refuses redirects so an API key never crosses the configured origin or path. Raw provider response bodies and credential-bearing request details never enter responses or logs.
+Jellyfin base URLs may use HTTP or HTTPS, private and link-local destinations,
+and one path prefix. They may not contain credentials, a query, or a fragment.
+The target connection operation uses native Node fetch with RPC cancellation
+and refuses redirects so an API key never crosses the configured origin or
+path. Raw provider response bodies and credential-bearing request details never
+enter responses or logs.
 
-Windows transport and persistent or background native-media plugins remain deferred until a real plugin requires them. Provider persistence and production Jellyfin runtime behavior remain unimplemented at this revision. Production library, playback, and watch-state behavior belongs to issue #30, explicit connection-test commands to issue #31, and container packaging to issue #32.
+Windows transport and persistent or background native-media plugins remain deferred until a real plugin requires them. Provider-instance connection behavior belongs to issue #77; production library, playback, and watch-state behavior belongs to issue #30; explicit connection-test commands belong to issue #31; and container packaging belongs to issue #32.

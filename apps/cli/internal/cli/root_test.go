@@ -683,7 +683,7 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 	if len(stderr) != 0 {
 		t.Errorf("human schema stderr = %q, want empty", stderr)
 	}
-	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama schema"} {
+	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama provider type list", "nama schema"} {
 		if !bytes.Contains(human, []byte(command)) {
 			t.Errorf("human schema inventory omits %q:\n%s", command, human)
 		}
@@ -720,6 +720,9 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		"nama profile list",
 		"nama profile set",
 		"nama profile use",
+		"nama provider",
+		"nama provider type",
+		"nama provider type list",
 		"nama schema",
 		"nama setup",
 	}
@@ -801,6 +804,21 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 	}
 	if got, want := profileSetArguments[0]["required"], true; got != want {
 		t.Errorf("profile set argument required = %#v, want %t", got, want)
+	}
+
+	providerListFlags := schemaObjectsByName(t, byPath["nama provider type list"]["flags"], "provider type list flags")
+	if got, want := providerListFlags["page-size"]["default"], "0"; got != want {
+		t.Errorf("provider page size default = %#v, want %q", got, want)
+	}
+	if _, ok := providerListFlags["page-token"]; !ok {
+		t.Error("provider type list schema omits --page-token")
+	}
+	providerListInputs := schemaObjectsByName(t, byPath["nama provider type list"]["inputs"], "provider type list inputs")
+	if got, want := providerListInputs["bearer"]["secret"], true; got != want {
+		t.Errorf("provider bearer secret = %#v, want %t", got, want)
+	}
+	if got, want := providerListInputs["bearer"]["required"], true; got != want {
+		t.Errorf("provider bearer required = %#v, want %t", got, want)
 	}
 
 	setupInputs := schemaObjectsByName(t, byPath["nama setup"]["inputs"], "setup inputs")

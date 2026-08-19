@@ -1,3 +1,4 @@
+// oxlint-disable import/max-dependencies -- The application composition root wires every runtime owner exactly once.
 import { NodeFileSystem } from "@effect/platform-node";
 import { Cause, Clock, Effect, Exit, Layer } from "effect";
 
@@ -14,6 +15,7 @@ import {
   writeBootstrapFailure,
 } from "./logging/logging.ts";
 import { PluginSupervisor } from "./plugin/supervisor.ts";
+import { ProviderManagement } from "./provider/provider-management.ts";
 import { BootstrapToken } from "./setup/bootstrap-token.ts";
 
 const PRODUCTION_MIGRATIONS = `${import.meta.dirname}/../drizzle/`;
@@ -34,8 +36,11 @@ const serverLayer = (
   const databaseLayer = Database.layer(migrationsFolder).pipe(Layer.provide(configLayer));
   const foundationLayer = Layer.mergeAll(configLayer, databaseLayer);
   const pluginFoundationLayer = PluginSupervisor.layer().pipe(Layer.provideMerge(foundationLayer));
+  const providerFoundationLayer = ProviderManagement.layer.pipe(
+    Layer.provideMerge(pluginFoundationLayer),
+  );
   return HttpServer.layer({ emitStopping }).pipe(
-    Layer.provideMerge(makeSetupAuthenticationLayer(pluginFoundationLayer, RuntimeControl.layer)),
+    Layer.provideMerge(makeSetupAuthenticationLayer(providerFoundationLayer, RuntimeControl.layer)),
   );
 };
 

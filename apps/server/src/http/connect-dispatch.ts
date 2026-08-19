@@ -4,6 +4,7 @@ import type { RequestListener } from "node:http";
 import { connectNodeAdapter } from "@connectrpc/connect-node";
 
 import { registerImplementedConnectRoutes } from "./implemented-connect-routes.ts";
+import type { ImplementedConnectRouteDependencies } from "./implemented-connect-routes.ts";
 import { createRequestPipeline } from "./request-pipeline.ts";
 import type { RequestPipelineDependencies } from "./request-pipeline.ts";
 import { registerUnimplementedConnectRoutes } from "./unimplemented-connect-routes.ts";
@@ -11,7 +12,8 @@ import { registerUnimplementedConnectRoutes } from "./unimplemented-connect-rout
 const HTTP_NOT_FOUND = 404;
 const REQUEST_ID_HEADER = "nama-request-id";
 
-interface ConnectRequestListenerDependencies extends RequestPipelineDependencies {
+interface ConnectRequestListenerDependencies
+  extends RequestPipelineDependencies, ImplementedConnectRouteDependencies {
   readonly requestIdFactory?: () => string;
 }
 

@@ -15,6 +15,7 @@ import (
 	authcommand "github.com/electather/nama/apps/cli/internal/cli/auth"
 	completioncommand "github.com/electather/nama/apps/cli/internal/cli/completion"
 	profilecommand "github.com/electather/nama/apps/cli/internal/cli/profile"
+	providercommand "github.com/electather/nama/apps/cli/internal/cli/provider"
 	schemacommand "github.com/electather/nama/apps/cli/internal/cli/schema"
 	setupcommand "github.com/electather/nama/apps/cli/internal/cli/setup"
 	"github.com/electather/nama/apps/cli/internal/clierror"
@@ -56,13 +57,14 @@ Examples
 
 // Dependencies supplies the concrete process dependencies for the command tree.
 type Dependencies struct {
-	ConfigPath  string
-	Credentials credentialauth.CredentialStore
-	SetupClient apiv1.SetupServiceClient
-	AuthClient  apiv1.AuthServiceClient
-	SecretInput credentialauth.SecretInput
-	HTTPClient  *http.Client
-	RawArgs     []string
+	ConfigPath     string
+	Credentials    credentialauth.CredentialStore
+	SetupClient    apiv1.SetupServiceClient
+	AuthClient     apiv1.AuthServiceClient
+	SecretInput    credentialauth.SecretInput
+	ProviderClient apiv1.ProviderServiceClient
+	HTTPClient     *http.Client
+	RawArgs        []string
 }
 
 type runtime struct {
@@ -221,6 +223,10 @@ func NewRootCommand(dependencies Dependencies) *cobra.Command {
 			Set:              runtime.setProfile,
 			Use:              runtime.useProfile,
 			List:             runtime.listProfiles,
+			InvalidArguments: runtime.invalidArguments,
+		}),
+		providercommand.NewCommand(providercommand.Handlers{
+			ListTypes:        runtime.listProviderTypes,
 			InvalidArguments: runtime.invalidArguments,
 		}),
 		setupcommand.NewCommand(setupcommand.Handler{
@@ -483,6 +489,33 @@ func (r *runtime) status(command *cobra.Command) error {
 	})
 }
 
+func (r *runtime) listProviderTypes(command *cobra.Command, pageSize uint32, pageToken string) error {
+	return r.execute(command, true, func(state commandState) (any, error) {
+		if err := r.requireProfile(command, state); err != nil {
+			return nil, err
+		}
+		providerClient, err := r.providerClient(state)
+		if err != nil {
+			return nil, err
+		}
+		result, err := app.ListProviderTypes(
+			command.Context(),
+			app.ListProviderTypesInput{
+				Profile:   state.resolved.Profile,
+				Server:    state.resolved.Server,
+				PageSize:  pageSize,
+				PageToken: pageToken,
+			},
+			providerClient,
+			r.dependencies.Credentials,
+		)
+		if err != nil {
+			return nil, classifyLocalError(err)
+		}
+		return result, nil
+	})
+}
+
 func (r *runtime) execute(command *cobra.Command, includeWarning bool, action func(commandState) (any, error)) error {
 	return r.executeResolved(command, includeWarning, r.resolve, action)
 }
@@ -604,6 +637,20 @@ func (r *runtime) clients(state commandState, needSetup bool) (apiv1.SetupServic
 		authClient = clients.Auth
 	}
 	return setupClient, authClient, nil
+}
+
+func (r *runtime) providerClient(state commandState) (apiv1.ProviderServiceClient, error) {
+	if r.dependencies.ProviderClient != nil {
+		return r.dependencies.ProviderClient, nil
+	}
+	if r.dependencies.HTTPClient == nil {
+		return nil, clierror.Unexpected(errors.New("HTTP client is required"))
+	}
+	clients, err := api.NewClients(r.dependencies.HTTPClient, state.resolved.Server, "")
+	if err != nil {
+		return nil, clierror.Unexpected(err)
+	}
+	return clients.Provider, nil
 }
 
 func (r *runtime) secretInput(command *cobra.Command, state commandState) credentialauth.SecretInput {

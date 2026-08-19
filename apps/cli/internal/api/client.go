@@ -22,11 +22,12 @@ const (
 
 // Clients contains the generated service clients used by CLI operations.
 type Clients struct {
-	Setup apiv1.SetupServiceClient
-	Auth  apiv1.AuthServiceClient
+	Setup    apiv1.SetupServiceClient
+	Auth     apiv1.AuthServiceClient
+	Provider apiv1.ProviderServiceClient
 }
 
-// NewClients constructs generated Setup and Auth clients over httpClient.
+// NewClients constructs generated Setup, Auth, and Provider clients over httpClient.
 func NewClients(httpClient *http.Client, baseURL, bearer string) (*Clients, error) {
 	if httpClient == nil {
 		return nil, errors.New("HTTP client is required")
@@ -64,8 +65,9 @@ func NewClients(httpClient *http.Client, baseURL, bearer string) (*Clients, erro
 		return http.ErrUseLastResponse
 	}
 	return &Clients{
-		Setup: apiv1.NewSetupServiceClient(&client, baseURL, connect.WithInterceptors(interceptor)),
-		Auth:  apiv1.NewAuthServiceClient(&client, baseURL, connect.WithInterceptors(interceptor)),
+		Setup:    apiv1.NewSetupServiceClient(&client, baseURL, connect.WithInterceptors(interceptor)),
+		Auth:     apiv1.NewAuthServiceClient(&client, baseURL, connect.WithInterceptors(interceptor)),
+		Provider: apiv1.NewProviderServiceClient(&client, baseURL, connect.WithInterceptors(interceptor)),
 	}, nil
 }
 

@@ -1,6 +1,6 @@
 # Management CLI
 
-Status: issue #24 profiles, administrator setup, sign-in, and authentication status plus issue #25's complete public process contract are implemented and verified. The remaining MVP command families are unfinished.
+Status: issue #24 profiles, Administrator setup/sign-in, and authentication status; issue #25's complete public process contract; and issue #76's authenticated provider-type listing are implemented and verified. The remaining MVP command families are unfinished.
 
 ## Purpose
 
@@ -15,7 +15,8 @@ The complete MVP management surface covers initial administrator setup, authenti
 - Milestone 0 created the compilable Cobra boundary and proved that generated public clients are consumable.
 - Issue #24 implements the shared CLI foundation, named profiles, administrator setup, sign-in, and authentication status.
 - Issue #25 completes help, version reporting, shell completion, machine schema, generated reference documentation, and semantic compatibility enforcement.
-- Health, diagnostics, provider, plugin, Jellyfin, device, and synchronization commands enter only with their implemented API behavior.
+- Issue #76 adds the provider-neutral `nama provider type list` command over the implemented authenticated RPC.
+- Health, diagnostics, provider-instance, device, and synchronization commands enter only with their implemented API behavior; no Jellyfin-specific family is added.
 
 The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no management web application or CLI plugin framework in the MVP.
 
@@ -111,7 +112,7 @@ environment variables, positional arguments, or inline JSON flags.
 `--clear <key>` names optional ordinary or secret fields without carrying their
 values.
 
-The canonical binary name is `nama`. The live Cobra tree now supplies complete human help, a global version flag, four shell-completion formats, machine schema version 1, the generated CLI reference, and the compatibility baseline.
+The canonical binary name is `nama`. The live Cobra tree now supplies complete human help, a global version flag, four shell-completion formats, machine schema version 1, the generated CLI reference, the compatibility baseline, and authenticated provider-type listing.
 
 ## Output contract
 
@@ -248,16 +249,17 @@ No empty package or interface is created in anticipation of a later command. A c
 
 ## Testing
 
-The implemented issue #24 surface is tested in process through the real Cobra tree with injected arguments, context, streams, configuration location, credential store, secret reader, and generated service clients. Coverage includes:
+The implemented surface is tested in process through the real Cobra tree with injected arguments, context, streams, configuration location, credential store, secret reader, and generated service clients. Coverage includes:
 
 - profile persistence, resolution precedence, URL policy, and credential-deletion ordering;
 - terminal and non-interactive secret input plus native-credential semantics;
 - generated-client metadata, deadlines, and method-specific bearer attachment over test Connect handlers;
 - setup recovery, sign-in replacement, authentication status, revocation, cleanup, and typed errors;
+- provider-type page input, authenticated profile selection, accepted schema mapping, and human/JSON rendering;
 - exact JSON stream behavior plus human warning and prompt placement, exit codes, and secret redaction; and
-- a compiled-binary status flow against a test Connect server using a process-injected credential.
+- compiled-binary status and production server/PostgreSQL/Jellyfin-discovery flows using a process-injected credential.
 
-The owning Go check runs formatting, vet, Staticcheck, tests, compilation, generated-reference drift, and schema-v1 semantic compatibility. Focused in-process and compiled-binary coverage verifies help, local output precedence, version/header identity, all completion formats, schema ordering and metadata, exit mappings, secret redaction, and exact JSON stream placement. A disposable Node server, PostgreSQL database, and macOS Keychain flow additionally verifies administrator setup and stored-credential status on macOS; it is not portable keyring evidence.
+The owning Go check runs formatting, vet, Staticcheck, tests, compilation, generated-reference drift, and schema-v1 semantic compatibility. Focused in-process and compiled-binary coverage verifies help, local output precedence, version/header identity, all completion formats, schema ordering and metadata, exit mappings, provider-type rendering, secret redaction, and exact JSON stream placement. A disposable Node server and PostgreSQL flow verifies real provider discovery through the compiled CLI; the macOS Keychain flow separately verifies Administrator setup and stored-credential status and is not portable keyring evidence.
 
 ## Deferred
 

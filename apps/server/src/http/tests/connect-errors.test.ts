@@ -245,6 +245,13 @@ const mappedFailureCases = [
     [],
   ],
   [
+    "invalid provider page token",
+    { _tag: "PageTokenInvalid", token: UNSAFE_FAILURE_DETAIL },
+    Code.InvalidArgument,
+    "PAGE_TOKEN_INVALID",
+    [UNSAFE_FAILURE_DETAIL],
+  ],
+  [
     "arbitrary defect",
     new ConnectError(UNSAFE_FAILURE_DETAIL, Code.Unknown),
     Code.Internal,

@@ -1,6 +1,6 @@
 # Core server
 
-Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, and authenticated plugin-subprocess supervisor are implemented and verified.
+Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, authenticated plugin-subprocess supervisor, and bundled-provider discovery/list runtime are implemented and verified.
 
 This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics.
 
@@ -16,10 +16,11 @@ This note is the canonical record for durable core-server boundaries. The implem
 - exact liveness and readiness routes before Connect delegation;
 - one native Node listener and one Effect managed request runtime for health and RPC callbacks;
 - runtime-controlled readiness and fatal post-bind failure;
-- one Effect-scoped authenticated, on-demand plugin-subprocess supervisor with context-free discovery, one-shot candidate, exact-revision instance launches, and bounded idle retirement; and
+- one Effect-scoped authenticated, on-demand plugin-subprocess supervisor with context-free discovery, one-shot candidate, exact-revision instance launches, and bounded idle retirement;
+- one code-owned bundled-provider registry with bounded startup discovery, compatible installation reconciliation, safe availability status, and authenticated provider-type listing; and
 - deterministic signal shutdown, bounded drain, process-group termination, and resource finalization.
 
-The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; only Setup and Auth behavior is implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. The private plugin transport now launches, authenticates, handshakes with, calls, recovers, and terminates code-owned subprocesses, but no production provider descriptor or plugin method workflow is registered. Pairing, CLI setup/sign-in, client behavior, provider persistence, schedules, and exported tracing remain outside this runtime.
+The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; Setup, Auth, and `ProviderService.ListProviderTypes` behavior is implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. The private plugin transport launches, authenticates, handshakes with, calls, recovers, and terminates code-owned subprocesses. Its production Jellyfin discovery executable implements authenticated health and static provider information with no provider-instance context. Pairing, provider-instance management and connection behavior, client behavior, schedules, and exported tracing remain outside this runtime.
 
 ## Architecture decisions
 
@@ -143,14 +144,14 @@ The database module owns pool creation, schema-aware Drizzle construction, migra
 
 The MVP runs one core process. Drizzle bookkeeping is sufficient; do not add advisory locks, distributed migration coordination, Redis, or a job framework before multi-process deployment is accepted.
 
-Issue #29's target startup reconciles the code-owned bundled-provider registry
-and authenticates stored provider-credential envelopes after migrations and
-durable initialization reconciliation but before runtime readiness. Discovery
-is deadline-bounded. An unsafe code-owned launch descriptor, duplicate provider
-type, or other registry integrity defect remains startup-fatal; plugin
-unavailability, an incompatible schema revision, or an unreadable provider
-credential preserves durable state and contains unavailability to the affected
-provider type or instance.
+Startup reconciles the code-owned bundled-provider registry and authenticates
+stored provider-credential envelopes after migrations and durable initialization
+reconciliation but before the listener binds. Discovery is deadline-bounded.
+An unsafe code-owned launch descriptor, duplicate provider type, or other
+registry integrity defect remains startup-fatal. Plugin absence or failure
+preserves the last accepted installation and reports `unavailable`; incompatible
+identity, contract, or schema preserves it and reports `incompatible`. Neither
+failure rewrites other provider installations.
 
 ### Durable persistence and initialization
 
@@ -215,6 +216,11 @@ Normal logs are newline-delimited JSON on stdout. The configured threshold appli
 
 Plugin supervision additionally emits `plugin.recovery_attempt`, `plugin.process_exited`, `plugin.rpc_deadline_exceeded`, `plugin.recovery_exhausted`, `plugin.process_idle_stopped`, `plugin.process_idle_stop_failed`, `plugin.stderr_dropped`, and code-declared plugin events. Successful idle retirement uses debug severity; failed idle cleanup uses error severity. Plugin lifecycle fields are restricted to `provider_type`, `provider_instance_id`, `recovery_attempt`, `exit_code`, and `signal`; code-declared plugin fields are finite numbers or allowlisted enum values. Bearers, socket paths, executable arguments, environment, configuration, raw stderr, and arbitrary process errors never enter records.
 
+Bundled-provider reconciliation emits one `provider.discovery_completed` event
+per registry entry before readiness. Its only provider fields are
+`provider_type` and status `available`, `unavailable`, or `incompatible`;
+provider metadata and schema content are never logged.
+
 Expected failures expose no arbitrary exception message or cause. An unexpected defect may include bounded stack frames after removing the exception message; sanitation must never serialize enumerable exception properties. Fatal post-bind failure emits exactly one `server.runtime_failed` record at `fatal` severity, so configured `warn`, `error`, and `fatal` thresholds cannot suppress the sole record.
 
 The only secret-output exception is exactly one direct stdout line, `NAMA_BOOTSTRAP_TOKEN=<token>\n`, after a setup-eligible listener binds. It bypasses Effect logging and JSON record construction through one checked synchronous write; a short or failed write is not retried because a partial output could be ambiguous. Startup then fails before `server.ready`.
@@ -266,15 +272,16 @@ Generated public services are registered through `connectNodeAdapter` behind the
 
 `SetupService.GetStatus` and `CreateAdministrator`, plus `AuthService.SignIn`, `GetCurrentUser`, and `SignOut`, are implemented. Sign-in returns only the signed bearer credential and administrator; there is no refresh-token protocol. Sign-out returns success only after the durable store no longer resolves the presented bearer. Deletion or confirmation ambiguity returns `UNAVAILABLE/SESSION_REVOCATION_UNCONFIRMED`, and the caller resolves it through `GetCurrentUser`. Application failures carry stable Nama details and the same request ID as the response header; they never expose database messages, Better Auth errors, credentials, configuration, or stacks. Writes are not retried automatically.
 
-## Target provider management runtime
+## Provider management runtime
 
-Provider installation reconciliation treats bundled executable selection as
-code-owned, never database-controlled. A compatible discovery atomically
-persists the last accepted provider type metadata and restricted schema.
-Schema regressions preserve that accepted record and make the type unavailable;
-they never weaken write-only classification or rewrite instances piecemeal.
+Implemented provider installation reconciliation treats bundled executable
+selection as code-owned, never database-controlled. Compatible discovery
+atomically persists the last accepted provider type metadata and restricted
+schema. Plugin failure reports `unavailable`; identity, contract, or schema
+incompatibility reports `incompatible`. Both preserve the accepted record,
+never weaken write-only classification, and never rewrite another installation.
 
-One transactional provider-instance snapshot contains enabled state, revision,
+The remaining provider-instance runtime will load one transactional snapshot containing enabled state, revision,
 non-secret configuration, and encrypted secret rows. Calls acquire supervised
 demand under instance ID plus revision. Configuration updates validate a
 one-shot candidate as the existing provider principal, then close old-revision
@@ -318,8 +325,8 @@ The server test gate must continue to exercise behavior, not only generated cont
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.
 
-The implemented coverage exercises generated-client and real-process setup/authentication flows plus the private plugin-supervision transport: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, descriptor-only handle acquisition, explicit discovery, candidate, and instance launch documents, malformed and oversized context rejection, empty environments, provider-context confinement, one-shot candidate cleanup, exact-revision sharing and fencing, shared first-demand plugin launch, plugin launch authentication and authority rotation, recovery, call cancellation and independent deadlines, on-demand and idle lifecycle policy, failed-retirement containment and finalization, process-group cleanup, correlation, safe public errors and logs, readiness, and fatal runtime exit.
+The implemented coverage exercises generated-client and real-process setup/authentication flows plus the private plugin-supervision transport: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, descriptor-only handle acquisition, explicit discovery, candidate, and instance launch documents, malformed and oversized context rejection, empty environments, provider-context confinement, one-shot candidate cleanup, exact-revision sharing and fencing, shared first-demand plugin launch, plugin launch authentication and authority rotation, recovery, call cancellation and independent deadlines, on-demand and idle lifecycle policy, failed-retirement containment and finalization, process-group cleanup, correlation, safe public errors and logs, readiness, and fatal runtime exit. Provider discovery coverage additionally starts the production Jellyfin executable, reconciles its accepted schema through production migrations, exercises authenticated pagination protection, and lists the result through the compiled CLI.
 
 ## Deferred work
 
-Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. Production provider descriptors and workflows, persistence and credentials, Jellyfin behavior, pairing, media, playback, and synchronization belong to their owning milestones.
+Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. Provider-instance management, Jellyfin connection and media behavior, pairing, playback, and synchronization belong to their owning milestones.

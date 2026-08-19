@@ -1,10 +1,10 @@
 # API contracts
 
-Status: Setup and Auth runtime semantics plus the private plugin-subprocess transport are implemented and verified.
+Status: Setup and Auth runtime semantics, the private plugin-subprocess transport, production Jellyfin discovery, and authenticated provider-type listing are implemented and verified.
 
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
-Only `SetupService` and `AuthService` behavior is implemented in the core. The core also implements private plugin process launch, bearer authentication, health/identity handshake, deadline and cancellation propagation, bounded recovery, and cleanup against generated `nama.plugin.v1` clients. The remaining public and plugin method workflows are durable contracts, not evidence that their handlers, provider adapters, persistence, or scheduling exist.
+The core implements Setup and Auth workflows plus `ProviderService.ListProviderTypes`. It also implements private plugin process launch, bearer authentication, health/identity handshake, deadline and cancellation propagation, bounded recovery, cleanup, code-owned bundled discovery, restricted-schema acceptance, and durable installation reconciliation against generated `nama.plugin.v1` clients. The remaining public and plugin method workflows are durable contracts, not evidence that their handlers, provider adapters, persistence flows, or scheduling exist.
 
 ## Scope
 
@@ -99,8 +99,9 @@ Tokens are opaque, short-lived, and bound to the principal, query, filters, sort
 Nama public page tokens use a versioned canonical JSON payload authenticated
 with HMAC-SHA-256 under the `nama/page-tokens/v1` master-key derivation. The
 payload binds the authenticated principal, fully qualified method, normalized
-query, page size, sort cursor, and a 15-minute expiry; unpadded base64url is the
-transport encoding. It contains no secret and is authenticated rather than
+query, page size, sort cursor, and a 15-minute expiry. Its canonical JSON bytes
+and fixed 32-byte authentication tag form one envelope encoded as one unpadded
+base64url token. It contains no secret and is authenticated rather than
 persisted or encrypted.
 
 Plugin catalog and watch-state scans use an explicit `begin` versus `continuation` oneof. A continuation contains only the opaque token so callers cannot accidentally change a scan midway.
@@ -338,7 +339,8 @@ ID. Neither cursor grants access or contains provider configuration.
 - numeric values must be finite; integers stay within the interoperable signed 53-bit JSON range;
 - supported string formats are `uri`, `hostname`, and `password`;
 - a secret is a string with `writeOnly: true`; `password` only selects a masked control and is not itself validation;
-- property names are stable lower_snake_case keys; and
+- property names are stable lower_snake_case keys;
+- the complete canonical UTF-8 JSON schema is at most 64 KiB; and
 - `$ref`, remote resources, executable code, conditional schemas, composition keywords, regex patterns, and unevaluated nested graphs are forbidden.
 
 Any keyword outside this profile is rejected rather than ignored.

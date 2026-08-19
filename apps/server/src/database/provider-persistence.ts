@@ -8,6 +8,11 @@ import {
   matchesPrincipal,
 } from "./provider-credentials-private.ts";
 import {
+  listInstallations,
+  loadInstallation,
+  loadInstallationConfigurations,
+} from "./provider-installations-private.ts";
+import {
   acceptInstallation,
   createInstance,
   deleteInstance,
@@ -19,10 +24,13 @@ import {
 } from "./provider-operation-results-private.ts";
 import { persistenceFailure } from "./provider-persistence-model-private.ts";
 import type {
+  ProviderInstallationInput,
+  ProviderInstallationListInput,
   ProviderInstanceInput,
   ProviderPersistence,
   ProviderPersistenceContext,
   ProviderPersistenceFailure,
+  StoredProviderInstallation,
 } from "./provider-persistence-model-private.ts";
 import { deriveProtectionKeys, destroyProtectionKeys } from "./provider-protection-private.ts";
 import type { databaseSchema } from "./schema.ts";
@@ -58,6 +66,10 @@ const makeProviderPersistence = (
         acceptInstallation: (input) => acceptInstallation(context, input),
         createInstance: (input) => createInstance(context, input),
         deleteInstance: (input) => deleteInstance(context, input),
+        listInstallations: (input) => listInstallations(context, input),
+        loadInstallation: (providerTypeId) => loadInstallation(context, providerTypeId),
+        loadInstallationConfigurations: (providerTypeId) =>
+          loadInstallationConfigurations(context, providerTypeId),
         loadInstance: (providerInstanceId) => loadInstance(context, providerInstanceId),
         matchesPrincipal: (providerInstanceId, principalReference) =>
           matchesPrincipal(context, providerInstanceId, principalReference),
@@ -74,4 +86,12 @@ const makeProviderPersistence = (
     },
   });
 
-export { type ProviderInstanceInput, type ProviderPersistence, makeProviderPersistence };
+export {
+  type ProviderInstallationInput,
+  type ProviderInstallationListInput,
+  type ProviderInstanceInput,
+  type ProviderPersistence,
+  type ProviderPersistenceFailure,
+  type StoredProviderInstallation,
+  makeProviderPersistence,
+};
