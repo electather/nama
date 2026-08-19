@@ -73,6 +73,11 @@ it.live("creates all production tables and one uninitialized server singleton", 
       expect(result.tables.map(({ table_name: tableName }) => tableName)).toEqual([
         "account",
         "nama_server_state",
+        "provider_credential",
+        "provider_installation",
+        "provider_instance",
+        "provider_instance_observation",
+        "provider_operation_result",
         "session",
         "user",
         "verification",
@@ -120,9 +125,9 @@ it.live("upgrades the prior zero-entry production journal exactly once", () =>
       expect(yield* migrationCount()).toBe("0");
 
       yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
-      expect(yield* migrationCount()).toBe("1");
+      expect(yield* migrationCount()).toBe("2");
       yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
-      expect(yield* migrationCount()).toBe("1");
+      expect(yield* migrationCount()).toBe("2");
     }),
   ),
 );

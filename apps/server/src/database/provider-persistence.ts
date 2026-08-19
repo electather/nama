@@ -1,0 +1,77 @@
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { Effect, Redacted } from "effect";
+
+import type { ConfigService } from "../config/schema.ts";
+import {
+  authenticateStoredCredentials,
+  loadInstance,
+  matchesPrincipal,
+} from "./provider-credentials-private.ts";
+import {
+  acceptInstallation,
+  createInstance,
+  deleteInstance,
+  recordObservation,
+} from "./provider-mutations-private.ts";
+import {
+  cleanupExpiredOperationResults,
+  readOperationResult,
+} from "./provider-operation-results-private.ts";
+import { persistenceFailure } from "./provider-persistence-model-private.ts";
+import type {
+  ProviderInstanceInput,
+  ProviderPersistence,
+  ProviderPersistenceContext,
+  ProviderPersistenceFailure,
+} from "./provider-persistence-model-private.ts";
+import { deriveProtectionKeys, destroyProtectionKeys } from "./provider-protection-private.ts";
+import type { databaseSchema } from "./schema.ts";
+
+const acquirePersistenceContext = async (
+  database: NodePgDatabase<typeof databaseSchema>,
+  masterKey: ConfigService["security"]["masterKey"],
+): Promise<ProviderPersistenceContext> => {
+  const keys = await deriveProtectionKeys(Redacted.value(masterKey));
+  try {
+    await cleanupExpiredOperationResults(database);
+    const unavailableInstances = await authenticateStoredCredentials(database, keys);
+    return Object.freeze({ database, keys, unavailableInstances });
+  } catch (error) {
+    destroyProtectionKeys(keys);
+    throw error;
+  }
+};
+
+const makeProviderPersistence = (
+  database: NodePgDatabase<typeof databaseSchema>,
+  masterKey: ConfigService["security"]["masterKey"],
+): Effect.Effect<
+  Readonly<{ readonly close: () => void; readonly service: ProviderPersistence }>,
+  ProviderPersistenceFailure
+> =>
+  Effect.tryPromise({
+    catch: persistenceFailure,
+    try: async () => {
+      const context = await acquirePersistenceContext(database, masterKey);
+      const { keys } = context;
+      const service: ProviderPersistence = {
+        acceptInstallation: (input) => acceptInstallation(context, input),
+        createInstance: (input) => createInstance(context, input),
+        deleteInstance: (input) => deleteInstance(context, input),
+        loadInstance: (providerInstanceId) => loadInstance(context, providerInstanceId),
+        matchesPrincipal: (providerInstanceId, principalReference) =>
+          matchesPrincipal(context, providerInstanceId, principalReference),
+        readOperationResult: (lookup) => readOperationResult(context, lookup),
+        recordObservation: (input) => recordObservation(context, input),
+      };
+      Object.freeze(service);
+      return Object.freeze({
+        close: () => {
+          destroyProtectionKeys(keys);
+        },
+        service,
+      });
+    },
+  });
+
+export { type ProviderInstanceInput, type ProviderPersistence, makeProviderPersistence };

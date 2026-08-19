@@ -75,29 +75,40 @@ const readMigratedState = (observer: Pool) =>
     };
   });
 
-const configForDatabase = (databaseUrl: string) =>
+const configForDatabase = (databaseUrl: string, masterKey = MASTER_KEY) =>
   Config.of({
     database: Object.freeze({ maxConnections: 3, url: Redacted.make(databaseUrl) }),
     logging: Object.freeze({ level: "info" as const }),
     security: Object.freeze({
-      masterKey: Redacted.make(MASTER_KEY),
+      masterKey: Redacted.make(masterKey),
     }),
     server: Object.freeze({ bind: "127.0.0.1:8080", publicUrl: "http://localhost:8080/" }),
   });
+
+interface DatabaseUseOptions<Result, Error, Requirements> {
+  readonly masterKey: string;
+  readonly use: (database: Database["Service"]) => Effect.Effect<Result, Error, Requirements>;
+}
+
+const useConfiguredDatabase = <Result, Error, Requirements>(
+  databaseUrl: string,
+  migrationsFolder: string,
+  options: DatabaseUseOptions<Result, Error, Requirements>,
+) => {
+  const config = configForDatabase(databaseUrl, options.masterKey);
+  const databaseLayer = Database.layer(migrationsFolder);
+  const program = Effect.gen(function* useDatabaseProgram() {
+    const database = yield* Database;
+    return yield* options.use(database);
+  }).pipe(Effect.provide(databaseLayer), Effect.provideService(Config, config));
+  return Effect.scoped(program);
+};
 
 const useDatabase = <Result, Error, Requirements>(
   databaseUrl: string,
   migrationsFolder: string,
   use: (database: Database["Service"]) => Effect.Effect<Result, Error, Requirements>,
-) => {
-  const config = configForDatabase(databaseUrl);
-  const databaseLayer = Database.layer(migrationsFolder);
-  const program = Effect.gen(function* useDatabaseProgram() {
-    const database = yield* Database;
-    return yield* use(database);
-  }).pipe(Effect.provide(databaseLayer), Effect.provideService(Config, config));
-  return Effect.scoped(program);
-};
+) => useConfiguredDatabase(databaseUrl, migrationsFolder, { masterKey: MASTER_KEY, use });
 
 const databaseFailure = (databaseUrl: string, migrationsFolder: string) => {
   const config = configForDatabase(databaseUrl);
@@ -121,6 +132,7 @@ const withPool = <Result, Error, Requirements>(
   );
 
 export {
+  type DatabaseUseOptions,
   type MigratedState,
   acquireMigrationLock,
   createZeroEntryMigrationJournal,
@@ -129,5 +141,6 @@ export {
   readMigratedState,
   releaseMigrationLock,
   useDatabase,
+  useConfiguredDatabase,
   withPool,
 };

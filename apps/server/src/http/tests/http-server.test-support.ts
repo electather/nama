@@ -1,3 +1,4 @@
+// oxlint-disable import/max-dependencies -- The complete Database test double includes the provider persistence seam.
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Effect, Exit, Layer, Logger, Option, Redacted, Scope } from "effect";
 
@@ -7,7 +8,8 @@ import { SetupCoordinator } from "../../authentication/setup-coordinator.ts";
 import type { SetupCoordinatorService } from "../../authentication/setup-coordinator.ts";
 import { Config } from "../../config/config.ts";
 import { Database } from "../../database/database.ts";
-import { account, namaServerState, session, user, verification } from "../../database/schema.ts";
+import { databaseSchema } from "../../database/schema.ts";
+import { unusedProviderPersistence } from "../../database/tests/provider-persistence.test-support.ts";
 import { RuntimeControl } from "../../lifecycle/runtime-control.ts";
 import { HttpServer } from "../http-server.ts";
 import { HOST, reservePort } from "./network.test-support.ts";
@@ -51,11 +53,9 @@ interface ServerLayerOptions {
   readonly setupCoordinator?: SetupCoordinatorService;
 }
 
-const testDatabaseSchema = { account, namaServerState, session, user, verification };
-
 const testAuthenticationDatabase: Database["Service"]["authentication"]["database"] = drizzle(
   "postgres://unused",
-  { schema: testDatabaseSchema },
+  { schema: databaseSchema },
 );
 
 const defaultAuthentication = Authentication.of({
@@ -102,6 +102,7 @@ const makeDatabase = (
     },
     checkReadiness,
     initialization,
+    providers: unusedProviderPersistence,
   });
 
 const makeHttpServerLayer = (emitStopping: (() => Effect.Effect<void>) | undefined) => {

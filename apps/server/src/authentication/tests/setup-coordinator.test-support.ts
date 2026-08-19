@@ -1,10 +1,12 @@
+// oxlint-disable import/max-dependencies -- The complete Database test double includes the provider persistence seam.
 import { expect } from "@effect/vitest";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Cause, Effect, Exit } from "effect";
 import { Pool } from "pg";
 
 import { Database } from "../../database/database.ts";
-import { account, namaServerState, session, user, verification } from "../../database/schema.ts";
+import { databaseSchema } from "../../database/schema.ts";
+import { unusedProviderPersistence } from "../../database/tests/provider-persistence.test-support.ts";
 import type { RuntimeControl } from "../../lifecycle/runtime-control.ts";
 import { makeBootstrapToken } from "../../setup/bootstrap-token.ts";
 import type { BootstrapTokenService } from "../../setup/bootstrap-token.ts";
@@ -77,8 +79,7 @@ interface CreationCallCounts {
   marker: number;
 }
 
-const authenticationSchema = { account, namaServerState, session, user, verification };
-const unusedAuthenticationDatabase = drizzle(new Pool(), { schema: authenticationSchema });
+const unusedAuthenticationDatabase = drizzle(new Pool(), { schema: databaseSchema });
 
 const defaultAdapter = Object.freeze({
   createAdministrator: () => Effect.die("unexpected createAdministrator call"),
@@ -119,6 +120,7 @@ const makeCoordinatorFixture = (
     authentication: { completeInitialization, database: unusedAuthenticationDatabase },
     checkReadiness: Effect.succeed(true),
     initialization,
+    providers: unusedProviderPersistence,
   });
   const coordinator = makeSetupCoordinator({
     betterAuthAdapter: options.adapter ?? defaultAdapter,
