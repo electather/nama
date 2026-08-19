@@ -57,7 +57,7 @@ message ProviderType {
     (buf.validate.field).cel = {
       id: "provider_type.configuration_schema.fields"
       message: "configuration_schema must contain at most 100 fields"
-      expression: "this.fields.size() <= 100"
+      expression: "this.size() <= 100"
     }
   ];
   uint32 schema_profile_version = 6 [(buf.validate.field).uint32.gt = 0];
@@ -98,7 +98,7 @@ message ProviderInstance {
     (buf.validate.field).cel = {
       id: "provider_instance.configuration.fields"
       message: "configuration must contain at most 100 fields"
-      expression: "this.fields.size() <= 100"
+      expression: "this.size() <= 100"
     }
   ];
   repeated ConfiguredSecret configured_secrets = 8 [(buf.validate.field).repeated.max_items = 100];
@@ -179,7 +179,7 @@ message TestProviderConfigurationRequest {
     (buf.validate.field).cel = {
       id: "test_provider_configuration_request.configuration.fields"
       message: "configuration must contain at most 100 fields"
-      expression: "this.fields.size() <= 100"
+      expression: "this.size() <= 100"
     }
   ];
 }
@@ -217,7 +217,7 @@ message CreateProviderInstanceRequest {
     (buf.validate.field).cel = {
       id: "create_provider_instance_request.configuration.fields"
       message: "configuration must contain at most 100 fields"
-      expression: "this.fields.size() <= 100"
+      expression: "this.size() <= 100"
     }
   ];
   bool enabled = 5;
@@ -252,7 +252,7 @@ message UpdateProviderInstanceRequest {
     (buf.validate.field).cel = {
       id: "update_provider_instance_request.configuration_patch.fields"
       message: "configuration_patch must contain at most 100 fields"
-      expression: "this.fields.size() <= 100"
+      expression: "this.size() <= 100"
     }
   ];
   repeated string clear_configuration_fields = 8 [(buf.validate.field).repeated = {

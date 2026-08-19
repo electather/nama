@@ -1400,16 +1400,16 @@ var File_nama_api_v1_provider_proto protoreflect.FileDescriptor
 
 const file_nama_api_v1_provider_proto_rawDesc = "" +
 	"\n" +
-	"\x1anama/api/v1/provider.proto\x12\vnama.api.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa7\x04\n" +
+	"\x1anama/api/v1/provider.proto\x12\vnama.api.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9e\x04\n" +
 	"\fProviderType\x12\x1a\n" +
 	"\x02id\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\x02id\x12-\n" +
 	"\fdisplay_name\x18\x02 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\vdisplayName\x12*\n" +
 	"\vdescription\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\x80\bR\vdescription\x12V\n" +
-	"\fcapabilities\x18\x04 \x03(\x0e2\x1f.nama.api.v1.ProviderCapabilityB\x11\xbaH\x0e\x92\x01\v\x10 \x18\x01\"\x05\x82\x01\x02 \x00R\fcapabilities\x12\xd3\x01\n" +
-	"\x14configuration_schema\x18\x05 \x01(\v2\x17.google.protobuf.StructB\x86\x01\xbaH\x82\x01\xba\x01|\n" +
-	")provider_type.configuration_schema.fields\x124configuration_schema must contain at most 100 fields\x1a\x19this.fields.size() <= 100\xc8\x01\x01R\x13configurationSchema\x12=\n" +
+	"\fcapabilities\x18\x04 \x03(\x0e2\x1f.nama.api.v1.ProviderCapabilityB\x11\xbaH\x0e\x92\x01\v\x10 \x18\x01\"\x05\x82\x01\x02 \x00R\fcapabilities\x12\xca\x01\n" +
+	"\x14configuration_schema\x18\x05 \x01(\v2\x17.google.protobuf.StructB~\xbaH{\xba\x01u\n" +
+	")provider_type.configuration_schema.fields\x124configuration_schema must contain at most 100 fields\x1a\x12this.size() <= 100\xc8\x01\x01R\x13configurationSchema\x12=\n" +
 	"\x16schema_profile_version\x18\x06 \x01(\rB\a\xbaH\x04*\x02 \x00R\x14schemaProfileVersion\x123\n" +
 	"\x0fschema_revision\x18\a \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\x0eschemaRevision\"P\n" +
@@ -1418,7 +1418,7 @@ const file_nama_api_v1_provider_proto_rawDesc = "" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\x03key\x12\x1e\n" +
 	"\n" +
 	"configured\x18\x02 \x01(\bR\n" +
-	"configured\"\xeb\x05\n" +
+	"configured\"\xe4\x05\n" +
 	"\x10ProviderInstance\x12\x1a\n" +
 	"\x02id\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\x02id\x124\n" +
@@ -1428,9 +1428,9 @@ const file_nama_api_v1_provider_proto_rawDesc = "" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\vdisplayName\x12\x18\n" +
 	"\aenabled\x18\x04 \x01(\bR\aenabled\x12,\n" +
 	"\rsync_priority\x18\x05 \x01(\rB\a\xbaH\x04*\x02 \x00R\fsyncPriority\x12E\n" +
-	"\x06status\x18\x06 \x01(\x0e2#.nama.api.v1.ProviderInstanceStatusB\b\xbaH\x05\x82\x01\x02 \x00R\x06status\x12\xba\x01\n" +
-	"\rconfiguration\x18\a \x01(\v2\x17.google.protobuf.StructB{\xbaHx\xba\x01r\n" +
-	"&provider_instance.configuration.fields\x12-configuration must contain at most 100 fields\x1a\x19this.fields.size() <= 100\xc8\x01\x01R\rconfiguration\x12V\n" +
+	"\x06status\x18\x06 \x01(\x0e2#.nama.api.v1.ProviderInstanceStatusB\b\xbaH\x05\x82\x01\x02 \x00R\x06status\x12\xb3\x01\n" +
+	"\rconfiguration\x18\a \x01(\v2\x17.google.protobuf.StructBt\xbaHq\xba\x01k\n" +
+	"&provider_instance.configuration.fields\x12-configuration must contain at most 100 fields\x1a\x12this.size() <= 100\xc8\x01\x01R\rconfiguration\x12V\n" +
 	"\x12configured_secrets\x18\b \x03(\v2\x1d.nama.api.v1.ConfiguredSecretB\b\xbaH\x05\x92\x01\x02\x10dR\x11configuredSecrets\x12&\n" +
 	"\brevision\x18\t \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\brevision\x12D\n" +
@@ -1468,33 +1468,33 @@ const file_nama_api_v1_provider_proto_rawDesc = "" +
 	"\x14provider_instance_id\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\x12providerInstanceId\"q\n" +
 	"\x1bGetProviderInstanceResponse\x12R\n" +
-	"\x11provider_instance\x18\x01 \x01(\v2\x1d.nama.api.v1.ProviderInstanceB\x06\xbaH\x03\xc8\x01\x01R\x10providerInstance\"\xaa\x02\n" +
+	"\x11provider_instance\x18\x01 \x01(\v2\x1d.nama.api.v1.ProviderInstanceB\x06\xbaH\x03\xc8\x01\x01R\x10providerInstance\"\xa2\x02\n" +
 	" TestProviderConfigurationRequest\x124\n" +
 	"\x10provider_type_id\x18\x01 \x01(\tB\n" +
-	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\x0eproviderTypeId\x12\xcf\x01\n" +
-	"\rconfiguration\x18\x02 \x01(\v2\x17.google.protobuf.StructB\x8f\x01\xbaH\x8b\x01\xba\x01\x84\x01\n" +
-	"8test_provider_configuration_request.configuration.fields\x12-configuration must contain at most 100 fields\x1a\x19this.fields.size() <= 100\xc8\x01\x01R\rconfiguration\"h\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\x0eproviderTypeId\x12\xc7\x01\n" +
+	"\rconfiguration\x18\x02 \x01(\v2\x17.google.protobuf.StructB\x87\x01\xbaH\x83\x01\xba\x01}\n" +
+	"8test_provider_configuration_request.configuration.fields\x12-configuration must contain at most 100 fields\x1a\x12this.size() <= 100\xc8\x01\x01R\rconfiguration\"h\n" +
 	"!TestProviderConfigurationResponse\x12C\n" +
 	"\x06result\x18\x01 \x01(\v2#.nama.api.v1.ProviderConnectionTestB\x06\xbaH\x03\xc8\x01\x01R\x06result\"[\n" +
 	"\x1bTestProviderInstanceRequest\x12<\n" +
 	"\x14provider_instance_id\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\x12providerInstanceId\"c\n" +
 	"\x1cTestProviderInstanceResponse\x12C\n" +
-	"\x06result\x18\x01 \x01(\v2#.nama.api.v1.ProviderConnectionTestB\x06\xbaH\x03\xc8\x01\x01R\x06result\"\xe1\x03\n" +
+	"\x06result\x18\x01 \x01(\v2#.nama.api.v1.ProviderConnectionTestB\x06\xbaH\x03\xc8\x01\x01R\x06result\"\xd9\x03\n" +
 	"\x1dCreateProviderInstanceRequest\x12-\n" +
 	"\foperation_id\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\voperationId\x124\n" +
 	"\x10provider_type_id\x18\x02 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\x0eproviderTypeId\x12-\n" +
 	"\fdisplay_name\x18\x03 \x01(\tB\n" +
-	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\vdisplayName\x12\xcc\x01\n" +
-	"\rconfiguration\x18\x04 \x01(\v2\x17.google.protobuf.StructB\x8c\x01\xbaH\x88\x01\xba\x01\x81\x01\n" +
-	"5create_provider_instance_request.configuration.fields\x12-configuration must contain at most 100 fields\x1a\x19this.fields.size() <= 100\xc8\x01\x01R\rconfiguration\x12\x18\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\vdisplayName\x12\xc4\x01\n" +
+	"\rconfiguration\x18\x04 \x01(\v2\x17.google.protobuf.StructB\x84\x01\xbaH\x80\x01\xba\x01z\n" +
+	"5create_provider_instance_request.configuration.fields\x12-configuration must contain at most 100 fields\x1a\x12this.size() <= 100\xc8\x01\x01R\rconfiguration\x12\x18\n" +
 	"\aenabled\x18\x05 \x01(\bR\aenabled\x121\n" +
 	"\rsync_priority\x18\x06 \x01(\rB\a\xbaH\x04*\x02 \x00H\x00R\fsyncPriority\x88\x01\x01B\x10\n" +
 	"\x0e_sync_priority\"t\n" +
 	"\x1eCreateProviderInstanceResponse\x12R\n" +
-	"\x11provider_instance\x18\x01 \x01(\v2\x1d.nama.api.v1.ProviderInstanceB\x06\xbaH\x03\xc8\x01\x01R\x10providerInstance\"\xd4\x05\n" +
+	"\x11provider_instance\x18\x01 \x01(\v2\x1d.nama.api.v1.ProviderInstanceB\x06\xbaH\x03\xc8\x01\x01R\x10providerInstance\"\xcd\x05\n" +
 	"\x1dUpdateProviderInstanceRequest\x12-\n" +
 	"\foperation_id\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02R\voperationId\x12<\n" +
@@ -1505,9 +1505,9 @@ const file_nama_api_v1_provider_proto_rawDesc = "" +
 	"\fdisplay_name\x18\x04 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\x80\x02H\x00R\vdisplayName\x88\x01\x01\x12\x1d\n" +
 	"\aenabled\x18\x05 \x01(\bH\x01R\aenabled\x88\x01\x01\x121\n" +
-	"\rsync_priority\x18\x06 \x01(\rB\a\xbaH\x04*\x02 \x00H\x02R\fsyncPriority\x88\x01\x01\x12\xe3\x01\n" +
-	"\x13configuration_patch\x18\a \x01(\v2\x17.google.protobuf.StructB\x98\x01\xbaH\x94\x01\xba\x01\x8d\x01\n" +
-	";update_provider_instance_request.configuration_patch.fields\x123configuration_patch must contain at most 100 fields\x1a\x19this.fields.size() <= 100\xc8\x01\x01R\x12configurationPatch\x12r\n" +
+	"\rsync_priority\x18\x06 \x01(\rB\a\xbaH\x04*\x02 \x00H\x02R\fsyncPriority\x88\x01\x01\x12\xdc\x01\n" +
+	"\x13configuration_patch\x18\a \x01(\v2\x17.google.protobuf.StructB\x91\x01\xbaH\x8d\x01\xba\x01\x86\x01\n" +
+	";update_provider_instance_request.configuration_patch.fields\x123configuration_patch must contain at most 100 fields\x1a\x12this.size() <= 100\xc8\x01\x01R\x12configurationPatch\x12r\n" +
 	"\x1aclear_configuration_fields\x18\b \x03(\tB4\xbaH1\x92\x01.\x10d\x18\x01\"(r&\x10\x01\x18\x80\x022\x1f^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$R\x18clearConfigurationFieldsB\x0f\n" +
 	"\r_display_nameB\n" +
 	"\n" +

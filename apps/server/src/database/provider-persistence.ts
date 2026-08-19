@@ -1,3 +1,4 @@
+// oxlint-disable import/max-dependencies -- This private composition boundary wires the cohesive provider persistence operations over one context.
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Effect, Redacted } from "effect";
 
@@ -12,6 +13,7 @@ import {
   loadInstallation,
   loadInstallationConfigurations,
 } from "./provider-installations-private.ts";
+import { listInstances, loadInstanceRecord } from "./provider-instance-reads-private.ts";
 import {
   acceptInstallation,
   createInstance,
@@ -27,6 +29,8 @@ import type {
   ProviderInstallationInput,
   ProviderInstallationListInput,
   ProviderInstanceInput,
+  ProviderInstanceListInput,
+  ProviderInstanceRecord,
   ProviderPersistence,
   ProviderPersistenceContext,
   ProviderPersistenceFailure,
@@ -67,10 +71,12 @@ const makeProviderPersistence = (
         createInstance: (input) => createInstance(context, input),
         deleteInstance: (input) => deleteInstance(context, input),
         listInstallations: (input) => listInstallations(context, input),
+        listInstances: (input) => listInstances(context, input),
         loadInstallation: (providerTypeId) => loadInstallation(context, providerTypeId),
         loadInstallationConfigurations: (providerTypeId) =>
           loadInstallationConfigurations(context, providerTypeId),
         loadInstance: (providerInstanceId) => loadInstance(context, providerInstanceId),
+        loadInstanceRecord: (providerInstanceId) => loadInstanceRecord(context, providerInstanceId),
         matchesPrincipal: (providerInstanceId, principalReference) =>
           matchesPrincipal(context, providerInstanceId, principalReference),
         readOperationResult: (lookup) => readOperationResult(context, lookup),
@@ -89,6 +95,8 @@ const makeProviderPersistence = (
 export {
   type ProviderInstallationInput,
   type ProviderInstallationListInput,
+  type ProviderInstanceListInput,
+  type ProviderInstanceRecord,
   type ProviderInstanceInput,
   type ProviderPersistence,
   type ProviderPersistenceFailure,

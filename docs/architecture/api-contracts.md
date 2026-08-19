@@ -1,10 +1,10 @@
 # API contracts
 
-Status: Setup and Auth runtime semantics, the private plugin-subprocess transport, production Jellyfin discovery, and authenticated provider-type listing are implemented and verified.
+Status: Setup and Auth runtime semantics, the private plugin-subprocess transport, production Jellyfin discovery/connection verification, authenticated provider-type listing, and provider-instance create/list/get are implemented and verified.
 
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
-The core implements Setup and Auth workflows plus `ProviderService.ListProviderTypes`. It also implements private plugin process launch, bearer authentication, health/identity handshake, deadline and cancellation propagation, bounded recovery, cleanup, code-owned bundled discovery, restricted-schema acceptance, and durable installation reconciliation against generated `nama.plugin.v1` clients. The remaining public and plugin method workflows are durable contracts, not evidence that their handlers, provider adapters, persistence flows, or scheduling exist.
+The core implements Setup and Auth workflows plus `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, and `GetProviderInstance`. It also implements private plugin process launch, bearer authentication, health/identity handshake, deadline and cancellation propagation, bounded recovery, cleanup, code-owned bundled discovery, restricted-schema acceptance, durable installation reconciliation, one-shot candidate verification, encrypted provider credentials, immutable principal digests, and durable create idempotency against generated `nama.plugin.v1` clients. The remaining public and plugin method workflows are durable contracts, not evidence that their handlers, provider adapters, persistence flows, or scheduling exist.
 
 ## Scope
 

@@ -53,7 +53,7 @@ message PluginInfo {
     (buf.validate.field).cel = {
       id: "plugin_info.configuration_schema.fields"
       message: "configuration_schema must contain at most 100 fields"
-      expression: "this.fields.size() <= 100"
+      expression: "this.size() <= 100"
     }
   ];
   uint32 schema_profile_version = 8 [(buf.validate.field).uint32.gt = 0];

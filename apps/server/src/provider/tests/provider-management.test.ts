@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary -- Provider-management fixtures keep reconciliation outcomes and token-boundary assertions explicit.
+// oxlint-disable eslint/init-declarations, eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary, eslint/sort-keys, unicorn/no-useless-undefined -- Provider-management fixtures keep reconciliation, secret splitting, candidate admission, and token-boundary assertions explicit.
 import { expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 
@@ -322,6 +322,123 @@ it.effect("binds provider list continuations to administrator, page size, and cu
         })
         .pipe(Effect.flip);
       expect(tampering).toMatchObject({ _tag: "PageTokenInvalid" });
+    }),
+  );
+});
+
+it.effect("splits write-only configuration and returns an idempotent safe instance", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  let persistedCredentials: Readonly<Record<string, string>> = {};
+  let serializedResult: Readonly<Record<string, unknown>> | undefined;
+  const providers = {
+    ...persistence.providers,
+    createInstance: (input: Parameters<ProviderPersistence["createInstance"]>[0]) =>
+      Effect.sync(() => {
+        persistedCredentials = input.credentials;
+        const instance = {
+          configuredSecretKeys: Object.keys(input.credentials),
+          configuration: input.configuration,
+          createdAt,
+          credentialsAvailable: true,
+          displayName: input.displayName,
+          enabled: input.enabled,
+          id: input.id,
+          observation: input.observation,
+          providerTypeId: input.providerTypeId,
+          revision: input.revision,
+          syncPriority: input.syncPriority ?? 1,
+          updatedAt: createdAt,
+        };
+        serializedResult = input.operation.serializeResult?.(instance);
+        return instance;
+      }),
+    readOperationResult: () => Effect.succeed(undefined),
+  } satisfies ProviderPersistence;
+  return Effect.scoped(
+    Effect.gen(function* createProviderInstanceTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+        verifyCandidate: () =>
+          Effect.succeed({ principalReference: "jellyfin-provider-principal" }),
+      });
+      const created = yield* service.createProviderInstance({
+        administratorId: "administrator-a",
+        configuration: {
+          api_key: "credential-sentinel",
+          base_url: "http://127.0.0.1:8096",
+          user_id: "provider-user",
+        },
+        displayName: "Home",
+        enabled: true,
+        operationId: "create-operation",
+        providerTypeId: "jellyfin",
+      });
+
+      expect(created.configuration).toEqual({
+        base_url: "http://127.0.0.1:8096",
+        user_id: "provider-user",
+      });
+      expect(persistedCredentials).toEqual({ api_key: "credential-sentinel" });
+      expect(serializedResult).not.toContain("credential-sentinel");
+      expect(created.configuredSecretKeys).toEqual(["api_key"]);
+    }),
+  );
+});
+
+it.effect("rejects Jellyfin UTF-8 bounds before launching a candidate", () => {
+  const persistence = makePersistence();
+  const providers = {
+    ...persistence.providers,
+    readOperationResult: () => Effect.succeed(undefined),
+  } satisfies ProviderPersistence;
+  let candidateCalls = 0;
+  return Effect.scoped(
+    Effect.gen(function* providerConfigurationBoundsTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+        verifyCandidate: () =>
+          Effect.sync(() => {
+            candidateCalls += 1;
+            return { principalReference: "unexpected" };
+          }),
+      });
+      const invalidConfigurations = [
+        {
+          api_key: "credential",
+          base_url: "é".repeat(1025),
+          user_id: "provider-user",
+        },
+        {
+          api_key: "credential",
+          base_url: "http://127.0.0.1:8096",
+          user_id: "u".repeat(129),
+        },
+        {
+          api_key: "é".repeat(2049),
+          base_url: "http://127.0.0.1:8096",
+          user_id: "provider-user",
+        },
+      ];
+      for (const [index, configuration] of invalidConfigurations.entries()) {
+        const failure = yield* service
+          .createProviderInstance({
+            administratorId: "administrator-a",
+            configuration,
+            displayName: "Home",
+            enabled: true,
+            operationId: `invalid-${String(index)}`,
+            providerTypeId: "jellyfin",
+          })
+          .pipe(Effect.flip);
+        expect(failure).toMatchObject({ _tag: "ProviderValidationFailed" });
+      }
+
+      expect(candidateCalls).toBe(0);
     }),
   );
 });

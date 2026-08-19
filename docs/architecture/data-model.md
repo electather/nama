@@ -17,7 +17,7 @@ Nama-owned watch state, not canonical state themselves
 
 ## Provider management persistence
 
-The issue #29 target adds five core-owned record families:
+The implemented provider persistence boundary has five core-owned record families:
 
 - provider installations retain the accepted provider-type identity, build and
   contract versions, capabilities, restricted configuration schema, profile

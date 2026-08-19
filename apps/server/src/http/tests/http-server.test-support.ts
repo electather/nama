@@ -51,6 +51,7 @@ interface ServerLayerOptions {
   readonly messages?: string[];
   readonly records?: unknown[];
   readonly runtimeControl?: RuntimeControl["Service"];
+  readonly providerManagement?: ProviderManagement["Service"];
   readonly setupCoordinator?: SetupCoordinatorService;
 }
 
@@ -80,6 +81,9 @@ const defaultSetupCoordinator = SetupCoordinator.of({
 });
 
 const defaultProviderManagement = ProviderManagement.of({
+  createProviderInstance: () => Effect.die("unexpected provider instance creation"),
+  getProviderInstance: () => Effect.die("unexpected provider instance read"),
+  listProviderInstances: () => Effect.die("unexpected provider instance list"),
   listProviderTypes: () => Effect.succeed({ nextPageToken: "", providerTypes: [] }),
 });
 
@@ -139,7 +143,7 @@ const serverLayerWithDatabase = (
     databaseLayer,
     Logger.layer([capture]),
     Layer.succeed(RuntimeControl, options.runtimeControl ?? defaultRuntimeControl),
-    Layer.succeed(ProviderManagement, defaultProviderManagement),
+    Layer.succeed(ProviderManagement, options.providerManagement ?? defaultProviderManagement),
     Layer.succeed(SetupCoordinator, options.setupCoordinator ?? defaultSetupCoordinator),
   );
   return makeHttpServerLayer(options.emitStopping).pipe(Layer.provide(dependencies));

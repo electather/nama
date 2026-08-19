@@ -30,29 +30,31 @@ The supervisor keys current instance admission by opaque instance ID and exact r
 
 Every registered RPC requires the per-launch bearer and carries an explicit deadline and cancellation. The core validates untrusted plugin responses before storing or exposing mapped data. Future credential loading will wipe mutable decrypted byte buffers after launch-document delivery; immutable JavaScript strings are not claimed to be zeroizable, and provider plaintext remains confined to the isolated child until exit or garbage collection.
 
-## Jellyfin discovery and target connection profile
+## Jellyfin discovery and connection profile
 
-The production Jellyfin executable currently implements authenticated health
-and `GetInfo` for context-free discovery. It declares provider type `jellyfin`,
-contract major `1`, no media capabilities, and a restricted schema requiring
-`base_url`, `user_id`, and write-only `api_key`. Startup validates and persists
-that information before the public provider-type list becomes available.
+The production Jellyfin executable implements authenticated health, `GetInfo`
+for context-free discovery, and `GetConnection` for candidate and instance
+launches. It declares provider type `jellyfin`, contract major `1`, no media
+capabilities, and a restricted schema requiring `base_url`, `user_id`, and
+write-only `api_key`. Startup validates and persists that information before
+the public provider-type list becomes available.
 
-Issue #77 extends the executable with `GetConnection`. That operation will read
-unauthenticated public system information, then read the configured user with
-Jellyfin's credentialed authorization header. A connected result requires a
-non-empty server identity, the returned configured user on that same server,
-and a non-disabled user. The plugin will combine canonical Jellyfin server and
-user identities into one versioned opaque provider-principal reference; the
-core will convert it immediately to the non-recoverable binding digest required
-by [ADR-0021](../adr/0021-immutable-provider-principal-binding.md) and
+`GetConnection` first reads unauthenticated public system information, then
+reads the explicitly configured user with Jellyfin's credentialed
+authorization header. A connected result requires a non-empty server identity,
+the returned configured user on that same server, and a non-disabled user. The
+plugin hashes the canonical server/user pair into one versioned opaque
+provider-principal reference; the core immediately converts that reference to
+the non-recoverable binding digest required by
+[ADR-0021](../adr/0021-immutable-provider-principal-binding.md) and
 [ADR-0028](../adr/0028-domain-separated-provider-protection.md).
 
-Jellyfin base URLs may use HTTP or HTTPS, private and link-local destinations,
-and one path prefix. They may not contain credentials, a query, or a fragment.
-The target connection operation uses native Node fetch with RPC cancellation
-and refuses redirects so an API key never crosses the configured origin or
-path. Raw provider response bodies and credential-bearing request details never
-enter responses or logs.
+Jellyfin base URLs accept HTTP or HTTPS private, link-local, loopback, local,
+or single-label destinations with at most one path prefix. They reject
+credentials, query strings, fragments, public destinations, and additional
+path segments. Native Node fetch receives RPC cancellation and uses manual
+redirect handling, so the API key never crosses the configured origin or path.
+Responses are size-bounded and raw provider response bodies or
+credential-bearing request details never enter responses or logs.
 
-Windows transport and persistent or background native-media plugins remain deferred until a real plugin requires them. Provider-instance connection behavior belongs to issue #77; production library, playback, and watch-state behavior belongs to issue #30; explicit connection-test commands belong to issue #31; and container packaging belongs to issue #32.
+Windows transport and persistent or background native-media plugins remain deferred until a real plugin requires them. Production library, playback, and watch-state behavior belongs to issue #30; explicit connection-test commands belong to issue #31; and container packaging belongs to issue #32.

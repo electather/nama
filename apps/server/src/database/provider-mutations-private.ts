@@ -1,3 +1,4 @@
+// oxlint-disable eslint/max-lines, eslint/max-lines-per-function, eslint/max-statements, eslint/prefer-destructuring -- Provider writes keep transaction ordering, protected-material lifetime, and rollback boundaries explicit.
 import { and, eq, max, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
@@ -6,14 +7,21 @@ import {
   installationConfigurationSchema,
 } from "./provider-credentials-private.ts";
 import { cleanupExpiredOperationResults } from "./provider-operation-results-private.ts";
-import { persistenceFailure } from "./provider-persistence-model-private.ts";
+import {
+  ProviderInstanceLimitReached,
+  ProviderSyncPriorityConflict,
+  persistenceFailure,
+} from "./provider-persistence-model-private.ts";
 import type {
   ProviderDatabase,
   ProviderInstanceDeletionInput,
   ProviderInstanceInput,
+  ProviderInstanceRecord,
+  ProviderInstanceLimitFailure,
   ProviderInstallationInput,
   ProviderObservationInput,
   ProviderPersistenceContext,
+  ProviderSyncPriorityConflictFailure,
   ProviderPersistenceFailure,
 } from "./provider-persistence-model-private.ts";
 import {
@@ -34,6 +42,7 @@ const FIRST_INDEX = 0;
 const NO_ROWS = 0;
 const PRIORITY_INCREMENT = 1;
 const SINGLE_ROW_LIMIT = 1;
+const MAXIMUM_FAILURE_CAUSE_DEPTH = 4;
 const ZERO = 0;
 
 interface ProtectedCredentialRow extends CredentialEnvelope {
@@ -46,6 +55,55 @@ interface ProtectedInstanceMaterial {
   readonly principalDigest: Buffer;
   readonly requestFingerprint: Buffer;
 }
+// fallow-ignore-next-line code-duplication -- The database boundary unwraps only own data properties without importing HTTP failure machinery.
+const dataPropertyValue = (value: object, property: PropertyKey): unknown => {
+  const descriptor = Object.getOwnPropertyDescriptor(value, property);
+  if (descriptor === undefined || !Object.hasOwn(descriptor, "value")) {
+    return undefined;
+  }
+  return descriptor.value;
+};
+
+const persistedInstanceSelection = Object.freeze({
+  configuration: providerInstance.configuration,
+  createdAt: providerInstance.createdAt,
+  displayName: providerInstance.displayName,
+  enabled: providerInstance.enabled,
+  id: providerInstance.id,
+  providerTypeId: providerInstance.providerTypeId,
+  revision: providerInstance.revision,
+  syncPriority: providerInstance.syncPriority,
+  updatedAt: providerInstance.updatedAt,
+});
+
+const createInstanceFailure = (
+  error: unknown,
+):
+  | ProviderInstanceLimitFailure
+  | ProviderPersistenceFailure
+  | ProviderSyncPriorityConflictFailure => {
+  let current = error;
+  for (let depth = ZERO; depth < MAXIMUM_FAILURE_CAUSE_DEPTH; depth += PRIORITY_INCREMENT) {
+    if (typeof current !== "object" || current === null) {
+      break;
+    }
+    const code = dataPropertyValue(current, "code");
+    const constraint = dataPropertyValue(current, "constraint");
+    const message = dataPropertyValue(current, "message");
+    if (code === "23514" && message === "provider instance limit exceeded") {
+      return new ProviderInstanceLimitReached({});
+    }
+    if (code === "23505" && constraint === "provider_instance_enabled_sync_priority_unique") {
+      return new ProviderSyncPriorityConflict({});
+    }
+    const cause = dataPropertyValue(current, "cause");
+    if (cause === current) {
+      break;
+    }
+    current = cause;
+  }
+  return persistenceFailure();
+};
 
 const acceptInstallation = (
   context: ProviderPersistenceContext,
@@ -110,12 +168,12 @@ const destroyInstanceMaterial = (material: ProtectedInstanceMaterial): void => {
   }
 };
 
-const persistNewInstance = async (
+const persistNewInstance = (
   database: ProviderDatabase,
   input: ProviderInstanceInput,
   material: ProtectedInstanceMaterial,
-): Promise<void> => {
-  await database.transaction(async (transaction) => {
+): Promise<ProviderInstanceRecord> =>
+  database.transaction(async (transaction) => {
     await transaction.execute(
       sql`select "key" from nama_server_state where "key" = 'server' for update`,
     );
@@ -124,16 +182,23 @@ const persistNewInstance = async (
       .from(providerInstance);
     const maximumPriority = priorities.at(FIRST_INDEX)?.maximum ?? NO_ROWS;
     const syncPriority = input.syncPriority ?? maximumPriority + PRIORITY_INCREMENT;
-    await transaction.insert(providerInstance).values({
-      configuration: input.configuration,
-      displayName: input.displayName,
-      enabled: input.enabled,
-      id: input.id,
-      principalDigest: material.principalDigest,
-      providerTypeId: input.providerTypeId,
-      revision: input.revision,
-      syncPriority,
-    });
+    const rows = await transaction
+      .insert(providerInstance)
+      .values({
+        configuration: input.configuration,
+        displayName: input.displayName,
+        enabled: input.enabled,
+        id: input.id,
+        principalDigest: material.principalDigest,
+        providerTypeId: input.providerTypeId,
+        revision: input.revision,
+        syncPriority,
+      })
+      .returning(persistedInstanceSelection);
+    const stored = rows.at(FIRST_INDEX);
+    if (stored === undefined) {
+      throw new Error("provider instance insert returned no row");
+    }
     if (material.credentials.length > NO_ROWS) {
       await transaction.insert(providerCredential).values(material.credentials);
     }
@@ -143,15 +208,34 @@ const persistNewInstance = async (
       status: input.observation.status,
       summary: input.observation.summary,
     });
+    const result: ProviderInstanceRecord = {
+      configuration: stored.configuration,
+      configuredSecretKeys: Object.keys(input.credentials).toSorted(),
+      createdAt: stored.createdAt,
+      credentialsAvailable: true,
+      displayName: stored.displayName,
+      enabled: stored.enabled,
+      id: stored.id,
+      observation: input.observation,
+      providerTypeId: stored.providerTypeId,
+      revision: stored.revision,
+      syncPriority: stored.syncPriority,
+      updatedAt: stored.updatedAt,
+    };
+    const serializedResult =
+      input.operation.serializeResult?.(result) ?? input.operation.serializedResult;
+    if (serializedResult === undefined) {
+      throw new Error("provider operation result is missing");
+    }
     await transaction.insert(providerOperationResult).values({
       administratorUserId: input.operation.administratorUserId,
       method: input.operation.method,
       operationId: input.operation.operationId,
       requestFingerprint: material.requestFingerprint,
-      serializedResult: input.operation.serializedResult,
+      serializedResult,
     });
+    return result;
   });
-};
 
 const assertNonsecretConfiguration = (input: ProviderInstanceInput): void => {
   const secretInConfiguration = Object.keys(input.credentials).some((configurationKey) =>
@@ -165,9 +249,12 @@ const assertNonsecretConfiguration = (input: ProviderInstanceInput): void => {
 const createInstance = (
   context: ProviderPersistenceContext,
   input: ProviderInstanceInput,
-): Effect.Effect<void, ProviderPersistenceFailure> =>
+): Effect.Effect<
+  ProviderInstanceRecord,
+  ProviderInstanceLimitFailure | ProviderPersistenceFailure | ProviderSyncPriorityConflictFailure
+> =>
   Effect.tryPromise({
-    catch: persistenceFailure,
+    catch: createInstanceFailure,
     try: async () => {
       await cleanupExpiredOperationResults(context.database);
       assertNonsecretConfiguration(input);
@@ -178,8 +265,9 @@ const createInstance = (
       assertCredentialCompleteness(configurationSchema, Object.keys(input.credentials));
       const material = protectInstanceMaterial(context.keys, input);
       try {
-        await persistNewInstance(context.database, input, material);
+        const result = await persistNewInstance(context.database, input, material);
         context.unavailableInstances.delete(input.id);
+        return result;
       } finally {
         destroyInstanceMaterial(material);
       }
@@ -239,6 +327,10 @@ const deleteInstance = (
       await cleanupExpiredOperationResults(context.database);
       const requestFingerprint = fingerprintOperation(context.keys.operation, input.operation);
       try {
+        const serializedResult = input.operation.serializedResult;
+        if (serializedResult === undefined) {
+          throw new Error("provider delete operation result is missing");
+        }
         const deleted = await context.database.transaction(async (transaction) => {
           const rows = await transaction
             .delete(providerInstance)
@@ -250,7 +342,7 @@ const deleteInstance = (
               method: input.operation.method,
               operationId: input.operation.operationId,
               requestFingerprint,
-              serializedResult: input.operation.serializedResult,
+              serializedResult,
             });
           }
           return rows.length > NO_ROWS;

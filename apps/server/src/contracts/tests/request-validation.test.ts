@@ -1,13 +1,15 @@
 import { create } from "@bufbuild/protobuf";
 import { parsePath } from "@bufbuild/protobuf/reflect";
-import type { Validator } from "@bufbuild/protovalidate";
 import {
   CompilationError,
   RuntimeError,
   ValidationError,
   Violation,
+  createValidator,
 } from "@bufbuild/protovalidate";
+import type { Validator } from "@bufbuild/protovalidate";
 import { SignInRequestSchema } from "@nama/api/nama/api/v1/auth_pb.js";
+import { CreateProviderInstanceRequestSchema } from "@nama/api/nama/api/v1/provider_pb.js";
 import { CreateAdministratorRequestSchema } from "@nama/api/nama/api/v1/setup_pb.js";
 import { expect, test } from "vitest";
 
@@ -53,6 +55,30 @@ const invalidPasswordLengths = [
   PASSWORD_LENGTH_ABOVE_MAXIMUM,
 ] as const;
 const validPasswordLengths = [PASSWORD_MINIMUM_LENGTH, PASSWORD_MAXIMUM_LENGTH] as const;
+
+test("accepts a provider create request with a complete Struct configuration", () => {
+  const requestValidator = createRequestValidator();
+  const request = create(CreateProviderInstanceRequestSchema, {
+    configuration: {
+      api_key: "credential",
+      base_url: "http://127.0.0.1:8096",
+      user_id: "provider-user",
+    },
+    displayName: "Home",
+    enabled: true,
+    operationId: "operation-1",
+    providerTypeId: "jellyfin",
+  });
+  const raw = createValidator().validate(CreateProviderInstanceRequestSchema, request);
+  if (raw.kind === "error") {
+    throw raw.error;
+  }
+  expect(raw.kind).toBe("valid");
+
+  expect(requestValidator.validate(CreateProviderInstanceRequestSchema, request)).toEqual({
+    kind: "valid",
+  });
+});
 
 test.each(passwordRequests)(
   "$title maps passwords outside the 8-128 character range to a safe OUT_OF_RANGE error",
