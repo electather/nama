@@ -1,7 +1,14 @@
 import { sql } from "drizzle-orm";
 import { check, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
-import { user } from "./auth-schema.ts";
+import { account, session, user, verification } from "./auth-schema.ts";
+import {
+  providerCredential,
+  providerInstallation,
+  providerInstance,
+  providerInstanceObservation,
+  providerOperationResult,
+} from "./provider-schema.ts";
 
 const namaServerState = pgTable(
   "nama_server_state",
@@ -21,5 +28,16 @@ const namaServerState = pgTable(
   ],
 );
 
+const authenticationDatabaseSchema = { account, namaServerState, session, user, verification };
+const databaseSchema = {
+  ...authenticationDatabaseSchema,
+  providerCredential,
+  providerInstallation,
+  providerInstance,
+  providerInstanceObservation,
+  providerOperationResult,
+};
+
 export * from "./auth-schema.ts";
-export { namaServerState };
+export * from "./provider-schema.ts";
+export { databaseSchema, namaServerState };

@@ -8,12 +8,13 @@ import { Pool } from "pg";
 import { Config } from "../config/config.ts";
 import { reconcileDatabaseInitialization } from "./initialization.ts";
 import type { DatabaseInitialization } from "./initialization.ts";
-import { account, namaServerState, session, user, verification } from "./schema.ts";
+import { makeProviderPersistence } from "./provider-persistence.ts";
+import type { ProviderPersistence } from "./provider-persistence.ts";
+import { databaseSchema, namaServerState } from "./schema.ts";
 
 const EXPECTED_SINGLE_UPDATED_MARKER_COUNT = 1;
 const PROBE_TIMEOUT_MILLISECONDS = 2000;
 const SERVER_KEY = "server";
-const databaseSchema = { account, namaServerState, session, user, verification };
 
 const taggedError = Data.TaggedError;
 const contextService = Context.Service;
@@ -36,6 +37,7 @@ interface DatabaseService {
   readonly authentication: DatabaseAuthentication;
   readonly initialization: DatabaseInitialization;
   readonly checkReadiness: Effect.Effect<boolean>;
+  readonly providers: ProviderPersistence;
 }
 const ignoreIdlePoolError = (): void => {
   // The bounded readiness probe reports idle connection loss without retaining PostgreSQL details.
@@ -119,6 +121,10 @@ const makeDatabase = (migrationsFolder: string) =>
       try: () => migrate(database, { migrationsFolder }),
     });
     const initialization = yield* reconcileDatabaseInitialization(database);
+    const providerPersistence = yield* Effect.acquireRelease(
+      makeProviderPersistence(database, config.security.masterKey),
+      (owner) => Effect.sync(owner.close),
+    );
     yield* runInitialProbe(pool);
 
     return Database.of({
@@ -129,6 +135,7 @@ const makeDatabase = (migrationsFolder: string) =>
       },
       checkReadiness: makeReadinessProbe(pool),
       initialization,
+      providers: providerPersistence.service,
     });
   });
 
