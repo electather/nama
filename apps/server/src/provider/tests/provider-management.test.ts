@@ -6,6 +6,7 @@ import type {
   ProviderInstallationInput,
   ProviderPersistence,
 } from "../../database/provider-persistence.ts";
+import type { JsonObject } from "../../database/provider-schema.ts";
 import { unusedProviderPersistence } from "../../database/tests/provider-persistence.test-support.ts";
 import { PluginUnavailable } from "../../plugin/errors.ts";
 import { makeProviderManagement } from "../provider-management.ts";
@@ -783,7 +784,7 @@ it.effect("retires runtime admission before committing a disable-only update", (
   );
 });
 
-it.effect("keeps an ambiguous instance update unavailable until durable recovery", () => {
+it.effect("keeps an ambiguous instance unavailable until durable replay", () => {
   const persistence = makePersistence();
   const createdAt = new Date("2026-08-19T12:00:00.000Z");
   const current = {
@@ -805,7 +806,8 @@ it.effect("keeps an ambiguous instance update unavailable until durable recovery
   };
   const taggedError = Data.TaggedError;
   const PersistenceUnavailable = taggedError("ProviderPersistenceError")<Record<string, never>>;
-  let commitFailed = false;
+  let durableCurrent = current;
+  const durableResult: { value?: JsonObject } = {};
   let databaseAvailable = true;
   let updateCalls = 0;
   const fenceRetireFlags: boolean[] = [];
@@ -813,22 +815,33 @@ it.effect("keeps an ambiguous instance update unavailable until durable recovery
   const providers = {
     ...persistence.providers,
     loadInstanceRecord: () =>
-      databaseAvailable ? Effect.succeed(current) : Effect.fail(new PersistenceUnavailable({})),
-    readOperationResult: (lookup) =>
-      databaseAvailable ? noOperationResult(lookup) : Effect.fail(new PersistenceUnavailable({})),
-    updateInstance: (input: Parameters<ProviderPersistence["updateInstance"]>[0]) => {
-      updateCalls += 1;
-      if (!commitFailed) {
-        commitFailed = true;
-        databaseAvailable = false;
+      databaseAvailable
+        ? Effect.succeed(durableCurrent)
+        : Effect.fail(new PersistenceUnavailable({})),
+    readOperationResult: (lookup: Parameters<ProviderPersistence["readOperationResult"]>[0]) => {
+      if (!databaseAvailable) {
         return Effect.fail(new PersistenceUnavailable({}));
       }
-      return Effect.succeed({
+      return durableResult.value === undefined
+        ? noOperationResult(lookup)
+        : Effect.succeed(durableResult.value);
+    },
+    updateInstance: (input: Parameters<ProviderPersistence["updateInstance"]>[0]) => {
+      updateCalls += 1;
+      const committed = {
         ...current,
         displayName: input.displayName,
         revision: input.revision,
         updatedAt: new Date("2026-08-19T12:01:00.000Z"),
-      });
+      };
+      const serialized = input.operation.serializeResult?.(committed);
+      if (serialized === undefined) {
+        return Effect.die("provider update result was not serialized");
+      }
+      durableCurrent = committed;
+      durableResult.value = serialized;
+      databaseAvailable = false;
+      return Effect.fail(new PersistenceUnavailable({}));
     },
   } satisfies ProviderPersistence;
 
@@ -860,12 +873,11 @@ it.effect("keeps an ambiguous instance update unavailable until durable recovery
       } as const;
       const failure = yield* service.updateProviderInstance(request).pipe(Effect.flip);
       expect(failure).toMatchObject({ _tag: "ProviderCommitAmbiguous" });
-      expect(current).toMatchObject({ displayName: "Home", revision: "revision-1" });
 
       databaseAvailable = true;
       const recovered = yield* service.updateProviderInstance(request);
       expect(recovered).toMatchObject({ displayName: "Family" });
-      expect(updateCalls).toBe(2);
+      expect(updateCalls).toBe(1);
       expect(fenceRetireFlags).toEqual([false, false]);
       expect(openedRevisions).toEqual([recovered.revision]);
     }),
@@ -1158,6 +1170,71 @@ it.effect("distinguishes an omitted display name from the literal absent", () =>
         .pipe(Effect.flip);
 
       expect(failure).toMatchObject({ _tag: "IdempotencyKeyReused" });
+    }),
+  );
+});
+
+it.effect("reopens the old admission revision after a definite update conflict", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  const current = {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: true,
+    id: "provider-instance",
+    observation: { status: "healthy" as const, summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+  const taggedError = Data.TaggedError;
+  const SyncPriorityConflict = taggedError("ProviderSyncPriorityConflict")<Record<string, never>>;
+  const openedRevisions: string[] = [];
+  const providers = {
+    ...persistence.providers,
+    loadInstanceRecord: () => Effect.succeed(current),
+    readOperationResult: noOperationResult,
+    updateInstance: () => Effect.fail(new SyncPriorityConflict({})),
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* definiteConflictRecoveryTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: () =>
+          Effect.succeed({
+            open: (revision: string) =>
+              Effect.sync(() => {
+                openedRevisions.push(revision);
+              }),
+          }),
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+      const failure = yield* service
+        .updateProviderInstance({
+          administratorId: "administrator-a",
+          clearConfigurationFields: [],
+          configurationPatch: {},
+          expectedRevision: "revision-1",
+          operationId: "priority-conflict",
+          providerInstanceId: "provider-instance",
+          syncPriority: 2,
+        })
+        .pipe(Effect.flip);
+
+      expect(failure).toMatchObject({
+        _tag: "ProviderValidationFailed",
+        violations: [{ field: "sync_priority", reason: "CONFLICT" }],
+      });
+      expect(openedRevisions).toEqual(["revision-1"]);
     }),
   );
 });

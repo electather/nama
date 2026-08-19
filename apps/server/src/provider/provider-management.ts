@@ -1261,6 +1261,38 @@ const persistProviderUpdate = (
     ),
   );
 
+const reopenDurableInstanceAdmission = (
+  persistence: ProviderPersistence,
+  providerInstanceId: string,
+  admissionFence: InstanceAdmissionFence,
+): Effect.Effect<void> =>
+  persistence.loadInstanceRecord(providerInstanceId).pipe(
+    Effect.flatMap((current) =>
+      current?.enabled === true ? admissionFence.open(current.revision) : Effect.void,
+    ),
+    Effect.catchTag("ProviderPersistenceError", () => Effect.void),
+  );
+
+const recoverReplayAdmission = (
+  ambiguousInstances: Set<string>,
+  fenceInstance: InstanceCutoverFence,
+  input: UpdateProviderInstanceInput,
+  result: ProviderInstanceRecord,
+): Effect.Effect<void, ProviderPluginUnavailableFailure, Scope.Scope> => {
+  if (!ambiguousInstances.has(input.providerInstanceId)) {
+    return Effect.void;
+  }
+  return Effect.gen(function* reopenReplayRevision() {
+    const admissionFence = yield* fenceInstance(input.providerInstanceId, false).pipe(
+      Effect.mapError(() => new ProviderPluginUnavailable({})),
+    );
+    if (result.enabled) {
+      yield* admissionFence.open(result.revision);
+    }
+    ambiguousInstances.delete(input.providerInstanceId);
+  });
+};
+
 const commitProviderUpdate = (
   commit: ProviderUpdateCommitInput,
 ): Effect.Effect<ProviderInstanceRecord, ProviderMutationFailure, Scope.Scope> =>
@@ -1282,7 +1314,7 @@ const commitProviderUpdate = (
       UPDATE_PROVIDER_INSTANCE_METHOD,
     );
     if (committedReplay !== undefined) {
-      ambiguousInstances.delete(input.providerInstanceId);
+      yield* recoverReplayAdmission(ambiguousInstances, fenceInstance, input, committedReplay);
       return committedReplay;
     }
     const lockedCurrent = yield* expectedProviderInstance(persistence, input);
@@ -1294,7 +1326,11 @@ const commitProviderUpdate = (
     const admissionFence = yield* fenceInstance(input.providerInstanceId, requiresCutover).pipe(
       Effect.mapError(() => new ProviderPluginUnavailable({})),
     );
-    const result = yield* persistProviderUpdate(commit, lockedCurrent, admissionFence);
+    const result = yield* persistProviderUpdate(commit, lockedCurrent, admissionFence).pipe(
+      Effect.tapError(() =>
+        reopenDurableInstanceAdmission(persistence, input.providerInstanceId, admissionFence),
+      ),
+    );
     if (result.enabled) {
       yield* admissionFence.open(result.revision);
     }
@@ -1302,7 +1338,6 @@ const commitProviderUpdate = (
   });
 
 interface InitialProviderUpdateInput {
-  readonly ambiguousInstances: Set<string>;
   readonly canonicalRequest: Uint8Array;
   readonly input: UpdateProviderInstanceInput;
   readonly persistence: ProviderPersistence;
@@ -1318,7 +1353,6 @@ type InitialProviderUpdate =
     }>;
 
 const loadInitialProviderUpdate = ({
-  ambiguousInstances,
   canonicalRequest,
   input,
   persistence,
@@ -1331,7 +1365,6 @@ const loadInitialProviderUpdate = ({
       UPDATE_PROVIDER_INSTANCE_METHOD,
     );
     if (replay !== undefined) {
-      ambiguousInstances.delete(input.providerInstanceId);
       return { kind: "replay" as const, result: replay };
     }
     const current = yield* expectedProviderInstance(persistence, input);
@@ -1372,13 +1405,23 @@ const updateProviderInstance = (
     (canonicalRequest) =>
       Effect.gen(function* prepareProviderUpdate() {
         const initial = yield* loadInitialProviderUpdate({
-          ambiguousInstances,
           canonicalRequest,
           input,
           persistence,
         });
         if (initial.kind === "replay") {
-          return initial.result;
+          if (!ambiguousInstances.has(input.providerInstanceId)) {
+            return initial.result;
+          }
+          const recovery = recoverReplayAdmission(
+            ambiguousInstances,
+            fenceInstance,
+            input,
+            initial.result,
+          ).pipe(Effect.as(initial.result));
+          return yield* gate.withPermits(WRITER_GATE_PERMITS)(
+            Effect.uninterruptible(Effect.scoped(recovery)),
+          );
         }
         const preparedConfiguration = yield* prepareProviderUpdateCandidate({
           current: initial.current,
