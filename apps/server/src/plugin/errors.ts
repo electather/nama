@@ -9,6 +9,7 @@ type PluginUnavailableReason =
   | "descriptor_invalid"
   | "executable_invalid"
   | "handshake_failed"
+  | "launch_document_invalid"
   | "launch_protocol_rejected"
   | "plugin_exited"
   | "provider_type_mismatch"

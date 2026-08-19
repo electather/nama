@@ -16,7 +16,7 @@ This note is the canonical record for durable core-server boundaries. The implem
 - exact liveness and readiness routes before Connect delegation;
 - one native Node listener and one Effect managed request runtime for health and RPC callbacks;
 - runtime-controlled readiness and fatal post-bind failure;
-- one Effect-scoped authenticated, on-demand plugin-subprocess supervisor with bounded idle retirement; and
+- one Effect-scoped authenticated, on-demand plugin-subprocess supervisor with context-free discovery, one-shot candidate, exact-revision instance launches, and bounded idle retirement; and
 - deterministic signal shutdown, bounded drain, process-group termination, and resource finalization.
 
 The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; only Setup and Auth behavior is implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. The private plugin transport now launches, authenticates, handshakes with, calls, recovers, and terminates code-owned subprocesses, but no production provider descriptor or plugin method workflow is registered. Pairing, CLI setup/sign-in, client behavior, provider persistence, schedules, and exported tracing remain outside this runtime.
@@ -224,7 +224,7 @@ Never log bind address, public URL, database URL, master key, source TOML, SQL, 
 Provider-management and supervisor records may add only allowlisted provider
 type, optional Nama provider-instance ID, revision, safe status, and bounded
 lifecycle fields. They never contain provider configuration, secret keys or
-values, principal references, request fingerprints, launch envelopes, process
+values, principal references, request fingerprints, launch documents, process
 IDs, executable or socket paths, provider response bodies, or cryptographic
 failure detail.
 
@@ -301,7 +301,7 @@ is replayed blindly.
 The server test gate must continue to exercise behavior, not only generated contracts or compilation:
 
 - pure and Effect-scoped configuration, logging, routing, drain, deadline interruption, and finalization behavior;
-- a real disposable plugin subprocess covering descriptor-only supervision, shared first-demand launch, protected launch material, bearer authentication, handshake rejection, bounded recovery, per-call demand, controlled idle timing, retirement races, cleanup-failure containment, scope-finalization retry, cancellation, independent deadlines, no replay, structured stderr, process-group escalation, safe lifecycle events, and artifact cleanup;
+- a real disposable plugin subprocess covering descriptor-only supervision, all three bounded stdin launch documents, provider-context confinement, shared exact-revision instance admission, one-shot candidate cleanup, revision fencing and drain, shared first-demand launch, protected launch material, bearer authentication, handshake rejection, bounded recovery, per-call demand, controlled idle timing, retirement races, cleanup-failure containment, scope-finalization retry, cancellation, independent deadlines, no replay, structured stderr, process-group escalation, safe lifecycle events, and artifact cleanup;
 - serial integration against disposable PostgreSQL with production migrations, prior-journal upgrade, constraints, the complete initialization state matrix, conditional repair failure, pool closure, and readiness loss/recovery;
 - the actual package entrypoint, both termination signals, migration-and-reconciliation-before-bind ordering, released listener ports, normalized startup and integrity failures, valid JSON output, and secret absence;
 - provider-management behavior against production migrations: installation
@@ -318,7 +318,7 @@ The server test gate must continue to exercise behavior, not only generated cont
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.
 
-The implemented coverage exercises generated-client and real-process setup/authentication flows plus the private plugin-supervision transport: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, descriptor-only handle acquisition, shared first-demand plugin launch, plugin launch authentication and authority rotation, recovery, call cancellation and independent deadlines, on-demand and idle lifecycle policy, failed-retirement containment and finalization, process-group cleanup, correlation, safe public errors and logs, readiness, and fatal runtime exit.
+The implemented coverage exercises generated-client and real-process setup/authentication flows plus the private plugin-supervision transport: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, descriptor-only handle acquisition, explicit discovery, candidate, and instance launch documents, malformed and oversized context rejection, empty environments, provider-context confinement, one-shot candidate cleanup, exact-revision sharing and fencing, shared first-demand plugin launch, plugin launch authentication and authority rotation, recovery, call cancellation and independent deadlines, on-demand and idle lifecycle policy, failed-retirement containment and finalization, process-group cleanup, correlation, safe public errors and logs, readiness, and fatal runtime exit.
 
 ## Deferred work
 

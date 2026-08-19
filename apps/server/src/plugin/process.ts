@@ -1,28 +1,21 @@
 import { spawn as nodeSpawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { join } from "node:path";
 
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { Effect } from "effect";
 
-import { observePluginChild, spawnFailure, writeLaunchEnvelope } from "./child.ts";
-import {
-  ENVELOPE_VERSION,
-  MAXIMUM_ENVELOPE_BYTES,
-  MAXIMUM_SOCKET_PATH_BYTES,
-  PLUGIN_BEARER_BYTES,
-  SOCKET_FILENAME,
-} from "./constants.ts";
-import { unavailable } from "./errors.ts";
+import { observePluginChild, spawnFailure, writeLaunchDocument } from "./child.ts";
 import type { PluginUnavailableFailure } from "./errors.ts";
+import { makePluginLaunchDocument } from "./launch-document.ts";
 import { attachPluginStderr } from "./logging.ts";
 import type {
   AcquiredPluginProcess,
+  PreparedPluginLaunch,
   PluginLaunchDescriptor,
   PluginLogEmitter,
   PluginSpawnProcess,
   RunningPlugin,
 } from "./model.ts";
+import { pluginSocketPath } from "./runtime.ts";
 
 interface PluginProcessAdapter {
   readonly launch: NonNullable<PluginSpawnProcess>;
@@ -30,15 +23,17 @@ interface PluginProcessAdapter {
 
 interface PluginConnection {
   readonly bearer: string;
-  readonly envelope: string;
+  readonly document: string;
   readonly socketPath: string;
 }
 
 interface AcquirePluginProcessOptions {
   readonly descriptor: PluginLaunchDescriptor;
+  readonly launch: PreparedPluginLaunch;
   readonly launchDirectory: string;
   readonly spawnProcess: PluginSpawnProcess;
 }
+
 interface RunningPluginOptions {
   readonly child: RunningPlugin["child"];
   readonly connection: PluginConnection;
@@ -56,24 +51,14 @@ const pluginProcessSpawner = (
   }
   return bundledPluginProcessAdapter.launch;
 };
-
 const makePluginConnection = (
   launchDirectory: string,
+  launch: PreparedPluginLaunch,
 ): Effect.Effect<PluginConnection, PluginUnavailableFailure> => {
-  const bearer = randomBytes(PLUGIN_BEARER_BYTES).toString("base64url");
-  const socketPath = join(launchDirectory, SOCKET_FILENAME);
-  const envelope = JSON.stringify({
-    bearer,
-    socket_path: socketPath,
-    version: ENVELOPE_VERSION,
-  });
-  if (
-    Buffer.byteLength(socketPath, "utf8") > MAXIMUM_SOCKET_PATH_BYTES ||
-    Buffer.byteLength(envelope, "utf8") > MAXIMUM_ENVELOPE_BYTES
-  ) {
-    return Effect.fail(unavailable("socket_invalid"));
-  }
-  return Effect.succeed({ bearer, envelope, socketPath });
+  const socketPath = pluginSocketPath(launchDirectory);
+  return makePluginLaunchDocument(launch, socketPath).pipe(
+    Effect.map(({ bearer, document }) => ({ bearer, document, socketPath })),
+  );
 };
 
 const runningPlugin = ({
@@ -97,11 +82,12 @@ const runningPlugin = ({
 
 const acquirePluginProcess = ({
   descriptor,
+  launch,
   launchDirectory,
   spawnProcess,
 }: AcquirePluginProcessOptions): Effect.Effect<AcquiredPluginProcess, PluginUnavailableFailure> =>
   Effect.gen(function* acquirePluginProcessEffect() {
-    const connection = yield* makePluginConnection(launchDirectory);
+    const connection = yield* makePluginConnection(launchDirectory, launch);
     const spawned = yield* Effect.try({
       catch: spawnFailure,
       try: () => {
@@ -118,7 +104,7 @@ const acquirePluginProcess = ({
       },
     });
     return {
-      envelope: connection.envelope,
+      document: connection.document,
       launched: spawned.lifecycle.launched,
       plugin: runningPlugin({
         child: spawned.child,
@@ -131,14 +117,21 @@ const acquirePluginProcess = ({
 
 const finishPluginStartup = (
   acquired: AcquiredPluginProcess,
-  descriptor: PluginLaunchDescriptor,
-  emit: PluginLogEmitter,
+  options: {
+    readonly descriptor: PluginLaunchDescriptor;
+    readonly emit: PluginLogEmitter;
+    readonly launch: PreparedPluginLaunch;
+  },
 ): Effect.Effect<RunningPlugin, PluginUnavailableFailure> =>
   Effect.gen(function* finishPluginStartupEffect() {
     yield* Effect.tryPromise({ catch: spawnFailure, try: () => acquired.launched });
     acquired.plugin.child.stdout.resume();
-    attachPluginStderr(acquired.plugin.child.stderr, descriptor, emit);
-    yield* writeLaunchEnvelope(acquired.plugin, acquired.envelope);
+    attachPluginStderr(
+      acquired.plugin.child.stderr,
+      { descriptor: options.descriptor, launch: options.launch },
+      options.emit,
+    );
+    yield* writeLaunchDocument(acquired.plugin, acquired.document);
     return acquired.plugin;
   });
 

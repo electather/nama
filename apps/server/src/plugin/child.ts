@@ -43,17 +43,17 @@ const observePluginChild = (child: ChildProcessWithoutNullStreams): PluginChildL
   return { exit: exited.promise, launched: launched.promise };
 };
 
-const writeLaunchEnvelope = (
+const writeLaunchDocument = (
   plugin: RunningPlugin,
-  envelope: string,
+  document: string,
 ): Effect.Effect<void, PluginUnavailableFailure> => {
   const completion = finished(plugin.child.stdin);
-  plugin.child.stdin.end(envelope, "utf8");
+  plugin.child.stdin.end(document, "utf8");
   return Effect.tryPromise({
     catch: () => unavailable("plugin_exited"),
     try: () => completion,
   });
 };
 
-export { observePluginChild, spawnFailure, writeLaunchEnvelope };
+export { observePluginChild, spawnFailure, writeLaunchDocument };
 export type { PluginChildLifecycle };

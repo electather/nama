@@ -49,8 +49,13 @@ interface LaunchRecord {
   readonly argumentsExcludeLaunchMaterial: boolean;
   readonly bearer: string;
   readonly environmentEmpty: boolean;
+  readonly launchKind: "candidate" | "discovery" | "instance";
   readonly launchNumber: number;
   readonly pid: number;
+  readonly providerContextAbsent: boolean;
+  readonly providerContextMatchesFixture: boolean;
+  readonly providerInstanceId?: string;
+  readonly revision?: string;
   readonly seededEnvironmentAbsent: boolean;
   readonly socketPath: string;
 }
@@ -240,7 +245,9 @@ it.effect("rejects a relative plugin executable before launch", () =>
   Effect.scoped(
     Effect.gen(function* relativeExecutableTest() {
       const supervisor = yield* PluginSupervisor;
-      const failure = yield* supervisor.supervise(descriptor).pipe(Effect.flip);
+      const failure = yield* supervisor
+        .supervise(descriptor, { kind: "discovery" })
+        .pipe(Effect.flip);
 
       expect(failure).toMatchObject({
         _tag: "PluginUnavailable",
@@ -261,7 +268,7 @@ it.live("acquires a valid handle without creating launch resources", () =>
       return Effect.scoped(
         Effect.gen(function* lazySupervisionTest() {
           const supervisor = yield* PluginSupervisor;
-          yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+          yield* supervisor.supervise(fixtureDescriptor(controlDirectory), { kind: "discovery" });
           yield* Effect.sleep(100);
           expect(spawnAttempts).toBe(0);
           const absentLaunchFile = yield* Effect.tryPromise({
@@ -276,26 +283,456 @@ it.live("acquires a valid handle without creating launch resources", () =>
   ),
 );
 
-it.live("accepts opaque provider-instance IDs", () =>
+it.live("launches discovery without provider context", () =>
   withControlDirectory((controlDirectory) =>
     Effect.scoped(
-      Effect.gen(function* opaqueProviderInstanceIdTest() {
+      Effect.gen(function* discoveryLaunchTest() {
         const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise({
-          ...fixtureDescriptor(controlDirectory),
-          providerInstanceId: "1",
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+          kind: "discovery",
         });
 
-        const health = yield* plugin.call(
-          HealthService.method.check,
+        const info = yield* plugin.call(
+          PluginService.method.getInfo,
           {},
           CALL_DEADLINE_MILLISECONDS,
         );
+        const launches = yield* readLaunchRecords(controlDirectory);
 
-        expect(health.status).toBe(ServingStatus.SERVING);
+        expect(info.pluginInfo?.providerTypeId).toBe("fixture");
+        expect(launches).toHaveLength(1);
+        expect(launches[0]).toMatchObject({
+          launchKind: "discovery",
+          providerContextAbsent: true,
+        });
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
   ),
+);
+
+it.live("rejects provider context on discovery launches", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* discoveryContextRejectionTest() {
+        const supervisor = yield* PluginSupervisor;
+        const failure = yield* supervisor
+          .supervise(fixtureDescriptor(controlDirectory), {
+            configuration: { base_url: "fixture-configuration" },
+            credentials: { api_key: "fixture-credential" },
+            kind: "discovery",
+          } as unknown as Readonly<{ readonly kind: "discovery" }>)
+          .pipe(Effect.flip);
+
+        expect(failure).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "launch_document_invalid",
+        });
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.live("retires a candidate after its one verification attempt", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* candidateLaunchTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+          configuration: { base_url: "fixture-configuration" },
+          credentials: { api_key: "fixture-credential" },
+          kind: "candidate",
+        });
+
+        const response = yield* plugin.call(
+          PluginService.method.getConnection,
+          {},
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        const launch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (launch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+        yield* awaitProcessExit(launch.pid);
+        const reused = yield* plugin
+          .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
+          .pipe(Effect.flip);
+
+        expect(response.connection?.status).toBe(1);
+        expect(launch).toMatchObject({
+          launchKind: "candidate",
+          providerContextAbsent: false,
+          providerContextMatchesFixture: true,
+        });
+        expect(reused).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.live("cancels and fully retires a failed candidate attempt", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* cancelledCandidateTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(
+          fixtureDescriptor(controlDirectory, "block-connection"),
+          {
+            configuration: { base_url: "fixture-configuration" },
+            credentials: { api_key: "fixture-credential" },
+            kind: "candidate",
+          },
+        );
+        const call = yield* Effect.forkChild(
+          plugin.call(PluginService.method.getConnection, {}, 10_000),
+        );
+        yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1);
+        const launch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (launch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+
+        yield* Fiber.interrupt(call);
+        yield* awaitFileLineCount(controlDirectory, "cancellations.ndjson", 1);
+        yield* awaitProcessExit(launch.pid);
+        yield* awaitPathRemoval(dirname(launch.socketPath));
+        const repeated = yield* plugin
+          .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
+          .pipe(Effect.flip);
+
+        expect(repeated).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.effect("keeps candidate cleanup running after its caller deadline", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* candidateCleanupDeadlineTest() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(
+          fixtureDescriptor(controlDirectory, "ignore-termination"),
+          {
+            configuration: { base_url: "fixture-configuration" },
+            credentials: { api_key: "fixture-credential" },
+            kind: "candidate",
+          },
+        );
+        const call = yield* Effect.forkChild(
+          plugin.call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS),
+        );
+        yield* awaitFileLineCount(controlDirectory, "termination-signals.ndjson", 1);
+        const launch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (launch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+
+        yield* TestClock.adjust(CALL_DEADLINE_MILLISECONDS - 1);
+        expect(call.pollUnsafe()).toBeUndefined();
+        yield* TestClock.adjust(1);
+        const failure = yield* Fiber.join(call).pipe(Effect.flip);
+
+        expect(failure).toMatchObject({ _tag: "PluginDeadlineExceeded" });
+        expect(() => process.kill(launch.pid, 0)).not.toThrow();
+
+        yield* TestClock.adjust(2000);
+        yield* awaitProcessExit(launch.pid);
+        yield* awaitPathRemoval(dirname(launch.socketPath));
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.live("retains failed candidate cleanup for scope-finalization retry", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* candidateCleanupRetryTest() {
+        const supervisor = yield* PluginSupervisor;
+        const handleScope = yield* Scope.make();
+        const plugin = yield* Scope.provide(handleScope)(
+          supervisor.supervise(fixtureDescriptor(controlDirectory, "cleanup-failure"), {
+            configuration: { base_url: "fixture-configuration" },
+            credentials: { api_key: "fixture-credential" },
+            kind: "candidate",
+          }),
+        );
+        const failure = yield* plugin
+          .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
+          .pipe(Effect.flip);
+        const launch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (launch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+        const launchDirectory = dirname(launch.socketPath);
+        const runtimeRoot = dirname(launchDirectory);
+
+        expect(failure).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
+        expect((yield* Effect.promise(() => lstat(launchDirectory))).isDirectory()).toBe(true);
+
+        yield* Effect.promise(() => chmod(runtimeRoot, 0o700));
+        yield* Scope.close(handleScope, Exit.void);
+        yield* awaitPathRemoval(launchDirectory);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.live("rejects oversized and malformed launch documents before spawn", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.suspend(() => {
+      let spawnAttempts = 0;
+      const spawnProcess = ((...arguments_: Parameters<typeof spawnChild>) => {
+        spawnAttempts += 1;
+        return Reflect.apply(spawnChild, undefined, arguments_);
+      }) as typeof spawnChild;
+      return Effect.scoped(
+        Effect.gen(function* invalidLaunchDocumentTest() {
+          const supervisor = yield* PluginSupervisor;
+          const cyclicConfiguration: Record<string, unknown> = {};
+          cyclicConfiguration["self"] = cyclicConfiguration;
+          const configurations: readonly Readonly<Record<string, unknown>>[] = [
+            { base_url: "x".repeat(64 * 1024) },
+            { base_url: undefined },
+            cyclicConfiguration,
+          ];
+          for (const configuration of configurations) {
+            const failure = yield* supervisor
+              .supervise(fixtureDescriptor(controlDirectory), {
+                configuration,
+                credentials: {},
+                kind: "candidate",
+              })
+              .pipe(Effect.flip);
+            expect(failure).toMatchObject({
+              _tag: "PluginUnavailable",
+              reason: "launch_document_invalid",
+            });
+          }
+          const malformedLaunch = new Proxy({ kind: "discovery" } as const, {
+            ownKeys: () => {
+              throw new Error("malformed launch proxy");
+            },
+          });
+          const proxyFailure = yield* supervisor
+            .supervise(fixtureDescriptor(controlDirectory), malformedLaunch)
+            .pipe(Effect.flip);
+          expect(proxyFailure).toMatchObject({
+            _tag: "PluginUnavailable",
+            reason: "launch_document_invalid",
+          });
+          expect(spawnAttempts).toBe(0);
+        }).pipe(Effect.provide(PluginSupervisor.layer({ spawnProcess }))),
+      );
+    }),
+  ),
+);
+
+it.live("reuses an instance only for its exact ID and revision", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* instanceRevisionTest() {
+        const supervisor = yield* PluginSupervisor;
+        const launchDescriptor = fixtureDescriptor(controlDirectory);
+        const first = yield* supervisor.supervise(launchDescriptor, {
+          configuration: { base_url: "fixture-configuration" },
+          credentials: { api_key: "fixture-credential" },
+          kind: "instance",
+          providerInstanceId: "opaque-instance",
+          revision: "revision-1",
+        });
+        const sameRevision = yield* supervisor.supervise(launchDescriptor, {
+          configuration: { base_url: "fixture-configuration" },
+          credentials: { api_key: "fixture-credential" },
+          kind: "instance",
+          providerInstanceId: "opaque-instance",
+          revision: "revision-1",
+        });
+
+        yield* first.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        yield* sameRevision.call(
+          PluginService.method.getConnection,
+          {},
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (firstLaunch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+
+        const replacement = yield* supervisor.supervise(launchDescriptor, {
+          configuration: { base_url: "fixture-configuration" },
+          credentials: { api_key: "fixture-credential" },
+          kind: "instance",
+          providerInstanceId: "opaque-instance",
+          revision: "revision-2",
+        });
+        yield* awaitProcessExit(firstLaunch.pid);
+        const staleCall = yield* first
+          .call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS)
+          .pipe(Effect.flip);
+        yield* replacement.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        const launches = yield* readLaunchRecords(controlDirectory);
+
+        expect(staleCall).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
+        expect(launches).toHaveLength(2);
+        expect(launches[0]).toMatchObject({
+          launchKind: "instance",
+          providerContextMatchesFixture: true,
+          providerInstanceId: "opaque-instance",
+          revision: "revision-1",
+        });
+        expect(launches[1]).toMatchObject({
+          launchKind: "instance",
+          providerInstanceId: "opaque-instance",
+          revision: "revision-2",
+        });
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.live("retains uncertain instance cleanup before replacement", () =>
+  withControlDirectory((controlDirectory) =>
+    Effect.scoped(
+      Effect.gen(function* instanceCleanupRetryTest() {
+        const supervisor = yield* PluginSupervisor;
+        const first = yield* supervisor.supervise(
+          fixtureDescriptor(controlDirectory, "cleanup-failure"),
+          {
+            configuration: { base_url: "fixture-configuration" },
+            credentials: { api_key: "fixture-credential" },
+            kind: "instance",
+            providerInstanceId: "opaque-instance",
+            revision: "revision-1",
+          },
+        );
+        yield* first.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+        if (firstLaunch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+
+        const replacementFailure = yield* supervisor
+          .supervise(fixtureDescriptor(controlDirectory), {
+            configuration: { base_url: "fixture-configuration" },
+            credentials: { api_key: "fixture-credential" },
+            kind: "instance",
+            providerInstanceId: "opaque-instance",
+            revision: "revision-2",
+          })
+          .pipe(Effect.flip);
+        const launchDirectory = dirname(firstLaunch.socketPath);
+        const runtimeRoot = dirname(launchDirectory);
+
+        expect(replacementFailure).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+        expect((yield* Effect.promise(() => lstat(launchDirectory))).isDirectory()).toBe(true);
+
+        yield* Effect.promise(() => chmod(runtimeRoot, 0o700));
+        const replacement = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+          configuration: { base_url: "fixture-configuration" },
+          credentials: { api_key: "fixture-credential" },
+          kind: "instance",
+          providerInstanceId: "opaque-instance",
+          revision: "revision-2",
+        });
+        yield* replacement.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+        const staleCall = yield* first
+          .call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS)
+          .pipe(Effect.flip);
+
+        expect(staleCall).toMatchObject({
+          _tag: "PluginUnavailable",
+          reason: "plugin_exited",
+        });
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(2);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  ),
+);
+
+it.live(
+  "drains admitted work before replacing an instance revision",
+  () =>
+    withControlDirectory((controlDirectory) =>
+      Effect.scoped(
+        Effect.gen(function* revisionDrainTest() {
+          const supervisor = yield* PluginSupervisor;
+          const handleScope = yield* Scope.make();
+          const launchDescriptor = fixtureDescriptor(controlDirectory, "wait-connection");
+          const first = yield* Scope.provide(handleScope)(
+            supervisor.supervise(launchDescriptor, {
+              configuration: { base_url: "fixture-configuration" },
+              credentials: { api_key: "fixture-credential" },
+              kind: "instance",
+              providerInstanceId: "opaque-instance",
+              revision: "revision-1",
+            }),
+          );
+          const activeCall = yield* Effect.forkChild(
+            first.call(PluginService.method.getConnection, {}, 10_000),
+          );
+          yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1);
+          const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+          if (firstLaunch === undefined) {
+            return yield* Effect.die("fixture launch record missing");
+          }
+
+          const replacementFiber = yield* Effect.forkChild(
+            Scope.provide(handleScope)(
+              supervisor.supervise(launchDescriptor, {
+                configuration: { base_url: "fixture-configuration" },
+                credentials: { api_key: "fixture-credential" },
+                kind: "instance",
+                providerInstanceId: "opaque-instance",
+                revision: "revision-2",
+              }),
+            ),
+          );
+          yield* Effect.sleep(2100);
+          const staleCall = yield* first
+            .call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS)
+            .pipe(Effect.flip);
+
+          expect(() => process.kill(firstLaunch.pid, 0)).not.toThrow();
+          expect(staleCall).toMatchObject({
+            _tag: "PluginUnavailable",
+            reason: "plugin_exited",
+          });
+
+          yield* Effect.promise(() =>
+            writeFile(join(controlDirectory, "connection-continue"), "1", { mode: 0o600 }),
+          );
+          const activeResponse = yield* Fiber.join(activeCall);
+          const replacement = yield* Fiber.join(replacementFiber);
+          yield* awaitProcessExit(firstLaunch.pid);
+          yield* replacement.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+
+          expect(activeResponse.connection?.status).toBe(1);
+          expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(2);
+          yield* Scope.close(handleScope, Exit.void);
+        }).pipe(Effect.provide(PluginSupervisor.layer())),
+      ),
+    ),
+  10_000,
 );
 
 it.live("launches the authenticated fixture without ambient authority", () =>
@@ -304,7 +741,9 @@ it.live("launches the authenticated fixture without ambient authority", () =>
       Effect.gen(function* authenticatedLaunchTest() {
         yield* acquireSeededParentEnvironment;
         const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+          kind: "discovery",
+        });
         const response = yield* plugin.call(
           PluginService.method.getConnection,
           {},
@@ -325,12 +764,76 @@ it.live("launches the authenticated fixture without ambient authority", () =>
   ),
 );
 
+it.live("confines provider context to the stdin launch document", () =>
+  withControlDirectory((controlDirectory) => {
+    const lines: string[] = [];
+    return Effect.scoped(
+      Effect.gen(function* providerContextConfinementTest() {
+        yield* acquireSeededParentEnvironment;
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+          configuration: { base_url: "fixture-configuration" },
+          credentials: { api_key: "fixture-credential" },
+          kind: "candidate",
+        });
+        const response = yield* plugin.call(
+          PluginService.method.getConnection,
+          {},
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        const launch = (yield* readLaunchRecords(controlDirectory))[0];
+        if (launch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
+        const requestBoundary = yield* awaitFileLineCount(
+          controlDirectory,
+          "request-boundary.ndjson",
+          1,
+        );
+        const output = lines.join("");
+
+        expect(response.connection?.status).toBe(1);
+        expect(launch).toMatchObject({
+          argumentsExcludeLaunchMaterial: true,
+          environmentEmpty: true,
+          providerContextMatchesFixture: true,
+          seededEnvironmentAbsent: true,
+        });
+        expect(requestBoundary).toEqual(["true"]);
+        for (const privateValue of [
+          "api_key",
+          "base_url",
+          "fixture-configuration",
+          "fixture-credential",
+          launch.bearer,
+          launch.socketPath,
+        ]) {
+          expect(output).not.toContain(privateValue);
+        }
+      }).pipe(
+        Effect.provide(PluginSupervisor.layer()),
+        Effect.provide(
+          configuredLoggingLayer(loggingConfig, (line) => {
+            lines.push(line);
+          }),
+        ),
+      ),
+    );
+  }),
+);
+
 it.effect("retires a ready plugin after 30 idle seconds and starts a fresh incarnation", () =>
   withControlDirectory((controlDirectory) =>
     Effect.scoped(
       Effect.gen(function* idleRetirementTest() {
         const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+          configuration: { base_url: "fixture-configuration" },
+          credentials: { api_key: "fixture-credential" },
+          kind: "instance",
+          providerInstanceId: "idle-instance",
+          revision: "idle-revision",
+        });
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
         if (firstLaunch === undefined) {
@@ -372,9 +875,12 @@ it.effect("emits one safe debug record after successful idle retirement", () =>
     return Effect.scoped(
       Effect.gen(function* idleRetirementLoggingTest() {
         const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise({
-          ...fixtureDescriptor(controlDirectory),
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+          configuration: {},
+          credentials: {},
+          kind: "instance",
           providerInstanceId: "provider-instance",
+          revision: "fixture-revision",
         });
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const launch = (yield* readLaunchRecords(controlDirectory))[0];
@@ -429,9 +935,12 @@ it.effect("contains failed idle cleanup and emits one safe error record", () =>
         const supervisor = yield* PluginSupervisor;
         const handleScope = yield* Scope.make();
         const plugin = yield* Scope.provide(handleScope)(
-          supervisor.supervise({
-            ...fixtureDescriptor(controlDirectory, "cleanup-failure"),
+          supervisor.supervise(fixtureDescriptor(controlDirectory, "cleanup-failure"), {
+            configuration: {},
+            credentials: {},
+            kind: "instance",
             providerInstanceId: "provider-instance",
+            revision: "fixture-revision",
           }),
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
@@ -528,7 +1037,7 @@ it.effect("retains interrupted startup cleanup for scope-finalization retry", ()
         const supervisor = yield* PluginSupervisor;
         const handleScope = yield* Scope.make();
         const plugin = yield* Scope.provide(handleScope)(
-          supervisor.supervise(fixtureDescriptor(controlDirectory)),
+          supervisor.supervise(fixtureDescriptor(controlDirectory), { kind: "discovery" }),
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
@@ -615,7 +1124,9 @@ it.effect("joins retirement already in progress during scope finalization", () =
         const supervisor = yield* PluginSupervisor;
         const handleScope = yield* Scope.make();
         const plugin = yield* Scope.provide(handleScope)(
-          supervisor.supervise(fixtureDescriptor(controlDirectory, "wait-first-termination")),
+          supervisor.supervise(fixtureDescriptor(controlDirectory, "wait-first-termination"), {
+            kind: "discovery",
+          }),
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const launch = (yield* readLaunchRecords(controlDirectory))[0];
@@ -663,7 +1174,9 @@ it.effect("preserves shutdown failure when retirement cleanup retry still fails"
         const supervisor = yield* PluginSupervisor;
         const handleScope = yield* Scope.make();
         const plugin = yield* Scope.provide(handleScope)(
-          supervisor.supervise(fixtureDescriptor(controlDirectory, "cleanup-failure")),
+          supervisor.supervise(fixtureDescriptor(controlDirectory, "cleanup-failure"), {
+            kind: "discovery",
+          }),
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const launch = (yield* readLaunchRecords(controlDirectory))[0];
@@ -705,7 +1218,9 @@ it.effect("resets the full idle interval when demand returns before expiry", () 
     Effect.scoped(
       Effect.gen(function* idleResetTest() {
         const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+          kind: "discovery",
+        });
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
         if (firstLaunch === undefined) {
@@ -734,6 +1249,7 @@ it.effect("keeps committed retirement shared when one waiting caller times out",
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "wait-first-termination"),
+          { kind: "discovery" },
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
@@ -783,6 +1299,7 @@ it.effect("keeps a blocked call alive and starts the idle interval after interru
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "block-first-connection"),
+          { kind: "discovery" },
         );
         const blockedCall = yield* Effect.forkChild(
           plugin.call(PluginService.method.getConnection, {}, 120_000),
@@ -817,6 +1334,7 @@ it.effect("starts the idle interval after a plugin RPC failure", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "rpc-not-found"),
+          { kind: "discovery" },
         );
         const failure = yield* plugin
           .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
@@ -840,6 +1358,7 @@ it.effect("starts the idle interval after a plugin RPC deadline", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "block-first-connection"),
+          { kind: "discovery" },
         );
         const blockedCall = yield* Effect.forkChild(
           plugin.call(PluginService.method.getConnection, {}, 100),
@@ -904,7 +1423,9 @@ it.effect("interrupts unfinished recovery when idle grace expires", () =>
       return Effect.scoped(
         Effect.gen(function* recoveryIdleExpiryTest() {
           const supervisor = yield* PluginSupervisor;
-          const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+          const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+            kind: "discovery",
+          });
           yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
           const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
           if (firstLaunch === undefined) {
@@ -972,7 +1493,9 @@ it.live("recovers a killed ready plugin with fresh launch authority", () =>
     Effect.scoped(
       Effect.gen(function* killedPluginRecoveryTest() {
         const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+          kind: "discovery",
+        });
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
         if (firstLaunch === undefined) {
@@ -1002,8 +1525,11 @@ it.effect("bounds a recovery episode to three launches with 100/500ms backoff", 
     Effect.scoped(
       Effect.gen(function* boundedRecoveryTest() {
         const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          fixtureDescriptor(controlDirectory, "recover-twice"),
+        const handleScope = yield* Scope.make();
+        const plugin = yield* Scope.provide(handleScope)(
+          supervisor.supervise(fixtureDescriptor(controlDirectory, "recover-twice"), {
+            kind: "discovery",
+          }),
         );
         const call = yield* Effect.forkChild(
           plugin.call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS),
@@ -1034,6 +1560,10 @@ it.effect("bounds a recovery episode to three launches with 100/500ms backoff", 
 
         expect(response.connection?.status).toBe(1);
         expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(3);
+        const finalization = yield* Effect.forkChild(Scope.close(handleScope, Exit.void));
+        yield* Effect.yieldNow;
+        yield* TestClock.adjust(2000);
+        yield* Fiber.join(finalization);
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
   ),
@@ -1054,7 +1584,9 @@ it.effect("retries a transient spawn resource failure after 100ms", () =>
       return Effect.scoped(
         Effect.gen(function* transientSpawnFailureTest() {
           const supervisor = yield* PluginSupervisor;
-          const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+          const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+            kind: "discovery",
+          });
           const call = yield* Effect.forkChild(
             plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS),
           );
@@ -1095,6 +1627,7 @@ it.effect("does not retry a launch-protocol rejection", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "launch-reject"),
+          { kind: "discovery" },
         );
         const call = yield* Effect.forkChild(
           plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS),
@@ -1127,6 +1660,7 @@ it.effect("recycles a process after deadline cancellation grace", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "block-connection"),
+          { kind: "discovery" },
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
@@ -1173,7 +1707,9 @@ it.effect("kills the complete plugin process group at shutdown", () =>
         const supervisor = yield* PluginSupervisor;
         const handleScope = yield* Scope.make();
         const plugin = yield* Scope.provide(handleScope)(
-          supervisor.supervise(fixtureDescriptor(controlDirectory, "helper")),
+          supervisor.supervise(fixtureDescriptor(controlDirectory, "helper"), {
+            kind: "discovery",
+          }),
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const helperLines = yield* awaitFileLineCount(controlDirectory, "helper-pid", 1);
@@ -1275,6 +1811,7 @@ it.live("accepts only bounded declared structured plugin stderr", () =>
               },
             },
           ]),
+          { kind: "discovery" },
         );
         yield* plugin.call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS);
         yield* awaitFileLineCount(controlDirectory, "stderr-complete", 1);
@@ -1322,7 +1859,9 @@ it.live("requires the current launch bearer on every plugin RPC", () =>
     Effect.scoped(
       Effect.gen(function* pluginAuthenticationTest() {
         const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+          kind: "discovery",
+        });
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
         if (firstLaunch === undefined) {
@@ -1366,7 +1905,9 @@ it.live("does not retry deterministic handshake rejections", () =>
         for (const [mode, reason] of cases) {
           const caseDirectory = join(controlDirectory, mode);
           yield* Effect.promise(() => mkdir(caseDirectory, { mode: 0o700, recursive: true }));
-          const plugin = yield* supervisor.supervise(fixtureDescriptor(caseDirectory, mode));
+          const plugin = yield* supervisor.supervise(fixtureDescriptor(caseDirectory, mode), {
+            kind: "discovery",
+          });
           const failure = yield* plugin
             .call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS)
             .pipe(Effect.flip);
@@ -1393,7 +1934,9 @@ it.effect("leaves an unexpectedly exited idle plugin absent", () =>
       return Effect.scoped(
         Effect.gen(function* idleExitTest() {
           const supervisor = yield* PluginSupervisor;
-          const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+          const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+            kind: "discovery",
+          });
           yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
           const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
           if (firstLaunch === undefined) {
@@ -1448,6 +1991,7 @@ it.live("recovers a replacement that exits after its handshake during active dem
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "block-and-exit-after-ready-during-recovery"),
+          { kind: "discovery" },
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
@@ -1494,6 +2038,7 @@ it.effect("makes a three-launch exhausted recovery episode terminal", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "always-exit-before-ready"),
+          { kind: "discovery" },
         );
         const call = yield* Effect.forkChild(
           plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS),
@@ -1525,6 +2070,7 @@ it.live("cancels one RPC without recycling its healthy sibling process", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "block-first-connection"),
+          { kind: "discovery" },
         );
         const blockedCall = yield* Effect.forkChild(
           plugin.call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS),
@@ -1560,7 +2106,9 @@ it.live("preserves logical RPC statuses without recycling a healthy plugin", () 
           yield* Effect.promise(() => mkdir(caseDirectory, { mode: 0o700 }));
           yield* Effect.scoped(
             Effect.gen(function* logicalStatusCase() {
-              const plugin = yield* supervisor.supervise(fixtureDescriptor(caseDirectory, mode));
+              const plugin = yield* supervisor.supervise(fixtureDescriptor(caseDirectory, mode), {
+                kind: "discovery",
+              });
               const failure = yield* plugin
                 .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
                 .pipe(Effect.flip);
@@ -1588,6 +2136,7 @@ it.live("shares one first-demand launch while preserving caller deadlines", () =
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "wait-start"),
+          { kind: "discovery" },
         );
         const shortCall = yield* Effect.forkChild(
           plugin.call(PluginService.method.getConnection, {}, 50),
@@ -1621,6 +2170,7 @@ it.live("never replays a call lost with a crashing plugin process", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "crash-connection"),
+          { kind: "discovery" },
         );
 
         const failure = yield* plugin
@@ -1649,7 +2199,9 @@ it.live("shares one recovery launch across concurrent callers", () =>
     Effect.scoped(
       Effect.gen(function* singleFlightRecoveryTest() {
         const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory));
+        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
+          kind: "discovery",
+        });
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
         if (firstLaunch === undefined) {
@@ -1681,6 +2233,7 @@ it.effect("finishes demand-initiated recovery during idle grace", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "wait-recovery"),
+          { kind: "discovery" },
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
@@ -1750,6 +2303,7 @@ it.effect("preserves and resets the bounded episode across idle expiry", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "idle-bounded-recovery"),
+          { kind: "discovery" },
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
@@ -1885,10 +2439,13 @@ it.effect("rejects unsafe executable files before spawning them", () =>
           symlinkPath,
         ]) {
           const failure = yield* supervisor
-            .supervise({
-              ...descriptor,
-              executable,
-            })
+            .supervise(
+              {
+                ...descriptor,
+                executable,
+              },
+              { kind: "discovery" },
+            )
             .pipe(Effect.flip);
           expect(failure).toMatchObject({
             _tag: "PluginUnavailable",
@@ -1908,7 +2465,7 @@ it.effect("rejects an executable outside the effective owner boundary", () =>
         yield* Effect.promise(() => writeFile(executable, "#!/bin/sh\nexit 0\n", { mode: 0o700 }));
         const supervisor = yield* PluginSupervisor;
         const failure = yield* supervisor
-          .supervise({ ...descriptor, executable })
+          .supervise({ ...descriptor, executable }, { kind: "discovery" })
           .pipe(Effect.flip);
 
         expect(failure).toMatchObject({
@@ -1936,10 +2493,13 @@ it.live("revalidates the executable before recovery spawn", () =>
         );
 
         const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise({
-          ...fixtureDescriptor(controlDirectory),
-          executable,
-        });
+        const plugin = yield* supervisor.supervise(
+          {
+            ...fixtureDescriptor(controlDirectory),
+            executable,
+          },
+          { kind: "discovery" },
+        );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
         if (firstLaunch === undefined) {
@@ -1997,10 +2557,13 @@ it.effect("rejects unsafe structured-stderr declarations before launch", () =>
 
         for (const stderrEvents of invalidDeclarations) {
           const failure = yield* supervisor
-            .supervise({
-              ...fixtureDescriptor(controlDirectory),
-              stderrEvents,
-            })
+            .supervise(
+              {
+                ...fixtureDescriptor(controlDirectory),
+                stderrEvents,
+              },
+              { kind: "discovery" },
+            )
             .pipe(Effect.flip);
           expect(failure).toMatchObject({
             _tag: "PluginUnavailable",
@@ -2021,7 +2584,7 @@ it.live("protects and removes every plugin runtime artifact", () =>
           const supervisor = yield* PluginSupervisor;
           const handleScope = yield* Scope.make();
           const plugin = yield* Scope.provide(handleScope)(
-            supervisor.supervise(fixtureDescriptor(controlDirectory)),
+            supervisor.supervise(fixtureDescriptor(controlDirectory), { kind: "discovery" }),
           );
           yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
           const launch = (yield* readLaunchRecords(controlDirectory))[0];
@@ -2075,7 +2638,9 @@ it.live("reaps and cleans a process interrupted during initial startup", () =>
       const supervisor = Context.get(context, PluginSupervisor);
       const handleScope = yield* Scope.make();
       const plugin = yield* Scope.provide(handleScope)(
-        supervisor.supervise(fixtureDescriptor(controlDirectory, "wait-start")),
+        supervisor.supervise(fixtureDescriptor(controlDirectory, "wait-start"), {
+          kind: "discovery",
+        }),
       );
       const startupCall = yield* Effect.forkChild(
         plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS),
@@ -2127,6 +2692,7 @@ it.live("fails sibling RPCs without replay when a deadline recycles the process"
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "block-connection"),
+          { kind: "discovery" },
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const expiringCall = yield* Effect.forkChild(
@@ -2170,10 +2736,14 @@ it.effect("reaps every active process before surfacing peer cleanup failure", ()
       const cleanupScope = yield* Scope.make();
       const ignoringScope = yield* Scope.make();
       const cleanupPlugin = yield* Scope.provide(cleanupScope)(
-        supervisor.supervise(fixtureDescriptor(cleanupControlDirectory, "cleanup-failure")),
+        supervisor.supervise(fixtureDescriptor(cleanupControlDirectory, "cleanup-failure"), {
+          kind: "discovery",
+        }),
       );
       const ignoringPlugin = yield* Scope.provide(ignoringScope)(
-        supervisor.supervise(fixtureDescriptor(ignoringControlDirectory, "ignore-termination")),
+        supervisor.supervise(fixtureDescriptor(ignoringControlDirectory, "ignore-termination"), {
+          kind: "discovery",
+        }),
       );
       yield* cleanupPlugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
       yield* ignoringPlugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
@@ -2192,6 +2762,7 @@ it.effect("reaps every active process before surfacing peer cleanup failure", ()
       const shutdownExit = yield* Fiber.join(shutdown);
       expect(Exit.isSuccess(shutdownExit)).toBe(false);
 
+      yield* Effect.promise(() => chmod(dirname(dirname(cleanupLaunch.socketPath)), 0o700));
       yield* Scope.close(cleanupScope, Exit.void);
       yield* Scope.close(ignoringScope, Exit.void);
     }),
@@ -2206,7 +2777,7 @@ it.live("closes active handles before the supervisor runtime root", () =>
       const supervisor = Context.get(context, PluginSupervisor);
       const handleScope = yield* Scope.make();
       const plugin = yield* Scope.provide(handleScope)(
-        supervisor.supervise(fixtureDescriptor(controlDirectory)),
+        supervisor.supervise(fixtureDescriptor(controlDirectory), { kind: "discovery" }),
       );
       yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
       const launch = (yield* readLaunchRecords(controlDirectory))[0];
@@ -2233,10 +2804,16 @@ it.live("emits safe allowlisted plugin lifecycle records", () =>
     return Effect.scoped(
       Effect.gen(function* pluginLifecycleLoggingTest() {
         const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise({
-          ...fixtureDescriptor(controlDirectory, "crash-connection"),
-          providerInstanceId: "provider-instance",
-        });
+        const plugin = yield* supervisor.supervise(
+          fixtureDescriptor(controlDirectory, "crash-connection"),
+          {
+            configuration: {},
+            credentials: {},
+            kind: "instance",
+            providerInstanceId: "provider-instance",
+            revision: "fixture-revision",
+          },
+        );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
         if (firstLaunch === undefined) {
@@ -2291,7 +2868,9 @@ it.live("tolerates plugin removal of its own runtime artifacts", () =>
         const supervisor = yield* PluginSupervisor;
         const handleScope = yield* Scope.make();
         const plugin = yield* Scope.provide(handleScope)(
-          supervisor.supervise(fixtureDescriptor(controlDirectory, "remove-artifacts")),
+          supervisor.supervise(fixtureDescriptor(controlDirectory, "remove-artifacts"), {
+            kind: "discovery",
+          }),
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
 
@@ -2308,6 +2887,7 @@ it.live("retries failed health handshakes within the bounded episode", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "handshake-not-serving"),
+          { kind: "discovery" },
         );
         const failure = yield* plugin
           .call(HealthService.method.check, {}, 10_000)
@@ -2330,6 +2910,7 @@ it.effect("bounds each complete launch handshake to five seconds", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "wait-start"),
+          { kind: "discovery" },
         );
         const call = yield* Effect.forkChild(plugin.call(HealthService.method.check, {}, 20_000));
         const first = (yield* awaitLaunchCount(controlDirectory, 1))[0];
@@ -2382,7 +2963,9 @@ it.live("surfaces genuine launch-artifact cleanup failure", () =>
       const supervisor = Context.get(context, PluginSupervisor);
       const handleScope = yield* Scope.make();
       const plugin = yield* Scope.provide(handleScope)(
-        supervisor.supervise(fixtureDescriptor(controlDirectory, "cleanup-failure")),
+        supervisor.supervise(fixtureDescriptor(controlDirectory, "cleanup-failure"), {
+          kind: "discovery",
+        }),
       );
       yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
       const launch = (yield* readLaunchRecords(controlDirectory))[0];
@@ -2414,7 +2997,9 @@ it.live("surfaces cleanup failure while closing initial startup", () =>
       const supervisor = Context.get(context, PluginSupervisor);
       const handleScope = yield* Scope.make();
       const plugin = yield* Scope.provide(handleScope)(
-        supervisor.supervise(fixtureDescriptor(controlDirectory, "wait-start-cleanup-failure")),
+        supervisor.supervise(fixtureDescriptor(controlDirectory, "wait-start-cleanup-failure"), {
+          kind: "discovery",
+        }),
       );
       const startupCall = yield* Effect.forkChild(
         plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS),
@@ -2449,6 +3034,7 @@ it.effect("records recovery exhaustion exactly once", () =>
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           fixtureDescriptor(controlDirectory, "always-exit-before-ready"),
+          { kind: "discovery" },
         );
         const call = yield* Effect.forkChild(
           plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS),
@@ -2508,7 +3094,9 @@ it.live("discards stdout and keeps requested termination quiet", () =>
         const supervisor = yield* PluginSupervisor;
         const handleScope = yield* Scope.make();
         const plugin = yield* Scope.provide(handleScope)(
-          supervisor.supervise(fixtureDescriptor(controlDirectory, "stdout-secret")),
+          supervisor.supervise(fixtureDescriptor(controlDirectory, "stdout-secret"), {
+            kind: "discovery",
+          }),
         );
         yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         yield* awaitCondition(() =>

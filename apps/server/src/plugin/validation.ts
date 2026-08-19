@@ -21,6 +21,7 @@ const ENUM_FIELD_KEY_COUNT = 2;
 const EMPTY_STRING_LENGTH = 0;
 const ROOT_USER_ID = 0;
 const NO_MODE_BITS = 0;
+
 const isUnknownArray = (value: unknown): value is readonly unknown[] => Array.isArray(value);
 
 const isValidEnumValues = (value: unknown): boolean =>
@@ -76,15 +77,8 @@ const hasValidLaunchArguments = (argumentsValue: readonly unknown[]): boolean =>
 const isOpaqueProviderIdentifier = (value: unknown): value is string =>
   typeof value === "string" && value.length > EMPTY_STRING_LENGTH;
 
-const hasValidProviderIdentity = (descriptor: PluginLaunchDescriptor): boolean => {
-  if (!isOpaqueProviderIdentifier(descriptor.expectedProviderType)) {
-    return false;
-  }
-  return (
-    descriptor.providerInstanceId === undefined ||
-    isOpaqueProviderIdentifier(descriptor.providerInstanceId)
-  );
-};
+const hasValidProviderIdentity = (descriptor: PluginLaunchDescriptor): boolean =>
+  isOpaqueProviderIdentifier(descriptor.expectedProviderType);
 
 const hasValidStderrEvents = (stderrEvents: readonly unknown[]): boolean => {
   const eventNames = new Set<string>();

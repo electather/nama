@@ -25,6 +25,8 @@ const socketPathFits = (root: string): boolean => {
   const maximumSocketPath = join(root, "p-XXXXXX", SOCKET_FILENAME);
   return Buffer.byteLength(maximumSocketPath, "utf8") <= MAXIMUM_SOCKET_PATH_BYTES;
 };
+const pluginSocketPath = (launchDirectory: string): string =>
+  join(launchDirectory, SOCKET_FILENAME);
 
 const hardenRuntimeRoot = async (root: string): Promise<string> => {
   try {
@@ -65,4 +67,4 @@ const makeLaunchDirectory = (
     try: async () => hardenLaunchDirectory(await mkdtemp(join(runtimeRoot, "p-"))),
   });
 
-export { makeLaunchDirectory, makeRuntimeRoot, removePath };
+export { makeLaunchDirectory, makeRuntimeRoot, pluginSocketPath, removePath };

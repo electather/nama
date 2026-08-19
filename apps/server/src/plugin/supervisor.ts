@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os";
 
-import { Context, Effect, FiberSet, Layer } from "effect";
+import { Context, Effect, FiberSet, Layer, Semaphore } from "effect";
 
 import type {
   PluginHandleState,
@@ -14,6 +14,7 @@ import type { PluginSupervisorOptions } from "./service.ts";
 import type { PluginStderrEventDeclaration } from "./stderr.ts";
 
 const service = Context.Service;
+const REGISTRY_SEMAPHORE_PERMITS = 1;
 
 const makePluginSupervisorLayer = ({
   effectiveUserId = process.geteuid?.(),
@@ -27,6 +28,7 @@ const makePluginSupervisorLayer = ({
         makeRuntimeRoot(temporaryDirectory),
         (root) => removePath(root).pipe(Effect.orDie),
       );
+      const scope = yield* Effect.scope;
       const runLogEffect = yield* FiberSet.makeRuntime<never, void, never>();
       const activeHandles = new Set<PluginHandleState>();
       yield* Effect.addFinalizer(() => closeActivePluginHandles(activeHandles).pipe(Effect.orDie));
@@ -37,7 +39,10 @@ const makePluginSupervisorLayer = ({
         activeHandles,
         effectiveUserId,
         emit,
+        instanceHandles: new Map(),
+        registrySemaphore: Semaphore.makeUnsafe(REGISTRY_SEMAPHORE_PERMITS),
         runtimeRoot,
+        scope,
         spawnProcess,
       };
       return PluginSupervisor.of(makePluginSupervisor(options));

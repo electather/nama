@@ -122,7 +122,7 @@ Each plugin returns its build version and contract major from `PluginService.Get
 ### Transport, correlation, and secrets
 
 - Public and plugin RPCs use only Connect over HTTP; Nama does not expose gRPC or gRPC-Web ([ADR-0003](../adr/0003-protobuf-connectrpc-boundary.md)). The plugin transport is a core-owned Unix socket authenticated by one random per-launch bearer.
-- Supervising a code-owned descriptor validates it without creating a child process, socket, or launch artifact. The first valid call starts or joins one shared launch or recovery episode. That episode delivers one bounded versioned launch envelope through child stdin, closes stdin, and passes no provider credentials or inherited environment values. Readiness requires socket mode `0600`, authenticated health, expected provider type, and contract major `1`; every provider RPC carries an explicit deadline and cancellation.
+- Supervising a code-owned descriptor and explicit launch kind validates both without creating a child process, socket, or launch artifact. The first valid call starts or joins one shared launch or recovery episode. That episode delivers one canonical versioned UTF-8 JSON launch document of at most 64 KiB through child stdin, then closes stdin. Discovery carries no provider context; one-shot candidate and exact-revision instance launches may carry one configuration and credential snapshot. Children inherit no environment values, and provider context never enters arguments, RPC bodies, RPC metadata, diagnostics, spans, or logs. Readiness requires socket mode `0600`, authenticated health, expected provider type, and contract major `1`; every provider RPC carries an explicit deadline and cancellation.
 - The only ordinary public HTTP endpoints are exact `GET /health/live` and `GET /health/ready`. Better Auth routes and callbacks are not mounted.
 - Public administrator and device credentials use `Authorization: Bearer`. Plugin credentials use the same header on the private socket.
 - The server, not the client, assigns `nama-request-id` at outer Node dispatch and returns it on every Connect-delegated response, including malformed-body failures. Application-generated errors carry the identical value in `google.rpc.RequestInfo`; Connect may reject malformed input before the application pipeline, where the response header is the sole correlation value.
@@ -632,17 +632,17 @@ no export. No rule takes maximum position or makes watched state permanently
 dominant.
 
 ## Plugin services
-The stateless supervised process boundary is defined by [ADR-0006](../adr/0006-stateless-supervised-plugin-subprocesses.md). Its production transport is implemented: eager code-owned executable validation, descriptor-only handle acquisition, shared first-demand launch, protected per-launch authority and Unix socket, authenticated health and identity handshake, explicit caller deadlines, cancellation without replay, bounded recovery, structured stderr, and process-group cleanup. Production provider descriptors and method workflows remain unimplemented.
+The stateless supervised process boundary is defined by [ADR-0006](../adr/0006-stateless-supervised-plugin-subprocesses.md). Its production transport is implemented: eager code-owned executable and launch-kind validation, descriptor-only handle acquisition, shared first-demand launch, protected per-launch authority and Unix socket, authenticated health and identity handshake, explicit caller deadlines, cancellation without replay, bounded recovery, structured stderr, process-group cleanup, one-shot candidate retirement, and exact-revision instance fencing. Production provider descriptors and method workflows remain unimplemented.
 
 
 Each plugin process receives one discriminated launch kind through the
-supervisor's size-bounded, versioned stdin envelope. Discovery has no provider
-context and serves health plus `GetInfo`. A candidate receives one proposed
-configuration, serves one `GetConnection`, and retires immediately. A stored
-instance receives one provider-instance ID, configuration revision, non-secret
-configuration, and separate secret map and may serve nearby calls until its
-bounded idle retirement. Ordinary RPC bodies, metadata, argv, and the empty
-child environment never transport provider credentials.
+supervisor's canonical, size-bounded, versioned stdin launch document. Discovery
+has no provider context and serves health plus `GetInfo`. A candidate receives
+one proposed configuration, serves one `GetConnection`, and retires immediately.
+A stored instance receives one provider-instance ID, configuration revision,
+non-secret configuration, and separate secret map and may serve nearby calls
+until its bounded idle retirement. Ordinary RPC bodies, metadata, argv, and the
+empty child environment never transport provider credentials.
 One valid call holds supervisor demand through lifecycle waiting and RPC completion. Zero demand starts a fixed 30-second grace; intervening demand resets the full interval, while expiry retires the complete process group and launch artifacts before a later call may launch a fresh incarnation. Demand arriving after retirement commits joins that teardown within its existing caller deadline.
 
 Cleanup uncertainty is private lifecycle state, not a plugin or public wire status. Failed idle cleanup retains ownership sufficient to prohibit a duplicate launch, maps later calls to the existing plugin-unavailable contract, emits no background retry, and is retried only by scope finalization. Finalization bypasses idle grace and joins cleanup already in progress; persistent failure follows the existing server-shutdown failure contract.

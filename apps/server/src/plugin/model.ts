@@ -17,11 +17,41 @@ import type {
 } from "./errors.ts";
 import type { PluginStderrEventDeclaration } from "./stderr.ts";
 
+type PluginLaunch =
+  | Readonly<{
+      readonly configuration: Readonly<Record<string, unknown>>;
+      readonly credentials: Readonly<Record<string, string>>;
+      readonly kind: "candidate";
+    }>
+  | Readonly<{ readonly kind: "discovery" }>
+  | Readonly<{
+      readonly configuration: Readonly<Record<string, unknown>>;
+      readonly credentials: Readonly<Record<string, string>>;
+      readonly kind: "instance";
+      readonly providerInstanceId: string;
+      readonly revision: string;
+    }>;
+
+type PreparedPluginLaunch =
+  | Readonly<{
+      readonly documentContext: string;
+      readonly kind: "candidate";
+    }>
+  | Readonly<{
+      readonly documentContext: string;
+      readonly kind: "discovery";
+    }>
+  | Readonly<{
+      readonly documentContext: string;
+      readonly kind: "instance";
+      readonly providerInstanceId: string;
+      readonly revision: string;
+    }>;
+
 interface PluginLaunchDescriptor {
   readonly arguments: readonly string[];
   readonly executable: string;
   readonly expectedProviderType: string;
-  readonly providerInstanceId?: string;
   readonly stderrEvents: readonly PluginStderrEventDeclaration[];
 }
 
@@ -39,6 +69,7 @@ interface SupervisedPlugin {
 interface PluginSupervisorService {
   readonly supervise: (
     descriptor: PluginLaunchDescriptor,
+    launch: PluginLaunch,
   ) => Effect.Effect<SupervisedPlugin, PluginUnavailableFailure, Scope.Scope>;
 }
 
@@ -64,7 +95,7 @@ interface RunningPlugin {
 }
 
 interface AcquiredPluginProcess {
-  readonly envelope: string;
+  readonly document: string;
   readonly launched: Promise<void>;
   readonly plugin: RunningPlugin;
 }
@@ -106,6 +137,12 @@ type PluginLifecycleState =
     }>;
 
 interface PluginHandleState {
+  admission:
+    | Readonly<{ readonly kind: "open" }>
+    | Readonly<{
+        readonly drained: Deferred.Deferred<void>;
+        readonly kind: "closed";
+      }>;
   activeDemand: number;
   idleTimer:
     | Readonly<{
@@ -131,12 +168,14 @@ export type {
   PluginCleanupOwnership,
   PluginCleanupTarget,
   PluginHandleState,
-  PluginLifecycleState,
+  PluginLaunch,
   PluginLaunchDescriptor,
+  PluginLifecycleState,
   PluginLogEmitter,
   PluginSpawnProcess,
   PluginSupervisorLayerOptions,
   PluginSupervisorService,
+  PreparedPluginLaunch,
   ProcessExit,
   RunningPlugin,
   SupervisedPlugin,
