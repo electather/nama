@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-lines, eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary, eslint/prefer-destructuring, eslint/sort-keys, typescript/consistent-return -- The restricted profile keeps every accepted keyword, type-specific constraint, and monotonic compatibility rule explicit.
+// oxlint-disable eslint/max-lines, eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary, eslint/prefer-destructuring, eslint/sort-keys -- The restricted profile keeps every accepted keyword, type-specific constraint, and monotonic compatibility rule explicit.
 import type { JsonObject, JsonValue } from "../database/provider-schema.ts";
 
 const SUPPORTED_SCHEMA_PROFILE_VERSION = 1;
@@ -53,6 +53,17 @@ const PROPERTY_TYPES: Readonly<Record<string, true>> = Object.freeze({
   number: true,
   string: true,
 });
+const BOOLEAN_PROPERTY_FORBIDDEN_KEYS: Readonly<Record<string, true>> = Object.freeze({
+  format: true,
+  items: true,
+  maximum: true,
+  maxItems: true,
+  maxLength: true,
+  minimum: true,
+  minItems: true,
+  minLength: true,
+  uniqueItems: true,
+});
 
 interface DiscoveredPluginInfo {
   readonly buildVersion: string;
@@ -83,21 +94,21 @@ type SchemaObject = Readonly<Record<string, unknown>>;
 // fallow-ignore-next-line complexity -- The schema trust boundary validates plain data properties before any keyword inspection.
 const schemaObject = (value: unknown): SchemaObject | undefined => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return;
+    return undefined;
   }
   const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
-    return;
+    return undefined;
   }
   const keys = Object.keys(value);
   if (Reflect.ownKeys(value).length !== keys.length) {
-    return;
+    return undefined;
   }
   const object: Record<string, unknown> = {};
   for (const key of keys) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (descriptor === undefined || descriptor.enumerable !== true || !("value" in descriptor)) {
-      return;
+      return undefined;
     }
     object[key] = descriptor.value;
   }
@@ -121,7 +132,7 @@ const validFiniteNumber = (value: unknown): value is number =>
 
 const denseArray = (value: unknown): readonly unknown[] | undefined => {
   if (!Array.isArray(value)) {
-    return;
+    return undefined;
   }
   const keys = Object.keys(value);
   if (
@@ -129,7 +140,7 @@ const denseArray = (value: unknown): readonly unknown[] | undefined => {
     Reflect.ownKeys(value).length !== value.length + 1 ||
     !keys.every((key, index) => key === String(index))
   ) {
-    return;
+    return undefined;
   }
   const items: unknown[] = [];
   for (const item of value) {
@@ -287,34 +298,59 @@ const validDefault = (
   );
 };
 
-// fallow-ignore-next-line complexity -- Property validation enumerates the full restricted keyword matrix without executable delegation.
-const validProperty = (value: unknown): boolean => {
+const propertySchema = (value: unknown): SchemaObject | undefined => {
   const schema = schemaObject(value);
   if (schema === undefined || !hasOnlyKeys(schema, PROPERTY_KEYS)) {
-    return false;
+    return undefined;
   }
+  return schema;
+};
+
+const propertyType = (schema: SchemaObject): string | undefined => {
   const type = schema["type"];
   if (
     typeof type !== "string" ||
     PROPERTY_TYPES[type] !== true ||
-    !validCommonAnnotations(schema)
+    !validCommonAnnotations(schema) ||
+    (schema["writeOnly"] === true && type !== "string")
   ) {
+    return undefined;
+  }
+  return type;
+};
+
+const propertyItems = (schema: SchemaObject, type: string): SchemaObject | undefined =>
+  type === "array" && validArrayItems(schema["items"]) ? schemaObject(schema["items"]) : undefined;
+
+const validPropertyDeclarations = (
+  schema: SchemaObject,
+  type: string,
+  items: SchemaObject | undefined,
+): boolean =>
+  validDefault(schema, type, items) &&
+  (schema["examples"] === undefined || validExamples(schema["examples"], type, items)) &&
+  (schema["enum"] === undefined || validEnum(schema["enum"], type));
+
+const validBooleanProperty = (schema: SchemaObject): boolean => {
+  for (const key in BOOLEAN_PROPERTY_FORBIDDEN_KEYS) {
+    if (schema[key] !== undefined) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const validProperty = (value: unknown): boolean => {
+  const schema = propertySchema(value);
+  if (schema === undefined) {
     return false;
   }
-  if (schema["writeOnly"] === true && type !== "string") {
+  const type = propertyType(schema);
+  if (type === undefined) {
     return false;
   }
-  const items =
-    type === "array" && validArrayItems(schema["items"])
-      ? schemaObject(schema["items"])
-      : undefined;
-  if (!validDefault(schema, type, items)) {
-    return false;
-  }
-  if (schema["examples"] !== undefined && !validExamples(schema["examples"], type, items)) {
-    return false;
-  }
-  if (schema["enum"] !== undefined && !validEnum(schema["enum"], type)) {
+  const items = propertyItems(schema, type);
+  if (!validPropertyDeclarations(schema, type, items)) {
     return false;
   }
   switch (type) {
@@ -322,17 +358,7 @@ const validProperty = (value: unknown): boolean => {
       return validArrayProperty(schema);
     }
     case "boolean": {
-      return (
-        schema["format"] === undefined &&
-        schema["minLength"] === undefined &&
-        schema["maxLength"] === undefined &&
-        schema["minimum"] === undefined &&
-        schema["maximum"] === undefined &&
-        schema["items"] === undefined &&
-        schema["minItems"] === undefined &&
-        schema["maxItems"] === undefined &&
-        schema["uniqueItems"] === undefined
-      );
+      return validBooleanProperty(schema);
     }
     case "integer": {
       return validNumericProperty(schema, true);
@@ -343,8 +369,10 @@ const validProperty = (value: unknown): boolean => {
     case "string": {
       return validStringProperty(schema);
     }
+    default: {
+      return false;
+    }
   }
-  return false;
 };
 
 const schemaWithinByteLimit = (value: unknown): boolean => {
@@ -359,11 +387,12 @@ const schemaWithinByteLimit = (value: unknown): boolean => {
   }
 };
 
-// fallow-ignore-next-line complexity -- Root validation enforces the complete flat-schema boundary before persistence.
-const validRestrictedSchema = (value: unknown): value is JsonObject => {
+const restrictedRoot = (value: unknown): SchemaObject | undefined => {
+  if (!schemaWithinByteLimit(value)) {
+    return undefined;
+  }
   const root = schemaObject(value);
   if (
-    !schemaWithinByteLimit(value) ||
     root === undefined ||
     !hasOnlyKeys(root, ROOT_KEYS) ||
     root["type"] !== "object" ||
@@ -371,11 +400,15 @@ const validRestrictedSchema = (value: unknown): value is JsonObject => {
     !optionalString(root["title"]) ||
     !optionalString(root["description"])
   ) {
-    return false;
+    return undefined;
   }
-  const properties = schemaObject(root["properties"]);
+  return root;
+};
+
+const restrictedProperties = (value: unknown): SchemaObject | undefined => {
+  const properties = schemaObject(value);
   if (properties === undefined || Object.keys(properties).length > MAXIMUM_PROPERTIES) {
-    return false;
+    return undefined;
   }
   for (const [name, property] of Object.entries(properties)) {
     if (
@@ -383,14 +416,17 @@ const validRestrictedSchema = (value: unknown): value is JsonObject => {
       Buffer.byteLength(name, "utf8") > MAXIMUM_PROVIDER_IDENTIFIER_LENGTH ||
       !validProperty(property)
     ) {
-      return false;
+      return undefined;
     }
   }
-  const requiredValue = root["required"];
-  if (requiredValue === undefined) {
+  return properties;
+};
+
+const validRequiredProperties = (value: unknown, properties: SchemaObject): boolean => {
+  if (value === undefined) {
     return true;
   }
-  const required = denseArray(requiredValue);
+  const required = denseArray(value);
   if (required === undefined || required.length > MAXIMUM_SCHEMA_COLLECTION_ITEMS) {
     return false;
   }
@@ -403,6 +439,15 @@ const validRestrictedSchema = (value: unknown): value is JsonObject => {
     uniqueRequired.add(name);
   }
   return true;
+};
+
+const validRestrictedSchema = (value: unknown): value is JsonObject => {
+  const root = restrictedRoot(value);
+  if (root === undefined) {
+    return false;
+  }
+  const properties = restrictedProperties(root["properties"]);
+  return properties !== undefined && validRequiredProperties(root["required"], properties);
 };
 
 const validBoundedString = (value: string, maximumLength: number, required: boolean): boolean =>
@@ -423,7 +468,7 @@ const normalizeDiscoveredPluginInfo = (
     info.schemaProfileVersion !== SUPPORTED_SCHEMA_PROFILE_VERSION ||
     !validRestrictedSchema(info.configurationSchema)
   ) {
-    return;
+    return undefined;
   }
   const capabilities = denseArray(info.capabilities);
   if (
@@ -437,7 +482,7 @@ const normalizeDiscoveredPluginInfo = (
         capabilities.indexOf(capability) !== index,
     )
   ) {
-    return;
+    return undefined;
   }
   const knownCapabilities: number[] = [];
   for (const capability of capabilities) {
@@ -694,7 +739,6 @@ const propertyValueAllowed = (value: JsonValue, propertyValue: unknown): boolean
   }
 };
 
-// fallow-ignore-next-line complexity -- Complete instance validation keeps required, unknown, type, format, and bound checks at one schema boundary.
 const configurationMatchesRestrictedSchema = (
   schema: JsonObject,
   configuration: JsonObject,

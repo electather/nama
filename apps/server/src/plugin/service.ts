@@ -8,12 +8,13 @@ import { Effect, Exit, Semaphore } from "effect";
 import type { Scope } from "effect";
 
 import { callSupervisedPlugin } from "./call.ts";
-import type { PluginCallFailure, SupervisedCall } from "./call.ts";
+import type { SupervisedCall } from "./call.ts";
 import { unavailable } from "./errors.ts";
 import type { PluginSupervisorCleanupFailure, PluginUnavailableFailure } from "./errors.ts";
 import { preparePluginLaunch } from "./launch-document.ts";
 import { retirePluginHandle } from "./lifecycle.ts";
 import type {
+  PluginCallFailure,
   PluginHandleState,
   PreparedPluginLaunch,
   PluginLaunch,

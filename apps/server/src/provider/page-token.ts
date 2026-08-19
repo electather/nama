@@ -1,4 +1,4 @@
-// oxlint-disable eslint/init-declarations, eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, typescript/consistent-return -- Page-token verification keeps its ordered canonicalization, authentication, and zeroing steps explicit.
+// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers -- Page-token verification keeps its ordered canonicalization, authentication, and zeroing steps explicit.
 import { createHmac, hkdf, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 
@@ -84,74 +84,94 @@ const decodeBase64url = (segment: string): Buffer => {
   return decoded;
 };
 
+const PAYLOAD_KEYS = [
+  "administrator_id",
+  "cursor",
+  "expires_at",
+  "method",
+  "page_size",
+  "query",
+  "version",
+];
+
 const dataProperties = (value: object): Readonly<Record<string, unknown>> | undefined => {
   const properties: Record<string, unknown> = {};
   for (const key of Reflect.ownKeys(value)) {
     if (typeof key !== "string") {
-      return;
+      return undefined;
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (descriptor === undefined || descriptor.enumerable !== true || !("value" in descriptor)) {
-      return;
+      return undefined;
     }
     properties[key] = descriptor.value;
   }
   return properties;
 };
 
-// fallow-ignore-next-line complexity -- Canonical token parsing rejects every malformed field and representation before returning a cursor.
+const hasExactPayloadKeys = (properties: Readonly<Record<string, unknown>>): boolean =>
+  Reflect.ownKeys(properties).length === PAYLOAD_KEYS.length &&
+  PAYLOAD_KEYS.every((key) => Object.hasOwn(properties, key));
+
+const nonemptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0;
+
+const positiveSafeInteger = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+
+const payloadFromProperties = (
+  properties: Readonly<Record<string, unknown>>,
+): PageTokenPayload | undefined => {
+  const {
+    administrator_id: administratorId,
+    cursor,
+    expires_at: expiresAt,
+    method,
+    page_size: pageSize,
+    query,
+    version,
+  } = properties;
+  if (
+    version !== PAGE_TOKEN_VERSION ||
+    !nonemptyString(administratorId) ||
+    !nonemptyString(cursor) ||
+    !positiveSafeInteger(expiresAt) ||
+    !nonemptyString(method) ||
+    !positiveSafeInteger(pageSize) ||
+    typeof query !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    administrator_id: administratorId,
+    cursor,
+    expires_at: expiresAt,
+    method,
+    page_size: pageSize,
+    query,
+    version: PAGE_TOKEN_VERSION,
+  };
+};
+
+const propertiesFromJson = (canonicalJson: string): Readonly<Record<string, unknown>> => {
+  const value: unknown = JSON.parse(canonicalJson);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw invalidToken();
+  }
+  const properties = dataProperties(value);
+  if (properties === undefined || !hasExactPayloadKeys(properties)) {
+    throw invalidToken();
+  }
+  return properties;
+};
+
 const parsePayload = (canonicalJson: string): PageTokenPayload => {
   try {
-    const value: unknown = JSON.parse(canonicalJson);
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    const payload = payloadFromProperties(propertiesFromJson(canonicalJson));
+    if (payload === undefined || JSON.stringify(payload) !== canonicalJson) {
       throw invalidToken();
     }
-    const payload = dataProperties(value);
-    if (payload === undefined) {
-      throw invalidToken();
-    }
-    const expectedKeys = [
-      "administrator_id",
-      "cursor",
-      "expires_at",
-      "method",
-      "page_size",
-      "query",
-      "version",
-    ];
-    const actualKeys = Object.keys(payload).toSorted();
-    if (
-      actualKeys.length !== expectedKeys.length ||
-      !actualKeys.every((key, index) => key === expectedKeys[index]) ||
-      payload["version"] !== PAGE_TOKEN_VERSION ||
-      typeof payload["administrator_id"] !== "string" ||
-      payload["administrator_id"].length === 0 ||
-      typeof payload["cursor"] !== "string" ||
-      payload["cursor"].length === 0 ||
-      !Number.isSafeInteger(payload["expires_at"]) ||
-      typeof payload["expires_at"] !== "number" ||
-      typeof payload["method"] !== "string" ||
-      payload["method"].length === 0 ||
-      !Number.isSafeInteger(payload["page_size"]) ||
-      typeof payload["page_size"] !== "number" ||
-      payload["page_size"] <= 0 ||
-      typeof payload["query"] !== "string"
-    ) {
-      throw invalidToken();
-    }
-    const typedPayload: PageTokenPayload = {
-      administrator_id: payload["administrator_id"],
-      cursor: payload["cursor"],
-      expires_at: payload["expires_at"],
-      method: payload["method"],
-      page_size: payload["page_size"],
-      query: payload["query"],
-      version: PAGE_TOKEN_VERSION,
-    };
-    if (JSON.stringify(typedPayload) !== canonicalJson) {
-      throw invalidToken();
-    }
-    return typedPayload;
+    return payload;
   } catch (error) {
     if (error instanceof PageTokenInvalid) {
       throw error;
@@ -160,7 +180,7 @@ const parsePayload = (canonicalJson: string): PageTokenPayload => {
   }
 };
 
-const makePageTokenCodec = async (encodedMasterKey: string): Promise<PageTokenCodec> => {
+const derivePageTokenKey = async (encodedMasterKey: string): Promise<Buffer> => {
   const masterKey = Buffer.from(encodedMasterKey.slice(MASTER_KEY_PREFIX.length), "base64");
   if (
     !encodedMasterKey.startsWith(MASTER_KEY_PREFIX) ||
@@ -169,9 +189,8 @@ const makePageTokenCodec = async (encodedMasterKey: string): Promise<PageTokenCo
     masterKey.fill(0);
     throw invalidToken();
   }
-  let key: Buffer;
   try {
-    key = Buffer.from(
+    return Buffer.from(
       await deriveHkdfOutput(
         HKDF_HASH,
         masterKey,
@@ -183,6 +202,10 @@ const makePageTokenCodec = async (encodedMasterKey: string): Promise<PageTokenCo
   } finally {
     masterKey.fill(0);
   }
+};
+
+const makePageTokenCodec = async (encodedMasterKey: string): Promise<PageTokenCodec> => {
+  const key = await derivePageTokenKey(encodedMasterKey);
   let closed = false;
   const requireOpen = (): void => {
     if (closed) {

@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary, typescript/no-unsafe-type-assertion -- Provider-management fixtures keep reconciliation outcomes and token-boundary assertions explicit.
+// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary -- Provider-management fixtures keep reconciliation outcomes and token-boundary assertions explicit.
 import { expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 
@@ -8,8 +8,8 @@ import type {
 } from "../../database/provider-persistence.ts";
 import { unusedProviderPersistence } from "../../database/tests/provider-persistence.test-support.ts";
 import { PluginUnavailable } from "../../plugin/errors.ts";
-import type { PluginSupervisorService } from "../../plugin/model.ts";
 import { makeProviderManagement } from "../provider-management.ts";
+import type { ProviderDiscovery } from "../provider-management.ts";
 
 const MASTER_KEY = `base64:${Buffer.alloc(32, 11).toString("base64")}`;
 const jellyfinSchema = {
@@ -40,20 +40,16 @@ const discoveredPluginInfo = Object.freeze({
   schemaRevision: "1",
 });
 
-const successfulSupervisor = Object.freeze({
-  supervise: () =>
-    Effect.succeed({
-      call: () => Effect.succeed({ pluginInfo: discoveredPluginInfo }),
-    }),
-}) as unknown as PluginSupervisorService;
+const successfulDiscovery = (() =>
+  Effect.succeed(discoveredPluginInfo)) satisfies ProviderDiscovery;
 
-const unavailableSupervisor = Object.freeze({
-  supervise: () => Effect.fail(new PluginUnavailable({ reason: "plugin_exited" })),
-}) as unknown as PluginSupervisorService;
+const unavailableDiscovery = (() =>
+  Effect.fail(new PluginUnavailable({ reason: "plugin_exited" }))) satisfies ProviderDiscovery;
 
-const incompatibleSupervisor = Object.freeze({
-  supervise: () => Effect.fail(new PluginUnavailable({ reason: "contract_unsupported" })),
-}) as unknown as PluginSupervisorService;
+const incompatibleDiscovery = (() =>
+  Effect.fail(
+    new PluginUnavailable({ reason: "contract_unsupported" }),
+  )) satisfies ProviderDiscovery;
 
 const makePersistence = (initial?: ProviderInstallationInput) => {
   let installation = initial;
@@ -81,9 +77,9 @@ it.effect("reconciles valid discovery metadata and lists its accepted schema", (
   return Effect.scoped(
     Effect.gen(function* successfulReconciliationTest() {
       const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
         masterKey: MASTER_KEY,
         persistence: persistence.providers,
-        supervisor: successfulSupervisor,
       });
       const page = yield* service.listProviderTypes({
         administratorId: "administrator-a",
@@ -121,9 +117,9 @@ it.effect("preserves the last accepted schema when discovery is incompatible", (
   return Effect.scoped(
     Effect.gen(function* incompatibleReconciliationTest() {
       const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
         masterKey: MASTER_KEY,
         persistence: persistence.providers,
-        supervisor: successfulSupervisor,
       });
       const page = yield* service.listProviderTypes({
         administratorId: "administrator-a",
@@ -153,9 +149,9 @@ it.effect("reports an incompatible private contract without replacing accepted m
   return Effect.scoped(
     Effect.gen(function* incompatibleContractTest() {
       yield* makeProviderManagement({
+        discover: incompatibleDiscovery,
         masterKey: MASTER_KEY,
         persistence: persistence.providers,
-        supervisor: incompatibleSupervisor,
       });
 
       expect(persistence.accepted()).toBe(0);
@@ -195,9 +191,9 @@ it.effect("preserves accepted metadata when a stored instance fails the discover
   return Effect.scoped(
     Effect.gen(function* storedInstanceCompatibilityTest() {
       yield* makeProviderManagement({
+        discover: successfulDiscovery,
         masterKey: MASTER_KEY,
         persistence: providers,
-        supervisor: successfulSupervisor,
       });
 
       expect(persistence.accepted()).toBe(0);
@@ -222,9 +218,9 @@ it.effect("contains plugin absence without changing another accepted installatio
   return Effect.scoped(
     Effect.gen(function* unavailableReconciliationTest() {
       const service = yield* makeProviderManagement({
+        discover: unavailableDiscovery,
         masterKey: MASTER_KEY,
         persistence: persistence.providers,
-        supervisor: unavailableSupervisor,
       });
       const page = yield* service.listProviderTypes({
         administratorId: "administrator-a",
@@ -282,9 +278,9 @@ it.effect("binds provider list continuations to administrator, page size, and cu
   return Effect.scoped(
     Effect.gen(function* paginatedProviderTypesTest() {
       const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
         masterKey: MASTER_KEY,
         persistence: providers,
-        supervisor: successfulSupervisor,
       });
       const firstPage = yield* service.listProviderTypes({
         administratorId: "administrator-a",

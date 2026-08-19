@@ -55,15 +55,14 @@ interface PluginLaunchDescriptor {
   readonly stderrEvents: readonly PluginStderrEventDeclaration[];
 }
 
+type PluginCallFailure = PluginDeadlineFailure | PluginRpcFailure | PluginUnavailableFailure;
+
 interface SupervisedPlugin {
   readonly call: <Input extends DescMessage, Output extends DescMessage>(
     method: DescMethodUnary<Input, Output>,
     request: MessageInitShape<Input>,
     deadlineMilliseconds: number,
-  ) => Effect.Effect<
-    MessageShape<Output>,
-    PluginDeadlineFailure | PluginRpcFailure | PluginUnavailableFailure
-  >;
+  ) => Effect.Effect<MessageShape<Output>, PluginCallFailure>;
 }
 
 interface PluginSupervisorService {
@@ -174,6 +173,7 @@ export type {
   PluginLogEmitter,
   PluginSpawnProcess,
   PluginSupervisorLayerOptions,
+  PluginCallFailure,
   PluginSupervisorService,
   PreparedPluginLaunch,
   ProcessExit,

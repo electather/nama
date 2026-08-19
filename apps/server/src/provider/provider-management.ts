@@ -11,7 +11,7 @@ import type {
   ProviderPersistenceFailure,
   StoredProviderInstallation,
 } from "../database/provider-persistence.ts";
-import type { PluginSupervisorService } from "../plugin/model.ts";
+import type { PluginCallFailure, PluginSupervisorService } from "../plugin/model.ts";
 import { PluginSupervisor } from "../plugin/supervisor.ts";
 import {
   bundledProviderTypeIds,
@@ -25,6 +25,7 @@ import {
   isInstallationSchemaCompatible,
   normalizeDiscoveredPluginInfo,
 } from "./restricted-schema.ts";
+import type { DiscoveredPluginInfo } from "./restricted-schema.ts";
 
 const ZERO = 0;
 const LAST_ITEM = -1;
@@ -62,12 +63,6 @@ interface ProviderManagementService {
   ) => Effect.Effect<ListProviderTypesResult, PageTokenInvalidFailure | ProviderPersistenceFailure>;
 }
 
-interface ProviderManagementDependencies {
-  readonly masterKey: string;
-  readonly persistence: ProviderPersistence;
-  readonly supervisor: PluginSupervisorService;
-}
-
 const pageTokenFailure = (error: unknown): PageTokenInvalidFailure => {
   if (error instanceof PageTokenInvalid) {
     return error;
@@ -87,6 +82,15 @@ const discoverProvider = (
       Effect.map((response) => response.pluginInfo),
     ),
   );
+type ProviderDiscovery = (
+  provider: (typeof bundledProviders)[number],
+) => Effect.Effect<DiscoveredPluginInfo | undefined, PluginCallFailure>;
+
+interface ProviderManagementDependencies {
+  readonly discover: ProviderDiscovery;
+  readonly masterKey: string;
+  readonly persistence: ProviderPersistence;
+}
 
 const storedInstancesMatchSchema = (
   persistence: ProviderPersistence,
@@ -114,10 +118,10 @@ const storedInstancesMatchSchema = (
 
 const reconcileProvider = (
   persistence: ProviderPersistence,
-  supervisor: PluginSupervisorService,
+  discover: ProviderDiscovery,
   provider: (typeof bundledProviders)[number],
 ): Effect.Effect<ProviderDiscoveryStatus, ProviderPersistenceFailure> =>
-  Effect.matchEffect(discoverProvider(supervisor, provider), {
+  Effect.matchEffect(discover(provider), {
     onFailure: (failure) => {
       if (
         "reason" in failure &&
@@ -255,9 +259,9 @@ const listProviderTypes = (
   });
 
 const makeProviderManagement = ({
+  discover,
   masterKey,
   persistence,
-  supervisor,
 }: ProviderManagementDependencies): Effect.Effect<
   ProviderManagementService,
   PageTokenInvalidFailure | ProviderPersistenceFailure,
@@ -273,7 +277,7 @@ const makeProviderManagement = ({
       (codec) => Effect.sync(codec.close),
     );
     for (const provider of bundledProviders) {
-      const status = yield* reconcileProvider(persistence, supervisor, provider);
+      const status = yield* reconcileProvider(persistence, discover, provider);
       yield* Effect.logInfo({
         event: "provider.discovery_completed",
         providerType: provider.providerTypeId,
@@ -298,9 +302,9 @@ class ProviderManagement extends contextService<ProviderManagement, ProviderMana
       const database = yield* Database;
       const supervisor = yield* PluginSupervisor;
       const service = yield* makeProviderManagement({
+        discover: (provider) => discoverProvider(supervisor, provider),
         masterKey: Redacted.value(config.security.masterKey),
         persistence: database.providers,
-        supervisor,
       });
       return ProviderManagement.of(service);
     }),
@@ -312,5 +316,6 @@ export type {
   ListProviderTypesInput,
   ListProviderTypesResult,
   ProviderManagementDependencies,
+  ProviderDiscovery,
   ProviderManagementService,
 };

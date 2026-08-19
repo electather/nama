@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-statements, typescript/consistent-return -- The stdin boundary keeps byte accounting and exact launch-document rejection explicit.
+// oxlint-disable eslint/max-statements -- The stdin boundary keeps byte accounting and exact launch-document rejection explicit.
 import { timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
 import { chmod } from "node:fs/promises";
@@ -31,11 +31,11 @@ const dataProperties = (value: object): Readonly<Record<string, unknown>> | unde
   const properties: Record<string, unknown> = {};
   for (const key of Reflect.ownKeys(value)) {
     if (typeof key !== "string") {
-      return;
+      return undefined;
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (descriptor === undefined || descriptor.enumerable !== true || !("value" in descriptor)) {
-      return;
+      return undefined;
     }
     properties[key] = descriptor.value;
   }

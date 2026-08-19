@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-underscore-dangle, eslint/no-useless-escape, sort-keys, typescript/no-unsafe-type-assertion, unicorn/max-nested-calls -- Production-migration security scenarios keep exact PostgreSQL faults, cryptographic dimensions, and sentinels visible.
+// oxlint-disable eslint/max-lines-per-function, eslint/no-magic-numbers, eslint/no-underscore-dangle, eslint/no-useless-escape, sort-keys, typescript/no-unsafe-type-assertion, unicorn/max-nested-calls -- Production-migration security scenarios keep exact PostgreSQL faults, cryptographic dimensions, and sentinels visible.
 import { expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { Pool } from "pg";
@@ -130,6 +130,13 @@ const initializeProviderDatabase = (databaseUrl: string) =>
       insertFixtureUser(pool, ADMINISTRATOR_ID, "provider-administrator@example.test"),
     );
   });
+const seedProviderInstallationOrder = (providers: ProviderPersistence) =>
+  Effect.gen(function* seedProviderInstallations() {
+    yield* acceptJellyfinInstallation(providers, "zeta");
+    yield* acceptJellyfinInstallation(providers, "jellyfin");
+    yield* acceptJellyfinInstallation(providers, "alpha");
+    yield* acceptJellyfinInstallation(providers, "removed");
+  });
 
 it.live("persists non-secret configuration and restores every encrypted credential", () =>
   withIsolatedDatabase((databaseUrl) =>
@@ -172,10 +179,7 @@ it.live("reads accepted provider installations in stable keyset order", () =>
       yield* initializeProviderDatabase(databaseUrl);
       const result = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
         Effect.gen(function* installationReadPersistence() {
-          yield* acceptJellyfinInstallation(database.providers, "zeta");
-          yield* acceptJellyfinInstallation(database.providers, "jellyfin");
-          yield* acceptJellyfinInstallation(database.providers, "alpha");
-          yield* acceptJellyfinInstallation(database.providers, "removed");
+          yield* seedProviderInstallationOrder(database.providers);
           const providerTypeIds = ["alpha", "jellyfin", "zeta"];
           const firstPage = yield* database.providers.listInstallations({
             limit: 2,
