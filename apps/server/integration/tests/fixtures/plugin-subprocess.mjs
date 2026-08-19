@@ -13,11 +13,15 @@ import { connectNodeAdapter } from "@connectrpc/connect-node";
 import { HealthService, ServingStatus } from "@nama/api/nama/plugin/v1/health_pb.js";
 import { PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 
-const MAXIMUM_ENVELOPE_BYTES = 4096;
+const MAXIMUM_LAUNCH_DOCUMENT_BYTES = 64 * 1024;
 const CONTROL_DIRECTORY_INDEX = 2;
 const MODE_INDEX = 3;
 const controlDirectory = process.argv[CONTROL_DIRECTORY_INDEX];
 const mode = process.argv[MODE_INDEX] ?? "normal";
+const EXPECTED_CONFIGURATION_KEY = "base_url";
+const EXPECTED_CONFIGURATION_VALUE = "fixture-configuration";
+const EXPECTED_CREDENTIAL_KEY = "api_key";
+const EXPECTED_CREDENTIAL_VALUE = "fixture-credential";
 
 if (controlDirectory === undefined) {
   process.exitCode = 64;
@@ -28,30 +32,91 @@ process.umask(0o177);
 
 await mkdir(controlDirectory, { recursive: true, mode: 0o700 });
 
-const readEnvelope = async () => {
+/**
+ * @param {Readonly<Record<string, unknown>>} value
+ * @param {readonly string[]} expectedKeys
+ * @returns {boolean}
+ */
+const hasExactKeys = (value, expectedKeys) => {
+  const actualKeys = Object.keys(value).toSorted();
+  return (
+    actualKeys.length === expectedKeys.length &&
+    actualKeys.every((key, index) => key === expectedKeys[index])
+  );
+};
+/**
+ * @param {unknown} value
+ * @returns {value is Readonly<Record<string, unknown>>}
+ */
+const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+const readLaunchDocument = async () => {
   const chunks = [];
   let size = 0;
   for await (const chunk of process.stdin) {
     size += chunk.length;
-    if (size > MAXIMUM_ENVELOPE_BYTES) {
-      process.exit(64);
+    if (size > MAXIMUM_LAUNCH_DOCUMENT_BYTES) {
+      process.exitCode = 64;
+      throw new Error("launch document exceeds its size bound");
     }
     chunks.push(chunk);
   }
+  /** @type {unknown} */
   const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   if (
-    value === null ||
-    typeof value !== "object" ||
-    value.version !== 1 ||
+    !isRecord(value) ||
+    value.version !== 2 ||
     typeof value.socket_path !== "string" ||
     typeof value.bearer !== "string"
   ) {
-    process.exit(64);
+    process.exitCode = 64;
+    throw new Error("launch document is malformed");
   }
-  return value;
+  const commonKeys = ["bearer", "kind", "socket_path", "version"];
+  if (value.kind === "discovery" && hasExactKeys(value, commonKeys)) {
+    return value;
+  }
+  const providerKeys = ["configuration", "credentials", "provider_type"];
+  const hasProviderContext =
+    value.provider_type === "fixture" &&
+    isRecord(value.configuration) &&
+    isRecord(value.credentials);
+  if (
+    value.kind === "candidate" &&
+    hasProviderContext &&
+    hasExactKeys(value, [...commonKeys, ...providerKeys].toSorted())
+  ) {
+    return value;
+  }
+  if (
+    value.kind === "instance" &&
+    hasProviderContext &&
+    hasExactKeys(
+      value,
+      [...commonKeys, ...providerKeys, "provider_instance_id", "revision"].toSorted(),
+    ) &&
+    typeof value.provider_instance_id === "string" &&
+    typeof value.revision === "string"
+  ) {
+    return value;
+  }
+  process.exitCode = 64;
+  throw new Error("launch document kind is invalid");
 };
 
-const envelope = await readEnvelope();
+const launchDocument = await readLaunchDocument();
+const providerContextAbsent = [
+  "configuration",
+  "credentials",
+  "provider_instance_id",
+  "provider_type",
+  "revision",
+].every((key) => !(key in launchDocument));
+const providerContextMatchesFixture =
+  launchDocument.provider_type === "fixture" &&
+  launchDocument.configuration?.[EXPECTED_CONFIGURATION_KEY] === EXPECTED_CONFIGURATION_VALUE &&
+  launchDocument.credentials?.[EXPECTED_CREDENTIAL_KEY] === EXPECTED_CREDENTIAL_VALUE;
+
 const launchesPath = join(controlDirectory, "launches.ndjson");
 let priorLaunchCount = 0;
 try {
@@ -75,19 +140,32 @@ const environmentEmpty = Object.keys(process.env).every(
   (name) => process.platform === "darwin" && name === "__CF_USER_TEXT_ENCODING",
 );
 const seededEnvironmentAbsent = seededNames.every((name) => process.env[name] === undefined);
-const argumentsExcludeLaunchMaterial = process.argv.every(
-  (argument) => argument !== envelope.bearer && argument !== envelope.socket_path,
+const excludedLaunchMaterial = [
+  String(launchDocument.bearer),
+  String(launchDocument.socket_path),
+  EXPECTED_CONFIGURATION_KEY,
+  EXPECTED_CONFIGURATION_VALUE,
+  EXPECTED_CREDENTIAL_KEY,
+  EXPECTED_CREDENTIAL_VALUE,
+];
+const argumentsExcludeLaunchMaterial = process.argv.every((argument) =>
+  excludedLaunchMaterial.every((material) => !String(argument).includes(material)),
 );
 await appendFile(
   launchesPath,
   `${JSON.stringify({
     argumentsExcludeLaunchMaterial,
-    bearer: envelope.bearer,
+    bearer: launchDocument.bearer,
     environmentEmpty,
+    launchKind: launchDocument.kind,
     launchNumber,
     pid: process.pid,
+    providerContextAbsent,
+    providerContextMatchesFixture,
+    providerInstanceId: launchDocument.provider_instance_id,
+    revision: launchDocument.revision,
     seededEnvironmentAbsent,
-    socketPath: envelope.socket_path,
+    socketPath: launchDocument.socket_path,
   })}\n`,
   { mode: 0o600 },
 );
@@ -130,7 +208,7 @@ const waitForControlFile = async (filename) => {
 if (mode === "wait-start" || mode === "wait-start-cleanup-failure") {
   if (mode === "wait-start-cleanup-failure") {
     const failCleanup = async () => {
-      await chmod(dirname(dirname(envelope.socket_path)), 0o500);
+      await chmod(dirname(dirname(launchDocument.socket_path)), 0o500);
       process.exit(0);
     };
     process.once("SIGTERM", () => void failCleanup());
@@ -146,7 +224,7 @@ if (mode === "regular-socket") {
   process.once("SIGINT", stopped.resolve);
   process.once("SIGTERM", stopped.resolve);
   const keepAlive = setInterval(() => {}, 1000);
-  await writeFile(envelope.socket_path, "", { mode: 0o600 });
+  await writeFile(launchDocument.socket_path, "", { mode: 0o600 });
   await stopped.promise;
   clearInterval(keepAlive);
   process.exit(0);
@@ -154,7 +232,7 @@ if (mode === "regular-socket") {
 
 const authorizationMatches = (context) =>
   mode !== "authentication-failure" &&
-  context.requestHeader.get("authorization") === `Bearer ${envelope.bearer}`;
+  context.requestHeader.get("authorization") === `Bearer ${String(launchDocument.bearer)}`;
 const requireAuthorization = (context) => {
   if (!authorizationMatches(context)) {
     throw new ConnectError("authentication failed", Code.Unauthenticated);
@@ -184,10 +262,24 @@ const handler = connectNodeAdapter({
       },
     });
     router.service(PluginService, {
-      getConnection: async (_request, context) => {
+      getConnection: async (request, context) => {
         requireAuthorization(context);
         connectionRequestCount += 1;
         observeCancellation(context);
+        const requestBoundary = `${JSON.stringify(request)} ${[...context.requestHeader.entries()]
+          .flat()
+          .join(" ")}`;
+        const requestBoundaryClean = [
+          EXPECTED_CONFIGURATION_KEY,
+          EXPECTED_CONFIGURATION_VALUE,
+          EXPECTED_CREDENTIAL_KEY,
+          EXPECTED_CREDENTIAL_VALUE,
+        ].every((material) => !requestBoundary.includes(material));
+        await appendFile(
+          join(controlDirectory, "request-boundary.ndjson"),
+          `${requestBoundaryClean}\n`,
+          { mode: 0o600 },
+        );
         await appendFile(join(controlDirectory, "requests.ndjson"), "1\n", { mode: 0o600 });
         if (
           mode === "block-connection" ||
@@ -201,6 +293,9 @@ const handler = connectNodeAdapter({
             { once: true },
           );
           await blockedRequest.promise;
+        }
+        if (mode === "wait-connection") {
+          await waitForControlFile("connection-continue");
         }
         if (mode === "rpc-deadline") {
           throw new ConnectError("fixture deadline", Code.DeadlineExceeded);
@@ -266,9 +361,9 @@ if (mode === "insecure-socket") {
 const server = createServer(handler);
 const listening = Promise.withResolvers();
 server.once("error", listening.reject);
-server.listen(envelope.socket_path, listening.resolve);
+server.listen(launchDocument.socket_path, listening.resolve);
 await listening.promise;
-await chmod(envelope.socket_path, mode === "insecure-socket" ? 0o666 : 0o600);
+await chmod(launchDocument.socket_path, mode === "insecure-socket" ? 0o666 : 0o600);
 
 if (mode === "wait-recovery" && launchNumber > 1) {
   await appendFile(join(controlDirectory, "ready.ndjson"), `${launchNumber}\n`, { mode: 0o600 });
@@ -307,14 +402,14 @@ const stop = async () => {
     await waitForControlFile("termination-continue");
   }
   if (mode === "cleanup-failure") {
-    await chmod(dirname(dirname(envelope.socket_path)), 0o500);
+    await chmod(dirname(dirname(launchDocument.socket_path)), 0o500);
   }
   const closed = Promise.withResolvers();
   server.close(closed.resolve);
   await closed.promise;
   if (mode === "remove-artifacts") {
-    await rm(envelope.socket_path, { force: true });
-    await rm(dirname(envelope.socket_path), { recursive: true });
+    await rm(launchDocument.socket_path, { force: true });
+    await rm(dirname(launchDocument.socket_path), { recursive: true });
   }
   process.exit(0);
 };

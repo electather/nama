@@ -11,6 +11,7 @@ import type { PluginUnavailableFailure } from "./errors.ts";
 import { pluginLifecycleMessage } from "./logging.ts";
 import type {
   AcquiredPluginProcess,
+  PreparedPluginLaunch,
   PluginLaunchDescriptor,
   PluginCleanupOwnership,
   PluginLogEmitter,
@@ -36,6 +37,7 @@ interface RecoveryPluginOptions {
   readonly descriptor: PluginLaunchDescriptor;
   readonly effectiveUserId: number | undefined;
   readonly emit: PluginLogEmitter;
+  readonly launch: PreparedPluginLaunch;
   readonly ownership: PluginCleanupOwnership;
   readonly priorLaunches: number;
   readonly runtimeRoot: string;
@@ -72,12 +74,15 @@ const establishPluginConnection = (
 
 const launchAttempt = (
   acquired: AcquiredPluginProcess,
-  descriptor: PluginLaunchDescriptor,
-  emit: PluginLogEmitter,
+  options: RecoveryPluginOptions,
 ): Effect.Effect<RunningPlugin, PluginUnavailableFailure> =>
   Effect.gen(function* launchPluginAttempt() {
-    yield* finishPluginStartup(acquired, descriptor, emit);
-    yield* establishPluginConnection(acquired.plugin, descriptor);
+    yield* finishPluginStartup(acquired, {
+      descriptor: options.descriptor,
+      emit: options.emit,
+      launch: options.launch,
+    });
+    yield* establishPluginConnection(acquired.plugin, options.descriptor);
     return acquired.plugin;
   });
 
@@ -116,7 +121,7 @@ const launchPlugin = (
           const launchDirectory = yield* makeLaunchDirectory(options.runtimeRoot);
           ownCleanup(options.ownership, removePath(launchDirectory));
           const acquired = yield* acquirePlugin(options, launchDirectory);
-          const attempt = launchAttempt(acquired, options.descriptor, options.emit);
+          const attempt = launchAttempt(acquired, options);
           return yield* restore(attempt).pipe(
             Effect.onExit((exit) => cleanupFailedLaunch(exit, options.ownership)),
           );
@@ -142,9 +147,11 @@ const exhaustedRecovery = (
 ): Effect.Effect<never, PluginUnavailableFailure> => {
   options.emit(
     Effect.logError(
-      pluginLifecycleMessage(options.descriptor, "plugin.recovery_exhausted", {
-        recoveryAttempt: launchesInEpisode,
-      }),
+      pluginLifecycleMessage(
+        { descriptor: options.descriptor, launch: options.launch },
+        "plugin.recovery_exhausted",
+        { recoveryAttempt: launchesInEpisode },
+      ),
     ),
   );
   return Effect.fail(failure);
@@ -161,7 +168,11 @@ const recoverPluginAttempt = (
   const recoveryAttempt = launchesInEpisode + FIRST_RECOVERY_ATTEMPT;
   options.emit(
     Effect.logInfo(
-      pluginLifecycleMessage(options.descriptor, "plugin.recovery_attempt", { recoveryAttempt }),
+      pluginLifecycleMessage(
+        { descriptor: options.descriptor, launch: options.launch },
+        "plugin.recovery_attempt",
+        { recoveryAttempt },
+      ),
     ),
   );
   const delay = RECOVERY_DELAYS_MILLISECONDS[launchesInEpisode];
