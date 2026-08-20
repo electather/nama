@@ -39,9 +39,11 @@ one-shot or exact-revision supervisor paths as mutations and condition stored
 observations on the revision that was tested.
 The production Jellyfin adapter serves bounded targeted library observations
 for movies, shows, positive-numbered seasons, and positive-numbered episodes,
-resumable best-effort full catalog scans, and targeted movie and episode
-watch-state reads for exact instance launches. It advertises `LIBRARY_READ`;
-`WATCH_STATE_READ` remains unadvertised until complete watch-state scans exist.
+resumable best-effort full catalog scans, targeted movie and episode watch-state
+reads, explicit watched/unwatched writes, and observed artwork resolution into
+proven anonymous public leases for exact instance launches. It advertises
+`LIBRARY_READ`, `ARTWORK_RESOLVE`, and `WATCHED_WRITE`; `WATCH_STATE_READ`
+remains unadvertised until complete watch-state scans exist.
 
 The provider-management verification gate drives a compiled `nama` binary
 through the production listener, migrations, PostgreSQL boundary, supervisor,
@@ -51,8 +53,9 @@ wrong-key and damaged-envelope containment beside healthy mutation, connection
 testing through candidate and exact stored-revision subprocesses, credential
 and configuration cutover, disable/re-enable/delete, retained operation replay,
 and safe boundary output. Targeted normalized Jellyfin movie, show, season,
-and episode observations plus resumable catalog scans are implemented; core
-media ingestion, user-facing connection-test commands, and application-image
+and episode observations, resumable catalog scans, explicit watched/unwatched
+writes, and anonymous artwork resolution are implemented; core media ingestion,
+user-facing connection-test commands, and application-image
 packaging remain unimplemented.
 
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.

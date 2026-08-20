@@ -440,7 +440,11 @@ it.live(
                 phase: "TestProviderConfiguration",
               });
               expect(configurationTest.result).toMatchObject({
-                capabilities: [ProviderCapability.LIBRARY_READ],
+                capabilities: [
+                  ProviderCapability.LIBRARY_READ,
+                  ProviderCapability.ARTWORK_RESOLVE,
+                  ProviderCapability.WATCHED_WRITE,
+                ],
                 remoteName: "Provider Test Jellyfin",
                 remoteVersion: "10.11.0",
                 status: ProviderConnectionStatus.CONNECTED,
@@ -512,7 +516,7 @@ it.live(
               expect(payload.data).toEqual({
                 provider_types: [
                   {
-                    capabilities: ["library_read"],
+                    capabilities: ["library_read", "artwork_resolve", "watched_write"],
                     configuration_schema: {
                       additionalProperties: false,
                       properties: {
@@ -709,7 +713,11 @@ it.live(
                 phase: "TestProviderInstance",
               });
               expect(storedTest.result).toMatchObject({
-                capabilities: [ProviderCapability.LIBRARY_READ],
+                capabilities: [
+                  ProviderCapability.LIBRARY_READ,
+                  ProviderCapability.ARTWORK_RESOLVE,
+                  ProviderCapability.WATCHED_WRITE,
+                ],
                 remoteName: "Provider Test Jellyfin",
                 remoteVersion: "10.11.0",
                 status: ProviderConnectionStatus.CONNECTED,

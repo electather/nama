@@ -1,60 +1,52 @@
 import type { ConnectRouter } from "@connectrpc/connect";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { ErrorInfoSchema, RetryInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
-import type { ErrorInfo, RetryInfo } from "@nama/api/google/rpc/error_details_pb.js";
-import { LibraryService, ListConsistency } from "@nama/api/nama/plugin/v1/library_pb.js";
+import type { ProviderArtworkReference } from "@nama/api/nama/plugin/v1/common_pb.js";
+import { ArtworkAuthorizationScope, LibraryService } from "@nama/api/nama/plugin/v1/library_pb.js";
 
-import { encodeCatalogContinuation } from "./catalog-continuation.ts";
-import type { CatalogContinuationPosition } from "./catalog-continuation.ts";
-import { catalogPositionForRequest } from "./catalog-scan.ts";
+import { decodeArtworkReference } from "./artwork-reference.ts";
+import type { JellyfinArtworkReference } from "./artwork-reference.ts";
+import { registerJellyfinCatalogService } from "./catalog-service.ts";
 import type { LaunchDocument, ProviderLaunchDocument } from "./launch-document.ts";
 import { normalizeJellyfinItem } from "./media-item.ts";
 import { createJellyfinRequest } from "./request.ts";
-import type { JellyfinJsonResponse } from "./request.ts";
-import { hasMaximumCodePointLength, isUnknownRecord } from "./value.ts";
+import type { JellyfinArtworkProbeResponse, JellyfinJsonResponse } from "./request.ts";
+import { hasMaximumCodePointLength } from "./value.ts";
 
 const EMPTY_LENGTH = 0;
+const NO_DIMENSION_PREFERENCE = 0;
+const MINIMUM_JELLYFIN_DIMENSION = 1;
 const MAXIMUM_ITEM_REFERENCE_CODE_POINTS = 256;
 const MAXIMUM_MEDIA_RESPONSE_BYTES = 1_048_576;
-const MAXIMUM_CATALOG_RESPONSE_BYTES = 16_777_216;
-const MILLISECONDS_PER_SECOND = 1000;
-const PLUGIN_ERROR_DOMAIN = "nama.plugin.v1";
-const PROVIDER_RETRY_DELAY_SECONDS = 5n;
-const SUPPORTED_CATALOG_ITEM_TYPES: Readonly<Record<string, true>> = Object.freeze({
-  Episode: true,
-  Movie: true,
-  Season: true,
-  Series: true,
-});
-const CATALOG_FIELDS =
-  "ChildCount,Genres,MediaSources,MediaStreams,OriginalTitle,Overview,People,PlayAccess,ProviderIds,RecursiveItemCount,Studios,Taglines";
+const MAXIMUM_JELLYFIN_DIMENSION = 2_147_483_647;
 
 type RequireAuthorization = (authorization: string | null, bearer: string) => void;
-type CatalogErrorReason = "INTERNAL" | "PERMISSION_DENIED" | "PROVIDER_UNAVAILABLE";
 
-const catalogError = (message: string, code: Code, reason: CatalogErrorReason): ConnectError => {
-  const errorInfo: ErrorInfo = {
-    $typeName: "google.rpc.ErrorInfo",
-    domain: PLUGIN_ERROR_DOMAIN,
-    metadata: {},
-    reason,
-  };
-  const errorInfoDetail = { desc: ErrorInfoSchema, value: errorInfo };
-  if (reason !== "PROVIDER_UNAVAILABLE") {
-    return new ConnectError(message, code, undefined, [errorInfoDetail]);
+interface ArtworkResolutionRequest {
+  readonly itemId: string;
+  readonly maxHeight: number | undefined;
+  readonly maxWidth: number | undefined;
+  readonly reference: JellyfinArtworkReference;
+  readonly signal: AbortSignal;
+}
+
+const decodedArtworkRequest = (artworkReference: ProviderArtworkReference | undefined) => {
+  const itemId = artworkReference?.itemReference?.itemId;
+  const artworkId = artworkReference?.artworkId;
+  if (
+    itemId === undefined ||
+    itemId.length === EMPTY_LENGTH ||
+    itemId === "." ||
+    itemId === ".." ||
+    !hasMaximumCodePointLength(itemId, MAXIMUM_ITEM_REFERENCE_CODE_POINTS) ||
+    artworkId === undefined
+  ) {
+    throw new ConnectError("artwork reference is invalid", Code.InvalidArgument);
   }
-  const retryInfo: RetryInfo = {
-    $typeName: "google.rpc.RetryInfo",
-    retryDelay: {
-      $typeName: "google.protobuf.Duration",
-      nanos: 0,
-      seconds: PROVIDER_RETRY_DELAY_SECONDS,
-    },
-  };
-  return new ConnectError(message, code, undefined, [
-    errorInfoDetail,
-    { desc: RetryInfoSchema, value: retryInfo },
-  ]);
+  const reference = decodeArtworkReference(artworkId);
+  if (reference === undefined) {
+    throw new ConnectError("artwork reference is invalid", Code.InvalidArgument);
+  }
+  return { itemId, reference };
 };
 
 const itemFromResponse = (response: JellyfinJsonResponse, itemId: string) => {
@@ -72,147 +64,8 @@ const itemFromResponse = (response: JellyfinJsonResponse, itemId: string) => {
   }
   throw new ConnectError("Jellyfin media response is invalid", Code.Internal);
 };
-const catalogBodyFromResponse = (
-  response: JellyfinJsonResponse,
-): Readonly<Record<string, unknown>> => {
-  if (response.kind === "authentication_failed" || response.kind === "forbidden") {
-    throw catalogError("Jellyfin catalog is forbidden", Code.PermissionDenied, "PERMISSION_DENIED");
-  }
-  if (response.kind === "not_found" || response.kind === "unreachable") {
-    throw catalogError("Jellyfin catalog is unavailable", Code.Unavailable, "PROVIDER_UNAVAILABLE");
-  }
-  if (response.kind !== "success") {
-    throw catalogError("Jellyfin catalog response is invalid", Code.Internal, "INTERNAL");
-  }
-  return response.body;
-};
 
-const excludesCatalogObservation = (
-  providerItem: Readonly<Record<string, unknown>>,
-  itemType: string,
-): boolean =>
-  SUPPORTED_CATALOG_ITEM_TYPES[itemType] !== true ||
-  (itemType === "Season" && providerItem["IndexNumber"] === EMPTY_LENGTH) ||
-  (itemType === "Episode" && providerItem["ParentIndexNumber"] === EMPTY_LENGTH);
-
-const normalizeCatalogObservation = (providerItem: unknown) => {
-  if (!isUnknownRecord(providerItem) || typeof providerItem["Type"] !== "string") {
-    throw catalogError("Jellyfin catalog response is invalid", Code.Internal, "INTERNAL");
-  }
-  const itemType = providerItem["Type"];
-  if (excludesCatalogObservation(providerItem, itemType)) {
-    return [];
-  }
-  const itemId = providerItem["Id"];
-  if (typeof itemId !== "string") {
-    throw catalogError("Jellyfin catalog response is invalid", Code.Internal, "INTERNAL");
-  }
-  return [normalizeJellyfinItem(providerItem, itemId)];
-};
-
-const catalogPageFromResponse = (response: JellyfinJsonResponse, pageSize: number) => {
-  const providerItems = catalogBodyFromResponse(response)["Items"];
-  if (!Array.isArray(providerItems) || providerItems.length > pageSize) {
-    throw catalogError("Jellyfin catalog response is invalid", Code.Internal, "INTERNAL");
-  }
-  return {
-    items: providerItems.flatMap((providerItem) => normalizeCatalogObservation(providerItem)),
-    providerItemCount: providerItems.length,
-  };
-};
-
-const catalogQuery = (launch: ProviderLaunchDocument, position: CatalogContinuationPosition) => ({
-  collapseBoxSetItems: "false",
-  enableImages: "true",
-  enableTotalRecordCount: "false",
-  enableUserData: "false",
-  fields: CATALOG_FIELDS,
-  imageTypeLimit: "20",
-  includeItemTypes: "Movie,Series,Season,Episode",
-  limit: String(position.pageSize),
-  recursive: "true",
-  sortBy: "SortName",
-  sortOrder: "Ascending",
-  startIndex: String(position.offset),
-  userId: launch.configuration.user_id,
-});
-
-const requestJellyfinCatalogPage = (
-  launch: ProviderLaunchDocument,
-  position: CatalogContinuationPosition,
-  signal: AbortSignal,
-) => {
-  const request = createJellyfinRequest({
-    apiKey: launch.credentials.api_key,
-    baseUrl: launch.configuration.base_url,
-  });
-  if (request === undefined) {
-    throw catalogError("Jellyfin adapter is unavailable", Code.Internal, "INTERNAL");
-  }
-  return request.requestJson(["Items"], {
-    authentication: "api_key",
-    maximumResponseBytes: MAXIMUM_CATALOG_RESPONSE_BYTES,
-    query: catalogQuery(launch, position),
-    signal,
-  });
-};
-
-const continuationForPage = (
-  launch: ProviderLaunchDocument,
-  position: CatalogContinuationPosition,
-  providerItemCount: number,
-): string => {
-  const providerInstanceId = launch.provider_instance_id;
-  const providerRevision = launch.revision;
-  if (providerInstanceId === undefined || providerRevision === undefined) {
-    throw catalogError("Jellyfin adapter is unavailable", Code.Internal, "INTERNAL");
-  }
-  return encodeCatalogContinuation({
-    apiKey: launch.credentials.api_key,
-    expiresAt: position.expiresAt,
-    offset: position.offset + providerItemCount,
-    pageSize: position.pageSize,
-    providerInstanceId,
-    providerRevision,
-    scanId: position.scanId,
-  });
-};
-
-const catalogResponseForPage = (
-  launch: ProviderLaunchDocument,
-  position: CatalogContinuationPosition,
-  response: JellyfinJsonResponse,
-) => {
-  const page = catalogPageFromResponse(response, position.pageSize);
-  if (page.providerItemCount < position.pageSize) {
-    return {
-      complete: true,
-      consistency: ListConsistency.BEST_EFFORT_SCAN,
-      items: page.items,
-    };
-  }
-  return {
-    complete: false,
-    consistency: ListConsistency.BEST_EFFORT_SCAN,
-    items: page.items,
-    nextPageToken: continuationForPage(launch, position, page.providerItemCount),
-  };
-};
-
-const readJellyfinCatalogPage = async (
-  launch: ProviderLaunchDocument,
-  position: CatalogContinuationPosition,
-  signal: AbortSignal,
-) => {
-  const response = await requestJellyfinCatalogPage(launch, position, signal);
-  return catalogResponseForPage(launch, position, response);
-};
-
-const readJellyfinItem = async (
-  launch: ProviderLaunchDocument,
-  itemId: string,
-  signal: AbortSignal,
-) => {
+const jellyfinRequestForLaunch = (launch: ProviderLaunchDocument) => {
   const request = createJellyfinRequest({
     apiKey: launch.credentials.api_key,
     baseUrl: launch.configuration.base_url,
@@ -220,6 +73,15 @@ const readJellyfinItem = async (
   if (request === undefined) {
     throw new ConnectError("Jellyfin adapter is unavailable", Code.Internal);
   }
+  return request;
+};
+
+const readJellyfinItem = async (
+  launch: ProviderLaunchDocument,
+  itemId: string,
+  signal: AbortSignal,
+) => {
+  const request = jellyfinRequestForLaunch(launch);
   const response = await request.requestJson(["Items", itemId], {
     authentication: "api_key",
     maximumResponseBytes: MAXIMUM_MEDIA_RESPONSE_BYTES,
@@ -229,20 +91,86 @@ const readJellyfinItem = async (
   return itemFromResponse(response, itemId);
 };
 
+const requestedDimension = (value: number | undefined): string | undefined => {
+  if (value === undefined || value === NO_DIMENSION_PREFERENCE) {
+    return undefined;
+  }
+  if (
+    !Number.isSafeInteger(value) ||
+    value < MINIMUM_JELLYFIN_DIMENSION ||
+    value > MAXIMUM_JELLYFIN_DIMENSION
+  ) {
+    throw new ConnectError("artwork dimensions are invalid", Code.InvalidArgument);
+  }
+  return String(value);
+};
+
+const artworkQuery = (
+  reference: JellyfinArtworkReference,
+  maxWidth: number | undefined,
+  maxHeight: number | undefined,
+): Readonly<Record<string, string>> => {
+  const query: Record<string, string> = { tag: reference.cacheTag };
+  const width = requestedDimension(maxWidth);
+  const height = requestedDimension(maxHeight);
+  if (width !== undefined) {
+    query["maxWidth"] = width;
+  }
+  if (height !== undefined) {
+    query["maxHeight"] = height;
+  }
+  return query;
+};
+
+const artworkLease = (response: JellyfinArtworkProbeResponse, configuredOrigin: string) => {
+  if (response.kind === "success") {
+    return {
+      allowedRedirectOrigins: [configuredOrigin],
+      authorizationScope: ArtworkAuthorizationScope.PUBLIC,
+      headers: [],
+      mimeType: response.mimeType,
+      url: response.url,
+    };
+  }
+  if (response.kind === "authentication_failed" || response.kind === "forbidden") {
+    throw new ConnectError("Jellyfin artwork is not public", Code.PermissionDenied);
+  }
+  if (response.kind === "not_found") {
+    throw new ConnectError("Jellyfin artwork was not found", Code.NotFound);
+  }
+  if (response.kind === "unreachable") {
+    throw new ConnectError("Jellyfin server is unavailable", Code.Unavailable);
+  }
+  throw new ConnectError("Jellyfin artwork is not safely public", Code.FailedPrecondition);
+};
+
+const resolveJellyfinArtwork = async (
+  launch: ProviderLaunchDocument,
+  resolution: ArtworkResolutionRequest,
+) => {
+  const request = jellyfinRequestForLaunch(launch);
+  const response = await request.probePublicArtwork(
+    [
+      "Items",
+      resolution.itemId,
+      "Images",
+      resolution.reference.imageType,
+      String(resolution.reference.imageIndex),
+    ],
+    {
+      query: artworkQuery(resolution.reference, resolution.maxWidth, resolution.maxHeight),
+      signal: resolution.signal,
+    },
+  );
+  return artworkLease(response, request.origin);
+};
+
 const registerJellyfinLibraryService = (
   router: ConnectRouter,
   launch: LaunchDocument,
   requireAuthorization: RequireAuthorization,
 ): void => {
-  router.rpc(LibraryService.method.listItems, (request, context) => {
-    requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
-    if (launch.kind !== "instance") {
-      throw new ConnectError("library unavailable", Code.Unimplemented);
-    }
-    const now = Math.floor(Date.now() / MILLISECONDS_PER_SECOND);
-    const position = catalogPositionForRequest(launch, request, now);
-    return readJellyfinCatalogPage(launch, position, context.signal);
-  });
+  registerJellyfinCatalogService(router, launch, requireAuthorization);
 
   router.rpc(LibraryService.method.getItem, async (request, context) => {
     requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
@@ -258,6 +186,22 @@ const registerJellyfinLibraryService = (
       throw new ConnectError("item reference is invalid", Code.InvalidArgument);
     }
     return { item: await readJellyfinItem(launch, itemId, context.signal) };
+  });
+  router.rpc(LibraryService.method.resolveArtwork, async (request, context) => {
+    requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
+    if (launch.kind !== "instance") {
+      throw new ConnectError("library unavailable", Code.Unimplemented);
+    }
+    const { itemId, reference } = decodedArtworkRequest(request.artworkReference);
+    return {
+      lease: await resolveJellyfinArtwork(launch, {
+        itemId,
+        maxHeight: request.maxHeight,
+        maxWidth: request.maxWidth,
+        reference,
+        signal: context.signal,
+      }),
+    };
   });
 };
 

@@ -16,24 +16,25 @@ type JellyfinFailureKind =
   | "not_found"
   | "unreachable";
 type JellyfinFailureResponse = Readonly<{ kind: JellyfinFailureKind }>;
+type JellyfinFailureCategory = "forbidden" | "missing" | "permanent" | "retryable";
 
-const credentialFailureKind = (
+const accessFailureKind = (
   status: number,
   authentication: JellyfinRequestAuthentication,
 ): JellyfinFailureKind | undefined => {
-  if (status !== HTTP_UNAUTHORIZED && status !== HTTP_FORBIDDEN && status !== HTTP_NOT_FOUND) {
-    return undefined;
-  }
-  if (authentication !== "api_key") {
-    return "incompatible";
+  if (status === HTTP_NOT_FOUND) {
+    return "not_found";
   }
   if (status === HTTP_UNAUTHORIZED) {
-    return "authentication_failed";
+    if (authentication === "api_key") {
+      return "authentication_failed";
+    }
+    return "forbidden";
   }
   if (status === HTTP_FORBIDDEN) {
     return "forbidden";
   }
-  return "not_found";
+  return undefined;
 };
 
 const jellyfinFailureKind = (response: Response): JellyfinFailureKind | undefined => {
@@ -47,6 +48,19 @@ const jellyfinFailureKind = (response: Response): JellyfinFailureKind | undefine
     return "unreachable";
   }
   return "incompatible";
+};
+
+const jellyfinFailureCategory = (kind: JellyfinFailureKind): JellyfinFailureCategory => {
+  if (kind === "authentication_failed" || kind === "forbidden") {
+    return "forbidden";
+  }
+  if (kind === "not_found") {
+    return "missing";
+  }
+  if (kind === "unreachable") {
+    return "retryable";
+  }
+  return "permanent";
 };
 
 const cancelResponseBody = async (response: Response): Promise<boolean> => {
@@ -66,8 +80,7 @@ const readJellyfinFailureResponse = async (
   authentication: JellyfinRequestAuthentication,
   signal: AbortSignal,
 ): Promise<JellyfinFailureResponse | undefined> => {
-  const kind =
-    credentialFailureKind(response.status, authentication) ?? jellyfinFailureKind(response);
+  const kind = accessFailureKind(response.status, authentication) ?? jellyfinFailureKind(response);
   if (kind === undefined) {
     return undefined;
   }
@@ -81,5 +94,10 @@ const readJellyfinFailureResponse = async (
   return { kind };
 };
 
-export { readJellyfinFailureResponse };
-export type { JellyfinFailureResponse, JellyfinRequestAuthentication };
+export { jellyfinFailureCategory, readJellyfinFailureResponse };
+export type {
+  JellyfinFailureCategory,
+  JellyfinFailureKind,
+  JellyfinFailureResponse,
+  JellyfinRequestAuthentication,
+};

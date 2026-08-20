@@ -69,6 +69,7 @@ const SOURCELESS_MOVIE_ID = "sourceless-movie";
 const UNKNOWN_AVAILABILITY_MOVIE_ID = "unknown-availability-movie";
 const MALFORMED_DATE_MOVIE_ID = "malformed-date-movie";
 const PROVIDER_ERROR_SENTINEL = "private-provider-error-sentinel";
+const OPAQUE_ARTWORK_REFERENCE = /^jellyfin\/artwork\/v1:[\w-]+$/u;
 const OVERSIZED_RESPONSE_BODY = JSON.stringify({
   Id: OVERSIZED_MOVIE_ID,
   Padding: `${PROVIDER_ERROR_SENTINEL}:${"x".repeat(OVERSIZED_RESPONSE_PADDING_LENGTH)}`,
@@ -605,12 +606,22 @@ const acquireConfiguredJellyfinPlugin = Effect.gen(function* acquireConfiguredJe
   return { jellyfin, plugin, supervisor };
 });
 
+const assertOpaqueArtworkReferences = (item: ProviderMediaItem): void => {
+  for (const artwork of item.artwork) {
+    expect(artwork.artworkReference?.artworkId).toMatch(OPAQUE_ARTWORK_REFERENCE);
+  }
+  for (const credit of item.credits) {
+    if (credit.portraitArtworkReference !== undefined) {
+      expect(credit.portraitArtworkReference.artworkId).toMatch(OPAQUE_ARTWORK_REFERENCE);
+    }
+  }
+};
+
 const assertNormalizedMetadata = (item: ProviderMediaItem) => {
   expect(item).toMatchObject({
     artwork: [
       {
         artworkReference: {
-          artworkId: "Primary:poster-tag",
           itemReference: { itemId: MOVIE_ID },
         },
         role: ArtworkRole.POSTER,
@@ -618,7 +629,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
       },
       {
         artworkReference: {
-          artworkId: "Backdrop:0:backdrop-tag-a",
           itemReference: { itemId: MOVIE_ID },
         },
         role: ArtworkRole.BACKDROP,
@@ -626,7 +636,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
       },
       {
         artworkReference: {
-          artworkId: "Backdrop:1:backdrop-tag-b",
           itemReference: { itemId: MOVIE_ID },
         },
         role: ArtworkRole.BACKDROP,
@@ -634,7 +643,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
       },
       {
         artworkReference: {
-          artworkId: "Logo:logo-tag",
           itemReference: { itemId: MOVIE_ID },
         },
         role: ArtworkRole.LOGO,
@@ -642,7 +650,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
       },
       {
         artworkReference: {
-          artworkId: "Thumb:thumbnail-tag",
           itemReference: { itemId: MOVIE_ID },
         },
         role: ArtworkRole.THUMBNAIL,
@@ -655,7 +662,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
         characterName: "Louise Banks",
         name: "Amy Adams",
         portraitArtworkReference: {
-          artworkId: "Primary:actor-portrait-tag",
           itemReference: { itemId: "person-actor" },
         },
         role: MediaCreditRole.ACTOR,
@@ -663,7 +669,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
       {
         name: "Denis Villeneuve",
         portraitArtworkReference: {
-          artworkId: "Primary:director-portrait-tag",
           itemReference: { itemId: "person-director" },
         },
         role: MediaCreditRole.DIRECTOR,
@@ -690,13 +695,13 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
     tagline: "Why are they here?",
     title: "Arrival",
   });
+  assertOpaqueArtworkReferences(item);
 };
 const assertNormalizedShow = (item: ProviderMediaItem) => {
   expect(item).toMatchObject({
     artwork: [
       {
         artworkReference: {
-          artworkId: "Primary:show-poster-tag",
           itemReference: { itemId: SHOW_ID },
         },
         role: ArtworkRole.POSTER,
@@ -704,7 +709,6 @@ const assertNormalizedShow = (item: ProviderMediaItem) => {
       },
       {
         artworkReference: {
-          artworkId: "Backdrop:0:show-backdrop-tag",
           itemReference: { itemId: SHOW_ID },
         },
         role: ArtworkRole.BACKDROP,
@@ -712,7 +716,6 @@ const assertNormalizedShow = (item: ProviderMediaItem) => {
       },
       {
         artworkReference: {
-          artworkId: "Logo:show-logo-tag",
           itemReference: { itemId: SHOW_ID },
         },
         role: ArtworkRole.LOGO,
@@ -752,13 +755,13 @@ const assertNormalizedShow = (item: ProviderMediaItem) => {
     tagline: "Everything is connected.",
     title: "Dark",
   });
+  assertOpaqueArtworkReferences(item);
 };
 const assertNormalizedSeason = (item: ProviderMediaItem) => {
   expect(item).toMatchObject({
     artwork: [
       {
         artworkReference: {
-          artworkId: "Primary:season-poster-tag",
           itemReference: { itemId: SEASON_ID },
         },
         role: ArtworkRole.POSTER,
@@ -766,7 +769,6 @@ const assertNormalizedSeason = (item: ProviderMediaItem) => {
       },
       {
         artworkReference: {
-          artworkId: "Thumb:season-thumbnail-tag",
           itemReference: { itemId: SEASON_ID },
         },
         role: ArtworkRole.THUMBNAIL,
@@ -790,6 +792,7 @@ const assertNormalizedSeason = (item: ProviderMediaItem) => {
     synopsis: "The families confront new truths across time.",
     title: "Season 2",
   });
+  assertOpaqueArtworkReferences(item);
 };
 
 const assertNormalizedSources = (item: ProviderMediaItem, itemId = MOVIE_ID) => {
@@ -1370,7 +1373,6 @@ it.live(
           artwork: [
             {
               artworkReference: {
-                artworkId: "Primary:episode-thumbnail-tag",
                 itemReference: { itemId: EPISODE_ID },
               },
               role: ArtworkRole.THUMBNAIL,
@@ -1392,6 +1394,7 @@ it.live(
           releaseYear: 2019,
           title: "An Endless Cycle",
         });
+        assertOpaqueArtworkReferences(response.item);
         assertNormalizedSources(response.item, EPISODE_ID);
         const sparseResponse = yield* plugin.call(
           LibraryService.method.getItem,

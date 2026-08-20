@@ -5,6 +5,8 @@ import {
   MediaCreditRole,
 } from "@nama/api/nama/plugin/v1/media_pb.js";
 
+import { encodeArtworkReference } from "./artwork-reference.ts";
+import type { JellyfinArtworkReference } from "./artwork-reference.ts";
 import { normalizeJellyfinItemStructure } from "./media-structure.ts";
 import {
   ABSENT_MEDIA_VALUE,
@@ -56,7 +58,7 @@ const portraitReference = (person: Readonly<Record<string, unknown>>) => {
   const itemId = requiredText(person["Id"]);
   const tag = requiredText(person["PrimaryImageTag"]);
   return {
-    artworkId: requiredText(`Primary:${tag}`),
+    artworkId: encodeArtworkReference({ cacheTag: tag, imageIndex: ZERO, imageType: "Primary" }),
     itemReference: { itemId },
   };
 };
@@ -124,8 +126,15 @@ const normalizedExternalIdentifiers = (value: unknown) => {
   );
 };
 
-const artworkObservation = (itemId: string, artworkId: string, role: ArtworkRole) => ({
-  artworkReference: { artworkId: requiredText(artworkId), itemReference: { itemId } },
+const artworkObservation = (
+  itemId: string,
+  reference: JellyfinArtworkReference,
+  role: ArtworkRole,
+) => ({
+  artworkReference: {
+    artworkId: encodeArtworkReference(reference),
+    itemReference: { itemId },
+  },
   role,
   textPresence: ArtworkTextPresence.UNKNOWN,
 });
@@ -150,7 +159,13 @@ const normalizedBackdrops = (value: unknown, itemId: string, maximumItems: numbe
   const artwork = [];
   for (let index = ZERO; index < value.length && artwork.length < maximumItems; index += ONE) {
     const tag = requiredText(value[index]);
-    artwork.push(artworkObservation(itemId, `Backdrop:${index}:${tag}`, ArtworkRole.BACKDROP));
+    artwork.push(
+      artworkObservation(
+        itemId,
+        { cacheTag: tag, imageIndex: index, imageType: "Backdrop" },
+        ArtworkRole.BACKDROP,
+      ),
+    );
   }
   return artwork;
 };
@@ -169,7 +184,9 @@ const normalizedRemainingArtwork = (
     if (artwork.length < maximumItems) {
       const tag = optionalText(imageTags[imageType]);
       if (tag !== ABSENT_MEDIA_VALUE) {
-        artwork.push(artworkObservation(itemId, `${imageType}:${tag}`, role));
+        artwork.push(
+          artworkObservation(itemId, { cacheTag: tag, imageIndex: ZERO, imageType }, role),
+        );
       }
     }
   }
@@ -185,7 +202,13 @@ const normalizedArtwork = (
   const artwork = [];
   const primaryTag = optionalText(imageTags["Primary"]);
   if (primaryTag !== ABSENT_MEDIA_VALUE) {
-    artwork.push(artworkObservation(itemId, `Primary:${primaryTag}`, primaryRole));
+    artwork.push(
+      artworkObservation(
+        itemId,
+        { cacheTag: primaryTag, imageIndex: ZERO, imageType: "Primary" },
+        primaryRole,
+      ),
+    );
   }
   const maximumBackdrops = MAXIMUM_ARTWORK - artwork.length;
   artwork.push(...normalizedBackdrops(item["BackdropImageTags"], itemId, maximumBackdrops));

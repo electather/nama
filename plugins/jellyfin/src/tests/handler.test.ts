@@ -511,7 +511,7 @@ void test("returns stable details for unsuccessful catalog scans", async () => {
   }
 });
 
-void test("authenticates unimplemented watch-state methods", async () => {
+void test("authenticates every watch-state method before dispatch", async () => {
   const server = await startHandlerServer();
   try {
     const responses = await Promise.all([
