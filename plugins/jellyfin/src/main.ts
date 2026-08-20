@@ -13,6 +13,7 @@ import { LAUNCH_DOCUMENT_VERSION } from "./launch-document.ts";
 import type { LaunchDocument } from "./launch-document.ts";
 import { registerJellyfinLibraryService } from "./library-service.ts";
 import { registerJellyfinPluginService } from "./plugin-service.ts";
+import { registerJellyfinWatchStateService } from "./watch-state-service.ts";
 
 const MAXIMUM_LAUNCH_DOCUMENT_BYTES = 65_536;
 const MAXIMUM_BASE_URL_BYTES = 2048;
@@ -202,9 +203,9 @@ const makeHandler = (launch: LaunchDocument) =>
       });
       registerJellyfinLibraryService(router, launch, requireAuthorization);
       registerJellyfinPluginService(router, launch, requireAuthorization);
+      registerJellyfinWatchStateService(router, launch, requireAuthorization);
     },
   });
-
 const startServer = async (launch: LaunchDocument): Promise<Server> => {
   const server = createServer(makeHandler(launch));
   const listening = once(server, "listening");

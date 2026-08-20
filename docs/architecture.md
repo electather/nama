@@ -37,6 +37,10 @@ reconciliation, and keeps the provider type available for healthy instances.
 The public candidate and stored-instance connection-test RPCs use the same
 one-shot or exact-revision supervisor paths as mutations and condition stored
 observations on the revision that was tested.
+The production Jellyfin adapter also serves bounded targeted movie and episode
+watch-state reads for exact instance launches. `WATCH_STATE_READ` remains
+unadvertised because complete best-effort scans are not implemented.
+
 
 The provider-management verification gate drives a compiled `nama` binary
 through the production listener, migrations, PostgreSQL boundary, supervisor,

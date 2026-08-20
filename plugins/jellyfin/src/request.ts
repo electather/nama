@@ -9,6 +9,7 @@ const EMPTY_LENGTH = 0;
 const BACKSLASH = "\\";
 const ESCAPED_BACKSLASH = BACKSLASH.repeat(2);
 const FAILURE_SENTINEL = Symbol("failure");
+const HTTP_TOO_MANY_REQUESTS = 429;
 
 type JellyfinRequestContext = Readonly<{ apiKey: string; baseUrl: string }>;
 
@@ -95,16 +96,6 @@ const readBoundedJson = async (
   return body === FAILURE_SENTINEL ? { kind: "incompatible" } : { body, kind: "success" };
 };
 
-const requestHeaders = (
-  authentication: JellyfinRequestOptions["authentication"],
-  authorization: string,
-): Readonly<Record<string, string>> => {
-  if (authentication === "api_key") {
-    return { accept: "application/json", authorization };
-  }
-  return { accept: "application/json" };
-};
-
 const fetchResponse = async (
   endpoint: URL,
   headers: Readonly<Record<string, string>>,
@@ -132,11 +123,11 @@ const sendJsonRequest = async (
   if (endpoint === INVALID_REQUEST_TARGET) {
     return { kind: "incompatible" };
   }
-  const response = await fetchResponse(
-    endpoint,
-    requestHeaders(options.authentication, target.authorization),
-    options.signal,
-  );
+  const headers =
+    options.authentication === "api_key"
+      ? { accept: "application/json", authorization: target.authorization }
+      : { accept: "application/json" };
+  const response = await fetchResponse(endpoint, headers, options.signal);
   if (response === FAILURE_SENTINEL) {
     if (options.signal.aborted) {
       throw new ConnectError("request cancelled", Code.Canceled);
@@ -158,7 +149,7 @@ const sendJsonRequest = async (
     return { kind: options.authentication === "api_key" ? "not_found" : "incompatible" };
   }
   if (!response.ok) {
-    if (response.status >= 500) {
+    if (response.status === HTTP_TOO_MANY_REQUESTS || response.status >= 500) {
       return { kind: "unreachable" };
     }
     return { kind: "incompatible" };
