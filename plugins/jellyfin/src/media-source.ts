@@ -6,9 +6,9 @@ import {
 } from "@nama/api/nama/plugin/v1/media_pb.js";
 
 import {
-  ABSENT_MOVIE_VALUE,
+  ABSENT_MEDIA_VALUE,
+  invalidMedia,
   optionalDuration,
-  invalidMovie,
   optionalPositiveInteger,
   optionalPositiveNumber,
   optionalProperty,
@@ -17,7 +17,7 @@ import {
   optionalUnsignedInteger,
   providerBoolean,
   requiredText,
-} from "./movie-value.ts";
+} from "./media-value.ts";
 import { isUnknownRecord } from "./value.ts";
 
 const ZERO = 0;
@@ -56,29 +56,29 @@ interface TrackContext {
 
 const dynamicRange = (value: unknown) => {
   if (value === undefined || value === null || value === "Unknown") {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   if (typeof value !== "string") {
-    return invalidMovie();
+    return invalidMedia();
   }
-  return DYNAMIC_RANGE_BY_TYPE[value] ?? ABSENT_MOVIE_VALUE;
+  return DYNAMIC_RANGE_BY_TYPE[value] ?? ABSENT_MEDIA_VALUE;
 };
 
 const spatialAudioFormat = (value: unknown) => {
   if (value === undefined || value === null) {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   if (typeof value !== "string") {
-    return invalidMovie();
+    return invalidMedia();
   }
-  return SPATIAL_AUDIO_BY_TYPE[value] ?? ABSENT_MOVIE_VALUE;
+  return SPATIAL_AUDIO_BY_TYPE[value] ?? ABSENT_MEDIA_VALUE;
 };
 
 const videoTrack = (stream: Readonly<Record<string, unknown>>) => {
   const width = optionalUint32(stream["Width"]);
   const height = optionalUint32(stream["Height"]);
   let frameRate = optionalPositiveNumber(stream["AverageFrameRate"]);
-  if (frameRate === ABSENT_MOVIE_VALUE) {
+  if (frameRate === ABSENT_MEDIA_VALUE) {
     frameRate = optionalPositiveNumber(stream["RealFrameRate"]);
   }
   const bitDepth = optionalUint32(stream["BitDepth"]);
@@ -115,7 +115,7 @@ const audioTrack = (stream: Readonly<Record<string, unknown>>) => {
 
 const subtitleTrack = (stream: Readonly<Record<string, unknown>>) => {
   if (typeof stream["IsTextSubtitleStream"] !== "boolean") {
-    return invalidMovie();
+    return invalidMedia();
   }
   const title = optionalText(stream["Title"]);
   const language = optionalText(stream["Language"]);
@@ -137,16 +137,16 @@ const subtitleTrack = (stream: Readonly<Record<string, unknown>>) => {
 
 const isSupportedStream = (value: unknown): value is Readonly<Record<string, unknown>> => {
   if (!isUnknownRecord(value) || typeof value["Type"] !== "string") {
-    return invalidMovie();
+    return invalidMedia();
   }
   return value["Type"] === "Video" || value["Type"] === "Audio" || value["Type"] === "Subtitle";
 };
 
 const normalizedTrackId = (value: unknown): string => {
   const index = optionalUint32(value);
-  if (index === ABSENT_MOVIE_VALUE) {
+  if (index === ABSENT_MEDIA_VALUE) {
     if (value !== ZERO) {
-      return invalidMovie();
+      return invalidMedia();
     }
     return String(ZERO);
   }
@@ -178,7 +178,7 @@ const normalizedTrack = (value: Readonly<Record<string, unknown>>, context: Trac
 
 const normalizedTracks = (value: unknown, itemId: string, sourceId: string) => {
   if (!Array.isArray(value) || value.length > MAXIMUM_TRACKS) {
-    return invalidMovie();
+    return invalidMedia();
   }
   const streams = value.filter((stream) => isSupportedStream(stream));
   const tracks = streams.map((stream, order) =>
@@ -186,7 +186,7 @@ const normalizedTracks = (value: unknown, itemId: string, sourceId: string) => {
   );
   const trackIds = tracks.map((track) => track.trackReference.trackId);
   if (new Set(trackIds).size !== trackIds.length) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return tracks;
 };
@@ -199,15 +199,15 @@ const normalizedSourceAvailability = (
     return SourceAvailability.UNSUPPORTED;
   }
   if (sourceType !== "Default" || typeof locationType !== "string") {
-    return invalidMovie();
+    return invalidMedia();
   }
   const availability = AVAILABILITY_BY_LOCATION_TYPE[locationType];
-  return availability ?? invalidMovie();
+  return availability ?? invalidMedia();
 };
 
 const normalizedSource = (value: unknown, itemId: string, locationType: unknown) => {
   if (!isUnknownRecord(value)) {
-    return invalidMovie();
+    return invalidMedia();
   }
   const sourceId = requiredText(value["Id"]);
   const sourceReference = { itemReference: { itemId }, sourceId };
@@ -237,12 +237,12 @@ const normalizedSource = (value: unknown, itemId: string, locationType: unknown)
 
 const normalizeJellyfinSources = (value: unknown, itemId: string, locationType: unknown) => {
   if (!Array.isArray(value) || value.length > MAXIMUM_SOURCES) {
-    return invalidMovie();
+    return invalidMedia();
   }
   const sources = value.map((sourceValue) => normalizedSource(sourceValue, itemId, locationType));
   const sourceIds = sources.map((source) => source.sourceReference.sourceId);
   if (new Set(sourceIds).size !== sourceIds.length) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return sources;
 };

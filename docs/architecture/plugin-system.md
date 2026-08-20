@@ -69,31 +69,33 @@ segments and code-owned query names, confines them to the configured origin
 and prefix, applies the API key only to authenticated calls, rejects redirects,
 and receives RPC cancellation. It streams each JSON body under the
 caller-selected positive byte limit: connection inspection selects 64 KiB, the
-targeted movie read selects 1 MiB, and targeted watch-state reads select 16
+targeted item reads select 1 MiB, and targeted watch-state reads select 16
 MiB. Targeted watch-state reads admit at most four provider responses
 concurrently so the per-response bound cannot multiply across the complete
 100-member request. Callers receive only normalized response categories and
 parsed records, so raw provider bodies and credential-bearing request details
 never enter responses or logs.
 
-`GetItem` reads one explicitly referenced Jellyfin movie for the configured
-user. It normalizes required and optional metadata, movie details, supported
-matching identifiers, credits, genres, studios, bounded artwork, and every
-media source. Each source contains one part; only video, audio, and subtitle
-streams become bounded normalized tracks, while source and stream identifiers
-remain private references. Filesystem paths, provider objects, authorized
-URLs, and arbitrary identifier namespaces are discarded. Missing, forbidden,
-unavailable, oversized, malformed, and cancelled reads return only sanitized
-Connect outcomes.
+`GetItem` reads one explicitly referenced supported Jellyfin movie, show,
+season, or episode for the configured user. It normalizes required and optional
+metadata, kind details, supported matching identifiers, credits, genres,
+studios, and bounded artwork. Shows and seasons remain non-playable hierarchy
+observations. Positive-numbered seasons retain their opaque show reference;
+positive-numbered episodes retain opaque show and season references and
+normalize every media source through the same source, part, and track rules as
+movies. Season-zero specials are deliberately unsupported. Filesystem paths,
+provider objects, authorized URLs, and arbitrary identifier namespaces are
+discarded. Missing, forbidden, unavailable, oversized, malformed, and
+cancelled reads return only sanitized Connect outcomes.
 
 The provider-management process flow provisions a controlled Jellyfin endpoint
 and reaches it through both public connection-test RPCs using candidate and
 exact persisted-instance launches. It verifies cancellation reaches the real
 subprocess and provider request, exact-revision observations are conditional,
 and public results omit provider credentials and principal references.
-Controlled HTTP subprocess coverage also exercises the targeted movie RPC,
-source and track normalization, bounded response handling, cancellation,
-safe failure codes, and raw-body redaction.
+Controlled HTTP subprocess coverage also exercises targeted movie, show,
+season, and episode RPCs, hierarchy and source normalization, bounded response
+handling, cancellation, safe failure codes, and raw-body redaction.
 
 Targeted watch-state reads return one result per requested private item
 reference in order. Existing movies and episodes normalize watched state,

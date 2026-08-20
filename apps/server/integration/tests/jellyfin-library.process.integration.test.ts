@@ -35,6 +35,17 @@ const OVERSIZED_RESPONSE_PADDING_LENGTH = 1_100_000;
 const API_KEY = "jellyfin-api-key-sentinel";
 const USER_ID = "user-identity";
 const MOVIE_ID = "movie-identity";
+const SHOW_ID = "show-identity";
+const SPARSE_SHOW_ID = "sparse-show";
+const SEASON_ID = "season-identity";
+const EPISODE_ID = "episode-identity";
+const SPECIALS_SEASON_ID = "specials-season";
+const SPECIAL_EPISODE_ID = "special-episode";
+const SPARSE_EPISODE_ID = "sparse-episode";
+const MALFORMED_SHOW_ID = "malformed-show";
+const MALFORMED_SEASON_ID = "malformed-season";
+const MALFORMED_EPISODE_ID = "malformed-episode";
+const ZERO_EPISODE_ID = "zero-episode";
 const INTERNATIONALIZED_TEXT_REPETITIONS = 50;
 const INTERNATIONALIZED_MOVIE_ID = "映画".repeat(INTERNATIONALIZED_TEXT_REPETITIONS);
 const INTERNATIONALIZED_MOVIE_TITLE = "到着".repeat(INTERNATIONALIZED_TEXT_REPETITIONS);
@@ -200,6 +211,137 @@ const MOVIE_RESPONSE = {
   Taglines: ["Why are they here?"],
   Type: "Movie",
 };
+const SHOW_RESPONSE = {
+  BackdropImageTags: ["show-backdrop-tag"],
+  ChildCount: 3,
+  EndDate: "2020-06-27T00:00:00.0000000Z",
+  Genres: ["Crime", "Drama", "Mystery"],
+  Id: SHOW_ID,
+  ImageTags: {
+    Logo: "show-logo-tag",
+    Primary: "show-poster-tag",
+  },
+  Name: "Dark",
+  OfficialRating: "TV-MA",
+  OriginalTitle: "Dark",
+  Overview: "A missing child sets four families on a frantic hunt for answers.",
+  People: [{ Id: "show-actor", Name: "Louis Hofmann", Role: "Jonas Kahnwald", Type: "Actor" }],
+  PlayAccess: "Full",
+  PremiereDate: "2017-12-01T00:00:00.0000000Z",
+  ProductionYear: 2017,
+  ProviderIds: {
+    Imdb: "tt5753856",
+    Tmdb: "70523",
+    Trakt: "98519",
+    Tvdb: "334824",
+  },
+  RecursiveItemCount: 26,
+  Studios: [{ Name: "Wiedemann & Berg Television" }],
+  Taglines: ["Everything is connected."],
+  Type: "Series",
+};
+const SPARSE_SHOW_RESPONSE = {
+  Id: SPARSE_SHOW_ID,
+  Name: "Unknown schedule",
+  PlayAccess: "Full",
+  Type: "Series",
+};
+const SEASON_RESPONSE = {
+  ChildCount: 8,
+  Genres: ["Crime", "Drama"],
+  Id: SEASON_ID,
+  ImageTags: {
+    Primary: "season-poster-tag",
+    Thumb: "season-thumbnail-tag",
+  },
+  IndexNumber: 2,
+  Name: "Season 2",
+  Overview: "The families confront new truths across time.",
+  PlayAccess: "Full",
+  ProductionYear: 2019,
+  SeriesId: SHOW_ID,
+  Studios: [{ Name: "Wiedemann & Berg Television" }],
+  Type: "Season",
+};
+const EPISODE_RESPONSE = {
+  ...MOVIE_RESPONSE,
+  BackdropImageTags: [],
+  Id: EPISODE_ID,
+  ImageTags: { Primary: "episode-thumbnail-tag" },
+  IndexNumber: 3,
+  Name: "An Endless Cycle",
+  ParentIndexNumber: 2,
+  PremiereDate: "2019-07-05T00:00:00.0000000Z",
+  ProductionYear: 2019,
+  SeasonId: SEASON_ID,
+  SeriesId: SHOW_ID,
+  Type: "Episode",
+};
+const SPECIALS_SEASON_RESPONSE = {
+  Id: SPECIALS_SEASON_ID,
+  IndexNumber: 0,
+  Name: "Specials",
+  PlayAccess: "Full",
+  SeriesId: SHOW_ID,
+  Type: "Season",
+};
+const SPECIAL_EPISODE_RESPONSE = {
+  Id: SPECIAL_EPISODE_ID,
+  IndexNumber: 1,
+  MediaSources: [],
+  Name: "Behind the scenes",
+  ParentIndexNumber: 0,
+  PlayAccess: "Full",
+  SeasonId: SPECIALS_SEASON_ID,
+  SeriesId: SHOW_ID,
+  Type: "Episode",
+};
+const SPARSE_EPISODE_RESPONSE = {
+  Id: SPARSE_EPISODE_ID,
+  IndexNumber: 1,
+  MediaSources: [],
+  Name: "Unknown air date",
+  ParentIndexNumber: 2,
+  PlayAccess: "Full",
+  SeasonId: SEASON_ID,
+  SeriesId: SHOW_ID,
+  Type: "Episode",
+};
+const MALFORMED_SHOW_RESPONSE = {
+  ChildCount: -1,
+  Id: MALFORMED_SHOW_ID,
+  Name: "Malformed show",
+  PlayAccess: "Full",
+  Type: "Series",
+};
+const MALFORMED_SEASON_RESPONSE = {
+  Id: MALFORMED_SEASON_ID,
+  IndexNumber: 1,
+  Name: "Malformed season",
+  PlayAccess: "Full",
+  Type: "Season",
+};
+const MALFORMED_EPISODE_RESPONSE = {
+  Id: MALFORMED_EPISODE_ID,
+  IndexNumber: 1,
+  MediaSources: [],
+  Name: "Malformed episode",
+  ParentIndexNumber: 2,
+  PlayAccess: "Full",
+  SeriesId: SHOW_ID,
+  Type: "Episode",
+};
+const ZERO_EPISODE_RESPONSE = {
+  Id: ZERO_EPISODE_ID,
+  IndexNumber: 0,
+  MediaSources: [],
+  Name: "Malformed episode number",
+  ParentIndexNumber: 2,
+  PlayAccess: "Full",
+  SeasonId: SEASON_ID,
+  SeriesId: SHOW_ID,
+  Type: "Episode",
+};
 const INTERNATIONALIZED_MOVIE_RESPONSE = {
   Id: INTERNATIONALIZED_MOVIE_ID,
   MediaSources: [],
@@ -223,6 +365,26 @@ const MALFORMED_DATE_MOVIE_RESPONSE = {
   ...MOVIE_RESPONSE,
   Id: MALFORMED_DATE_MOVIE_ID,
   PremiereDate: "2016-09-01Tgarbage",
+};
+
+const TARGETED_ITEM_RESPONSE_BY_URL: Readonly<Record<string, unknown>> = {
+  [`/jellyfin/Items/${encodeURIComponent(INTERNATIONALIZED_MOVIE_ID)}?userId=${USER_ID}`]:
+    INTERNATIONALIZED_MOVIE_RESPONSE,
+  [`/jellyfin/Items/${SHOW_ID}?userId=${USER_ID}`]: SHOW_RESPONSE,
+  [`/jellyfin/Items/${SPARSE_SHOW_ID}?userId=${USER_ID}`]: SPARSE_SHOW_RESPONSE,
+  [`/jellyfin/Items/${SEASON_ID}?userId=${USER_ID}`]: SEASON_RESPONSE,
+  [`/jellyfin/Items/${EPISODE_ID}?userId=${USER_ID}`]: EPISODE_RESPONSE,
+  [`/jellyfin/Items/${SPECIALS_SEASON_ID}?userId=${USER_ID}`]: SPECIALS_SEASON_RESPONSE,
+  [`/jellyfin/Items/${SPECIAL_EPISODE_ID}?userId=${USER_ID}`]: SPECIAL_EPISODE_RESPONSE,
+  [`/jellyfin/Items/${SPARSE_EPISODE_ID}?userId=${USER_ID}`]: SPARSE_EPISODE_RESPONSE,
+  [`/jellyfin/Items/${MALFORMED_SHOW_ID}?userId=${USER_ID}`]: MALFORMED_SHOW_RESPONSE,
+  [`/jellyfin/Items/${MALFORMED_SEASON_ID}?userId=${USER_ID}`]: MALFORMED_SEASON_RESPONSE,
+  [`/jellyfin/Items/${MALFORMED_EPISODE_ID}?userId=${USER_ID}`]: MALFORMED_EPISODE_RESPONSE,
+  [`/jellyfin/Items/${ZERO_EPISODE_ID}?userId=${USER_ID}`]: ZERO_EPISODE_RESPONSE,
+  [`/jellyfin/Items/${SOURCELESS_MOVIE_ID}?userId=${USER_ID}`]: SOURCELESS_MOVIE_RESPONSE,
+  [`/jellyfin/Items/${UNKNOWN_AVAILABILITY_MOVIE_ID}?userId=${USER_ID}`]:
+    UNKNOWN_AVAILABILITY_MOVIE_RESPONSE,
+  [`/jellyfin/Items/${MALFORMED_DATE_MOVIE_ID}?userId=${USER_ID}`]: MALFORMED_DATE_MOVIE_RESPONSE,
 };
 
 const respondJson = (response: ServerResponse, value: unknown): void => {
@@ -253,23 +415,9 @@ const acquireControlledJellyfin = Effect.acquireRelease(
           respondJson(response, MOVIE_RESPONSE);
           return;
         }
-        if (
-          request.url ===
-          `/jellyfin/Items/${encodeURIComponent(INTERNATIONALIZED_MOVIE_ID)}?userId=${USER_ID}`
-        ) {
-          respondJson(response, INTERNATIONALIZED_MOVIE_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${SOURCELESS_MOVIE_ID}?userId=${USER_ID}`) {
-          respondJson(response, SOURCELESS_MOVIE_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${UNKNOWN_AVAILABILITY_MOVIE_ID}?userId=${USER_ID}`) {
-          respondJson(response, UNKNOWN_AVAILABILITY_MOVIE_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${MALFORMED_DATE_MOVIE_ID}?userId=${USER_ID}`) {
-          respondJson(response, MALFORMED_DATE_MOVIE_RESPONSE);
+        const itemResponse = TARGETED_ITEM_RESPONSE_BY_URL[request.url ?? ""];
+        if (itemResponse !== undefined) {
+          respondJson(response, itemResponse);
           return;
         }
         if (request.url === `/jellyfin/Items/${FORBIDDEN_MOVIE_ID}?userId=${USER_ID}`) {
@@ -331,6 +479,27 @@ const acquireControlledJellyfin = Effect.acquireRelease(
   }),
   ({ server }) => Effect.promise(() => server[Symbol.asyncDispose]()),
 );
+
+const acquireConfiguredJellyfinPlugin = Effect.gen(function* acquireConfiguredJellyfinPlugin() {
+  const jellyfin = yield* acquireControlledJellyfin;
+  const supervisor = yield* PluginSupervisor;
+  const plugin = yield* supervisor.supervise(
+    {
+      arguments: [JELLYFIN_PLUGIN_PATH],
+      executable: process.execPath,
+      expectedProviderType: "jellyfin",
+      stderrEvents: [],
+    },
+    {
+      configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
+      credentials: { api_key: API_KEY },
+      kind: "instance",
+      providerInstanceId: "provider-instance",
+      revision: "revision-1",
+    },
+  );
+  return { jellyfin, plugin };
+});
 
 const assertNormalizedMetadata = (item: ProviderMediaItem) => {
   expect(item).toMatchObject({
@@ -418,8 +587,108 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
     title: "Arrival",
   });
 };
+const assertNormalizedShow = (item: ProviderMediaItem) => {
+  expect(item).toMatchObject({
+    artwork: [
+      {
+        artworkReference: {
+          artworkId: "Primary:show-poster-tag",
+          itemReference: { itemId: SHOW_ID },
+        },
+        role: ArtworkRole.POSTER,
+        textPresence: ArtworkTextPresence.UNKNOWN,
+      },
+      {
+        artworkReference: {
+          artworkId: "Backdrop:0:show-backdrop-tag",
+          itemReference: { itemId: SHOW_ID },
+        },
+        role: ArtworkRole.BACKDROP,
+        textPresence: ArtworkTextPresence.UNKNOWN,
+      },
+      {
+        artworkReference: {
+          artworkId: "Logo:show-logo-tag",
+          itemReference: { itemId: SHOW_ID },
+        },
+        role: ArtworkRole.LOGO,
+        textPresence: ArtworkTextPresence.UNKNOWN,
+      },
+    ],
+    contentRating: "TV-MA",
+    credits: [
+      {
+        characterName: "Jonas Kahnwald",
+        name: "Louis Hofmann",
+        role: MediaCreditRole.ACTOR,
+      },
+    ],
+    externalIdentifiers: [
+      { namespace: "imdb", value: "tt5753856" },
+      { namespace: "tmdb", value: "70523" },
+      { namespace: "tvdb", value: "334824" },
+    ],
+    genres: ["Crime", "Drama", "Mystery"],
+    itemReference: { itemId: SHOW_ID },
+    kind: MediaKind.SHOW,
+    kindDetails: {
+      case: "show",
+      value: {
+        episodeCount: 26,
+        firstReleaseDate: { day: 1, month: 12, year: 2017 },
+        lastReleaseDate: { day: 27, month: 6, year: 2020 },
+        seasonCount: 3,
+      },
+    },
+    originalTitle: "Dark",
+    releaseYear: 2017,
+    sources: [],
+    studios: ["Wiedemann & Berg Television"],
+    synopsis: "A missing child sets four families on a frantic hunt for answers.",
+    tagline: "Everything is connected.",
+    title: "Dark",
+  });
+};
+const assertNormalizedSeason = (item: ProviderMediaItem) => {
+  expect(item).toMatchObject({
+    artwork: [
+      {
+        artworkReference: {
+          artworkId: "Primary:season-poster-tag",
+          itemReference: { itemId: SEASON_ID },
+        },
+        role: ArtworkRole.POSTER,
+        textPresence: ArtworkTextPresence.UNKNOWN,
+      },
+      {
+        artworkReference: {
+          artworkId: "Thumb:season-thumbnail-tag",
+          itemReference: { itemId: SEASON_ID },
+        },
+        role: ArtworkRole.THUMBNAIL,
+        textPresence: ArtworkTextPresence.UNKNOWN,
+      },
+    ],
+    genres: ["Crime", "Drama"],
+    itemReference: { itemId: SEASON_ID },
+    kind: MediaKind.SEASON,
+    kindDetails: {
+      case: "season",
+      value: {
+        episodeCount: 8,
+        seasonNumber: 2,
+        showReference: { itemId: SHOW_ID },
+      },
+    },
+    releaseYear: 2019,
+    sources: [],
+    studios: ["Wiedemann & Berg Television"],
+    synopsis: "The families confront new truths across time.",
+    title: "Season 2",
+  });
+};
 
-const assertNormalizedSources = (item: ProviderMediaItem) => {
+const assertNormalizedSources = (item: ProviderMediaItem, itemId = MOVIE_ID) => {
   expect(item.sources).toMatchObject([
     {
       availability: SourceAvailability.AVAILABLE,
@@ -433,7 +702,7 @@ const assertNormalizedSources = (item: ProviderMediaItem) => {
           partReference: {
             partId: "source-4k",
             sourceReference: {
-              itemReference: { itemId: MOVIE_ID },
+              itemReference: { itemId },
               sourceId: "source-4k",
             },
           },
@@ -457,7 +726,7 @@ const assertNormalizedSources = (item: ProviderMediaItem) => {
                 partReference: {
                   partId: "source-4k",
                   sourceReference: {
-                    itemReference: { itemId: MOVIE_ID },
+                    itemReference: { itemId },
                     sourceId: "source-4k",
                   },
                 },
@@ -484,7 +753,7 @@ const assertNormalizedSources = (item: ProviderMediaItem) => {
                 partReference: {
                   partId: "source-4k",
                   sourceReference: {
-                    itemReference: { itemId: MOVIE_ID },
+                    itemReference: { itemId },
                     sourceId: "source-4k",
                   },
                 },
@@ -510,7 +779,7 @@ const assertNormalizedSources = (item: ProviderMediaItem) => {
                 partReference: {
                   partId: "source-4k",
                   sourceReference: {
-                    itemReference: { itemId: MOVIE_ID },
+                    itemReference: { itemId },
                     sourceId: "source-4k",
                   },
                 },
@@ -522,7 +791,7 @@ const assertNormalizedSources = (item: ProviderMediaItem) => {
       ],
       runtime: { nanos: 0, seconds: 6960n },
       sourceReference: {
-        itemReference: { itemId: MOVIE_ID },
+        itemReference: { itemId },
         sourceId: "source-4k",
       },
     },
@@ -538,7 +807,7 @@ const assertNormalizedSources = (item: ProviderMediaItem) => {
           partReference: {
             partId: "source-1080p",
             sourceReference: {
-              itemReference: { itemId: MOVIE_ID },
+              itemReference: { itemId },
               sourceId: "source-1080p",
             },
           },
@@ -559,7 +828,7 @@ const assertNormalizedSources = (item: ProviderMediaItem) => {
                 partReference: {
                   partId: "source-1080p",
                   sourceReference: {
-                    itemReference: { itemId: MOVIE_ID },
+                    itemReference: { itemId },
                     sourceId: "source-1080p",
                   },
                 },
@@ -583,7 +852,7 @@ const assertNormalizedSources = (item: ProviderMediaItem) => {
                 partReference: {
                   partId: "source-1080p",
                   sourceReference: {
-                    itemReference: { itemId: MOVIE_ID },
+                    itemReference: { itemId },
                     sourceId: "source-1080p",
                   },
                 },
@@ -594,7 +863,7 @@ const assertNormalizedSources = (item: ProviderMediaItem) => {
         },
       ],
       sourceReference: {
-        itemReference: { itemId: MOVIE_ID },
+        itemReference: { itemId },
         sourceId: "source-1080p",
       },
     },
@@ -606,23 +875,7 @@ it.live(
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinMovieObservationTest() {
-        const jellyfin = yield* acquireControlledJellyfin;
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          {
-            arguments: [JELLYFIN_PLUGIN_PATH],
-            executable: process.execPath,
-            expectedProviderType: "jellyfin",
-            stderrEvents: [],
-          },
-          {
-            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-            credentials: { api_key: API_KEY },
-            kind: "instance",
-            providerInstanceId: "provider-instance",
-            revision: "revision-1",
-          },
-        );
+        const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
         const info = yield* plugin.call(
           PluginService.method.getInfo,
           {},
@@ -680,27 +933,134 @@ it.live(
   TEST_TIMEOUT_MILLISECONDS,
 );
 it.live(
+  "returns normalized show details without inventing unavailable metadata",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinShowObservationTest() {
+        const { plugin } = yield* acquireConfiguredJellyfinPlugin;
+
+        const response = yield* plugin.call(
+          LibraryService.method.getItem,
+          { itemReference: { itemId: SHOW_ID } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        if (response.item === undefined) {
+          throw new Error("Jellyfin show observation was absent");
+        }
+        assertNormalizedShow(response.item);
+
+        const sparseResponse = yield* plugin.call(
+          LibraryService.method.getItem,
+          { itemReference: { itemId: SPARSE_SHOW_ID } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(sparseResponse.item).toMatchObject({
+          itemReference: { itemId: SPARSE_SHOW_ID },
+          kind: MediaKind.SHOW,
+          kindDetails: { case: "show", value: {} },
+          sources: [],
+          title: "Unknown schedule",
+        });
+        expect(sparseResponse.item?.releaseYear).toBeUndefined();
+        expect(sparseResponse.item?.runtime).toBeUndefined();
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+it.live(
+  "returns a positive-numbered season with its opaque show reference",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinSeasonObservationTest() {
+        const { plugin } = yield* acquireConfiguredJellyfinPlugin;
+
+        const response = yield* plugin.call(
+          LibraryService.method.getItem,
+          { itemReference: { itemId: SEASON_ID } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        if (response.item === undefined) {
+          throw new Error("Jellyfin season observation was absent");
+        }
+        assertNormalizedSeason(response.item);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+it.live(
+  "returns a positive-numbered episode with complete hierarchy and sources",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinEpisodeObservationTest() {
+        const { plugin } = yield* acquireConfiguredJellyfinPlugin;
+
+        const response = yield* plugin.call(
+          LibraryService.method.getItem,
+          { itemReference: { itemId: EPISODE_ID } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        if (response.item === undefined) {
+          throw new Error("Jellyfin episode observation was absent");
+        }
+        expect(response.item).toMatchObject({
+          artwork: [
+            {
+              artworkReference: {
+                artworkId: "Primary:episode-thumbnail-tag",
+                itemReference: { itemId: EPISODE_ID },
+              },
+              role: ArtworkRole.THUMBNAIL,
+              textPresence: ArtworkTextPresence.UNKNOWN,
+            },
+          ],
+          itemReference: { itemId: EPISODE_ID },
+          kind: MediaKind.EPISODE,
+          kindDetails: {
+            case: "episode",
+            value: {
+              episodeNumber: 3,
+              releaseDate: { day: 5, month: 7, year: 2019 },
+              seasonNumber: 2,
+              seasonReference: { itemId: SEASON_ID },
+              showReference: { itemId: SHOW_ID },
+            },
+          },
+          releaseYear: 2019,
+          title: "An Endless Cycle",
+        });
+        assertNormalizedSources(response.item, EPISODE_ID);
+        const sparseResponse = yield* plugin.call(
+          LibraryService.method.getItem,
+          { itemReference: { itemId: SPARSE_EPISODE_ID } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(sparseResponse.item).toMatchObject({
+          itemReference: { itemId: SPARSE_EPISODE_ID },
+          kind: MediaKind.EPISODE,
+          kindDetails: {
+            case: "episode",
+            value: {
+              episodeNumber: 1,
+              seasonNumber: 2,
+              seasonReference: { itemId: SEASON_ID },
+              showReference: { itemId: SHOW_ID },
+            },
+          },
+          sources: [],
+          title: "Unknown air date",
+        });
+        expect(sparseResponse.item?.kindDetails.value).not.toHaveProperty("releaseDate");
+        expect(sparseResponse.item?.runtime).toBeUndefined();
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+it.live(
   "accepts contract-valid internationalized references and metadata",
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinInternationalizedMovieTest() {
-        const jellyfin = yield* acquireControlledJellyfin;
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          {
-            arguments: [JELLYFIN_PLUGIN_PATH],
-            executable: process.execPath,
-            expectedProviderType: "jellyfin",
-            stderrEvents: [],
-          },
-          {
-            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-            credentials: { api_key: API_KEY },
-            kind: "instance",
-            providerInstanceId: "provider-instance",
-            revision: "revision-1",
-          },
-        );
+        const { plugin } = yield* acquireConfiguredJellyfinPlugin;
 
         const response = yield* plugin.call(
           LibraryService.method.getItem,
@@ -717,27 +1077,11 @@ it.live(
 );
 
 it.live(
-  "returns safe outcomes for unsuccessful targeted movie reads",
+  "returns safe outcomes for unsuccessful targeted item reads",
   () =>
     Effect.scoped(
-      Effect.gen(function* jellyfinMovieFailureTest() {
-        const jellyfin = yield* acquireControlledJellyfin;
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          {
-            arguments: [JELLYFIN_PLUGIN_PATH],
-            executable: process.execPath,
-            expectedProviderType: "jellyfin",
-            stderrEvents: [],
-          },
-          {
-            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-            credentials: { api_key: API_KEY },
-            kind: "instance",
-            providerInstanceId: "provider-instance",
-            revision: "revision-1",
-          },
-        );
+      Effect.gen(function* jellyfinItemFailureTest() {
+        const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
         const cases = [
           [MISSING_MOVIE_ID, Code.NotFound],
           [FORBIDDEN_MOVIE_ID, Code.PermissionDenied],
@@ -747,6 +1091,12 @@ it.live(
           [MALFORMED_MOVIE_ID, Code.Internal],
           [UNKNOWN_AVAILABILITY_MOVIE_ID, Code.Internal],
           [MALFORMED_DATE_MOVIE_ID, Code.Internal],
+          [SPECIALS_SEASON_ID, Code.Unimplemented],
+          [SPECIAL_EPISODE_ID, Code.Unimplemented],
+          [MALFORMED_SHOW_ID, Code.Internal],
+          [MALFORMED_SEASON_ID, Code.Internal],
+          [MALFORMED_EPISODE_ID, Code.Internal],
+          [ZERO_EPISODE_ID, Code.Internal],
         ] as const;
         for (const [itemId, code] of cases) {
           const failure = yield* plugin

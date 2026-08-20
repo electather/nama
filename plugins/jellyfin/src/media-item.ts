@@ -3,21 +3,19 @@ import {
   ArtworkRole,
   ArtworkTextPresence,
   MediaCreditRole,
-  MediaKind,
 } from "@nama/api/nama/plugin/v1/media_pb.js";
 
-import { normalizeJellyfinSources } from "./media-source.ts";
+import { normalizeJellyfinItemStructure } from "./media-structure.ts";
 import {
-  ABSENT_MOVIE_VALUE,
-  invalidMovie,
-  normalizedDate,
+  ABSENT_MEDIA_VALUE,
+  invalidMedia,
   normalizedStrings,
   optionalDuration,
   optionalProperty,
   optionalText,
   optionalYear,
   requiredText,
-} from "./movie-value.ts";
+} from "./media-value.ts";
 import { isUnknownRecord } from "./value.ts";
 
 const EMPTY_LENGTH = 0;
@@ -41,11 +39,11 @@ const normalizedStudios = (value: unknown): string[] => {
     return [];
   }
   if (!Array.isArray(value) || value.length > MAXIMUM_STUDIOS) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return value.map((studio) => {
     if (!isUnknownRecord(studio)) {
-      return invalidMovie();
+      return invalidMedia();
     }
     return requiredText(studio["Name"]);
   });
@@ -53,7 +51,7 @@ const normalizedStudios = (value: unknown): string[] => {
 
 const portraitReference = (person: Readonly<Record<string, unknown>>) => {
   if (person["PrimaryImageTag"] === undefined || person["PrimaryImageTag"] === null) {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   const itemId = requiredText(person["Id"]);
   const tag = requiredText(person["PrimaryImageTag"]);
@@ -65,7 +63,7 @@ const portraitReference = (person: Readonly<Record<string, unknown>>) => {
 
 const normalizedCredit = (value: unknown) => {
   if (!isUnknownRecord(value) || typeof value["Type"] !== "string") {
-    return invalidMovie();
+    return invalidMedia();
   }
   const role = CREDIT_ROLE_BY_TYPE[value["Type"]];
   if (role === undefined) {
@@ -87,11 +85,11 @@ const normalizedCredits = (value: unknown) => {
     return [];
   }
   if (!Array.isArray(value)) {
-    return invalidMovie();
+    return invalidMedia();
   }
   const credits = value.flatMap((person) => normalizedCredit(person));
   if (credits.length > MAXIMUM_CREDITS) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return credits;
 };
@@ -104,7 +102,7 @@ const normalizedExternalIdentifier = (
     ([providerNamespace]) => providerNamespace.toLowerCase() === namespace,
   );
   if (matches.length > MAXIMUM_IDENTIFIER_MATCHES) {
-    return invalidMovie();
+    return invalidMedia();
   }
   const match = matches[ZERO];
   if (match === undefined) {
@@ -118,7 +116,7 @@ const normalizedExternalIdentifiers = (value: unknown) => {
     return [];
   }
   if (!isUnknownRecord(value)) {
-    return invalidMovie();
+    return invalidMedia();
   }
   const entries = Object.entries(value);
   return (["imdb", "tmdb", "tvdb"] as const).flatMap((namespace) =>
@@ -137,7 +135,7 @@ const normalizedImageTags = (value: unknown): Readonly<Record<string, unknown>> 
     return {};
   }
   if (!isUnknownRecord(value)) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return value;
 };
@@ -147,7 +145,7 @@ const normalizedBackdrops = (value: unknown, itemId: string, maximumItems: numbe
     return [];
   }
   if (!Array.isArray(value)) {
-    return invalidMovie();
+    return invalidMedia();
   }
   const artwork = [];
   for (let index = ZERO; index < value.length && artwork.length < maximumItems; index += ONE) {
@@ -170,7 +168,7 @@ const normalizedRemainingArtwork = (
   for (const [imageType, role] of remainingRoles) {
     if (artwork.length < maximumItems) {
       const tag = optionalText(imageTags[imageType]);
-      if (tag !== ABSENT_MOVIE_VALUE) {
+      if (tag !== ABSENT_MEDIA_VALUE) {
         artwork.push(artworkObservation(itemId, `${imageType}:${tag}`, role));
       }
     }
@@ -178,15 +176,19 @@ const normalizedRemainingArtwork = (
   return artwork;
 };
 
-const normalizedArtwork = (movie: Readonly<Record<string, unknown>>, itemId: string) => {
-  const imageTags = normalizedImageTags(movie["ImageTags"]);
+const normalizedArtwork = (
+  item: Readonly<Record<string, unknown>>,
+  itemId: string,
+  primaryRole: ArtworkRole,
+) => {
+  const imageTags = normalizedImageTags(item["ImageTags"]);
   const artwork = [];
   const primaryTag = optionalText(imageTags["Primary"]);
-  if (primaryTag !== ABSENT_MOVIE_VALUE) {
-    artwork.push(artworkObservation(itemId, `Primary:${primaryTag}`, ArtworkRole.POSTER));
+  if (primaryTag !== ABSENT_MEDIA_VALUE) {
+    artwork.push(artworkObservation(itemId, `Primary:${primaryTag}`, primaryRole));
   }
   const maximumBackdrops = MAXIMUM_ARTWORK - artwork.length;
-  artwork.push(...normalizedBackdrops(movie["BackdropImageTags"], itemId, maximumBackdrops));
+  artwork.push(...normalizedBackdrops(item["BackdropImageTags"], itemId, maximumBackdrops));
   const maximumRemaining = MAXIMUM_ARTWORK - artwork.length;
   artwork.push(...normalizedRemainingArtwork(imageTags, itemId, maximumRemaining));
   return artwork;
@@ -194,65 +196,58 @@ const normalizedArtwork = (movie: Readonly<Record<string, unknown>>, itemId: str
 
 const normalizedTagline = (value: unknown) => {
   if (value === undefined || value === null) {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   if (!Array.isArray(value)) {
-    return invalidMovie();
+    return invalidMedia();
   }
   if (value.length === EMPTY_LENGTH) {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   return optionalText(value[ZERO]);
 };
 
 const normalizedItemId = (
-  movie: Readonly<Record<string, unknown>>,
+  item: Readonly<Record<string, unknown>>,
   requestedItemId: string,
 ): string => {
-  const itemId = requiredText(movie["Id"]);
+  const itemId = requiredText(item["Id"]);
   if (itemId !== requestedItemId) {
-    return invalidMovie();
+    return invalidMedia();
   }
-  if (movie["Type"] !== "Movie") {
-    throw new ConnectError("Jellyfin media kind is unsupported", Code.Unimplemented);
-  }
-  if (movie["PlayAccess"] === "None") {
+  if (item["PlayAccess"] === "None") {
     throw new ConnectError("Jellyfin item is forbidden", Code.PermissionDenied);
   }
-  if (movie["PlayAccess"] !== "Full") {
-    return invalidMovie();
+  if (item["PlayAccess"] !== "Full") {
+    return invalidMedia();
   }
   return itemId;
 };
 
-const normalizeJellyfinMovie = (
-  movie: Readonly<Record<string, unknown>>,
+const normalizeJellyfinItem = (
+  item: Readonly<Record<string, unknown>>,
   requestedItemId: string,
 ) => {
-  const itemId = normalizedItemId(movie, requestedItemId);
-  const releaseDate = normalizedDate(movie["PremiereDate"]);
-  const runtime = optionalDuration(movie["RunTimeTicks"]);
+  const itemId = normalizedItemId(item, requestedItemId);
+  const itemStructure = normalizeJellyfinItemStructure(item, itemId);
   return {
-    artwork: normalizedArtwork(movie, itemId),
-    ...optionalProperty("contentRating", optionalText(movie["OfficialRating"])),
-    credits: normalizedCredits(movie["People"]),
-    externalIdentifiers: normalizedExternalIdentifiers(movie["ProviderIds"]),
-    genres: normalizedStrings(movie["Genres"], MAXIMUM_GENRES),
+    artwork: normalizedArtwork(item, itemId, itemStructure.primaryArtworkRole),
+    ...optionalProperty("contentRating", optionalText(item["OfficialRating"])),
+    credits: normalizedCredits(item["People"]),
+    externalIdentifiers: normalizedExternalIdentifiers(item["ProviderIds"]),
+    genres: normalizedStrings(item["Genres"], MAXIMUM_GENRES),
     itemReference: { itemId },
-    kind: MediaKind.MOVIE,
-    kindDetails: {
-      case: "movie" as const,
-      value: { ...optionalProperty("releaseDate", releaseDate) },
-    },
-    ...optionalProperty("originalTitle", optionalText(movie["OriginalTitle"])),
-    ...optionalProperty("releaseYear", optionalYear(movie["ProductionYear"])),
-    ...optionalProperty("runtime", runtime),
-    sources: normalizeJellyfinSources(movie["MediaSources"], itemId, movie["LocationType"]),
-    studios: normalizedStudios(movie["Studios"]),
-    ...optionalProperty("synopsis", optionalText(movie["Overview"], MAXIMUM_SYNOPSIS_BYTES)),
-    ...optionalProperty("tagline", normalizedTagline(movie["Taglines"])),
-    title: requiredText(movie["Name"]),
+    kind: itemStructure.kind,
+    kindDetails: itemStructure.kindDetails,
+    ...optionalProperty("originalTitle", optionalText(item["OriginalTitle"])),
+    ...optionalProperty("releaseYear", optionalYear(item["ProductionYear"])),
+    ...optionalProperty("runtime", optionalDuration(item["RunTimeTicks"])),
+    sources: itemStructure.sources,
+    studios: normalizedStudios(item["Studios"]),
+    ...optionalProperty("synopsis", optionalText(item["Overview"], MAXIMUM_SYNOPSIS_BYTES)),
+    ...optionalProperty("tagline", normalizedTagline(item["Taglines"])),
+    title: requiredText(item["Name"]),
   };
 };
 
-export { normalizeJellyfinMovie };
+export { normalizeJellyfinItem };
