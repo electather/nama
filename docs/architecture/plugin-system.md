@@ -78,5 +78,9 @@ and public results omit provider credentials and principal references. The
 controlled HTTP Jellyfin subprocess coverage retains deterministic redirect,
 malformed-response, size-bound, hostile-failure, and raw-body redaction cases.
 
-Windows transport and persistent or background native-media plugins remain deferred until a real plugin requires them. Production library, playback, and watch-state behavior belongs to issue #30; explicit connection-test commands belong to issue #31; and container packaging belongs to issue #32.
-
+Windows transport and persistent or background native-media plugins remain
+deferred until a real plugin requires them. Production library reads, public
+artwork resolution, watch-state reads, and watched/unwatched writes belong to
+issue #30. Production playback belongs to issue #96, coherent exact progress
+export belongs to issue #97, explicit connection-test commands belong to issue
+#31, and container packaging belongs to issue #32.
