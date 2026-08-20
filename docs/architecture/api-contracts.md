@@ -1,6 +1,6 @@
 # API contracts
 
-Status: Setup and Auth runtime semantics, the private plugin-subprocess transport, production Jellyfin discovery/connection verification, authenticated provider-type listing, and provider-instance create/list/get/update/delete including disable and re-enable are implemented and verified.
+Status: Setup and Auth runtime semantics, the private plugin-subprocess transport, production Jellyfin discovery/connection verification, authenticated provider-type listing, and provider-instance create/list/get/update/delete including disable and re-enable are implemented and verified through a durable compiled-CLI/PostgreSQL/production-plugin/disposable-Jellyfin restart and upgrade flow.
 
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 

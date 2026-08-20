@@ -31,6 +31,15 @@ The implemented baseline is narrower than that topology. `@nama/server` currentl
 
 The plugin supervisor validates scoped code-owned handles without launching a process. A single canonical stdin document selects context-free discovery, one-shot candidate verification, or exact provider-instance revision operation while keeping provider context out of arguments, inherited environment, RPC traffic, and logs. Candidate completion retires its child. Same-revision instance handles share one lifecycle; replacement fences stale admission, drains admitted work, and completes process cleanup before the next revision can launch. Each valid call holds demand through lifecycle waiting and RPC completion; zero demand starts a fixed 30-second grace, successful expiry removes the process group and launch artifacts, and later demand creates a fresh authenticated incarnation. Failed idle cleanup disables only that handle, retains cleanup ownership without a background retry loop, and remains retryable by scope finalization; persistent failure stays on the existing shutdown-failure path.
 
+The provider-management verification gate now drives a compiled `nama` binary
+through the production listener, migrations, PostgreSQL boundary, supervisor,
+Jellyfin plugin, and a pinned disposable Jellyfin server. It proves fresh
+creation, exact durable restart recovery, accepted-schema upgrade containment,
+wrong-key and damaged-envelope containment, credential and configuration
+cutover, disable/re-enable/delete, retained operation replay, and safe boundary
+output without treating media behavior, explicit connection-test commands, or
+application-image packaging as implemented.
+
 
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.
 

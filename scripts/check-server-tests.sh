@@ -15,5 +15,8 @@ trap cleanup EXIT INT TERM
 published_address="$("${compose[@]}" port postgres 5432)"
 published_port="${published_address##*:}"
 export NAMA_TEST_DATABASE_URL="postgres://nama:nama@127.0.0.1:${published_port}/nama"
+jellyfin_published_address="$("${compose[@]}" port jellyfin 8096)"
+jellyfin_published_port="${jellyfin_published_address##*:}"
+export NAMA_TEST_JELLYFIN_URL="http://127.0.0.1:${jellyfin_published_port}/"
 
 pnpm --dir "${repository_root}" --filter @nama/server exec vitest run "$@"

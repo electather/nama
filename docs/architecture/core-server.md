@@ -349,6 +349,16 @@ Integration PostgreSQL must use an isolated Compose project, dynamically publish
 
 The implemented coverage exercises generated-client and real-process setup/authentication flows plus the private plugin-supervision transport: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, descriptor-only handle acquisition, explicit discovery, candidate, and instance launch documents, malformed and oversized context rejection, empty environments, provider-context confinement, one-shot candidate cleanup, exact-revision sharing and fencing, shared first-demand plugin launch, plugin launch authentication and authority rotation, recovery, call cancellation and independent deadlines, on-demand and idle lifecycle policy, failed-retirement containment and finalization, process-group cleanup, correlation, safe public errors and logs, readiness, and fatal runtime exit. Provider discovery coverage additionally starts the production Jellyfin executable, reconciles its accepted schema through production migrations, exercises authenticated pagination protection, and lists the result through the compiled CLI.
 
+The durable provider-management tracer additionally provisions a real
+Jellyfin server, compiles the public CLI, creates an encrypted principal-bound
+instance, exercises an exact stored-revision instance launch, and restarts the
+complete core around installation upgrade reconciliation, idempotent
+create/update/delete replay, wrong-master-key recovery, credential damage,
+pagination misuse, credential replacement, principal-change rejection,
+disable, re-enable, and deletion. It inspects only the documented encrypted
+credential envelope and principal digest in PostgreSQL and retains security
+sentinels across CLI, public output, process logs, and durable operation rows.
+
 ## Deferred work
 
 Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. Explicit provider connection testing, Jellyfin media behavior, pairing, playback, and synchronization belong to their owning milestones.

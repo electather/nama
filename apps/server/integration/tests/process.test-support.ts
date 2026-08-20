@@ -90,7 +90,7 @@ const eventFromLine = (line: string): string => {
   return event;
 };
 
-const configuration = (databaseUrl: string, port: number): string => `[server]
+const configuration = (databaseUrl: string, port: number, masterKey: string): string => `[server]
 bind = "${HOST}:${port}"
 public_url = "http://${HOST}:${port}"
 
@@ -99,7 +99,7 @@ url = "${databaseUrl}"
 max_connections = 2
 
 [security]
-master_key = "${MASTER_KEY}"
+master_key = "${masterKey}"
 
 [logging]
 level = "info"
@@ -128,7 +128,7 @@ const killChildIfRunning = (child: ChildProcess): void => {
   }
 };
 
-const startProcess = (databaseUrl: string, port?: number) =>
+const startProcess = (databaseUrl: string, port?: number, masterKey = MASTER_KEY) =>
   Effect.gen(function* runningServerProcess() {
     const selectedPort = port ?? (yield* reservePort);
     const fileSystem = yield* FileSystem.FileSystem;
@@ -136,7 +136,10 @@ const startProcess = (databaseUrl: string, port?: number) =>
       prefix: "nama-server-process-",
     });
     const configPath = join(directory, "nama.toml");
-    yield* fileSystem.writeFileString(configPath, configuration(databaseUrl, selectedPort));
+    yield* fileSystem.writeFileString(
+      configPath,
+      configuration(databaseUrl, selectedPort, masterKey),
+    );
     const stdout = outputCapture();
     const stderr = outputCapture();
     const child = yield* Effect.acquireRelease(

@@ -15,5 +15,20 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
 
+  jellyfin:
+    image: jellyfin/jellyfin:10.11.11@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db
+    healthcheck:
+      test:
+        ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8096/System/Info/Public >/dev/null"]
+      interval: 1s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+    ports:
+      - "127.0.0.1::8096"
+    tmpfs:
+      - /cache
+      - /config
+
 volumes:
   postgres-data:
