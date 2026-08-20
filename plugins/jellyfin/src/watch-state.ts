@@ -15,6 +15,12 @@ const JELLYFIN_TICKS_PER_SECOND = 10_000_000;
 const NANOSECONDS_PER_JELLYFIN_TICK = 100;
 const MILLISECONDS_PER_SECOND = 1000;
 const NANOSECONDS_PER_MILLISECOND = 1_000_000;
+const UNIX_EPOCH_MILLISECONDS = 0;
+const MONTH_NUMBER_OFFSET = 1;
+const MINIMUM_PROTOBUF_TIMESTAMP_MILLISECONDS = Date.parse("0001-01-01T00:00:00.000Z");
+const MAXIMUM_PROTOBUF_TIMESTAMP_MILLISECONDS = Date.parse("9999-12-31T23:59:59.999Z");
+const PROVIDER_ACTIVITY_TIMESTAMP_PATTERN =
+  /^(?<year>(?!0000)[0-9]{4})-(?<month>0[1-9]|1[0-2])-(?<day>0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]{1,9})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$/u;
 const ZERO_TICKS = 0;
 const INDEX_INCREMENT = 1;
 const INVALID_TICKS = Symbol("invalid_ticks");
@@ -77,12 +83,57 @@ const durationFromTicks = (ticks: number): ProtobufDuration => ({
   seconds: BigInt(Math.floor(ticks / JELLYFIN_TICKS_PER_SECOND)),
 });
 
-const providerActivity = (value: unknown): NormalizedProviderActivity | typeof ABSENT_VALUE => {
+const hasValidProviderActivityCalendarDate = (
+  year: string,
+  month: string,
+  day: string,
+): boolean => {
+  const calendarYear = Number(year);
+  const calendarMonth = Number(month);
+  const calendarDay = Number(day);
+  const calendarDate = new Date(UNIX_EPOCH_MILLISECONDS);
+  calendarDate.setUTCFullYear(calendarYear, calendarMonth - MONTH_NUMBER_OFFSET, calendarDay);
+  return (
+    calendarDate.getUTCFullYear() === calendarYear &&
+    calendarDate.getUTCMonth() + MONTH_NUMBER_OFFSET === calendarMonth &&
+    calendarDate.getUTCDate() === calendarDay
+  );
+};
+const hasValidProviderActivityTimestampFormat = (value: unknown): value is string => {
   if (typeof value !== "string") {
+    return false;
+  }
+  const groups = PROVIDER_ACTIVITY_TIMESTAMP_PATTERN.exec(value)?.groups;
+  if (groups === undefined) {
+    return false;
+  }
+  const { day, month, year } = groups;
+  return (
+    year !== undefined &&
+    month !== undefined &&
+    day !== undefined &&
+    hasValidProviderActivityCalendarDate(year, month, day)
+  );
+};
+
+const providerActivityMilliseconds = (value: unknown): number | typeof ABSENT_VALUE => {
+  if (!hasValidProviderActivityTimestampFormat(value)) {
     return ABSENT_VALUE;
   }
   const occurredAtMilliseconds = Date.parse(value);
-  if (!Number.isFinite(occurredAtMilliseconds)) {
+  if (
+    !Number.isFinite(occurredAtMilliseconds) ||
+    occurredAtMilliseconds < MINIMUM_PROTOBUF_TIMESTAMP_MILLISECONDS ||
+    occurredAtMilliseconds > MAXIMUM_PROTOBUF_TIMESTAMP_MILLISECONDS
+  ) {
+    return ABSENT_VALUE;
+  }
+  return occurredAtMilliseconds;
+};
+
+const providerActivity = (value: unknown): NormalizedProviderActivity | typeof ABSENT_VALUE => {
+  const occurredAtMilliseconds = providerActivityMilliseconds(value);
+  if (occurredAtMilliseconds === ABSENT_VALUE) {
     return ABSENT_VALUE;
   }
   return {

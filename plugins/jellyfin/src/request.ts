@@ -2,6 +2,8 @@
 
 import { Code, ConnectError } from "@connectrpc/connect";
 
+import { readJellyfinFailureResponse } from "./request-failure.ts";
+import type { JellyfinFailureResponse, JellyfinRequestAuthentication } from "./request-failure.ts";
 import { confinedEndpoint, INVALID_REQUEST_TARGET, normalizedBaseUrl } from "./request-target.ts";
 import { isUnknownRecord } from "./value.ts";
 
@@ -9,12 +11,11 @@ const EMPTY_LENGTH = 0;
 const BACKSLASH = "\\";
 const ESCAPED_BACKSLASH = BACKSLASH.repeat(2);
 const FAILURE_SENTINEL = Symbol("failure");
-const HTTP_TOO_MANY_REQUESTS = 429;
 
 type JellyfinRequestContext = Readonly<{ apiKey: string; baseUrl: string }>;
 
 interface JellyfinRequestOptions {
-  readonly authentication: "api_key" | "none";
+  readonly authentication: JellyfinRequestAuthentication;
   readonly maximumResponseBytes: number;
   readonly query?: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
@@ -27,14 +28,7 @@ type JellyfinJsonResponse =
       readonly body: Readonly<Record<string, unknown>>;
       readonly kind: "success";
     }
-  | {
-      readonly kind:
-        | "authentication_failed"
-        | "forbidden"
-        | "incompatible"
-        | "not_found"
-        | "unreachable";
-    };
+  | JellyfinFailureResponse;
 
 const parseJsonRecord = (bytes: Uint8Array[], length: number) => {
   try {
@@ -134,25 +128,13 @@ const sendJsonRequest = async (
     }
     return { kind: "unreachable" };
   }
-  if (response.status >= 300 && response.status < 400) {
-    return { kind: "incompatible" };
-  }
-  if (response.status === 401) {
-    return {
-      kind: options.authentication === "api_key" ? "authentication_failed" : "incompatible",
-    };
-  }
-  if (response.status === 403) {
-    return { kind: options.authentication === "api_key" ? "forbidden" : "incompatible" };
-  }
-  if (response.status === 404) {
-    return { kind: options.authentication === "api_key" ? "not_found" : "incompatible" };
-  }
-  if (!response.ok) {
-    if (response.status === HTTP_TOO_MANY_REQUESTS || response.status >= 500) {
-      return { kind: "unreachable" };
-    }
-    return { kind: "incompatible" };
+  const failureResponse = await readJellyfinFailureResponse(
+    response,
+    options.authentication,
+    options.signal,
+  );
+  if (failureResponse !== undefined) {
+    return failureResponse;
   }
   return readBoundedJson(response, options.maximumResponseBytes, options.signal);
 };

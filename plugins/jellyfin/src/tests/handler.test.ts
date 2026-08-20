@@ -5,17 +5,16 @@ import type { Server } from "node:http";
 import { test } from "node:test";
 
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
-import { connectNodeAdapter, createConnectTransport } from "@connectrpc/connect-node";
+import { createConnectTransport } from "@connectrpc/connect-node";
 import { BadRequestSchema, ErrorInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
 import { WatchStateService } from "@nama/api/nama/plugin/v1/watch_state_pb.js";
 
-import { LAUNCH_DOCUMENT_VERSION } from "../launch-document.ts";
-import type { LaunchDocument } from "../launch-document.ts";
+import { makeJellyfinHandler } from "../handler.ts";
 import { isUnknownRecord } from "../value.ts";
-import { registerJellyfinWatchStateService } from "../watch-state-service.ts";
 
 const BEARER = "plugin-bearer";
 const API_KEY = "provider-api-key";
+const TEST_LAUNCH_DOCUMENT_VERSION = 2;
 const USER_ID = "provider-user";
 const HTTP_OK = 200;
 const HTTP_BAD_REQUEST = 400;
@@ -28,6 +27,7 @@ const EXCESS_COUNT_INCREMENT = 1;
 const EXCESS_ITEM_REFERENCE_COUNT = MAXIMUM_ITEM_REFERENCES + EXCESS_COUNT_INCREMENT;
 const EXCESS_ITEM_ID_LENGTH = MAXIMUM_ITEM_ID_LENGTH + EXCESS_COUNT_INCREMENT;
 const EPHEMERAL_PORT = 0;
+const FIRST_RESULT_INDEX = 0;
 const LAST_PATH_SEGMENT = -1;
 const GET_WATCH_STATES_PATH = "/nama.plugin.v1.WatchStateService/GetWatchStates";
 const LIST_WATCH_STATES_PATH = "/nama.plugin.v1.WatchStateService/ListWatchStates";
@@ -39,6 +39,7 @@ const VALIDATION_FAILED_REASON = "VALIDATION_FAILED";
 const PLUGIN_ERROR_DOMAIN = "nama.plugin.v1";
 const OUT_OF_RANGE_REASON = "OUT_OF_RANGE";
 const ITEM_REFERENCES_FIELD = "item_references";
+const OUT_OF_RANGE_PROVIDER_ACTIVITY = "+010000-01-01T00:00:00.000Z";
 
 interface ConcurrencyObservation {
   active: number;
@@ -56,33 +57,20 @@ interface ConnectRequest {
   readonly path: string;
 }
 
-const requireAuthorization = (authorization: string | null, bearer: string): void => {
-  if (authorization !== `Bearer ${bearer}`) {
-    throw new ConnectError("authentication failed", Code.Unauthenticated);
-  }
-};
-
 const startHandlerServer = async (): Promise<Server> => {
-  const launch: LaunchDocument = {
-    bearer: BEARER,
-    configuration: { base_url: "http://localhost", user_id: USER_ID },
-    credentials: { api_key: API_KEY },
-    kind: "instance",
-    provider_instance_id: "provider-instance",
-    provider_type: "jellyfin",
-    revision: "revision",
-    socket_path: "unused",
-    version: LAUNCH_DOCUMENT_VERSION,
-  };
-  const handler = connectNodeAdapter({
-    connect: true,
-    grpc: false,
-    grpcWeb: false,
-    routes: (router) => {
-      registerJellyfinWatchStateService(router, launch, requireAuthorization);
-    },
-  });
-  const server = createServer(handler);
+  const server = createServer(
+    makeJellyfinHandler({
+      bearer: BEARER,
+      configuration: { base_url: "http://localhost", user_id: USER_ID },
+      credentials: { api_key: API_KEY },
+      kind: "instance",
+      provider_instance_id: "provider-instance",
+      provider_type: "jellyfin",
+      revision: "revision",
+      socket_path: "unused",
+      version: TEST_LAUNCH_DOCUMENT_VERSION,
+    }),
+  );
   server.listen(EPHEMERAL_PORT, "127.0.0.1");
   await once(server, "listening");
   return server;
@@ -189,6 +177,24 @@ const makeObservedProviderFetch =
       { status: HTTP_OK },
     );
   };
+const makeOutOfRangeProviderActivityFetch = (): typeof fetch => (input) => {
+  const endpoint = providerEndpoint(input);
+  const itemId = decodeURIComponent(endpoint.pathname.split("/").at(LAST_PATH_SEGMENT) ?? "");
+  return Promise.resolve(
+    Response.json(
+      {
+        Id: itemId,
+        Type: "Movie",
+        UserData: {
+          LastPlayedDate: OUT_OF_RANGE_PROVIDER_ACTIVITY,
+          PlaybackPositionTicks: 0,
+          Played: false,
+        },
+      },
+      { status: HTTP_OK },
+    ),
+  );
+};
 
 const expectBoundedResponse = (
   response: ConnectResponse,
@@ -270,6 +276,18 @@ const expectRejectedBounds = async (
   await expectValidationDetails(server);
 };
 
+const expectProviderActivityAbsent = (response: ConnectResponse): void => {
+  assert.equal(response.statusCode, HTTP_OK);
+  assert.ok(isUnknownRecord(response.body));
+  const results: unknown = response.body["results"];
+  assert.ok(Array.isArray(results));
+  const result: unknown = results[FIRST_RESULT_INDEX];
+  assert.ok(isUnknownRecord(result));
+  const state: unknown = result["state"];
+  assert.ok(isUnknownRecord(state));
+  assert.ok(!("providerActivity" in state));
+};
+
 void test("bounds concurrent targeted provider reads", async () => {
   const observation: ConcurrencyObservation = { active: 0, maximum: 0, requests: 0 };
   const originalFetch = globalThis.fetch;
@@ -281,6 +299,21 @@ void test("bounds concurrent targeted provider reads", async () => {
     }));
     const response = await postConnectJson(server, GET_WATCH_STATES_PATH, { itemReferences });
     expectBoundedResponse(response, observation);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await server[Symbol.asyncDispose]();
+  }
+});
+
+void test("omits provider activity outside the Protobuf timestamp range", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = makeOutOfRangeProviderActivityFetch();
+  const server = await startHandlerServer();
+  try {
+    const response = await postConnectJson(server, GET_WATCH_STATES_PATH, {
+      itemReferences: [{ itemId: "out-of-range-activity" }],
+    });
+    expectProviderActivityAbsent(response);
   } finally {
     globalThis.fetch = originalFetch;
     await server[Symbol.asyncDispose]();
