@@ -1,6 +1,6 @@
 # Core server
 
-Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, authenticated plugin-subprocess supervisor, bundled-provider discovery/listing, and verified provider-instance create/list/get/update/delete including disable and re-enable are implemented and verified.
+Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, authenticated plugin-subprocess supervisor, bundled-provider discovery/listing, candidate and stored-instance connection testing, and verified provider-instance create/list/get/update/delete including disable and re-enable are implemented and verified.
 
 This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics.
 
@@ -17,7 +17,7 @@ This note is the canonical record for durable core-server boundaries. The implem
 - one native Node listener and one Effect managed request runtime for health and RPC callbacks;
 - runtime-controlled readiness and fatal post-bind failure;
 - one Effect-scoped authenticated, on-demand plugin-subprocess supervisor with context-free discovery, one-shot candidate, exact-revision instance launches, and bounded idle retirement;
-- one code-owned bundled-provider registry with bounded startup discovery, compatible installation reconciliation, safe availability status, authenticated provider-type listing, and provider-instance create/list/get/update/delete; and
+- one code-owned bundled-provider registry with bounded startup discovery, instance-local credential containment, compatible installation reconciliation, safe availability status, authenticated provider-type and connection-test reads, and provider-instance create/list/get/update/delete; and
 - deterministic signal shutdown, bounded drain, process-group termination, and resource finalization.
 
 The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; Setup, Auth, `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, `GetProviderInstance`, `UpdateProviderInstance`, and `DeleteProviderInstance` are implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. The private plugin transport launches, authenticates, handshakes with, calls, recovers, and terminates code-owned subprocesses. Its production Jellyfin executable implements health, discovery, and connection verification.
@@ -32,11 +32,12 @@ Effect owns composition, scopes, interruption, logging, expected failures, and s
 
 Under [ADR-0010](../adr/0010-postgresql-drizzle-persistence-boundary.md), Drizzle stays on the shared `pg.Pool`; do not introduce `@effect/sql-pg`. Wrap Promise-based database operations once inside the Effect module that owns the operation.
 
-The deep `ProviderManagement` Effect module owns provider-type reads and the
-implemented provider-instance create/list/get/update/delete slice while hiding
-restricted-schema validation, secret splitting, encryption, operation
-idempotency, status observations, revision and activity gates, runtime cutover,
-persistence transactions, and pagination.
+The deep `ProviderManagement` Effect module owns provider-type reads,
+candidate and exact-revision stored-instance connection tests, and the
+provider-instance create/list/get/update/delete slice while hiding restricted
+schema validation, secret splitting, encryption, operation idempotency, status
+observations, revision and activity gates, runtime cutover, persistence
+transactions, and pagination.
 Connect handlers remain mappings, the supervised-plugin runtime remains a
 separate owner, and the database module exposes only the narrow provider
 transactions this module needs. Do not expose Drizzle or add generic repository,
@@ -288,6 +289,9 @@ commits the instance, non-secret configuration, per-key encrypted credentials,
 principal digest, healthy observation, revision, and durable operation result
 in one transaction. List and get read configured-secret markers without
 decrypting credentials and project damaged stored credentials as unavailable.
+Unreadable credential envelopes are excluded instance by instance from schema
+reconciliation, so every readable persisted configuration still gates schema
+acceptance without widening credential damage to the provider type.
 Count limits, enabled-priority uniqueness, default-priority allocation, and
 idempotency arbitration remain database-serialized under concurrent creates.
 
@@ -300,6 +304,13 @@ old-revision admission. Credential replacements receive fresh envelopes; safe
 responses retain presence markers only. Revision-fenced observation writes
 reject retired completions.
 
+Explicit configuration tests validate one complete schema-split proposal in an
+isolated candidate process and return expected remote outcomes as safe result
+statuses. Stored-instance tests admit one enabled durable snapshot through the
+core activity gate and exact-revision supervisor path. Their completed
+observation applies only while that revision remains current; cancellation or a
+concurrent revision replacement cannot write stale status.
+
 Provider management owns one process-local scoped admission gate for core
 activity associated with each provider instance. Provider delete first resolves
 an exact durable retry, then requires the current revision, disabled state, and
@@ -308,9 +319,11 @@ otherwise delete closes new core and plugin admission under the same
 per-instance writer gate as update, requires bounded supervised cleanup, and
 atomically removes the provider instance, encrypted credentials, and
 current-revision observation. Cleanup failure reopens core admission and leaves
-durable state intact. The transaction preserves its independent empty operation
-result, so an exact retry succeeds after the instance row is gone. Jellyfin
-receives no destructive request.
+durable state intact. An unresolved database result retains the scoped activity
+fence for the exact Administrator, operation ID, and expected revision. That
+retry either returns the durable empty result without provider replay or safely
+continues from the recovered old disabled revision. Jellyfin receives no
+destructive request.
 
 Provider mutations use a seven-day completed-result ledger scoped by
 administrator, fully qualified method, and client operation ID. The ledger
@@ -318,12 +331,13 @@ stores a keyed canonical request fingerprint and safe serialized result, not
 plaintext credentials. Database uniqueness arbitrates concurrent duplicates;
 no transaction or pending-operation lease spans a provider call.
 
-A provider mutation whose commit result is ambiguous does not trigger the
-setup-specific fatal process rule. The affected instance remains unavailable
-until a fresh database read resolves its durable operation result and revision.
-Unrelated provider instances and authentication remain available whenever
-their owners and PostgreSQL are healthy; no candidate test or provider mutation
-is replayed blindly.
+Provider commit ambiguity does not trigger the setup-specific fatal process
+rule. The affected instance remains closed while durable truth is unavailable.
+The first successful recovery read pins and reopens the committed or recovered
+revision before later candidate verification, while a durable operation result
+returns its original safe response without replaying provider work. Unrelated
+provider instances and authentication remain available whenever their owners
+and PostgreSQL are healthy.
 
 ## Verification contract
 
@@ -334,31 +348,35 @@ The server test gate must continue to exercise behavior, not only generated cont
 - serial integration against disposable PostgreSQL with production migrations, prior-journal upgrade, constraints, the complete initialization state matrix, conditional repair failure, pool closure, and readiness loss/recovery;
 - the actual package entrypoint, both termination signals, migration-and-reconciliation-before-bind ordering, released listener ports, normalized startup and integrity failures, valid JSON output, and secret absence;
 - provider-management behavior against production migrations: installation
-  reconciliation, schema compatibility, credential tamper and transplantation,
-  principal binding, revision and priority conflicts, the 100-instance race,
-  idempotency retention and ambiguity recovery, and delete ownership;
+  reconciliation, instance-local credential damage, schema compatibility,
+  credential tamper and transplantation, principal binding, revision and
+  priority conflicts, the 100-instance race, idempotency retention and
+  ambiguity recovery, and delete-fence ownership;
 - real supervised subprocess behavior for discovery, candidate, and stored
-  instance launch contexts, configuration size, empty environment, deadline and
-  cancellation, revision retirement, cleanup uncertainty, and secret absence;
+  instance launch contexts, both public connection-test paths, configuration
+  size, empty environment, deadline and cancellation, revision-fenced
+  observations, retirement, cleanup uncertainty, and secret absence;
 - controlled Jellyfin HTTP behavior plus one disposable real Jellyfin
   server/user/API-key connection;
-- real Connect and compiled-CLI provider CRUD flows with exact redacted output;
+- real Connect and compiled-CLI provider-management flows with exact redacted
+  output;
 - root TypeScript checks that execute the complete server suite.
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.
 
 The implemented coverage exercises generated-client and real-process setup/authentication flows plus the private plugin-supervision transport: token consumption and reuse rejection, concurrent administrator creation, durable-marker completion and restart repair, ambiguous-commit handling, sign-in limits, bearer lifecycle, confirmed and unconfirmed sign-out, descriptor-only handle acquisition, explicit discovery, candidate, and instance launch documents, malformed and oversized context rejection, empty environments, provider-context confinement, one-shot candidate cleanup, exact-revision sharing and fencing, shared first-demand plugin launch, plugin launch authentication and authority rotation, recovery, call cancellation and independent deadlines, on-demand and idle lifecycle policy, failed-retirement containment and finalization, process-group cleanup, correlation, safe public errors and logs, readiness, and fatal runtime exit. Provider discovery coverage additionally starts the production Jellyfin executable, reconciles its accepted schema through production migrations, exercises authenticated pagination protection, and lists the result through the compiled CLI.
 
-The durable provider-management tracer additionally provisions a real
-Jellyfin server, compiles the public CLI, creates an encrypted principal-bound
-instance, exercises an exact stored-revision instance launch, and restarts the
-complete core around installation upgrade reconciliation, idempotent
-create/update/delete replay, wrong-master-key recovery, credential damage,
-pagination misuse, credential replacement, principal-change rejection,
-disable, re-enable, and deletion. It inspects only the documented encrypted
-credential envelope and principal digest in PostgreSQL and retains security
-sentinels across CLI, public output, process logs, and durable operation rows.
+The durable provider-management tracer additionally provisions a real Jellyfin
+server, compiles the public CLI, creates encrypted principal-bound instances,
+exercises exact stored-revision launches, and restarts the complete core around
+installation upgrade reconciliation, idempotent create/update/delete replay,
+wrong-master-key recovery, credential damage beside a healthy configuration
+mutation, pagination misuse, credential replacement, principal-change
+rejection, disable, re-enable, and deletion. It inspects only the documented
+encrypted credential envelope and principal digest in PostgreSQL and retains
+security sentinels across CLI, public output, process logs, and durable
+operation rows.
 
 ## Deferred work
 
-Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. Explicit provider connection testing, Jellyfin media behavior, pairing, playback, and synchronization belong to their owning milestones.
+Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. User-facing provider connection-test commands, Jellyfin media behavior, pairing, playback, and synchronization belong to their owning milestones.

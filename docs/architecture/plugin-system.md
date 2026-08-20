@@ -30,6 +30,13 @@ The supervisor keys current instance admission by opaque instance ID and exact r
 
 Every registered RPC requires the per-launch bearer and carries an explicit deadline and cancellation. The core validates untrusted plugin responses before storing or exposing mapped data. Credential loading wipes mutable decrypted byte buffers after launch-document delivery; immutable JavaScript strings are not claimed to be zeroizable, and provider plaintext remains confined to the isolated child until exit or garbage collection.
 
+Public candidate connection tests acquire a one-shot launch and public
+stored-instance tests acquire the enabled instance's exact durable revision
+through provider-management activity admission. Both propagate request
+cancellation and deadlines into `GetConnection`; only a completed
+stored-instance result can conditionally update that same revision's
+observation.
+
 ## Jellyfin discovery and connection profile
 
 The production Jellyfin executable implements authenticated health, `GetInfo`
@@ -57,12 +64,13 @@ redirect handling, so the API key never crosses the configured origin or path.
 Responses are size-bounded and raw provider response bodies or
 credential-bearing request details never enter responses or logs.
 
-The provider-management tracer separately provisions a pinned disposable
-Jellyfin server and reaches it through candidate and exact persisted-instance
-launches of this production plugin. The controlled HTTP Jellyfin subprocess
-test drives the same production entrypoint and retains deterministic coverage
-of redirect refusal, cancellation, malformed and oversized responses, hostile
-remote failures, and raw-response redaction.
+The provider-management process flow provisions a controlled Jellyfin endpoint
+and reaches it through both public connection-test RPCs using candidate and
+exact persisted-instance launches. It verifies cancellation reaches the real
+subprocess and provider request, exact-revision observations are conditional,
+and public results omit provider credentials and principal references. The
+controlled HTTP Jellyfin subprocess coverage retains deterministic redirect,
+malformed-response, size-bound, hostile-failure, and raw-body redaction cases.
 
 Windows transport and persistent or background native-media plugins remain deferred until a real plugin requires them. Production library, playback, and watch-state behavior belongs to issue #30; explicit connection-test commands belong to issue #31; and container packaging belongs to issue #32.
 

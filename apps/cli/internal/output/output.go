@@ -195,6 +195,11 @@ func scalarText(value reflect.Value) string {
 	return fmt.Sprint(value.Interface())
 }
 
+// HumanText escapes untrusted text for one human terminal line.
+func HumanText(value string) string {
+	return humanString(value)
+}
+
 func humanString(value string) string {
 	quoted := strconv.Quote(value)
 	return strings.ReplaceAll(strings.ReplaceAll(quoted[1:len(quoted)-1], `\"`, `"`), `\\`, `\`)

@@ -585,13 +585,38 @@ func (r *runtime) createProviderInstance(
 		if err := r.requireProfile(command, state); err != nil {
 			return nil, err
 		}
-		configuration, err := readProviderConfiguration(command, input.ConfigurationPath)
-		if err != nil {
-			return nil, clierror.InvalidArgument(err)
-		}
 		providerClient, err := r.providerClient(state)
 		if err != nil {
 			return nil, err
+		}
+		var configuration map[string]any
+		if input.ConfigurationPath == "" {
+			if state.resolved.Output == config.OutputJSON || !r.dependencies.SecretInput.Terminal {
+				return nil, clierror.InvalidArgument(errors.New("--configuration is required for non-interactive provider creation"))
+			}
+			providerType, err := r.interactiveProviderType(
+				command,
+				state,
+				providerClient,
+				input.ProviderTypeID,
+			)
+			if err != nil {
+				return nil, err
+			}
+			configuration, err = promptProviderConfiguration(
+				command,
+				r.secretInput(command, state),
+				providerType.ConfigurationSchema,
+				nil,
+			)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			configuration, err = readProviderConfiguration(command, input.ConfigurationPath)
+			if err != nil {
+				return nil, clierror.InvalidArgument(err)
+			}
 		}
 		result, err := app.CreateProviderInstance(
 			command.Context(),
@@ -623,17 +648,59 @@ func (r *runtime) updateProviderInstance(
 		if err := r.requireProfile(command, state); err != nil {
 			return nil, err
 		}
+		providerClient, err := r.providerClient(state)
+		if err != nil {
+			return nil, err
+		}
 		configurationPatch := map[string]any{}
+		hasExplicitUpdate := input.ConfigurationPatchPath != "" ||
+			len(input.ClearConfigurationFields) > 0 ||
+			input.DisplayName != nil ||
+			input.Enabled != nil ||
+			input.SyncPriority != nil
 		if input.ConfigurationPatchPath != "" {
-			var err error
 			configurationPatch, err = readProviderConfiguration(command, input.ConfigurationPatchPath)
 			if err != nil {
 				return nil, clierror.InvalidArgument(err)
 			}
-		}
-		providerClient, err := r.providerClient(state)
-		if err != nil {
-			return nil, err
+		} else if !hasExplicitUpdate {
+			if state.resolved.Output == config.OutputJSON || !r.dependencies.SecretInput.Terminal {
+				return nil, clierror.InvalidArgument(errors.New("at least one update field is required"))
+			}
+			current, err := app.GetProviderInstance(
+				command.Context(),
+				app.GetProviderInstanceInput{
+					Profile:            state.resolved.Profile,
+					ProviderInstanceID: input.ProviderInstanceID,
+					Server:             state.resolved.Server,
+				},
+				providerClient,
+				r.dependencies.Credentials,
+			)
+			if err != nil {
+				return nil, classifyLocalError(err)
+			}
+			providerType, err := r.interactiveProviderType(
+				command,
+				state,
+				providerClient,
+				current.ProviderInstance.ProviderTypeID,
+			)
+			if err != nil {
+				return nil, err
+			}
+			configurationPatch, err = promptProviderConfiguration(
+				command,
+				r.secretInput(command, state),
+				providerType.ConfigurationSchema,
+				&current.ProviderInstance,
+			)
+			if err != nil {
+				return nil, err
+			}
+			if len(configurationPatch) == 0 {
+				return nil, clierror.InvalidArgument(errors.New("at least one update field is required"))
+			}
 		}
 		result, err := app.UpdateProviderInstance(
 			command.Context(),

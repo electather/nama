@@ -70,6 +70,9 @@ const providerManagement: ProviderManagementService = Object.freeze({
     _providerInstanceId: string,
     activity: Effect.Effect<Success, Failure, Requirements>,
   ) => activity,
+  testProviderConfiguration: () =>
+    Effect.die("provider configuration test is outside dispatch coverage"),
+  testProviderInstance: () => Effect.die("provider instance test is outside dispatch coverage"),
   updateProviderInstance: () => Effect.die("provider update is outside dispatch coverage"),
 });
 

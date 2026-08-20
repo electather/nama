@@ -90,6 +90,8 @@ const defaultProviderManagement = ProviderManagement.of({
     _providerInstanceId: string,
     activity: Effect.Effect<Success, Failure, Requirements>,
   ) => activity,
+  testProviderConfiguration: () => Effect.die("unexpected provider configuration test"),
+  testProviderInstance: () => Effect.die("unexpected provider instance test"),
   updateProviderInstance: () => Effect.die("unexpected provider instance update"),
 });
 

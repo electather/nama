@@ -1,9 +1,5 @@
 // oxlint-disable eslint/max-lines-per-function -- The thin generated-service mapping remains one complete provider-neutral route inventory.
 import { create } from "@bufbuild/protobuf";
-import type {
-  JsonObject as ProtobufJsonObject,
-  JsonValue as ProtobufJsonValue,
-} from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import type { ServiceImpl } from "@connectrpc/connect";
 import { Effect } from "effect";
@@ -14,16 +10,20 @@ import {
   GetProviderInstanceResponseSchema,
   ListProviderInstancesResponseSchema,
   ListProviderTypesResponseSchema,
-  UpdateProviderInstanceResponseSchema,
   ProviderInstanceStatus,
+  UpdateProviderInstanceResponseSchema,
 } from "../../../../gen/ts/src/nama/api/v1/provider_pb.js";
 import type {
   ProviderService,
   UpdateProviderInstanceRequest,
 } from "../../../../gen/ts/src/nama/api/v1/provider_pb.js";
 import type { ProviderInstanceRecord } from "../database/provider-persistence.ts";
-import type { JsonObject, JsonValue } from "../database/provider-schema.ts";
 import type { ProviderManagementService } from "../provider/provider-management.ts";
+import {
+  createProviderConnectionServiceHandlers,
+  internalJsonObject,
+  protobufJsonObject,
+} from "./provider-connection-rpc-handlers.ts";
 import { getRequestAdministrator } from "./request-pipeline.ts";
 import type { RequestRuntime } from "./request-runtime.ts";
 
@@ -50,50 +50,6 @@ const optionalProviderUpdateInput = (
     optionalInput.syncPriority = request.syncPriority;
   }
   return optionalInput;
-};
-
-const isJsonArray = (value: JsonValue): value is readonly JsonValue[] => Array.isArray(value);
-
-const protobufJsonValue = (value: JsonValue): ProtobufJsonValue => {
-  if (isJsonArray(value)) {
-    return value.map((item) => protobufJsonValue(item));
-  }
-  if (typeof value !== "object" || value === null) {
-    return value;
-  }
-  const result: ProtobufJsonObject = {};
-  for (const [key, child] of Object.entries(value)) {
-    result[key] = protobufJsonValue(child);
-  }
-  return result;
-};
-
-// fallow-ignore-next-line code-duplication -- Explicit JSON conversion keeps generated and persistence value domains separate.
-const protobufJsonObject = (value: JsonObject): ProtobufJsonObject => {
-  const result: ProtobufJsonObject = {};
-  for (const [key, child] of Object.entries(value)) {
-    result[key] = protobufJsonValue(child);
-  }
-  return result;
-};
-// fallow-ignore-next-line code-duplication -- Reverse conversion validates the generated JSON domain without a shared unsafe cast.
-const internalJsonValue = (value: ProtobufJsonValue): JsonValue => {
-  if (Array.isArray(value)) {
-    return value.map((item) => internalJsonValue(item));
-  }
-  if (typeof value !== "object" || value === null) {
-    return value;
-  }
-  return internalJsonObject(value);
-};
-
-// fallow-ignore-next-line code-duplication -- Object conversion preserves recursive value validation at the handler boundary.
-const internalJsonObject = (value: ProtobufJsonObject): JsonObject => {
-  const result: Record<string, JsonValue> = {};
-  for (const [key, child] of Object.entries(value)) {
-    result[key] = internalJsonValue(child);
-  }
-  return result;
 };
 
 const providerInstanceStatus = (instance: ProviderInstanceRecord): ProviderInstanceStatus => {
@@ -127,6 +83,7 @@ const createProviderServiceHandlers = ({
   providerManagement,
   requestRuntime,
 }: ProviderServiceHandlerDependencies): Partial<ServiceImpl<typeof ProviderService>> => ({
+  ...createProviderConnectionServiceHandlers({ providerManagement, requestRuntime }),
   // fallow-ignore-next-line code-duplication -- Every generated route independently enforces request-local Administrator presence.
   createProviderInstance: (request, context) => {
     const administrator = getRequestAdministrator(context.values);

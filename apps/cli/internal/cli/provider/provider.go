@@ -122,14 +122,14 @@ func newCreateInstanceCommand(handlers Handlers) *cobra.Command {
 	command := &cobra.Command{
 		Use:     "create <provider-type-id>",
 		Short:   "Create a verified provider instance",
-		Long:    "Read one complete JSON configuration from a file path or - for standard input, verify the candidate connection, and create a provider-neutral instance. Secret values belong only in that document.",
-		Example: "  nama provider instance create jellyfin --display-name Home --configuration provider.json --profile local\n  cat provider.json | nama provider instance create jellyfin --display-name Home --configuration - --profile local --output json",
+		Long:    "Create a provider-neutral instance from one complete configuration. Interactive human use may render the accepted provider schema; JSON and non-interactive use read a JSON document from --configuration. Secret values belong only in prompts or that document.",
+		Example: "  nama provider instance create jellyfin --display-name Home --profile local\n  nama provider instance create jellyfin --display-name Home --configuration provider.json --profile local\n  cat provider.json | nama provider instance create jellyfin --display-name Home --configuration - --profile local --output json",
 		Args: func(command *cobra.Command, arguments []string) error {
 			if len(arguments) != 1 {
 				return handlers.InvalidArguments(command, errors.New("exactly one provider type ID is required"))
 			}
-			if displayName == "" || configuration == "" {
-				return handlers.InvalidArguments(command, errors.New("--display-name and --configuration are required"))
+			if displayName == "" {
+				return handlers.InvalidArguments(command, errors.New("--display-name is required"))
 			}
 			if command.Flags().Changed("sync-priority") && syncPriority == 0 {
 				return handlers.InvalidArguments(command, errors.New("--sync-priority must be positive"))
@@ -151,7 +151,7 @@ func newCreateInstanceCommand(handlers Handlers) *cobra.Command {
 			})
 		},
 	}
-	command.Flags().StringVar(&configuration, "configuration", "", "Read the complete JSON configuration from this file path or - for standard input (required)")
+	command.Flags().StringVar(&configuration, "configuration", "", "Read the complete JSON configuration from this file path or - for standard input (required for JSON or non-interactive use)")
 	command.Flags().StringVar(&displayName, "display-name", "", "Provider instance display name (required)")
 	command.Flags().BoolVar(&enabled, "enabled", true, "Create the provider instance enabled")
 	command.Flags().StringVar(&operationID, "operation-id", "", "Reuse this opaque operation ID for an exact retry; omitted generates one")
@@ -160,7 +160,7 @@ func newCreateInstanceCommand(handlers Handlers) *cobra.Command {
 		Name: "provider-type-id", Type: "string", Required: true,
 		Description: "Opaque installed provider type ID",
 	})
-	surface.SetFlag(command, "configuration", surface.FlagMetadata{Required: true})
+	surface.SetFlag(command, "configuration", surface.FlagMetadata{})
 	surface.SetFlag(command, "display-name", surface.FlagMetadata{Required: true})
 	surface.SetFlag(command, "enabled", surface.FlagMetadata{Default: "true"})
 	surface.SetFlag(command, "operation-id", surface.FlagMetadata{})
@@ -266,8 +266,8 @@ func newUpdateInstanceCommand(handlers Handlers) *cobra.Command {
 	command := &cobra.Command{
 		Use:     "update <provider-instance-id>",
 		Short:   "Update a provider instance",
-		Long:    "Patch provider-neutral metadata or read configuration changes from a file path or - for standard input. Omitted configuration and credentials remain unchanged.",
-		Example: "  nama provider instance update <provider-instance-id> --expected-revision <revision> --display-name Family --profile local\n  cat patch.json | nama provider instance update <provider-instance-id> --expected-revision <revision> --configuration - --profile local --output json",
+		Long:    "Patch provider-neutral metadata or configuration. Interactive human use with no update flags renders the accepted provider schema; --configuration reads a JSON patch from a file path or - for standard input. Omitted configuration and credentials remain unchanged.",
+		Example: "  nama provider instance update <provider-instance-id> --expected-revision <revision> --profile local\n  nama provider instance update <provider-instance-id> --expected-revision <revision> --display-name Family --profile local\n  cat patch.json | nama provider instance update <provider-instance-id> --expected-revision <revision> --configuration - --profile local --output json",
 		Args: func(command *cobra.Command, arguments []string) error {
 			if len(arguments) != 1 {
 				return handlers.InvalidArguments(command, errors.New("exactly one provider instance ID is required"))
@@ -280,13 +280,6 @@ func newUpdateInstanceCommand(handlers Handlers) *cobra.Command {
 			}
 			if command.Flags().Changed("sync-priority") && syncPriority == 0 {
 				return handlers.InvalidArguments(command, errors.New("--sync-priority must be positive"))
-			}
-			if configurationPatch == "" &&
-				len(clearConfigurationFields) == 0 &&
-				!command.Flags().Changed("display-name") &&
-				!command.Flags().Changed("enabled") &&
-				!command.Flags().Changed("sync-priority") {
-				return handlers.InvalidArguments(command, errors.New("at least one update field is required"))
 			}
 			return nil
 		},

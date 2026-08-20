@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -18,6 +19,10 @@ import (
 const (
 	requestTimeout     = 30 * time.Second
 	developmentVersion = "0.0.0-dev"
+)
+
+var goPseudoVersionPattern = regexp.MustCompile(
+	`^\d+\.\d+\.\d+-(?:[0-9A-Za-z-]+\.)*\d{14}-[0-9a-f]{12,}(?:\+incompatible)?$`,
 )
 
 // Clients contains the generated service clients used by CLI operations.
@@ -98,7 +103,7 @@ func Version() string {
 func versionFromBuildInfo(info *debug.BuildInfo, ok bool) string {
 	if ok && info != nil {
 		version := strings.TrimPrefix(info.Main.Version, "v")
-		if version != "" && version != "(devel)" {
+		if version != "" && version != "(devel)" && !goPseudoVersionPattern.MatchString(version) {
 			return version
 		}
 	}

@@ -51,11 +51,11 @@ func ReadSetupSecrets(input SecretInput) (SetupSecrets, error) {
 	}
 
 	if input.Terminal && !input.JSON {
-		bootstrapToken, err := readTerminalSecret(input, "Bootstrap token: ")
+		bootstrapToken, err := ReadTerminalSecret(input, "Bootstrap token: ")
 		if err != nil {
 			return SetupSecrets{}, err
 		}
-		password, err := readTerminalSecret(input, "Password: ")
+		password, err := ReadTerminalSecret(input, "Password: ")
 		if err != nil {
 			return SetupSecrets{}, err
 		}
@@ -80,7 +80,7 @@ func ReadLoginPassword(input SecretInput) (string, error) {
 	}
 
 	if input.Terminal && !input.JSON {
-		return readTerminalSecret(input, "Password: ")
+		return ReadTerminalSecret(input, "Password: ")
 	}
 	return readStdinLine(input.stdin())
 }
@@ -106,7 +106,8 @@ func (input SecretInput) prompt() io.Writer {
 	return os.Stderr
 }
 
-func readTerminalSecret(input SecretInput, prompt string) (string, error) {
+// ReadTerminalSecret reads one labelled secret from terminal stdin without echo.
+func ReadTerminalSecret(input SecretInput, prompt string) (string, error) {
 	reader := input.TerminalReader
 	if reader == nil {
 		reader = terminalPasswordReader{}
