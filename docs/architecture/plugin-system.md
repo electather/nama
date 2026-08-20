@@ -59,10 +59,16 @@ the non-recoverable binding digest required by
 Jellyfin base URLs accept HTTP or HTTPS private, link-local, loopback, local,
 or single-label destinations with at most one path prefix. They reject
 credentials, query strings, fragments, public destinations, and additional
-path segments. Native Node fetch receives RPC cancellation and uses manual
-redirect handling, so the API key never crosses the configured origin or path.
-Responses are size-bounded and raw provider response bodies or
-credential-bearing request details never enter responses or logs.
+path segments.
+
+One concrete Jellyfin request module builds endpoints from encoded path
+segments, confines them to that origin and prefix, applies the API key only to
+authenticated calls, rejects redirects, and receives RPC cancellation. It
+streams each JSON body under the caller-selected positive byte limit; connection
+inspection selects its existing 64 KiB limit independently of future media
+response limits. Callers receive only normalized response categories and parsed
+records, so raw provider bodies and credential-bearing request details never
+enter responses or logs.
 
 The provider-management process flow provisions a controlled Jellyfin endpoint
 and reaches it through both public connection-test RPCs using candidate and
