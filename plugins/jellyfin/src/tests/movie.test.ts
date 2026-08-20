@@ -3,7 +3,7 @@ import { it } from "node:test";
 
 import { SourceAvailability } from "@nama/api/nama/plugin/v1/media_pb.js";
 
-import { normalizeJellyfinMovie } from "../movie.ts";
+import { normalizeJellyfinItem } from "../media-item.ts";
 
 const ITEM_ID = "offline-movie";
 const SOURCE_ID = "offline-source";
@@ -11,7 +11,7 @@ const EXPECTED_SOURCE_COUNT = 1;
 const EXPECTED_PART_COUNT = 1;
 
 void it("preserves unavailable sources without video tracks", () => {
-  const item = normalizeJellyfinMovie(
+  const item = normalizeJellyfinItem(
     {
       Id: ITEM_ID,
       LocationType: "Offline",

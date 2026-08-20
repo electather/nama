@@ -15,10 +15,10 @@ const NANOSECONDS_PER_JELLYFIN_TICK = 100n;
 const DECIMAL_INTEGER = /^(?:0|[1-9]\d*)$/u;
 const JELLYFIN_TIMESTAMP =
   /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|[+-]\d{2}:\d{2})$/u;
-const ABSENT_MOVIE_VALUE = Symbol("absent Jellyfin movie value");
+const ABSENT_MEDIA_VALUE = Symbol("absent Jellyfin media value");
 
-const invalidMovie = (): never => {
-  throw new ConnectError("Jellyfin movie response is invalid", Code.Internal);
+const invalidMedia = (): never => {
+  throw new ConnectError("Jellyfin media response is invalid", Code.Internal);
 };
 
 const requiredText = (value: unknown, maximumCodePoints = MAXIMUM_TEXT_CODE_POINTS): string => {
@@ -27,14 +27,14 @@ const requiredText = (value: unknown, maximumCodePoints = MAXIMUM_TEXT_CODE_POIN
     value.length === EMPTY_LENGTH ||
     !hasMaximumCodePointLength(value, maximumCodePoints)
   ) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return value;
 };
 
 const optionalText = (value: unknown, maximumCodePoints = MAXIMUM_TEXT_CODE_POINTS) => {
   if (value === undefined || value === null || value === "") {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   return requiredText(value, maximumCodePoints);
 };
@@ -46,32 +46,32 @@ const unsignedInteger = (value: unknown): bigint => {
   } else if (typeof value === "string" && DECIMAL_INTEGER.test(value)) {
     integer = BigInt(value);
   } else {
-    return invalidMovie();
+    return invalidMedia();
   }
   if (integer < ZERO_BIGINT || integer > MAXIMUM_UINT64) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return integer;
 };
 
 const optionalUnsignedInteger = (value: unknown) => {
   if (value === undefined || value === null) {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   return unsignedInteger(value);
 };
 
 const optionalPositiveInteger = (value: unknown) => {
   const integer = optionalUnsignedInteger(value);
-  if (integer === ABSENT_MOVIE_VALUE || integer === ZERO_BIGINT) {
-    return ABSENT_MOVIE_VALUE;
+  if (integer === ABSENT_MEDIA_VALUE || integer === ZERO_BIGINT) {
+    return ABSENT_MEDIA_VALUE;
   }
   return integer;
 };
 
 const optionalUint32 = (value: unknown) => {
   if (value === undefined || value === null || value === ZERO) {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   if (
     typeof value !== "number" ||
@@ -79,17 +79,17 @@ const optionalUint32 = (value: unknown) => {
     value < ZERO ||
     value > MAXIMUM_UINT32
   ) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return value;
 };
 
 const optionalPositiveNumber = (value: unknown) => {
   if (value === undefined || value === null || value === ZERO) {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   if (typeof value !== "number" || !Number.isFinite(value) || value < ZERO) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return value;
 };
@@ -99,7 +99,7 @@ const providerBoolean = (value: unknown): boolean => {
     return false;
   }
   if (typeof value !== "boolean") {
-    return invalidMovie();
+    return invalidMedia();
   }
   return value;
 };
@@ -114,14 +114,14 @@ const durationFromTicks = (value: unknown) => {
 
 const optionalDuration = (value: unknown) => {
   if (value === undefined || value === null) {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   return durationFromTicks(value);
 };
 
 const optionalYear = (value: unknown) => {
   if (value === undefined || value === null || value === ZERO) {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   if (
     typeof value !== "number" ||
@@ -129,7 +129,7 @@ const optionalYear = (value: unknown) => {
     value < ZERO ||
     value > MAXIMUM_UINT32
   ) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return value;
 };
@@ -137,7 +137,7 @@ const optionalYear = (value: unknown) => {
 const requiredDateParts = (value: string) => {
   const groups = JELLYFIN_TIMESTAMP.exec(value)?.groups;
   if (groups === undefined) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return {
     day: Number(groups["day"]),
@@ -149,10 +149,10 @@ const requiredDateParts = (value: string) => {
 
 const normalizedDate = (value: unknown) => {
   if (value === undefined || value === null || value === "") {
-    return ABSENT_MOVIE_VALUE;
+    return ABSENT_MEDIA_VALUE;
   }
   if (typeof value !== "string") {
-    return invalidMovie();
+    return invalidMedia();
   }
   const { day, month, source, year } = requiredDateParts(value);
   const parsed = new Date(`${source}T00:00:00Z`);
@@ -165,7 +165,7 @@ const normalizedDate = (value: unknown) => {
     parsed.getUTCMonth() + MINIMUM_YEAR !== month ||
     parsed.getUTCDate() !== day
   ) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return { day, month, year };
 };
@@ -175,22 +175,22 @@ const normalizedStrings = (value: unknown, maximumItems: number): string[] => {
     return [];
   }
   if (!Array.isArray(value) || value.length > maximumItems) {
-    return invalidMovie();
+    return invalidMedia();
   }
   return value.map((entry) => requiredText(entry));
 };
 
-const optionalProperty = <Value>(name: string, value: Value | typeof ABSENT_MOVIE_VALUE) => {
-  if (value === ABSENT_MOVIE_VALUE) {
+const optionalProperty = <Value>(name: string, value: Value | typeof ABSENT_MEDIA_VALUE) => {
+  if (value === ABSENT_MEDIA_VALUE) {
     return {};
   }
   return { [name]: value };
 };
 
 export {
-  ABSENT_MOVIE_VALUE,
+  ABSENT_MEDIA_VALUE,
   durationFromTicks,
-  invalidMovie,
+  invalidMedia,
   normalizedDate,
   normalizedStrings,
   optionalDuration,
