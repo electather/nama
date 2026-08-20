@@ -35,6 +35,9 @@ const OVERSIZED_RESPONSE_PADDING_LENGTH = 1_100_000;
 const API_KEY = "jellyfin-api-key-sentinel";
 const USER_ID = "user-identity";
 const MOVIE_ID = "movie-identity";
+const INTERNATIONALIZED_TEXT_REPETITIONS = 50;
+const INTERNATIONALIZED_MOVIE_ID = "映画".repeat(INTERNATIONALIZED_TEXT_REPETITIONS);
+const INTERNATIONALIZED_MOVIE_TITLE = "到着".repeat(INTERNATIONALIZED_TEXT_REPETITIONS);
 const PRIVATE_PATH = "/media/private/Arrival (2016)/Arrival.mkv";
 const AUTHORIZED_URL = `/Videos/${MOVIE_ID}/stream?api_key=${API_KEY}`;
 const MISSING_MOVIE_ID = "missing-movie";
@@ -197,6 +200,13 @@ const MOVIE_RESPONSE = {
   Taglines: ["Why are they here?"],
   Type: "Movie",
 };
+const INTERNATIONALIZED_MOVIE_RESPONSE = {
+  Id: INTERNATIONALIZED_MOVIE_ID,
+  MediaSources: [],
+  Name: INTERNATIONALIZED_MOVIE_TITLE,
+  PlayAccess: "Full",
+  Type: "Movie",
+};
 const SOURCELESS_MOVIE_RESPONSE = {
   Id: SOURCELESS_MOVIE_ID,
   MediaSources: [],
@@ -241,6 +251,13 @@ const acquireControlledJellyfin = Effect.acquireRelease(
           request.headers.authorization === `MediaBrowser Token="${API_KEY}"`
         ) {
           respondJson(response, MOVIE_RESPONSE);
+          return;
+        }
+        if (
+          request.url ===
+          `/jellyfin/Items/${encodeURIComponent(INTERNATIONALIZED_MOVIE_ID)}?userId=${USER_ID}`
+        ) {
+          respondJson(response, INTERNATIONALIZED_MOVIE_RESPONSE);
           return;
         }
         if (request.url === `/jellyfin/Items/${SOURCELESS_MOVIE_ID}?userId=${USER_ID}`) {
@@ -658,6 +675,42 @@ it.live(
         expect(serialized).not.toContain(API_KEY);
         expect(serialized).not.toContain("Trakt");
         expect(serialized).not.toContain("182156");
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+it.live(
+  "accepts contract-valid internationalized references and metadata",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinInternationalizedMovieTest() {
+        const jellyfin = yield* acquireControlledJellyfin;
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* supervisor.supervise(
+          {
+            arguments: [JELLYFIN_PLUGIN_PATH],
+            executable: process.execPath,
+            expectedProviderType: "jellyfin",
+            stderrEvents: [],
+          },
+          {
+            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
+            credentials: { api_key: API_KEY },
+            kind: "instance",
+            providerInstanceId: "provider-instance",
+            revision: "revision-1",
+          },
+        );
+
+        const response = yield* plugin.call(
+          LibraryService.method.getItem,
+          { itemReference: { itemId: INTERNATIONALIZED_MOVIE_ID } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(response.item).toMatchObject({
+          itemReference: { itemId: INTERNATIONALIZED_MOVIE_ID },
+          title: INTERNATIONALIZED_MOVIE_TITLE,
+        });
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
   TEST_TIMEOUT_MILLISECONDS,

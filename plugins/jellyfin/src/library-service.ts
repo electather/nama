@@ -6,9 +6,10 @@ import type { LaunchDocument, ProviderLaunchDocument } from "./launch-document.t
 import { normalizeJellyfinMovie } from "./movie.ts";
 import { createJellyfinRequest } from "./request.ts";
 import type { JellyfinJsonResponse } from "./request.ts";
+import { hasMaximumCodePointLength } from "./value.ts";
 
 const EMPTY_LENGTH = 0;
-const MAXIMUM_ITEM_REFERENCE_BYTES = 256;
+const MAXIMUM_ITEM_REFERENCE_CODE_POINTS = 256;
 const MAXIMUM_MEDIA_RESPONSE_BYTES = 1_048_576;
 
 type RequireAuthorization = (authorization: string | null, bearer: string) => void;
@@ -64,7 +65,7 @@ const registerJellyfinLibraryService = (
     if (
       itemId === undefined ||
       itemId.length === EMPTY_LENGTH ||
-      Buffer.byteLength(itemId, "utf8") > MAXIMUM_ITEM_REFERENCE_BYTES
+      !hasMaximumCodePointLength(itemId, MAXIMUM_ITEM_REFERENCE_CODE_POINTS)
     ) {
       throw new ConnectError("item reference is invalid", Code.InvalidArgument);
     }

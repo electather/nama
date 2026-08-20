@@ -188,9 +188,6 @@ const normalizedTracks = (value: unknown, itemId: string, sourceId: string) => {
   if (new Set(trackIds).size !== trackIds.length) {
     return invalidMovie();
   }
-  if (!tracks.some((track) => track.details.case === "video")) {
-    return invalidMovie();
-  }
   return tracks;
 };
 

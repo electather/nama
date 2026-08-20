@@ -1,11 +1,13 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 
+import { hasMaximumCodePointLength } from "./value.ts";
+
 const EMPTY_LENGTH = 0;
 const ZERO = 0;
 const ZERO_BIGINT = 0n;
 const MINIMUM_YEAR = 1;
 const MAXIMUM_YEAR = 9999;
-const MAXIMUM_TEXT_BYTES = 256;
+const MAXIMUM_TEXT_CODE_POINTS = 256;
 const MAXIMUM_UINT32 = 4_294_967_295;
 const MAXIMUM_UINT64 = 18_446_744_073_709_551_615n;
 const JELLYFIN_TICKS_PER_SECOND = 10_000_000n;
@@ -19,22 +21,22 @@ const invalidMovie = (): never => {
   throw new ConnectError("Jellyfin movie response is invalid", Code.Internal);
 };
 
-const requiredText = (value: unknown, maximumBytes = MAXIMUM_TEXT_BYTES): string => {
+const requiredText = (value: unknown, maximumCodePoints = MAXIMUM_TEXT_CODE_POINTS): string => {
   if (
     typeof value !== "string" ||
     value.length === EMPTY_LENGTH ||
-    Buffer.byteLength(value, "utf8") > maximumBytes
+    !hasMaximumCodePointLength(value, maximumCodePoints)
   ) {
     return invalidMovie();
   }
   return value;
 };
 
-const optionalText = (value: unknown, maximumBytes = MAXIMUM_TEXT_BYTES) => {
+const optionalText = (value: unknown, maximumCodePoints = MAXIMUM_TEXT_CODE_POINTS) => {
   if (value === undefined || value === null || value === "") {
     return ABSENT_MOVIE_VALUE;
   }
-  return requiredText(value, maximumBytes);
+  return requiredText(value, maximumCodePoints);
 };
 
 const unsignedInteger = (value: unknown): bigint => {
