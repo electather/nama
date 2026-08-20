@@ -160,7 +160,7 @@ func newCreateInstanceCommand(handlers Handlers) *cobra.Command {
 		Name: "provider-type-id", Type: "string", Required: true,
 		Description: "Opaque installed provider type ID",
 	})
-	surface.SetFlag(command, "configuration", surface.FlagMetadata{Required: true})
+	surface.SetFlag(command, "configuration", surface.FlagMetadata{})
 	surface.SetFlag(command, "display-name", surface.FlagMetadata{Required: true})
 	surface.SetFlag(command, "enabled", surface.FlagMetadata{Default: "true"})
 	surface.SetFlag(command, "operation-id", surface.FlagMetadata{})

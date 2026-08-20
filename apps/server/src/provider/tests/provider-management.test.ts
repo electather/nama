@@ -2127,3 +2127,156 @@ it.effect("does not record a stored connection result after its revision is repl
     }),
   );
 });
+
+it.effect("keeps a stored connection test admitted through observation persistence", () => {
+  const persistence = makePersistence();
+  let current: ProviderInstanceRecord = {
+    ...disabledProviderInstance(),
+    enabled: true,
+  };
+  let deleteCalls = 0;
+  let runtimeFences = 0;
+  return Effect.scoped(
+    Effect.gen(function* storedConnectionActivityAdmissionTest() {
+      const observationStarted = yield* Deferred.make<void>();
+      const releaseObservation = yield* Deferred.make<void>();
+      const providers = {
+        ...persistence.providers,
+        deleteInstance: () =>
+          Effect.sync(() => {
+            deleteCalls += 1;
+            return true;
+          }),
+        loadInstance: () =>
+          Effect.succeed({
+            configuration: current.configuration,
+            credentials: { api_key: "stored-secret" },
+            displayName: current.displayName,
+            enabled: current.enabled,
+            id: current.id,
+            providerTypeId: current.providerTypeId,
+            revision: current.revision,
+            syncPriority: current.syncPriority,
+          }),
+        loadInstanceRecord: () => Effect.succeed(current),
+        readOperationResult: noOperationResult,
+        recordObservation: () =>
+          Effect.sync(() => {
+            current = { ...current, enabled: false };
+          }).pipe(
+            Effect.andThen(Deferred.done(observationStarted, Exit.void)),
+            Effect.andThen(Deferred.await(releaseObservation)),
+            Effect.as(false),
+          ),
+      } satisfies ProviderPersistence;
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: () =>
+          Effect.sync(() => {
+            runtimeFences += 1;
+            return { open: () => Effect.void };
+          }),
+        inspectConnection: () =>
+          Effect.succeed(
+            create(GetConnectionResponseSchema, {
+              connection: {
+                providerUserReference: "private-principal-sentinel",
+                status: PluginConnectionStatus.CONNECTED,
+              },
+            }),
+          ),
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+      const connectionTest = yield* Effect.forkChild(
+        service.testProviderInstance({ providerInstanceId: "provider-instance" }),
+      );
+      yield* Deferred.await(observationStarted);
+
+      const deletion = yield* service
+        .deleteProviderInstance({
+          administratorId: "administrator-a",
+          expectedRevision: "revision-1",
+          operationId: "delete-during-stored-connection-test",
+          providerInstanceId: "provider-instance",
+        })
+        .pipe(
+          Effect.match({
+            onFailure: (failure) => ({ failure, kind: "failure" as const }),
+            onSuccess: () => ({ kind: "success" as const }),
+          }),
+        );
+
+      expect(deletion.kind).toBe("failure");
+      if (deletion.kind === "failure") {
+        expect(deletion.failure).toMatchObject({ _tag: "ProviderInstanceBusy" });
+      }
+      expect(runtimeFences).toBe(0);
+      expect(deleteCalls).toBe(0);
+      yield* Deferred.done(releaseObservation, Exit.void);
+      const result = yield* Fiber.join(connectionTest);
+      expect(result.status).toBe("connected");
+    }),
+  );
+});
+
+it.effect("reports incompatible discovery distinctly for both connection tests", () => {
+  const previous: ProviderInstallationInput = {
+    capabilities: [],
+    configurationSchema: jellyfinSchema,
+    contractMajor: 1,
+    description: "Previously accepted Jellyfin provider",
+    displayName: "Jellyfin",
+    pluginBuildVersion: "previous",
+    providerTypeId: "jellyfin",
+    schemaProfileVersion: 1,
+    schemaRevision: "1",
+  };
+  const persistence = makePersistence(previous);
+  const current: ProviderInstanceRecord = {
+    ...disabledProviderInstance(),
+    enabled: true,
+  };
+  const providers = {
+    ...persistence.providers,
+    loadInstance: () =>
+      Effect.succeed({
+        configuration: current.configuration,
+        credentials: { api_key: "stored-secret" },
+        displayName: current.displayName,
+        enabled: current.enabled,
+        id: current.id,
+        providerTypeId: current.providerTypeId,
+        revision: current.revision,
+        syncPriority: current.syncPriority,
+      }),
+    loadInstanceRecord: () => Effect.succeed(current),
+  } satisfies ProviderPersistence;
+  return Effect.scoped(
+    Effect.gen(function* incompatibleConnectionTests() {
+      const service = yield* makeProviderManagement({
+        discover: incompatibleDiscovery,
+        fenceInstance: admissionOnlyTestFence,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+
+      const candidateFailure = yield* service
+        .testProviderConfiguration({
+          configuration: {
+            api_key: "candidate-secret",
+            base_url: "http://127.0.0.1:8096",
+            user_id: "provider-user",
+          },
+          providerTypeId: "jellyfin",
+        })
+        .pipe(Effect.flip);
+      const storedFailure = yield* service
+        .testProviderInstance({ providerInstanceId: "provider-instance" })
+        .pipe(Effect.flip);
+
+      expect(candidateFailure).toMatchObject({ _tag: "ProviderIncompatible" });
+      expect(storedFailure).toMatchObject({ _tag: "ProviderIncompatible" });
+    }),
+  );
+});

@@ -1226,10 +1226,11 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 	}
 
 	providerCreateFlags := schemaObjectsByName(t, byPath["nama provider instance create"]["flags"], "provider instance create flags")
-	for _, name := range []string{"configuration", "display-name"} {
-		if got, want := providerCreateFlags[name]["required"], true; got != want {
-			t.Errorf("provider create %s required = %#v, want %t", name, got, want)
-		}
+	if got, want := providerCreateFlags["configuration"]["required"], false; got != want {
+		t.Errorf("provider create configuration required = %#v, want %t", got, want)
+	}
+	if got, want := providerCreateFlags["display-name"]["required"], true; got != want {
+		t.Errorf("provider create display-name required = %#v, want %t", got, want)
 	}
 	if got, want := providerCreateFlags["enabled"]["default"], "true"; got != want {
 		t.Errorf("provider create enabled default = %#v, want %q", got, want)

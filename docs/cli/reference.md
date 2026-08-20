@@ -359,7 +359,7 @@ Create a provider-neutral instance from one complete configuration. Interactive 
 
 | Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `--configuration` | `string` | yes | local | — | `` | — | Read the complete JSON configuration from this file path or - for standard input (required for JSON or non-interactive use) |
+| `--configuration` | `string` | no | local | — | `` | — | Read the complete JSON configuration from this file path or - for standard input (required for JSON or non-interactive use) |
 | `--display-name` | `string` | yes | local | — | `` | — | Provider instance display name (required) |
 | `--enabled` | `bool` | no | local | — | `true` | — | Create the provider instance enabled |
 | `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |

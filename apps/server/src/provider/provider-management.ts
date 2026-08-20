@@ -269,6 +269,7 @@ type ConnectionInspection = (
 type ProviderConnectionTestFailure =
   | ProviderCredentialsUnavailableFailure
   | ProviderInstanceBusyFailure
+  | ProviderIncompatibleFailure
   | ProviderPersistenceFailure
   | ProviderPluginUnavailableFailure
   | ProviderResourceNotFoundFailure
@@ -1208,8 +1209,13 @@ const testProviderConfiguration = (
     if (provider === undefined || installation === undefined) {
       return yield* Effect.fail(new ProviderResourceNotFound({}));
     }
-    if (providerStatuses.get(input.providerTypeId) !== "available") {
-      return yield* Effect.fail(new ProviderPluginUnavailable({}));
+    const providerStatus = providerStatuses.get(input.providerTypeId);
+    if (providerStatus !== "available") {
+      const failure =
+        providerStatus === "incompatible"
+          ? new ProviderIncompatible({})
+          : new ProviderPluginUnavailable({});
+      return yield* Effect.fail(failure);
     }
     const split = splitProviderConfiguration(installation.configurationSchema, input.configuration);
     if (Array.isArray(split)) {
@@ -1245,48 +1251,53 @@ const testProviderInstance = (
   runProviderActivity: ProviderManagementService["runProviderActivity"],
   input: TestProviderInstanceInput,
 ): Effect.Effect<ProviderConnectionTestResult, ProviderConnectionTestFailure> =>
-  Effect.gen(function* testStoredProviderInstance() {
-    const record = yield* getProviderInstance(persistence, input);
-    if (!record.enabled) {
-      return yield* Effect.fail(new ProviderUnavailable({}));
-    }
-    const stored = yield* persistence
-      .loadInstance(input.providerInstanceId)
-      .pipe(
-        Effect.catchTag("ProviderCredentialsUnavailable", () =>
-          Effect.fail(new ProviderCredentialsUnavailable({})),
-        ),
+  runProviderActivity(
+    input.providerInstanceId,
+    Effect.gen(function* testStoredProviderInstance() {
+      const record = yield* getProviderInstance(persistence, input);
+      if (!record.enabled) {
+        return yield* Effect.fail(new ProviderUnavailable({}));
+      }
+      const stored = yield* persistence
+        .loadInstance(input.providerInstanceId)
+        .pipe(
+          Effect.catchTag("ProviderCredentialsUnavailable", () =>
+            Effect.fail(new ProviderCredentialsUnavailable({})),
+          ),
+        );
+      if (!stored.enabled) {
+        return yield* Effect.fail(new ProviderUnavailable({}));
+      }
+      const provider = bundledProviders.find(
+        (candidate) => candidate.providerTypeId === stored.providerTypeId,
       );
-    if (!stored.enabled) {
-      return yield* Effect.fail(new ProviderUnavailable({}));
-    }
-    const provider = bundledProviders.find(
-      (candidate) => candidate.providerTypeId === stored.providerTypeId,
-    );
-    if (provider === undefined) {
-      return yield* Effect.fail(new ProviderResourceNotFound({}));
-    }
-    if (providerStatuses.get(stored.providerTypeId) !== "available") {
-      return yield* Effect.fail(new ProviderPluginUnavailable({}));
-    }
-    const response = yield* runProviderActivity(
-      input.providerInstanceId,
-      inspectConnection(provider, {
+      if (provider === undefined) {
+        return yield* Effect.fail(new ProviderResourceNotFound({}));
+      }
+      const providerStatus = providerStatuses.get(stored.providerTypeId);
+      if (providerStatus !== "available") {
+        const failure =
+          providerStatus === "incompatible"
+            ? new ProviderIncompatible({})
+            : new ProviderPluginUnavailable({});
+        return yield* Effect.fail(failure);
+      }
+      const response = yield* inspectConnection(provider, {
         configuration: stored.configuration,
         credentials: stored.credentials,
         kind: "instance",
         providerInstanceId: stored.id,
         revision: stored.revision,
-      }).pipe(Effect.mapError(() => new ProviderPluginUnavailable({}))),
-    );
-    const result = providerConnectionTestFromResponse(response);
-    yield* persistence.recordObservation({
-      providerInstanceId: stored.id,
-      revision: stored.revision,
-      ...observationFromConnectionTest(result),
-    });
-    return result;
-  });
+      }).pipe(Effect.mapError(() => new ProviderPluginUnavailable({})));
+      const result = providerConnectionTestFromResponse(response);
+      yield* persistence.recordObservation({
+        providerInstanceId: stored.id,
+        revision: stored.revision,
+        ...observationFromConnectionTest(result),
+      });
+      return result;
+    }),
+  );
 
 const createProviderInstance = (
   persistence: ProviderPersistence,
