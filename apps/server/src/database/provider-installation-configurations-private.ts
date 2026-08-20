@@ -140,15 +140,23 @@ const loadInstallationConfigurations = (
       const instances = await selectInstallationInstances(context.database, providerTypeId);
       const envelopes = await selectInstallationEnvelopes(context.database, providerTypeId);
       const envelopesByInstance = groupEnvelopesByInstance(envelopes);
-      return Object.freeze(
-        instances.map((instance) =>
-          recoverInstallationConfiguration({
-            context,
-            envelopes: envelopesByInstance.get(instance.id) ?? [],
-            instance,
-          }),
-        ),
-      );
+      const configurations: JsonObject[] = [];
+      for (const instance of instances) {
+        try {
+          configurations.push(
+            recoverInstallationConfiguration({
+              context,
+              envelopes: envelopesByInstance.get(instance.id) ?? [],
+              instance,
+            }),
+          );
+        } catch (error) {
+          if (!isUnreadableCredential(error)) {
+            throw error;
+          }
+        }
+      }
+      return Object.freeze(configurations);
     },
   });
 

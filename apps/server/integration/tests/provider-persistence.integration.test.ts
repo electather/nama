@@ -649,6 +649,42 @@ it.live("marks an instance unavailable when a required credential row is missing
   ),
 );
 
+it.live("returns every readable installation configuration beside a damaged instance", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* readableInstallationConfigurationsTest() {
+      yield* initializeProviderDatabase(databaseUrl);
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* persistHealthyAndDamagedInstances() {
+          yield* acceptJellyfinInstallation(database.providers);
+          yield* database.providers.createInstance(makeInstanceInput("damaged-instance", 1));
+          yield* database.providers.createInstance({
+            ...makeInstanceInput("healthy-instance", 2),
+            configuration: { base_url: "https://healthy.example.test/" },
+          });
+        }),
+      );
+      yield* withPool(databaseUrl, (pool) =>
+        Effect.promise(() =>
+          pool.query(
+            "DELETE FROM provider_credential WHERE provider_instance_id = 'damaged-instance' AND configuration_key = 'api_key'",
+          ),
+        ),
+      );
+
+      const configurations = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        database.providers.loadInstallationConfigurations(PROVIDER_TYPE_ID),
+      );
+
+      expect(configurations).toEqual([
+        {
+          api_key: SECRET_VALUE,
+          base_url: "https://healthy.example.test/",
+        },
+      ]);
+    }),
+  ),
+);
+
 it.live("keeps credential recovery retryable after a transient database failure", () =>
   withIsolatedDatabase((databaseUrl) =>
     Effect.gen(function* retryableCredentialReadTest() {

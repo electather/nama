@@ -347,7 +347,7 @@ None.
 
 Create a verified provider instance
 
-Read one complete JSON configuration from a file path or - for standard input, verify the candidate connection, and create a provider-neutral instance. Secret values belong only in that document.
+Create a provider-neutral instance from one complete configuration. Interactive human use may render the accepted provider schema; JSON and non-interactive use read a JSON document from --configuration. Secret values belong only in prompts or that document.
 
 ### Arguments
 
@@ -359,7 +359,7 @@ Read one complete JSON configuration from a file path or - for standard input, v
 
 | Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `--configuration` | `string` | yes | local | — | `` | — | Read the complete JSON configuration from this file path or - for standard input (required) |
+| `--configuration` | `string` | yes | local | — | `` | — | Read the complete JSON configuration from this file path or - for standard input (required for JSON or non-interactive use) |
 | `--display-name` | `string` | yes | local | — | `` | — | Provider instance display name (required) |
 | `--enabled` | `bool` | no | local | — | `true` | — | Create the provider instance enabled |
 | `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |
@@ -491,7 +491,7 @@ Sources:
 
 Update a provider instance
 
-Patch provider-neutral metadata or read configuration changes from a file path or - for standard input. Omitted configuration and credentials remain unchanged.
+Patch provider-neutral metadata or configuration. Interactive human use with no update flags renders the accepted provider schema; --configuration reads a JSON patch from a file path or - for standard input. Omitted configuration and credentials remain unchanged.
 
 ### Arguments
 

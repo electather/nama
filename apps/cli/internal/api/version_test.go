@@ -15,6 +15,9 @@ func TestVersionNormalizesReleasedBuildsAndDevelopmentFallback(t *testing.T) {
 		{name: "missing build info", want: "0.0.0-dev"},
 		{name: "development build", info: &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, ok: true, want: "0.0.0-dev"},
 		{name: "empty module version", info: &debug.BuildInfo{}, ok: true, want: "0.0.0-dev"},
+		{name: "clean source pseudo-version", info: &debug.BuildInfo{Main: debug.Module{Version: "v0.0.0-20260820100035-1a18319c5241"}}, ok: true, want: "0.0.0-dev"},
+		{name: "tag-derived pseudo-version", info: &debug.BuildInfo{Main: debug.Module{Version: "v1.2.4-0.20260820100035-1a18319c5241"}}, ok: true, want: "0.0.0-dev"},
+		{name: "zero prerelease", info: &debug.BuildInfo{Main: debug.Module{Version: "v0.0.0-rc.1"}}, ok: true, want: "0.0.0-rc.1"},
 		{name: "released module version", info: &debug.BuildInfo{Main: debug.Module{Version: "v1.2.3"}}, ok: true, want: "1.2.3"},
 		{name: "released version without prefix", info: &debug.BuildInfo{Main: debug.Module{Version: "1.2.3-rc.1"}}, ok: true, want: "1.2.3-rc.1"},
 	} {

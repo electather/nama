@@ -1,7 +1,11 @@
 // oxlint-disable import/max-dependencies, eslint/max-lines, eslint/max-lines-per-function, eslint/max-params, eslint/max-statements, eslint/no-continue, eslint/no-ternary, eslint/no-underscore-dangle, eslint/prefer-destructuring, unicorn/no-useless-undefined -- The deep provider-management owner keeps schema validation, secret splitting, candidate verification, idempotency, and both pagination state machines explicit in one security boundary.
 import { randomUUID } from "node:crypto";
 
-import { PluginConnectionStatus, PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
+import {
+  PluginConnectionStatus,
+  PluginService,
+  ProviderCapability as PluginProviderCapability,
+} from "@nama/api/nama/plugin/v1/plugin_pb.js";
 import type { GetConnectionResponse } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 import { Clock, Context, Data, Effect, Layer, Redacted, Semaphore } from "effect";
 import type { Scope } from "effect";
@@ -22,6 +26,7 @@ import type { JsonObject, JsonValue } from "../database/provider-schema.ts";
 import type {
   PluginCallFailure,
   PluginInstanceFenceMode,
+  PluginLaunch,
   PluginSupervisorService,
 } from "../plugin/model.ts";
 import { PluginSupervisor } from "../plugin/supervisor.ts";
@@ -57,9 +62,14 @@ const DELETE_PROVIDER_INSTANCE_METHOD =
 const LIST_PROVIDER_INSTANCES_METHOD = "nama.api.v1.ProviderService.ListProviderInstances";
 const NORMALIZED_PROVIDER_INSTANCE_QUERY = "{}";
 const CANDIDATE_DEADLINE_MILLISECONDS = 5000;
+const FIRST_KNOWN_PROVIDER_CAPABILITY = PluginProviderCapability.LIBRARY_READ;
+const LAST_KNOWN_PROVIDER_CAPABILITY = PluginProviderCapability.PROGRESS_WRITE;
 const MAXIMUM_FIELD_VIOLATIONS = 50;
 const STATUS_SUMMARY_CONNECTED = "Connected";
 const LIST_PROVIDER_TYPES_METHOD = "nama.api.v1.ProviderService.ListProviderTypes";
+const STATUS_SUMMARY_AUTHENTICATION_FAILED = "Authentication failed";
+const STATUS_SUMMARY_INCOMPATIBLE = "Incompatible";
+const STATUS_SUMMARY_UNREACHABLE = "Unreachable";
 const NORMALIZED_PROVIDER_TYPE_QUERY = "{}";
 const DISCOVERY_DEADLINE_MILLISECONDS = 5000;
 
@@ -137,6 +147,49 @@ interface GetProviderInstanceInput {
   readonly providerInstanceId: string;
 }
 
+interface TestProviderConfigurationInput {
+  readonly configuration: JsonObject;
+  readonly providerTypeId: string;
+}
+
+interface TestProviderInstanceInput {
+  readonly providerInstanceId: string;
+}
+
+type ProviderConnectionStatus =
+  | "authentication_failed"
+  | "connected"
+  | "incompatible"
+  | "unreachable";
+
+const INCOMPATIBLE_CONNECTION_TEST_STATUS = Object.freeze({
+  status: "incompatible" as const,
+  summary: STATUS_SUMMARY_INCOMPATIBLE,
+});
+
+const CONNECTION_TEST_STATUS_BY_PLUGIN_STATUS: Readonly<
+  Record<number, Readonly<{ readonly status: ProviderConnectionStatus; readonly summary: string }>>
+> = Object.freeze({
+  [PluginConnectionStatus.AUTHENTICATION_FAILED]: Object.freeze({
+    status: "authentication_failed",
+    summary: STATUS_SUMMARY_AUTHENTICATION_FAILED,
+  }),
+  [PluginConnectionStatus.INCOMPATIBLE]: INCOMPATIBLE_CONNECTION_TEST_STATUS,
+  [PluginConnectionStatus.UNREACHABLE]: Object.freeze({
+    status: "unreachable",
+    summary: STATUS_SUMMARY_UNREACHABLE,
+  }),
+  [PluginConnectionStatus.UNSPECIFIED]: INCOMPATIBLE_CONNECTION_TEST_STATUS,
+});
+
+interface ProviderConnectionTestResult {
+  readonly capabilities: readonly number[];
+  readonly remoteName?: string;
+  readonly remoteVersion?: string;
+  readonly status: ProviderConnectionStatus;
+  readonly summary: string;
+}
+
 interface VerifiedProviderCandidate {
   readonly principalReference: string;
 }
@@ -205,6 +258,22 @@ type CandidateVerification = (
   | ProviderIncompatibleFailure
   | ProviderUnavailableFailure
 >;
+
+type ProviderConnectionLaunch = Exclude<PluginLaunch, Readonly<{ readonly kind: "discovery" }>>;
+
+type ConnectionInspection = (
+  provider: BundledProvider,
+  launch: ProviderConnectionLaunch,
+) => Effect.Effect<GetConnectionResponse, PluginCallFailure>;
+
+type ProviderConnectionTestFailure =
+  | ProviderCredentialsUnavailableFailure
+  | ProviderInstanceBusyFailure
+  | ProviderPersistenceFailure
+  | ProviderPluginUnavailableFailure
+  | ProviderResourceNotFoundFailure
+  | ProviderUnavailableFailure
+  | ProviderValidationFailure;
 
 interface InstanceAdmissionFence {
   readonly open: (revision: string) => Effect.Effect<void>;
@@ -319,6 +388,12 @@ interface ProviderManagementService {
   readonly updateProviderInstance: (
     input: UpdateProviderInstanceInput,
   ) => Effect.Effect<ProviderInstanceRecord, ProviderMutationFailure>;
+  readonly testProviderConfiguration: (
+    input: TestProviderConfigurationInput,
+  ) => Effect.Effect<ProviderConnectionTestResult, ProviderConnectionTestFailure>;
+  readonly testProviderInstance: (
+    input: TestProviderInstanceInput,
+  ) => Effect.Effect<ProviderConnectionTestResult, ProviderConnectionTestFailure>;
   readonly listProviderTypes: (
     input: ListProviderTypesInput,
   ) => Effect.Effect<ListProviderTypesResult, PageTokenInvalidFailure | ProviderPersistenceFailure>;
@@ -386,22 +461,32 @@ const verifiedCandidateFromResponse = (
   }
 };
 
+const inspectProviderConnection = (
+  supervisor: PluginSupervisorService,
+  provider: BundledProvider,
+  launch: ProviderConnectionLaunch,
+) =>
+  Effect.scoped(
+    supervisor
+      .supervise(provider.descriptor, launch)
+      .pipe(
+        Effect.flatMap((plugin) =>
+          plugin.call(PluginService.method.getConnection, {}, CANDIDATE_DEADLINE_MILLISECONDS),
+        ),
+      ),
+  );
+
 const verifyProviderCandidate = (
   supervisor: PluginSupervisorService,
   provider: BundledProvider,
   configuration: JsonObject,
   credentials: Readonly<Record<string, string>>,
 ) =>
-  Effect.scoped(
-    supervisor
-      .supervise(provider.descriptor, { configuration, credentials, kind: "candidate" })
-      .pipe(
-        Effect.flatMap((plugin) =>
-          plugin.call(PluginService.method.getConnection, {}, CANDIDATE_DEADLINE_MILLISECONDS),
-        ),
-        Effect.flatMap(verifiedCandidateFromResponse),
-      ),
-  );
+  inspectProviderConnection(supervisor, provider, {
+    configuration,
+    credentials,
+    kind: "candidate",
+  }).pipe(Effect.flatMap(verifiedCandidateFromResponse));
 
 const verifyMutationCandidate = (
   verifyCandidate: CandidateVerification,
@@ -419,11 +504,67 @@ const verifyMutationCandidate = (
     ),
   );
 
+const providerConnectionStatusFromResponse = (
+  response: GetConnectionResponse,
+): Readonly<{
+  readonly status: ProviderConnectionStatus;
+  readonly summary: string;
+}> => {
+  const connection = response.connection;
+  if (connection?.status === PluginConnectionStatus.CONNECTED) {
+    if (
+      connection.providerUserReference === undefined ||
+      connection.providerUserReference.length === ZERO
+    ) {
+      return INCOMPATIBLE_CONNECTION_TEST_STATUS;
+    }
+    return { status: "connected", summary: STATUS_SUMMARY_CONNECTED };
+  }
+  if (connection === undefined) {
+    return INCOMPATIBLE_CONNECTION_TEST_STATUS;
+  }
+  return (
+    CONNECTION_TEST_STATUS_BY_PLUGIN_STATUS[connection.status] ??
+    INCOMPATIBLE_CONNECTION_TEST_STATUS
+  );
+};
+
+const providerConnectionTestFromResponse = (
+  response: GetConnectionResponse,
+): ProviderConnectionTestResult => {
+  const connection = response.connection;
+  const capabilities =
+    connection?.capabilities.filter(
+      (capability, index, values) =>
+        capability >= FIRST_KNOWN_PROVIDER_CAPABILITY &&
+        capability <= LAST_KNOWN_PROVIDER_CAPABILITY &&
+        values.indexOf(capability) === index,
+    ) ?? [];
+  const result: {
+    capabilities: readonly number[];
+    remoteName?: string;
+    remoteVersion?: string;
+    status: ProviderConnectionStatus;
+    summary: string;
+  } = {
+    capabilities: Object.freeze(capabilities),
+    ...providerConnectionStatusFromResponse(response),
+  };
+  if (connection?.remoteName !== undefined && connection.remoteName.length > ZERO) {
+    result.remoteName = connection.remoteName;
+  }
+  if (connection?.remoteVersion !== undefined && connection.remoteVersion.length > ZERO) {
+    result.remoteVersion = connection.remoteVersion;
+  }
+  return Object.freeze(result);
+};
+
 interface ProviderManagementDependencies {
   readonly discover: ProviderDiscovery;
   readonly fenceInstance: InstanceCutoverFence;
   readonly masterKey: string;
   readonly verifyCandidate?: CandidateVerification;
+  readonly inspectConnection?: ConnectionInspection;
   readonly persistence: ProviderPersistence;
 }
 
@@ -437,7 +578,7 @@ const storedInstancesMatchSchema = (
         configurationMatchesRestrictedSchema(installation.configurationSchema, configuration),
       ),
     ),
-    Effect.catchTag("ProviderCredentialsUnavailable", () => Effect.succeed(false)),
+    Effect.catchTag("ProviderCredentialsUnavailable", () => Effect.fail(persistenceFailure())),
   );
 
 const reconcileProvider = (
@@ -1053,6 +1194,100 @@ const canonicalCreateRequest = (input: CreateProviderInstanceInput): Buffer =>
     "utf8",
   );
 
+const testProviderConfiguration = (
+  persistence: ProviderPersistence,
+  providerStatuses: ReadonlyMap<string, ProviderDiscoveryStatus>,
+  inspectConnection: ConnectionInspection,
+  input: TestProviderConfigurationInput,
+): Effect.Effect<ProviderConnectionTestResult, ProviderConnectionTestFailure> =>
+  Effect.gen(function* testCandidateConfiguration() {
+    const provider = bundledProviders.find(
+      (candidate) => candidate.providerTypeId === input.providerTypeId,
+    );
+    const installation = yield* persistence.loadInstallation(input.providerTypeId);
+    if (provider === undefined || installation === undefined) {
+      return yield* Effect.fail(new ProviderResourceNotFound({}));
+    }
+    if (providerStatuses.get(input.providerTypeId) !== "available") {
+      return yield* Effect.fail(new ProviderPluginUnavailable({}));
+    }
+    const split = splitProviderConfiguration(installation.configurationSchema, input.configuration);
+    if (Array.isArray(split)) {
+      return yield* Effect.fail(new ProviderValidationFailed({ violations: split }));
+    }
+    const response = yield* inspectConnection(provider, {
+      configuration: split.configuration,
+      credentials: split.credentials,
+      kind: "candidate",
+    }).pipe(Effect.mapError(() => new ProviderPluginUnavailable({})));
+    return providerConnectionTestFromResponse(response);
+  });
+
+const observationFromConnectionTest = (
+  result: ProviderConnectionTestResult,
+): Readonly<{
+  readonly status: "authentication_failed" | "healthy" | "unavailable";
+  readonly summary: string;
+}> => {
+  if (result.status === "connected") {
+    return { status: "healthy", summary: result.summary };
+  }
+  if (result.status === "authentication_failed") {
+    return { status: "authentication_failed", summary: result.summary };
+  }
+  return { status: "unavailable", summary: result.summary };
+};
+
+const testProviderInstance = (
+  persistence: ProviderPersistence,
+  providerStatuses: ReadonlyMap<string, ProviderDiscoveryStatus>,
+  inspectConnection: ConnectionInspection,
+  runProviderActivity: ProviderManagementService["runProviderActivity"],
+  input: TestProviderInstanceInput,
+): Effect.Effect<ProviderConnectionTestResult, ProviderConnectionTestFailure> =>
+  Effect.gen(function* testStoredProviderInstance() {
+    const record = yield* getProviderInstance(persistence, input);
+    if (!record.enabled) {
+      return yield* Effect.fail(new ProviderUnavailable({}));
+    }
+    const stored = yield* persistence
+      .loadInstance(input.providerInstanceId)
+      .pipe(
+        Effect.catchTag("ProviderCredentialsUnavailable", () =>
+          Effect.fail(new ProviderCredentialsUnavailable({})),
+        ),
+      );
+    if (!stored.enabled) {
+      return yield* Effect.fail(new ProviderUnavailable({}));
+    }
+    const provider = bundledProviders.find(
+      (candidate) => candidate.providerTypeId === stored.providerTypeId,
+    );
+    if (provider === undefined) {
+      return yield* Effect.fail(new ProviderResourceNotFound({}));
+    }
+    if (providerStatuses.get(stored.providerTypeId) !== "available") {
+      return yield* Effect.fail(new ProviderPluginUnavailable({}));
+    }
+    const response = yield* runProviderActivity(
+      input.providerInstanceId,
+      inspectConnection(provider, {
+        configuration: stored.configuration,
+        credentials: stored.credentials,
+        kind: "instance",
+        providerInstanceId: stored.id,
+        revision: stored.revision,
+      }).pipe(Effect.mapError(() => new ProviderPluginUnavailable({}))),
+    );
+    const result = providerConnectionTestFromResponse(response);
+    yield* persistence.recordObservation({
+      providerInstanceId: stored.id,
+      revision: stored.revision,
+      ...observationFromConnectionTest(result),
+    });
+    return result;
+  });
+
 const createProviderInstance = (
   persistence: ProviderPersistence,
   providerStatuses: ReadonlyMap<string, ProviderDiscoveryStatus>,
@@ -1257,6 +1492,7 @@ interface ProviderUpdateCommitInput {
   readonly preparedConfiguration: MergedUpdateConfiguration | undefined;
   readonly reenabled: boolean;
   readonly fenceInstance: InstanceCutoverFence;
+  readonly retainedDeleteFences: ReadonlyMap<string, RetainedProviderDeleteFence>;
 }
 
 interface ProviderUpdateResolution {
@@ -1421,7 +1657,11 @@ const commitProviderUpdate = (
       persistence,
       reenabled,
       fenceInstance,
+      retainedDeleteFences,
     } = commit;
+    if (retainedDeleteFences.has(input.providerInstanceId)) {
+      return yield* Effect.fail(new ProviderInstanceBusy({}));
+    }
     const recoveringAmbiguity = ambiguousInstances.has(input.providerInstanceId);
     const committedReplay = yield* operationResult(
       persistence,
@@ -1517,6 +1757,41 @@ const loadInitialProviderUpdate = ({
     };
   });
 
+interface RecoverAmbiguousProviderUpdateInput extends InitialProviderUpdateInput {
+  readonly ambiguousInstances: Set<string>;
+  readonly fenceInstance: InstanceCutoverFence;
+  readonly gate: Semaphore.Semaphore;
+}
+
+const recoverAmbiguousProviderUpdate = ({
+  ambiguousInstances,
+  canonicalRequest,
+  fenceInstance,
+  gate,
+  input,
+  persistence,
+}: RecoverAmbiguousProviderUpdateInput): Effect.Effect<
+  InitialProviderUpdate,
+  ProviderMutationFailure
+> => {
+  const recovery = Effect.gen(function* recoverProviderUpdateAdmission() {
+    const initial = yield* loadInitialProviderUpdate({ canonicalRequest, input, persistence });
+    if (initial.kind === "replay") {
+      yield* recoverReplayAdmission(ambiguousInstances, fenceInstance, input, initial.result);
+      return initial;
+    }
+    const admissionFence = yield* fenceInstance(input.providerInstanceId, "admission-only").pipe(
+      Effect.mapError(() => new ProviderPluginUnavailable({})),
+    );
+    if (initial.current.enabled) {
+      yield* admissionFence.open(initial.current.revision);
+    }
+    ambiguousInstances.delete(input.providerInstanceId);
+    return initial;
+  });
+  return gate.withPermits(WRITER_GATE_PERMITS)(Effect.uninterruptible(Effect.scoped(recovery)));
+};
+
 const normalizeProviderUpdateFailure = (
   failure: ProviderMutationFailure,
   ambiguousInstances: ReadonlySet<string>,
@@ -1531,6 +1806,7 @@ const normalizeProviderUpdateFailure = (
 const updateProviderInstance = (
   persistence: ProviderPersistence,
   ambiguousInstances: Set<string>,
+  retainedDeleteFences: ReadonlyMap<string, RetainedProviderDeleteFence>,
   providerStatuses: ReadonlyMap<string, ProviderDiscoveryStatus>,
   verifyCandidate: CandidateVerification,
   fenceInstance: InstanceCutoverFence,
@@ -1538,14 +1814,27 @@ const updateProviderInstance = (
   input: UpdateProviderInstanceInput,
 ): Effect.Effect<ProviderInstanceRecord, ProviderMutationFailure> =>
   Effect.acquireUseRelease(
-    Effect.sync(() => canonicalUpdateRequest(input)),
+    Effect.suspend(() =>
+      retainedDeleteFences.has(input.providerInstanceId)
+        ? Effect.fail(new ProviderInstanceBusy({}))
+        : Effect.sync(() => canonicalUpdateRequest(input)),
+    ),
     (canonicalRequest) =>
       Effect.gen(function* prepareProviderUpdate() {
-        const initial = yield* loadInitialProviderUpdate({
-          canonicalRequest,
-          input,
-          persistence,
-        });
+        const initial = yield* ambiguousInstances.has(input.providerInstanceId)
+          ? recoverAmbiguousProviderUpdate({
+              ambiguousInstances,
+              canonicalRequest,
+              fenceInstance,
+              gate,
+              input,
+              persistence,
+            })
+          : loadInitialProviderUpdate({
+              canonicalRequest,
+              input,
+              persistence,
+            });
         if (initial.kind === "replay") {
           if (!ambiguousInstances.has(input.providerInstanceId)) {
             return initial.result;
@@ -1578,6 +1867,7 @@ const updateProviderInstance = (
           persistence,
           preparedConfiguration,
           reenabled: initial.reenabled,
+          retainedDeleteFences,
         });
         const scopedCommit = Effect.scoped(commit);
         return yield* gate.withPermits(WRITER_GATE_PERMITS)(Effect.uninterruptible(scopedCommit));
@@ -1625,12 +1915,29 @@ const deleteOperationResult = (
     );
 
 interface ProviderDeleteInput {
-  readonly ambiguousInstances: Set<string>;
+  readonly ambiguousDeleteFences: Map<string, RetainedProviderDeleteFence>;
   readonly fenceActivities: InstanceActivityDeletionFenceAcquire;
   readonly fenceInstance: InstanceCutoverFence;
   readonly input: DeleteProviderInstanceInput;
   readonly persistence: ProviderPersistence;
 }
+
+interface RetainedProviderDeleteFence {
+  readonly activityFence: InstanceActivityDeletionFence;
+  readonly administratorId: string;
+  readonly expectedRevision: string;
+  readonly operationId: string;
+}
+
+const clearRetainedDeleteFence = (commit: ProviderDeleteInput): Effect.Effect<void> =>
+  Effect.sync(() => {
+    commit.ambiguousDeleteFences.delete(commit.input.providerInstanceId);
+  });
+
+const reopenDeleteActivity = (
+  commit: ProviderDeleteInput,
+  activityFence: InstanceActivityDeletionFence,
+): Effect.Effect<void> => clearRetainedDeleteFence(commit).pipe(Effect.andThen(activityFence.open));
 
 interface ProviderDeleteCommitInput extends ProviderDeleteInput {
   readonly canonicalRequest: Uint8Array;
@@ -1640,23 +1947,25 @@ const recoverProviderDeleteCommit = (
   commit: ProviderDeleteCommitInput,
   activityFence: InstanceActivityDeletionFence,
 ): Effect.Effect<void, ProviderMutationFailure> => {
-  const { ambiguousInstances, canonicalRequest, input, persistence } = commit;
-  ambiguousInstances.add(input.providerInstanceId);
+  const { ambiguousDeleteFences, canonicalRequest, input, persistence } = commit;
+  ambiguousDeleteFences.set(input.providerInstanceId, {
+    activityFence,
+    administratorId: input.administratorId,
+    expectedRevision: input.expectedRevision,
+    operationId: input.operationId,
+  });
   const ambiguousFailure = Effect.fail(new ProviderCommitAmbiguous({}));
   return deleteOperationResult(persistence, input, canonicalRequest).pipe(
     Effect.flatMap((committed) => {
       if (committed) {
-        return Effect.sync(() => {
-          ambiguousInstances.delete(input.providerInstanceId);
-        });
+        return clearRetainedDeleteFence(commit);
       }
       return persistence.loadInstanceRecord(input.providerInstanceId).pipe(
         Effect.flatMap((current) => {
           if (current === undefined) {
             return ambiguousFailure;
           }
-          ambiguousInstances.delete(input.providerInstanceId);
-          return activityFence.open.pipe(Effect.andThen(ambiguousFailure));
+          return reopenDeleteActivity(commit, activityFence).pipe(Effect.andThen(ambiguousFailure));
         }),
       );
     }),
@@ -1668,7 +1977,7 @@ const persistProviderDelete = (
   commit: ProviderDeleteCommitInput,
   activityFence: InstanceActivityDeletionFence,
 ): Effect.Effect<void, ProviderMutationFailure> => {
-  const { ambiguousInstances, canonicalRequest, input, persistence } = commit;
+  const { ambiguousDeleteFences, canonicalRequest, input, persistence } = commit;
   return persistence
     .deleteInstance({
       expectedRevision: input.expectedRevision,
@@ -1690,54 +1999,101 @@ const persistProviderDelete = (
         if (deleted === true) {
           return Effect.void;
         }
-        ambiguousInstances.add(input.providerInstanceId);
+        ambiguousDeleteFences.set(input.providerInstanceId, {
+          activityFence,
+          administratorId: input.administratorId,
+          expectedRevision: input.expectedRevision,
+          operationId: input.operationId,
+        });
         return Effect.fail(new ProviderCommitAmbiguous({}));
       }),
     );
+};
+const retainedDeleteFenceMatches = (
+  retained: RetainedProviderDeleteFence,
+  input: DeleteProviderInstanceInput,
+): boolean =>
+  retained.administratorId === input.administratorId &&
+  retained.expectedRevision === input.expectedRevision &&
+  retained.operationId === input.operationId;
+
+const failResolvedProviderDelete = (
+  commit: ProviderDeleteCommitInput,
+  retained: RetainedProviderDeleteFence | undefined,
+  failure: ProviderInstanceBusyFailure | RevisionMismatchFailure,
+): Effect.Effect<never, ProviderInstanceBusyFailure | RevisionMismatchFailure> => {
+  const failed = Effect.fail(failure);
+  if (retained === undefined) {
+    return failed;
+  }
+  return reopenDeleteActivity(commit, retained.activityFence).pipe(Effect.andThen(failed));
+};
+
+const resolveProviderDeleteActivityFence = (
+  commit: ProviderDeleteCommitInput,
+): Effect.Effect<InstanceActivityDeletionFence, ProviderMutationFailure> =>
+  Effect.gen(function* resolveDeleteActivityFence() {
+    const { ambiguousDeleteFences, fenceActivities, input, persistence } = commit;
+    const current = yield* getProviderInstance(persistence, {
+      providerInstanceId: input.providerInstanceId,
+    });
+    const retained = ambiguousDeleteFences.get(input.providerInstanceId);
+    if (retained !== undefined && !retainedDeleteFenceMatches(retained, input)) {
+      return yield* Effect.fail(new ProviderInstanceBusy({}));
+    }
+    if (current.revision !== input.expectedRevision) {
+      return yield* failResolvedProviderDelete(commit, retained, new RevisionMismatch({}));
+    }
+    if (current.enabled) {
+      return yield* failResolvedProviderDelete(commit, retained, new ProviderInstanceBusy({}));
+    }
+    if (retained !== undefined) {
+      return retained.activityFence;
+    }
+    return yield* fenceActivities(input.providerInstanceId);
+  });
+
+const executeProviderDelete = (
+  commit: ProviderDeleteCommitInput,
+  activityFence: InstanceActivityDeletionFence,
+): Effect.Effect<void, ProviderMutationFailure, Scope.Scope> => {
+  const { fenceInstance, input } = commit;
+  const runtimeFence = fenceInstance(input.providerInstanceId, "retire-current").pipe(
+    Effect.mapError(() => new ProviderPluginUnavailable({})),
+    Effect.matchEffect({
+      onFailure: (failure) =>
+        reopenDeleteActivity(commit, activityFence).pipe(Effect.andThen(Effect.fail(failure))),
+      onSuccess: () => Effect.void,
+    }),
+  );
+  return runtimeFence.pipe(
+    Effect.andThen(persistProviderDelete(commit, activityFence)),
+    Effect.matchEffect({
+      onFailure: (failure): Effect.Effect<never, ProviderMutationFailure> => {
+        if (failure._tag === "ProviderCommitAmbiguous") {
+          return Effect.fail(failure);
+        }
+        return reopenDeleteActivity(commit, activityFence).pipe(
+          Effect.andThen(Effect.fail(failure)),
+        );
+      },
+      onSuccess: () => clearRetainedDeleteFence(commit),
+    }),
+  );
 };
 
 const commitProviderDelete = (
   commit: ProviderDeleteCommitInput,
 ): Effect.Effect<void, ProviderMutationFailure, Scope.Scope> =>
   Effect.gen(function* commitProviderDeleteEffect() {
-    const {
-      ambiguousInstances,
-      canonicalRequest,
-      fenceActivities,
-      fenceInstance,
-      input,
-      persistence,
-    } = commit;
+    const { canonicalRequest, input, persistence } = commit;
     const replay = yield* deleteOperationResult(persistence, input, canonicalRequest);
     if (replay) {
-      ambiguousInstances.delete(input.providerInstanceId);
+      yield* clearRetainedDeleteFence(commit);
       return yield* Effect.void;
     }
-    const current = yield* expectedProviderInstance(persistence, input);
-    if (current.enabled) {
-      return yield* Effect.fail(new ProviderInstanceBusy({}));
-    }
-    ambiguousInstances.delete(input.providerInstanceId);
-    const activityFence = yield* fenceActivities(input.providerInstanceId);
-    const runtimeFence = fenceInstance(input.providerInstanceId, "retire-current").pipe(
-      Effect.mapError(() => new ProviderPluginUnavailable({})),
-      Effect.matchEffect({
-        onFailure: (failure) => activityFence.open.pipe(Effect.andThen(Effect.fail(failure))),
-        onSuccess: () => Effect.void,
-      }),
-    );
-    yield* runtimeFence;
-    return yield* persistProviderDelete(commit, activityFence).pipe(
-      Effect.matchEffect({
-        onFailure: (failure): Effect.Effect<never, ProviderMutationFailure> => {
-          if (failure._tag === "ProviderCommitAmbiguous") {
-            return Effect.fail(failure);
-          }
-          return activityFence.open.pipe(Effect.andThen(Effect.fail(failure)));
-        },
-        onSuccess: () => Effect.void,
-      }),
-    );
+    const activityFence = yield* resolveProviderDeleteActivityFence(commit);
+    return yield* executeProviderDelete(commit, activityFence);
   });
 
 const deleteProviderInstance = (
@@ -1832,6 +2188,7 @@ const listProviderTypes = (
 const makeProviderManagement = ({
   discover,
   fenceInstance,
+  inspectConnection,
   masterKey,
   persistence,
   verifyCandidate,
@@ -1849,9 +2206,13 @@ const makeProviderManagement = ({
       }),
       (codec) => Effect.sync(codec.close),
     );
+    const connectionInspector: ConnectionInspection =
+      inspectConnection ??
+      (() => Effect.die(new Error("provider connection inspector is unavailable")));
     const providerStatuses = new Map<string, ProviderDiscoveryStatus>();
     const instanceGates = new Map<string, Semaphore.Semaphore>();
-    const ambiguousInstances = new Set<string>();
+    const ambiguousUpdateInstances = new Set<string>();
+    const ambiguousDeleteFences = new Map<string, RetainedProviderDeleteFence>();
     const activityAdmission = makeProviderActivityAdmission();
     const instanceGate = (providerInstanceId: string): Semaphore.Semaphore => {
       const current = instanceGates.get(providerInstanceId);
@@ -1881,7 +2242,7 @@ const makeProviderManagement = ({
       deleteProviderInstance: (input: DeleteProviderInstanceInput) =>
         deleteProviderInstance(
           {
-            ambiguousInstances,
+            ambiguousDeleteFences,
             fenceActivities: activityFencer,
             fenceInstance,
             input,
@@ -1896,10 +2257,21 @@ const makeProviderManagement = ({
       listProviderTypes: (input: ListProviderTypesInput) =>
         listProviderTypes(persistence, pageTokens, input),
       runProviderActivity: activityAdmission.run,
+      testProviderConfiguration: (input: TestProviderConfigurationInput) =>
+        testProviderConfiguration(persistence, providerStatuses, connectionInspector, input),
+      testProviderInstance: (input: TestProviderInstanceInput) =>
+        testProviderInstance(
+          persistence,
+          providerStatuses,
+          connectionInspector,
+          activityAdmission.run,
+          input,
+        ),
       updateProviderInstance: (input: UpdateProviderInstanceInput) =>
         updateProviderInstance(
           persistence,
-          ambiguousInstances,
+          ambiguousUpdateInstances,
+          ambiguousDeleteFences,
           providerStatuses,
           candidateVerifier,
           fenceInstance,
@@ -1924,6 +2296,8 @@ class ProviderManagement extends contextService<ProviderManagement, ProviderMana
         discover: (provider) => discoverProvider(supervisor, provider),
         fenceInstance: (providerInstanceId, mode) =>
           supervisor.fenceInstance(providerInstanceId, mode),
+        inspectConnection: (provider, launch) =>
+          inspectProviderConnection(supervisor, provider, launch),
         masterKey: Redacted.value(config.security.masterKey),
         persistence: database.providers,
         verifyCandidate: (provider, configuration, credentials) =>
@@ -1936,6 +2310,10 @@ class ProviderManagement extends contextService<ProviderManagement, ProviderMana
 
 export { ProviderManagement, makeProviderManagement };
 export type {
+  ConnectionInspection,
+  ProviderConnectionLaunch,
+  ProviderConnectionStatus,
+  ProviderConnectionTestFailure,
   CandidateVerification,
   CreateProviderInstanceInput,
   DeleteProviderInstanceInput,
@@ -1949,6 +2327,7 @@ export type {
   ProviderCommitAmbiguousFailure,
   ProviderCredentialsUnavailableFailure,
   ProviderInstanceBusyFailure,
+  ProviderConnectionTestResult,
   InstanceAdmissionFence,
   InstanceCutoverFence,
   ProviderIncompatibleFailure,
@@ -1959,6 +2338,8 @@ export type {
   ProviderPluginUnavailableFailure,
   ProviderResourceNotFoundFailure,
   ProviderUnavailableFailure,
+  TestProviderConfigurationInput,
+  TestProviderInstanceInput,
   ProviderUserChangedFailure,
   ProviderValidationFailure,
   RevisionMismatchFailure,

@@ -2,7 +2,7 @@
 
 Nama is a self-hosted, iOS-first Jellyfin control plane. It has a TypeScript/Node core, a Go CLI, generated Swift bindings for a future universal app targeting iOS, tvOS, and macOS, and a first-party Jellyfin plugin; no Apple client application is currently checked in. The core is not a media relay: media travels directly from a provider to the client through safe, short-lived locators.
 
-- `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements Administrator setup and authentication, bundled-provider discovery and reconciliation, provider-type listing, and verified provider-instance create/list/get/update/delete including disable and re-enable. Device pairing, provider-instance testing, and client behavior remain unimplemented.
+- `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements Administrator setup and authentication, bundled-provider discovery and reconciliation, provider-type listing, candidate and exact-revision stored-instance connection tests, and verified provider-instance create/list/get/update/delete including disable and re-enable. Device pairing and client behavior remain unimplemented.
 - `apps/cli/` — Go public-API client surface; named server profiles, Administrator setup and sign-in, authentication status, provider-type listing, and provider-instance create/list/get/update/delete are implemented. The remaining management command families are unimplemented.
 - `plugins/jellyfin/` — first-party TypeScript provider adapter; its production executable implements private health, provider-information, and connection RPCs with the accepted configuration schema. Media behavior remains unimplemented.
 - `proto/` — authoritative Protobuf schemas and generation configuration.
@@ -46,6 +46,9 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Do not expose provider resource IDs, SDK types, raw provider errors, configuration secrets, reusable credentials, locator URLs, or locator headers across the public boundary or in logs.
 - Hold each provider-instance supervisor admission fence through durable update resolution; release it only after pinning the committed or recovered revision, and leave it closed while durable truth remains ambiguous.
 - Route every provider-instance core activity through the provider-management scoped activity gate; never replace the production deletion fence with a no-op or test-only hook.
+- Retain a provider delete's scoped activity fence while its database result is ambiguous; only an exact retry with the same Administrator, operation ID, and expected revision may reuse that ownership.
+- Contain unreadable provider credentials only after persistence identifies the affected instance; an unscoped installation-configuration recovery failure remains fail-closed and must not be treated as schema compatibility.
+- Keep update-commit ambiguity state separate from retained delete-fence ownership; a non-delete mutation must fail while an ambiguous delete still owns the instance activity fence.
 - On a Nama fatal setup-commit ambiguity, make local `GetStatus` fail `UNAVAILABLE/SETUP_UNAVAILABLE` until exit; never report `initialized=false`.
 - While a Nama bootstrap attempt is active, return `SETUP_IN_PROGRESS` only for its matching token; every other candidate fails `AUTHENTICATION_FAILED`.
 - Emit Nama `server.runtime_failed` at `fatal` severity so configured `warn`, `error`, and `fatal` thresholds retain it.

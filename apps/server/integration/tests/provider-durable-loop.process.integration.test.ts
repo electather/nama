@@ -1031,6 +1031,34 @@ it.live(
               expect(providerInstanceFromNama(healthyAfterDamage)).toEqual(
                 persistedCredentialInstance,
               );
+              const healthyMutationArguments = [
+                "provider",
+                "instance",
+                "update",
+                providerInstanceId,
+                "--expected-revision",
+                persistedCredentialRevision,
+                "--configuration",
+                "-",
+                "--operation-id",
+                "healthy-provider-beside-damaged-instance",
+                "--profile",
+                "local",
+                "--output",
+                "json",
+              ] as const;
+              providerArguments.push(healthyMutationArguments);
+              const healthyMutation = yield* runNama(
+                healthyMutationArguments,
+                JSON.stringify({ base_url: jellyfin.baseUrl }),
+              );
+              cliResults.push(healthyMutation);
+              expectNamaSuccess(healthyMutation);
+              const healthyAfterDamageRevision = requiredString(
+                providerInstanceFromNama(healthyMutation),
+                "revision",
+              );
+              expect(healthyAfterDamageRevision).not.toBe(persistedCredentialRevision);
               const damagedGet = yield* runNama([
                 "provider",
                 "instance",
@@ -1102,7 +1130,7 @@ it.live(
                 "update",
                 providerInstanceId,
                 "--expected-revision",
-                persistedCredentialRevision,
+                healthyAfterDamageRevision,
                 "--enabled=false",
                 "--operation-id",
                 "disable-durable-provider",

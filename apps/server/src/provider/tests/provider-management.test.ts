@@ -1,5 +1,10 @@
+import { create } from "@bufbuild/protobuf";
 // oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary -- Provider-management fixtures keep reconciliation, secret splitting, candidate admission, and token-boundary assertions explicit.
 import { expect, it } from "@effect/vitest";
+import {
+  GetConnectionResponseSchema,
+  PluginConnectionStatus,
+} from "@nama/api/nama/plugin/v1/plugin_pb.js";
 import { Data, Deferred, Effect, Exit, Fiber } from "effect";
 
 import { ProviderUpdatePreparationFailed } from "../../database/provider-persistence-model-private.ts";
@@ -212,6 +217,112 @@ it.effect("preserves accepted metadata when a stored instance fails the discover
     }),
   );
 });
+
+it.effect("keeps a provider type available when one stored credential is unreadable", () => {
+  const previous: ProviderInstallationInput = {
+    capabilities: [],
+    configurationSchema: jellyfinSchema,
+    contractMajor: 1,
+    description: "Previously accepted Jellyfin provider",
+    displayName: "Jellyfin",
+    pluginBuildVersion: "previous",
+    providerTypeId: "jellyfin",
+    schemaProfileVersion: 1,
+    schemaRevision: "previous",
+  };
+  const persistence = makePersistence(previous);
+  const providers = {
+    ...persistence.providers,
+    createInstance: (input: Parameters<ProviderPersistence["createInstance"]>[0]) =>
+      Effect.succeed({
+        configuration: input.configuration,
+        configuredSecretKeys: Object.keys(input.credentials),
+        createdAt: new Date("2026-08-20T10:00:00.000Z"),
+        credentialsAvailable: true,
+        displayName: input.displayName,
+        enabled: input.enabled,
+        id: input.id,
+        observation: input.observation,
+        providerTypeId: input.providerTypeId,
+        revision: input.revision,
+        syncPriority: input.syncPriority ?? 1,
+        updatedAt: new Date("2026-08-20T10:00:00.000Z"),
+      }),
+    loadInstallationConfigurations: () =>
+      Effect.succeed([
+        {
+          api_key: "readable-credential",
+          base_url: "http://127.0.0.1:8096",
+          user_id: "readable-user",
+        },
+      ]),
+    readOperationResult: noOperationResult,
+  } satisfies ProviderPersistence;
+  return Effect.scoped(
+    Effect.gen(function* unreadableStoredCredentialTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
+        masterKey: MASTER_KEY,
+        persistence: providers,
+        verifyCandidate: () => Effect.succeed({ principalReference: "healthy-new-principal" }),
+      });
+      const page = yield* service.listProviderTypes({
+        administratorId: "administrator-a",
+        pageSize: 50,
+        pageToken: "",
+      });
+      const created = yield* service.createProviderInstance({
+        administratorId: "administrator-a",
+        configuration: {
+          api_key: "healthy-new-credential",
+          base_url: "http://127.0.0.1:9096",
+          user_id: "healthy-new-user",
+        },
+        displayName: "Healthy New Instance",
+        enabled: true,
+        operationId: "healthy-create-beside-damaged-instance",
+        providerTypeId: "jellyfin",
+      });
+
+      expect(persistence.accepted()).toBe(1);
+      expect(page.providerTypes).toEqual([persistence.installation()]);
+      expect(created).toMatchObject({
+        displayName: "Healthy New Instance",
+        providerTypeId: "jellyfin",
+      });
+    }),
+  );
+});
+
+it.effect(
+  "fails schema reconciliation when installation configuration recovery is unresolved",
+  () => {
+    const persistence = makePersistence();
+    const taggedError = Data.TaggedError;
+    const CredentialsUnavailable = taggedError("ProviderCredentialsUnavailable")<
+      Record<string, never>
+    >;
+    const providers = {
+      ...persistence.providers,
+      loadInstallationConfigurations: () => Effect.fail(new CredentialsUnavailable({})),
+    } satisfies ProviderPersistence;
+
+    return Effect.scoped(
+      Effect.gen(function* unresolvedInstallationConfigurationTest() {
+        const failure = yield* makeProviderManagement({
+          discover: successfulDiscovery,
+          fenceInstance: admissionOnlyTestFence,
+          masterKey: MASTER_KEY,
+          persistence: providers,
+        }).pipe(Effect.flip);
+
+        expect(failure).toMatchObject({ _tag: "ProviderPersistenceError" });
+        expect(persistence.accepted()).toBe(0);
+      }),
+    );
+  },
+);
 
 it.effect("contains an absent bundled executable without changing accepted metadata", () => {
   const previous: ProviderInstallationInput = {
@@ -900,6 +1011,87 @@ it.effect("keeps an ambiguous instance unavailable until durable replay", () => 
   );
 });
 
+it.effect("reopens recovered update admission before a later candidate can fail", () => {
+  const persistence = makePersistence();
+  const current = {
+    ...disabledProviderInstance(),
+    enabled: true,
+  };
+  const taggedError = Data.TaggedError;
+  const PersistenceUnavailable = taggedError("ProviderPersistenceError")<Record<string, never>>;
+  const ProviderUnavailable = taggedError("ProviderUnavailable")<Record<string, never>>;
+  let databaseAvailable = true;
+  let candidateCalls = 0;
+  let updateCalls = 0;
+  const openedRevisions: string[] = [];
+  const providers = {
+    ...persistence.providers,
+    loadInstance: () =>
+      Effect.succeed({
+        configuration: current.configuration,
+        credentials: { api_key: "retained-credential" },
+        displayName: current.displayName,
+        enabled: current.enabled,
+        id: current.id,
+        providerTypeId: current.providerTypeId,
+        revision: current.revision,
+        syncPriority: current.syncPriority,
+      }),
+    loadInstanceRecord: () =>
+      databaseAvailable ? Effect.succeed(current) : Effect.fail(new PersistenceUnavailable({})),
+    matchesPrincipal: () => Effect.succeed(true),
+    readOperationResult: (lookup: Parameters<ProviderPersistence["readOperationResult"]>[0]) =>
+      databaseAvailable ? noOperationResult(lookup) : Effect.fail(new PersistenceUnavailable({})),
+    updateInstance: () => {
+      updateCalls += 1;
+      databaseAvailable = false;
+      return Effect.fail(new PersistenceUnavailable({}));
+    },
+  } satisfies ProviderPersistence;
+  const request = {
+    administratorId: "administrator-a",
+    clearConfigurationFields: [],
+    configurationPatch: { optional_note: "candidate" },
+    expectedRevision: "revision-1",
+    operationId: "ambiguous-old-revision-operation",
+    providerInstanceId: "provider-instance",
+  } as const;
+
+  return Effect.scoped(
+    Effect.gen(function* recoveredOldRevisionTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: () =>
+          Effect.succeed({
+            open: (revision: string) =>
+              Effect.sync(() => {
+                openedRevisions.push(revision);
+              }),
+          }),
+        masterKey: MASTER_KEY,
+        persistence: providers,
+        verifyCandidate: () => {
+          candidateCalls += 1;
+          return candidateCalls === 1
+            ? Effect.succeed({ principalReference: "same-principal" })
+            : Effect.fail(new ProviderUnavailable({}));
+        },
+      });
+
+      const ambiguity = yield* service.updateProviderInstance(request).pipe(Effect.flip);
+      expect(ambiguity).toMatchObject({ _tag: "ProviderCommitAmbiguous" });
+      expect(openedRevisions).toEqual([]);
+
+      databaseAvailable = true;
+      const candidateFailure = yield* service.updateProviderInstance(request).pipe(Effect.flip);
+
+      expect(candidateFailure).toMatchObject({ _tag: "ProviderUnavailable" });
+      expect(openedRevisions).toEqual(["revision-1"]);
+      expect(updateCalls).toBe(1);
+    }),
+  );
+});
+
 it.effect("clears an optional configuration field without clearing retained secrets", () => {
   const persistence = makePersistence();
   const createdAt = new Date("2026-08-19T12:00:00.000Z");
@@ -1549,6 +1741,389 @@ it.effect("reopens activity admission when supervised cleanup is uncertain", () 
       );
       expect(activityRan).toBe(true);
       expect(deleteCalls).toBe(0);
+    }),
+  );
+});
+
+it.effect("reuses an unresolved delete activity fence on an exact retry", () => {
+  const persistence = makePersistence();
+  const taggedError = Data.TaggedError;
+  const PersistenceUnavailable = taggedError("ProviderPersistenceError")<Record<string, never>>;
+  let current: ProviderInstanceRecord | undefined = disabledProviderInstance();
+  let databaseAvailable = true;
+  let durableResult = false;
+  let deleteCalls = 0;
+  let updateCalls = 0;
+  let runtimeFences = 0;
+  const providers = {
+    ...persistence.providers,
+    deleteInstance: () => {
+      deleteCalls += 1;
+      if (deleteCalls === 1) {
+        databaseAvailable = false;
+        return Effect.fail(new PersistenceUnavailable({}));
+      }
+      current = undefined;
+      durableResult = true;
+      return Effect.succeed(true);
+    },
+    loadInstanceRecord: () =>
+      databaseAvailable ? Effect.succeed(current) : Effect.fail(new PersistenceUnavailable({})),
+    readOperationResult: () => {
+      if (!databaseAvailable) {
+        return Effect.fail(new PersistenceUnavailable({}));
+      }
+      return Effect.succeed(durableResult ? {} : undefined);
+    },
+    updateInstance: (input: Parameters<ProviderPersistence["updateInstance"]>[0]) => {
+      updateCalls += 1;
+      if (current === undefined) {
+        return Effect.die("ambiguous delete unexpectedly removed the instance");
+      }
+      current = {
+        ...current,
+        displayName: input.displayName,
+        revision: input.revision,
+      };
+      return Effect.succeed(current);
+    },
+  } satisfies ProviderPersistence;
+  const request = {
+    administratorId: "administrator-a",
+    expectedRevision: "revision-1",
+    operationId: "ambiguous-delete-operation",
+    providerInstanceId: "provider-instance",
+  } as const;
+
+  return Effect.scoped(
+    Effect.gen(function* ambiguousDeleteRetryTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: () =>
+          Effect.sync(() => {
+            runtimeFences += 1;
+            return { open: () => Effect.void };
+          }),
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+
+      const ambiguity = yield* service.deleteProviderInstance(request).pipe(Effect.flip);
+      expect(ambiguity).toMatchObject({ _tag: "ProviderCommitAmbiguous" });
+      const fencedActivity = yield* service
+        .runProviderActivity("provider-instance", Effect.void)
+        .pipe(Effect.flip);
+      expect(fencedActivity).toMatchObject({ _tag: "ProviderInstanceBusy" });
+      databaseAvailable = true;
+      const conflictingUpdate = yield* service
+        .updateProviderInstance({
+          administratorId: "administrator-a",
+          clearConfigurationFields: [],
+          configurationPatch: {},
+          displayName: "Must stay fenced",
+          expectedRevision: "revision-1",
+          operationId: "update-during-ambiguous-delete",
+          providerInstanceId: "provider-instance",
+        })
+        .pipe(Effect.flip);
+      expect(conflictingUpdate).toMatchObject({ _tag: "ProviderInstanceBusy" });
+      expect(updateCalls).toBe(0);
+
+      databaseAvailable = true;
+      yield* service.deleteProviderInstance(request);
+
+      expect(deleteCalls).toBe(2);
+      expect(runtimeFences).toBe(2);
+      expect(current).toBeUndefined();
+    }),
+  );
+});
+
+it.effect("resolves an ambiguously committed delete without replaying provider work", () => {
+  const persistence = makePersistence();
+  const taggedError = Data.TaggedError;
+  const PersistenceUnavailable = taggedError("ProviderPersistenceError")<Record<string, never>>;
+  let current: ProviderInstanceRecord | undefined = disabledProviderInstance();
+  let databaseAvailable = true;
+  let durableResult = false;
+  let deleteCalls = 0;
+  let runtimeFences = 0;
+  const providers = {
+    ...persistence.providers,
+    deleteInstance: () => {
+      deleteCalls += 1;
+      current = undefined;
+      durableResult = true;
+      databaseAvailable = false;
+      return Effect.fail(new PersistenceUnavailable({}));
+    },
+    loadInstanceRecord: () =>
+      databaseAvailable ? Effect.succeed(current) : Effect.fail(new PersistenceUnavailable({})),
+    readOperationResult: () => {
+      if (!databaseAvailable) {
+        return Effect.fail(new PersistenceUnavailable({}));
+      }
+      return Effect.succeed(durableResult ? {} : undefined);
+    },
+  } satisfies ProviderPersistence;
+  const request = {
+    administratorId: "administrator-a",
+    expectedRevision: "revision-1",
+    operationId: "committed-ambiguous-delete-operation",
+    providerInstanceId: "provider-instance",
+  } as const;
+
+  return Effect.scoped(
+    Effect.gen(function* committedDeleteRetryTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: () =>
+          Effect.sync(() => {
+            runtimeFences += 1;
+            return { open: () => Effect.void };
+          }),
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+
+      const ambiguity = yield* service.deleteProviderInstance(request).pipe(Effect.flip);
+      expect(ambiguity).toMatchObject({ _tag: "ProviderCommitAmbiguous" });
+
+      databaseAvailable = true;
+      yield* service.deleteProviderInstance(request);
+
+      expect(deleteCalls).toBe(1);
+      expect(runtimeFences).toBe(1);
+      expect(current).toBeUndefined();
+    }),
+  );
+});
+
+it.effect("tests a complete provider configuration as an isolated candidate result", () => {
+  const persistence = makePersistence();
+  const launches: unknown[] = [];
+  return Effect.scoped(
+    Effect.gen(function* candidateConnectionTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
+        inspectConnection: (_provider, launch) =>
+          Effect.sync(() => {
+            launches.push(launch);
+            return create(GetConnectionResponseSchema, {
+              connection: {
+                capabilities: [1],
+                providerUserReference: "private-principal-sentinel",
+                remoteName: "Jellyfin Home",
+                remoteVersion: "10.11.0",
+                status: PluginConnectionStatus.AUTHENTICATION_FAILED,
+              },
+            });
+          }),
+        masterKey: MASTER_KEY,
+        persistence: persistence.providers,
+      });
+
+      const result = yield* service.testProviderConfiguration({
+        configuration: {
+          api_key: "candidate-secret",
+          base_url: "http://127.0.0.1:8096",
+          user_id: "provider-user",
+        },
+        providerTypeId: "jellyfin",
+      });
+
+      expect(launches).toEqual([
+        {
+          configuration: {
+            base_url: "http://127.0.0.1:8096",
+            user_id: "provider-user",
+          },
+          credentials: { api_key: "candidate-secret" },
+          kind: "candidate",
+        },
+      ]);
+      expect(result).toEqual({
+        capabilities: [1],
+        remoteName: "Jellyfin Home",
+        remoteVersion: "10.11.0",
+        status: "authentication_failed",
+        summary: "Authentication failed",
+      });
+      expect(JSON.stringify(result)).not.toContain("private-principal-sentinel");
+      expect(JSON.stringify(result)).not.toContain("candidate-secret");
+    }),
+  );
+});
+
+it.effect("tests and observes one enabled provider instance at its exact revision", () => {
+  const persistence = makePersistence();
+  let current: ProviderInstanceRecord = {
+    ...disabledProviderInstance(),
+    enabled: true,
+    observation: { status: "unavailable", summary: "Not observed" },
+  };
+  const launches: unknown[] = [];
+  const providers = {
+    ...persistence.providers,
+    loadInstance: () =>
+      Effect.succeed({
+        configuration: current.configuration,
+        credentials: { api_key: "stored-secret" },
+        displayName: current.displayName,
+        enabled: current.enabled,
+        id: current.id,
+        providerTypeId: current.providerTypeId,
+        revision: current.revision,
+        syncPriority: current.syncPriority,
+      }),
+    loadInstanceRecord: () => Effect.succeed(current),
+    recordObservation: (observation: Parameters<ProviderPersistence["recordObservation"]>[0]) =>
+      Effect.sync(() => {
+        if (observation.revision !== current.revision) {
+          return false;
+        }
+        current = {
+          ...current,
+          observation: {
+            status: observation.status,
+            summary: observation.summary,
+          },
+        };
+        return true;
+      }),
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* storedConnectionTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
+        inspectConnection: (_provider, launch) =>
+          Effect.sync(() => {
+            launches.push(launch);
+            return create(GetConnectionResponseSchema, {
+              connection: {
+                capabilities: [1],
+                providerUserReference: "private-principal-sentinel",
+                remoteName: "Jellyfin Home",
+                remoteVersion: "10.11.0",
+                status: PluginConnectionStatus.CONNECTED,
+              },
+            });
+          }),
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+
+      const result = yield* service.testProviderInstance({
+        providerInstanceId: "provider-instance",
+      });
+      const observed = yield* service.getProviderInstance({
+        providerInstanceId: "provider-instance",
+      });
+
+      expect(launches).toEqual([
+        {
+          configuration: current.configuration,
+          credentials: { api_key: "stored-secret" },
+          kind: "instance",
+          providerInstanceId: "provider-instance",
+          revision: "revision-1",
+        },
+      ]);
+      expect(result).toEqual({
+        capabilities: [1],
+        remoteName: "Jellyfin Home",
+        remoteVersion: "10.11.0",
+        status: "connected",
+        summary: "Connected",
+      });
+      expect(observed.observation).toEqual({ status: "healthy", summary: "Connected" });
+      expect(JSON.stringify(result)).not.toContain("private-principal-sentinel");
+      expect(JSON.stringify(result)).not.toContain("stored-secret");
+    }),
+  );
+});
+
+it.effect("does not record a stored connection result after its revision is replaced", () => {
+  const persistence = makePersistence();
+  let current: ProviderInstanceRecord = {
+    ...disabledProviderInstance(),
+    enabled: true,
+    observation: { status: "unavailable", summary: "Current revision not observed" },
+  };
+  const providers = {
+    ...persistence.providers,
+    loadInstance: () =>
+      Effect.succeed({
+        configuration: current.configuration,
+        credentials: { api_key: "stored-secret" },
+        displayName: current.displayName,
+        enabled: current.enabled,
+        id: current.id,
+        providerTypeId: current.providerTypeId,
+        revision: current.revision,
+        syncPriority: current.syncPriority,
+      }),
+    loadInstanceRecord: () => Effect.succeed(current),
+    recordObservation: (observation: Parameters<ProviderPersistence["recordObservation"]>[0]) =>
+      Effect.sync(() => {
+        if (observation.revision !== current.revision) {
+          return false;
+        }
+        current = {
+          ...current,
+          observation: {
+            status: observation.status,
+            summary: observation.summary,
+          },
+        };
+        return true;
+      }),
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* staleStoredConnectionTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
+        inspectConnection: () =>
+          Effect.sync(() => {
+            current = {
+              ...current,
+              observation: {
+                status: "unavailable",
+                summary: "Current revision not observed",
+              },
+              revision: "revision-2",
+            };
+            return create(GetConnectionResponseSchema, {
+              connection: {
+                providerUserReference: "private-principal-sentinel",
+                status: PluginConnectionStatus.CONNECTED,
+              },
+            });
+          }),
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+
+      const result = yield* service.testProviderInstance({
+        providerInstanceId: "provider-instance",
+      });
+      const observed = yield* service.getProviderInstance({
+        providerInstanceId: "provider-instance",
+      });
+
+      expect(result.status).toBe("connected");
+      expect(observed).toMatchObject({
+        observation: {
+          status: "unavailable",
+          summary: "Current revision not observed",
+        },
+        revision: "revision-2",
+      });
     }),
   );
 });

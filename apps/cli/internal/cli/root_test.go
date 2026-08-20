@@ -18,6 +18,7 @@ import (
 	"github.com/electather/nama/apps/cli/internal/auth"
 	"github.com/electather/nama/apps/cli/internal/clierror"
 	apiv1 "github.com/electather/nama/gen/go/nama/api/v1"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -236,6 +237,268 @@ func TestProviderDeleteRequiresExplicitAutomationConsentAndInteractiveConfirmati
 	requireCLIError(t, err, clierror.CodeRequestCancelled, 1)
 	if providerClient.deleteRequest != nil {
 		t.Fatal("declined interactive delete called the server")
+	}
+}
+
+func TestInteractiveProviderCreateRendersOrderedSchemaAndHidesSecrets(t *testing.T) {
+	const (
+		profileName = "local"
+		server      = "http://127.0.0.1:8080"
+		secret      = "interactive-provider-secret"
+	)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	credentials := cliProviderCredential(server)
+	providerClient := &cliProviderServiceFake{providerType: cliProviderType(t)}
+	dependencies := testCLIDependencies(configPath, nil, true, credentials, nil, nil)
+	secretReader := &cliPasswordReaderSpy{values: [][]byte{[]byte(secret)}}
+	dependencies.SecretInput.TerminalReader = secretReader
+	dependencies.ProviderClient = providerClient
+	setProfile(t, dependencies, profileName, server)
+	longValue := strings.Repeat("provider note ", 40)
+
+	stdout, stderr, err := executeCLI(
+		t,
+		dependencies,
+		"\nprovider-user\n"+longValue+"\n",
+		"provider",
+		"instance",
+		"create",
+		"jellyfin",
+		"--display-name",
+		"Living Room",
+		"--profile",
+		profileName,
+	)
+	if err != nil {
+		t.Fatalf("interactive provider create error = %v", err)
+	}
+	if providerClient.createRequest == nil {
+		t.Fatal("interactive provider create did not call the server")
+	}
+	if got, want := providerClient.createRequest.Msg.GetConfiguration().AsMap(), map[string]any{
+		"api_key":       secret,
+		"base_url":      "http://127.0.0.1:8096",
+		"optional_note": longValue,
+		"user_id":       "provider-user",
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("interactive configuration = %#v, want %#v", got, want)
+	}
+	if secretReader.calls != 1 {
+		t.Errorf("hidden provider secret reads = %d, want 1", secretReader.calls)
+	}
+	prompt := string(stderr)
+	orderedLabels := []string{"Base URL", "User ID", "API key", cliLongProviderTitle}
+	lastIndex := -1
+	for _, label := range orderedLabels {
+		index := strings.Index(prompt, label)
+		if index <= lastIndex {
+			t.Errorf("provider prompt order for %q in %q", label, prompt)
+		}
+		lastIndex = index
+	}
+	if !strings.Contains(prompt, "[default: http://127.0.0.1:8096]") {
+		t.Errorf("provider prompt omitted schema default: %q", prompt)
+	}
+	if !strings.Contains(prompt, cliLongProviderTitle) {
+		t.Errorf("provider prompt truncated long title: %q", prompt)
+	}
+	requireNoCLILeak(t, stdout, secret)
+	requireNoCLILeak(t, stderr, secret)
+}
+
+func TestInteractiveProviderUpdateOmitsOrReplacesExistingSecret(t *testing.T) {
+	const (
+		profileName = "local"
+		server      = "http://127.0.0.1:8080"
+	)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	credentials := cliProviderCredential(server)
+	providerClient := &cliProviderServiceFake{
+		providerInstance: cliProviderInstance(t),
+		providerType:     cliProviderType(t),
+	}
+	dependencies := testCLIDependencies(configPath, nil, true, credentials, nil, nil)
+	secretReader := &cliPasswordReaderSpy{values: [][]byte{[]byte("")}}
+	dependencies.SecretInput.TerminalReader = secretReader
+	dependencies.ProviderClient = providerClient
+	setProfile(t, dependencies, profileName, server)
+
+	stdout, stderr, err := executeCLI(
+		t,
+		dependencies,
+		"\n\nupdated note\n",
+		"provider",
+		"instance",
+		"update",
+		"provider-instance-1",
+		"--expected-revision",
+		"revision-1",
+		"--profile",
+		profileName,
+	)
+	if err != nil {
+		t.Fatalf("interactive provider update error = %v", err)
+	}
+	if providerClient.updateRequest == nil {
+		t.Fatal("interactive provider update did not call the server")
+	}
+	if got, want := providerClient.updateRequest.Msg.GetConfigurationPatch().AsMap(), map[string]any{
+		"optional_note": "updated note",
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("secret-omitting update patch = %#v, want %#v", got, want)
+	}
+	if !strings.Contains(string(stderr), "configured; Enter to keep") {
+		t.Errorf("secret-omitting update prompt = %q, want configured marker", stderr)
+	}
+	requireNoCLILeak(t, stdout, "stored-provider-secret")
+	requireNoCLILeak(t, stderr, "stored-provider-secret")
+
+	const replacement = "replacement-provider-secret"
+	providerClient.updateRequest = nil
+	dependencies.SecretInput.TerminalReader = &cliPasswordReaderSpy{
+		values: [][]byte{[]byte(replacement)},
+	}
+	stdout, stderr, err = executeCLI(
+		t,
+		dependencies,
+		"\n\n\n",
+		"provider",
+		"instance",
+		"update",
+		"provider-instance-1",
+		"--expected-revision",
+		"revision-1",
+		"--profile",
+		profileName,
+	)
+	if err != nil {
+		t.Fatalf("interactive provider secret replacement error = %v", err)
+	}
+	if got, want := providerClient.updateRequest.Msg.GetConfigurationPatch().AsMap(), map[string]any{
+		"api_key": replacement,
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("secret replacement patch = %#v, want %#v", got, want)
+	}
+	requireNoCLILeak(t, stdout, replacement)
+	requireNoCLILeak(t, stderr, replacement)
+
+	providerClient.updateRequest = nil
+	_, stderr, err = executeCLI(
+		t,
+		dependencies,
+		"",
+		"provider",
+		"instance",
+		"update",
+		"provider-instance-1",
+		"--expected-revision",
+		"revision-1",
+		"--clear",
+		"optional_note",
+		"--profile",
+		profileName,
+		"--output",
+		"json",
+	)
+	if err != nil {
+		t.Fatalf("provider clear update error = %v", err)
+	}
+	if got, want := providerClient.updateRequest.Msg.GetClearConfigurationFields(), []string{"optional_note"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("clear fields = %#v, want %#v", got, want)
+	}
+	if got := providerClient.updateRequest.Msg.GetConfigurationPatch().AsMap(); len(got) != 0 {
+		t.Errorf("clear update patch = %#v, want empty", got)
+	}
+	if len(stderr) != 0 {
+		t.Errorf("JSON clear stderr = %q, want empty", stderr)
+	}
+}
+
+func TestProviderConfigurationDocumentsRemainNonInteractive(t *testing.T) {
+	const (
+		profileName = "local"
+		server      = "http://127.0.0.1:8080"
+		secret      = "document-provider-secret"
+	)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	configurationPath := filepath.Join(t.TempDir(), "provider.json")
+	configuration := `{"api_key":"` + secret + `","base_url":"http://127.0.0.1:8096","user_id":"provider-user"}`
+	if err := os.WriteFile(configurationPath, []byte(configuration), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	credentials := cliProviderCredential(server)
+	providerClient := &cliProviderServiceFake{providerType: cliProviderType(t)}
+	dependencies := testCLIDependencies(configPath, nil, true, credentials, nil, nil)
+	secretReader := &cliPasswordReaderSpy{}
+	dependencies.SecretInput.TerminalReader = secretReader
+	dependencies.ProviderClient = providerClient
+	setProfile(t, dependencies, profileName, server)
+
+	for _, test := range []struct {
+		name  string
+		path  string
+		stdin string
+	}{
+		{name: "file", path: configurationPath},
+		{name: "redirected stdin", path: "-", stdin: configuration},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			providerClient.createRequest = nil
+			stdout, stderr, err := executeCLI(
+				t,
+				dependencies,
+				test.stdin,
+				"provider",
+				"instance",
+				"create",
+				"jellyfin",
+				"--display-name",
+				"Living Room",
+				"--configuration",
+				test.path,
+				"--profile",
+				profileName,
+				"--output",
+				"json",
+			)
+			if err != nil {
+				t.Fatalf("%s provider create error = %v", test.name, err)
+			}
+			if providerClient.createRequest == nil {
+				t.Fatalf("%s provider create did not call the server", test.name)
+			}
+			if secretReader.calls != 0 {
+				t.Errorf("%s provider create prompted %d times", test.name, secretReader.calls)
+			}
+			if len(stderr) != 0 {
+				t.Errorf("%s provider create stderr = %q, want empty", test.name, stderr)
+			}
+			requireNoCLILeak(t, stdout, secret)
+		})
+	}
+
+	providerClient.createRequest = nil
+	_, _, err := executeCLI(
+		t,
+		dependencies,
+		"",
+		"provider",
+		"instance",
+		"create",
+		"jellyfin",
+		"--display-name",
+		"Living Room",
+		"--profile",
+		profileName,
+		"--output",
+		"json",
+	)
+	requireCLIError(t, err, clierror.CodeInvalidArgument, 2)
+	if secretReader.calls != 0 {
+		t.Errorf("JSON provider create prompted %d times", secretReader.calls)
+	}
+	if providerClient.createRequest != nil {
+		t.Fatal("JSON provider create without configuration called the server")
 	}
 }
 
@@ -1775,6 +2038,87 @@ func cliAdministrator() *apiv1.Administrator {
 	}
 }
 
+var cliLongProviderTitle = strings.Repeat("Long provider note title ", 20)
+
+func cliProviderCredential(server string) *cliCredentialStoreFake {
+	return &cliCredentialStoreFake{
+		credential: auth.Credential{
+			Token:     "administrator-bearer",
+			ExpiresAt: time.Date(2027, time.January, 1, 0, 0, 0, 0, time.UTC),
+			Server:    server,
+		},
+		exists: true,
+	}
+}
+
+func cliProviderType(t *testing.T) *apiv1.ProviderType {
+	t.Helper()
+	schema, err := structpb.NewStruct(map[string]any{
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"optional_note": map[string]any{
+				"title": cliLongProviderTitle,
+				"type":  "string",
+			},
+			"api_key": map[string]any{
+				"title":        "API key",
+				"type":         "string",
+				"writeOnly":    true,
+				"x-nama-order": 3,
+			},
+			"user_id": map[string]any{
+				"title":        "User ID",
+				"type":         "string",
+				"x-nama-order": 2,
+			},
+			"base_url": map[string]any{
+				"default":      "http://127.0.0.1:8096",
+				"title":        "Base URL",
+				"type":         "string",
+				"x-nama-order": 1,
+			},
+		},
+		"required": []any{"base_url", "user_id", "api_key"},
+		"type":     "object",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &apiv1.ProviderType{
+		Id:                   "jellyfin",
+		DisplayName:          "Jellyfin",
+		ConfigurationSchema:  schema,
+		SchemaProfileVersion: 1,
+		SchemaRevision:       "1",
+	}
+}
+
+func cliProviderInstance(t *testing.T) *apiv1.ProviderInstance {
+	t.Helper()
+	configuration, err := structpb.NewStruct(map[string]any{
+		"base_url":      "http://127.0.0.1:9096",
+		"optional_note": "existing note",
+		"user_id":       "provider-user",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := timestamppb.New(time.Date(2026, time.August, 20, 10, 0, 0, 0, time.UTC))
+	return &apiv1.ProviderInstance{
+		Id:                "provider-instance-1",
+		ProviderTypeId:    "jellyfin",
+		DisplayName:       "Living Room",
+		Enabled:           true,
+		SyncPriority:      1,
+		Status:            apiv1.ProviderInstanceStatus_PROVIDER_INSTANCE_STATUS_HEALTHY,
+		Configuration:     configuration,
+		ConfiguredSecrets: []*apiv1.ConfiguredSecret{{Key: "api_key", Configured: true}},
+		Revision:          "revision-1",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+}
+
 type cliPasswordReaderSpy struct {
 	calls  int
 	values [][]byte
@@ -1812,7 +2156,11 @@ func (w *cliFailOnceWriter) Bytes() []byte {
 
 type cliProviderServiceFake struct {
 	apiv1.ProviderServiceClient
-	deleteRequest *connect.Request[apiv1.DeleteProviderInstanceRequest]
+	createRequest    *connect.Request[apiv1.CreateProviderInstanceRequest]
+	deleteRequest    *connect.Request[apiv1.DeleteProviderInstanceRequest]
+	providerInstance *apiv1.ProviderInstance
+	providerType     *apiv1.ProviderType
+	updateRequest    *connect.Request[apiv1.UpdateProviderInstanceRequest]
 }
 
 func (f *cliProviderServiceFake) DeleteProviderInstance(
@@ -1821,6 +2169,70 @@ func (f *cliProviderServiceFake) DeleteProviderInstance(
 ) (*connect.Response[apiv1.DeleteProviderInstanceResponse], error) {
 	f.deleteRequest = request
 	return connect.NewResponse(&apiv1.DeleteProviderInstanceResponse{}), nil
+}
+
+func (f *cliProviderServiceFake) ListProviderTypes(
+	_ context.Context,
+	_ *connect.Request[apiv1.ListProviderTypesRequest],
+) (*connect.Response[apiv1.ListProviderTypesResponse], error) {
+	providerTypes := []*apiv1.ProviderType{}
+	if f.providerType != nil {
+		providerTypes = append(providerTypes, f.providerType)
+	}
+	return connect.NewResponse(&apiv1.ListProviderTypesResponse{ProviderTypes: providerTypes}), nil
+}
+
+func (f *cliProviderServiceFake) GetProviderInstance(
+	_ context.Context,
+	_ *connect.Request[apiv1.GetProviderInstanceRequest],
+) (*connect.Response[apiv1.GetProviderInstanceResponse], error) {
+	return connect.NewResponse(&apiv1.GetProviderInstanceResponse{
+		ProviderInstance: f.providerInstance,
+	}), nil
+}
+
+func (f *cliProviderServiceFake) CreateProviderInstance(
+	_ context.Context,
+	request *connect.Request[apiv1.CreateProviderInstanceRequest],
+) (*connect.Response[apiv1.CreateProviderInstanceResponse], error) {
+	f.createRequest = request
+	configuration := request.Msg.GetConfiguration().AsMap()
+	_, secretConfigured := configuration["api_key"]
+	delete(configuration, "api_key")
+	safeConfiguration, err := structpb.NewStruct(configuration)
+	if err != nil {
+		return nil, err
+	}
+	now := timestamppb.New(time.Date(2026, time.August, 20, 10, 0, 0, 0, time.UTC))
+	var configuredSecrets []*apiv1.ConfiguredSecret
+	if secretConfigured {
+		configuredSecrets = []*apiv1.ConfiguredSecret{{Key: "api_key", Configured: true}}
+	}
+	return connect.NewResponse(&apiv1.CreateProviderInstanceResponse{
+		ProviderInstance: &apiv1.ProviderInstance{
+			Id:                "provider-instance-1",
+			ProviderTypeId:    request.Msg.GetProviderTypeId(),
+			DisplayName:       request.Msg.GetDisplayName(),
+			Enabled:           request.Msg.GetEnabled(),
+			SyncPriority:      1,
+			Status:            apiv1.ProviderInstanceStatus_PROVIDER_INSTANCE_STATUS_HEALTHY,
+			Configuration:     safeConfiguration,
+			ConfiguredSecrets: configuredSecrets,
+			Revision:          "revision-1",
+			CreatedAt:         now,
+			UpdatedAt:         now,
+		},
+	}), nil
+}
+
+func (f *cliProviderServiceFake) UpdateProviderInstance(
+	_ context.Context,
+	request *connect.Request[apiv1.UpdateProviderInstanceRequest],
+) (*connect.Response[apiv1.UpdateProviderInstanceResponse], error) {
+	f.updateRequest = request
+	return connect.NewResponse(&apiv1.UpdateProviderInstanceResponse{
+		ProviderInstance: f.providerInstance,
+	}), nil
 }
 
 type cliCredentialStoreFake struct {

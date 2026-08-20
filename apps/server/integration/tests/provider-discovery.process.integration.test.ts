@@ -12,7 +12,7 @@ import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { expect, it } from "@effect/vitest";
 import { BadRequestSchema, ErrorInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
-import { ProviderService } from "@nama/api/nama/api/v1/provider_pb.js";
+import { ProviderConnectionStatus, ProviderService } from "@nama/api/nama/api/v1/provider_pb.js";
 import { HealthService } from "@nama/api/nama/plugin/v1/health_pb.js";
 import { Effect, Exit, Scope } from "effect";
 import { Pool } from "pg";
@@ -60,6 +60,23 @@ interface NamaResult {
 interface NamaFailureResult extends NamaResult {
   readonly exitCode: number;
 }
+
+interface CancellationControl {
+  readonly cancelled: Promise<void>;
+  readonly started: Promise<void>;
+}
+
+const connectionTestFailure = async (
+  invocation: Promise<unknown>,
+  unexpectedSuccess: string,
+): Promise<unknown> => {
+  try {
+    await invocation;
+    return new Error(unexpectedSuccess);
+  } catch (error) {
+    return error;
+  }
+};
 
 const requiredString = (value: unknown): string => {
   if (typeof value !== "string") {
@@ -204,7 +221,11 @@ const expectNamaFailure = (result: NamaFailureResult, exitCode: number, code: st
 
 const withControlledJellyfin = <Success, Failure, Requirements>(
   use: (
-    fixture: Readonly<{ readonly baseUrl: string; readonly requestCount: () => number }>,
+    fixture: Readonly<{
+      readonly armCancellation: () => CancellationControl;
+      readonly baseUrl: string;
+      readonly requestCount: () => number;
+    }>,
   ) => Effect.Effect<Success, Failure, Requirements>,
 ) =>
   Effect.acquireUseRelease(
@@ -212,14 +233,41 @@ const withControlledJellyfin = <Success, Failure, Requirements>(
       () =>
         new Promise<
           Readonly<{
+            readonly armCancellation: () => CancellationControl;
             readonly baseUrl: string;
             readonly requestCount: () => number;
             readonly server: Server;
           }>
         >((resolve, reject) => {
           let requestCount = 0;
+          const noBlockedRequest = Symbol("no-blocked-request");
+          let blockedRequest:
+            | Readonly<{
+                readonly cancelled: () => void;
+                readonly started: () => void;
+              }>
+            | typeof noBlockedRequest = noBlockedRequest;
+          const armCancellation = (): CancellationControl => {
+            const started = Promise.withResolvers<void>();
+            const cancelled = Promise.withResolvers<void>();
+            blockedRequest = {
+              cancelled: cancelled.resolve,
+              started: started.resolve,
+            };
+            return {
+              cancelled: cancelled.promise,
+              started: started.promise,
+            };
+          };
           const server = createServer((request, response) => {
             requestCount += 1;
+            if (blockedRequest !== noBlockedRequest) {
+              const blocked = blockedRequest;
+              blockedRequest = noBlockedRequest;
+              blocked.started();
+              response.once("close", blocked.cancelled);
+              return;
+            }
             if (request.url === "/System/Info/Public") {
               response.setHeader("content-type", "application/json");
               response.end(
@@ -257,6 +305,7 @@ const withControlledJellyfin = <Success, Failure, Requirements>(
           server.listen(0, "127.0.0.1", () => {
             const address = server.address() as AddressInfo;
             resolve({
+              armCancellation,
               baseUrl: `http://127.0.0.1:${address.port}`,
               requestCount: () => requestCount,
               server,
@@ -264,7 +313,7 @@ const withControlledJellyfin = <Success, Failure, Requirements>(
           });
         }),
     ),
-    ({ baseUrl, requestCount }) => use({ baseUrl, requestCount }),
+    ({ armCancellation, baseUrl, requestCount }) => use({ armCancellation, baseUrl, requestCount }),
     ({ server }) =>
       Effect.promise(
         () =>
@@ -283,7 +332,7 @@ const withControlledJellyfin = <Success, Failure, Requirements>(
 it.live(
   "lists production-reconciled Jellyfin provider metadata through the compiled CLI",
   () =>
-    withControlledJellyfin(({ baseUrl: jellyfinBaseUrl, requestCount }) =>
+    withControlledJellyfin(({ armCancellation, baseUrl: jellyfinBaseUrl, requestCount }) =>
       withIsolatedDatabase((databaseUrl) =>
         withNamaBinary(({ binary, home }) =>
           Effect.gen(function* providerDiscoveryProcessTest() {
@@ -323,6 +372,57 @@ it.live(
               return yield* Effect.die(new Error("expected a signed administrator credential"));
             }
             const environment = cliEnvironment(home, token);
+            const authorization = `Bearer ${token}`;
+            const configurationTest = yield* expectRpcSuccess({
+              invoke: () =>
+                providerClient.testProviderConfiguration(
+                  {
+                    configuration: {
+                      api_key: "provider-api-key-sentinel",
+                      base_url: jellyfinBaseUrl,
+                      user_id: "provider-user-id",
+                    },
+                    providerTypeId: "jellyfin",
+                  },
+                  callOptions(authorization),
+                ),
+              phase: "TestProviderConfiguration",
+            });
+            expect(configurationTest.result).toMatchObject({
+              capabilities: [],
+              remoteName: "Provider Test Jellyfin",
+              remoteVersion: "10.11.0",
+              status: ProviderConnectionStatus.CONNECTED,
+              summary: "Connected",
+            });
+            expect(JSON.stringify(configurationTest)).not.toContain("provider-api-key-sentinel");
+
+            const candidateCancellation = armCancellation();
+            const candidateController = new AbortController();
+            const candidateCancellationFailure = connectionTestFailure(
+              providerClient.testProviderConfiguration(
+                {
+                  configuration: {
+                    api_key: "provider-api-key-sentinel",
+                    base_url: jellyfinBaseUrl,
+                    user_id: "provider-user-id",
+                  },
+                  providerTypeId: "jellyfin",
+                },
+                {
+                  ...callOptions(authorization),
+                  signal: candidateController.signal,
+                },
+              ),
+              "candidate connection test unexpectedly succeeded",
+            );
+            yield* Effect.promise(async () => {
+              await candidateCancellation.started;
+              candidateController.abort();
+              const failure = ConnectError.from(await candidateCancellationFailure);
+              expect(failure.code).toBe(Code.Canceled);
+              await candidateCancellation.cancelled;
+            });
             yield* runNama(binary, environment, [
               "profile",
               "set",
@@ -468,6 +568,79 @@ it.live(
             }
 
             const createdRevision = requiredString(createdInstance["revision"]);
+            yield* Effect.promise(async () => {
+              const observer = new Pool({ connectionString: databaseUrl });
+              try {
+                await observer.query(
+                  `UPDATE provider_instance_observation
+                   SET status = 'unavailable', summary = 'Before stored test'
+                   WHERE provider_instance_id = $1`,
+                  [providerInstanceId],
+                );
+              } finally {
+                await observer.end();
+              }
+            });
+
+            const storedCancellation = armCancellation();
+            const storedController = new AbortController();
+            const storedCancellationFailure = connectionTestFailure(
+              providerClient.testProviderInstance(
+                { providerInstanceId },
+                {
+                  ...callOptions(authorization),
+                  signal: storedController.signal,
+                },
+              ),
+              "stored connection test unexpectedly succeeded",
+            );
+            yield* Effect.promise(async () => {
+              await storedCancellation.started;
+              storedController.abort();
+              const failure = ConnectError.from(await storedCancellationFailure);
+              expect(failure.code).toBe(Code.Canceled);
+              await storedCancellation.cancelled;
+            });
+
+            const storedTest = yield* expectRpcSuccess({
+              invoke: () =>
+                providerClient.testProviderInstance(
+                  { providerInstanceId },
+                  callOptions(authorization),
+                ),
+              phase: "TestProviderInstance",
+            });
+            expect(storedTest.result).toMatchObject({
+              capabilities: [],
+              remoteName: "Provider Test Jellyfin",
+              remoteVersion: "10.11.0",
+              status: ProviderConnectionStatus.CONNECTED,
+              summary: "Connected",
+            });
+            expect(JSON.stringify(storedTest)).not.toContain("provider-api-key-sentinel");
+            const storedObservation = yield* Effect.promise(async () => {
+              const observer = new Pool({ connectionString: databaseUrl });
+              try {
+                const result = await observer.query<{
+                  readonly instance_revision: string;
+                  readonly status: string;
+                  readonly summary: string;
+                }>(
+                  `SELECT instance_revision, status, summary
+                   FROM provider_instance_observation
+                   WHERE provider_instance_id = $1`,
+                  [providerInstanceId],
+                );
+                return result.rows.at(0);
+              } finally {
+                await observer.end();
+              }
+            });
+            expect(storedObservation).toEqual({
+              instance_revision: createdRevision,
+              status: "healthy",
+              summary: "Connected",
+            });
             const requestsAfterCreate = requestCount();
             const metadataUpdated = yield* runNama(binary, environment, [
               "provider",
@@ -1326,19 +1499,19 @@ it.live(
                   readonly operation_exists: boolean;
                 }>(
                   `SELECT
-                    EXISTS (SELECT 1 FROM provider_instance WHERE id = $1)
-                      AS instance_exists,
-                    EXISTS (SELECT 1 FROM provider_credential WHERE provider_instance_id = $1)
-                      AS credential_exists,
-                    EXISTS (
-                      SELECT 1 FROM provider_instance_observation
-                      WHERE provider_instance_id = $1
-                    ) AS observation_exists,
-                    EXISTS (
-                      SELECT 1 FROM provider_operation_result
-                      WHERE method = 'nama.api.v1.ProviderService.DeleteProviderInstance'
-                        AND operation_id = 'provider-delete-operation'
-                    ) AS operation_exists`,
+                  EXISTS (SELECT 1 FROM provider_instance WHERE id = $1)
+                    AS instance_exists,
+                  EXISTS (SELECT 1 FROM provider_credential WHERE provider_instance_id = $1)
+                    AS credential_exists,
+                  EXISTS (
+                    SELECT 1 FROM provider_instance_observation
+                    WHERE provider_instance_id = $1
+                  ) AS observation_exists,
+                  EXISTS (
+                    SELECT 1 FROM provider_operation_result
+                    WHERE method = 'nama.api.v1.ProviderService.DeleteProviderInstance'
+                      AND operation_id = 'provider-delete-operation'
+                  ) AS operation_exists`,
                   [providerInstanceId],
                 );
                 return result.rows[0];
