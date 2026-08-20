@@ -92,5 +92,9 @@ Controlled HTTP subprocess coverage also exercises the targeted movie RPC,
 source and track normalization, bounded response handling, cancellation,
 safe failure codes, and raw-body redaction.
 
-Windows transport and persistent or background native-media plugins remain deferred until a real plugin requires them. Complete catalog scans, artwork resolution, playback, and watch-state behavior belong to issue #30; explicit connection-test commands belong to issue #31; and container packaging belongs to issue #32.
-
+Windows transport and persistent or background native-media plugins remain
+deferred until a real plugin requires them. Complete catalog scans, public
+artwork resolution, watch-state reads, and watched/unwatched writes belong to
+issue #30. Production playback belongs to issue #96, coherent exact progress
+export belongs to issue #97, explicit connection-test commands belong to issue
+#31, and container packaging belongs to issue #32.

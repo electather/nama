@@ -122,9 +122,16 @@ Prove that Jellyfin is an implementation of capabilities, not part of the core.
 - Core supervision of bundled plugin executables: validated launch, per-launch authentication, Unix-socket lifecycle, deadlines, bounded restart behavior, stderr log capture, and cleanup on shutdown.
 - Start plugins on demand and stop them when idle. No plugin memory is treated as durable.
 - Core-owned Jellyfin instance configuration and credentials, managed through CLI. Persistence for plugin installations, instances, and encrypted provider credentials begins in this milestone; the plugin receives only the configuration needed for an operation.
-- Jellyfin plugin implementations of the minimal library, playback, and watch-state capabilities.
+- Jellyfin plugin implementations of minimal library reads, public artwork resolution, watch-state reads, and watched/unwatched writes.
 - Connection test and capability inspection commands.
 - One application image that includes the core and bundled Jellyfin executable; PostgreSQL remains the only separate service.
+
+Playback planning, scoped opening and reporting, and coherent exact progress
+export remain MVP release blockers outside this milestone. The Jellyfin
+provider type advertises none of those capabilities until its adapter satisfies
+the existing contracts without exposing a reusable provider credential,
+relaying media through Nama, or splitting one coherent state target across
+provider writes.
 
 ### Explicit non-goals
 
