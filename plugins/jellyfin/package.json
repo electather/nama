@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check:test": "node --test src/tests/*.test.ts",
     "check:type": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {

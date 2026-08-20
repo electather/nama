@@ -16,6 +16,7 @@ const CALL_DEADLINE_MILLISECONDS = 2000;
 const API_KEY = "jellyfin-api-key-sentinel";
 const SERVER_ID = "server-identity";
 const USER_ID = "user-identity";
+const EXPECTED_PROVIDER_PRINCIPAL = "jellyfin/v1:Ej5xNxA0d3a8BvpvknVkz-AYMPOYZucu9u3Z-bL0PAI";
 const MALFORMED_RESPONSE_SENTINEL = "malformed-jellyfin-response-sentinel";
 const OVERSIZED_RESPONSE_SENTINEL = "oversized-jellyfin-response-sentinel";
 const HOSTILE_RESPONSE_SENTINEL = "hostile-jellyfin-response-sentinel";
@@ -227,7 +228,7 @@ it.live(
           remoteVersion: "10.11.0",
           status: PluginConnectionStatus.CONNECTED,
         });
-        expect(response.connection?.providerUserReference).toMatch(/^jellyfin\/v1:/u);
+        expect(response.connection?.providerUserReference).toBe(EXPECTED_PROVIDER_PRINCIPAL);
         expect(response.connection?.providerUserReference).not.toContain(SERVER_ID);
         expect(response.connection?.providerUserReference).not.toContain(USER_ID);
         expect(jellyfin.requests).toEqual([
@@ -284,6 +285,14 @@ it.live(
           baseUrl: `${jellyfin.origin}/disabled`,
         });
         expect(disabled.connection?.status).toBe(PluginConnectionStatus.INCOMPATIBLE);
+
+        const authenticationFailure = yield* candidateConnection(supervisor, {
+          baseUrl: jellyfin.baseUrl,
+          userId: "missing-user",
+        });
+        expect(authenticationFailure.connection?.status).toBe(
+          PluginConnectionStatus.AUTHENTICATION_FAILED,
+        );
 
         const deadlineFailure = yield* candidateConnection(supervisor, {
           baseUrl: `${jellyfin.origin}/hanging`,
