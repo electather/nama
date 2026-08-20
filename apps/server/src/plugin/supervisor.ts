@@ -1,20 +1,18 @@
 import { tmpdir } from "node:os";
 
-import { Context, Effect, FiberSet, Layer, Semaphore } from "effect";
+import { Context, Effect, FiberSet, Layer } from "effect";
 
-import type { PluginLifecycleHandle } from "./lifecycle.ts";
 import type {
   PluginLogEmitter,
   PluginSupervisorLayerOptions,
   PluginSupervisorService,
 } from "./model.ts";
 import { makeRuntimeRoot, removePath } from "./runtime.ts";
-import { closeActivePluginHandles, makePluginSupervisor } from "./service.ts";
+import { makePluginSupervisor } from "./service.ts";
 import type { PluginSupervisorOptions } from "./service.ts";
 import type { PluginStderrEventDeclaration } from "./stderr.ts";
 
 const service = Context.Service;
-const REGISTRY_SEMAPHORE_PERMITS = 1;
 
 const makePluginSupervisorLayer = ({
   effectiveUserId = process.geteuid?.(),
@@ -30,23 +28,19 @@ const makePluginSupervisorLayer = ({
       );
       const scope = yield* Effect.scope;
       const runLogEffect = yield* FiberSet.makeRuntime<never, void, never>();
-      const activeHandles = new Set<PluginLifecycleHandle>();
-      yield* Effect.addFinalizer(() => closeActivePluginHandles(activeHandles).pipe(Effect.orDie));
       const emit: PluginLogEmitter = (effect) => {
         runLogEffect(effect);
       };
       const options: PluginSupervisorOptions = {
-        activeHandles,
         effectiveUserId,
         emit,
-        instanceAdmissions: new Map(),
-        instanceHandles: new Map(),
-        registrySemaphore: Semaphore.makeUnsafe(REGISTRY_SEMAPHORE_PERMITS),
         runtimeRoot,
         scope,
         spawnProcess,
       };
-      return PluginSupervisor.of(makePluginSupervisor(options));
+      const supervisor = makePluginSupervisor(options);
+      yield* Effect.addFinalizer(() => supervisor.close().pipe(Effect.orDie));
+      return PluginSupervisor.of(supervisor.service);
     }),
   );
 

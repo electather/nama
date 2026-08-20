@@ -912,6 +912,7 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		clierror.CodePageTokenInvalid:               2,
 		clierror.CodePluginUnavailable:              7,
 		clierror.CodeProviderAuthenticationFailed:   6,
+		clierror.CodeProviderCommitAmbiguous:        7,
 		clierror.CodeProviderCredentialsUnavailable: 7,
 		clierror.CodeProviderIncompatible:           6,
 		clierror.CodeProviderInstanceLimitReached:   7,

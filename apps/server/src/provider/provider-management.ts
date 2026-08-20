@@ -8,6 +8,7 @@ import type { Scope } from "effect";
 
 import { Config } from "../config/config.ts";
 import { Database } from "../database/database.ts";
+import { persistenceFailure } from "../database/provider-persistence.ts";
 import type {
   ProviderInstallationListInput,
   ProviderInstanceListInput,
@@ -18,7 +19,11 @@ import type {
   StoredProviderInstance,
 } from "../database/provider-persistence.ts";
 import type { JsonObject, JsonValue } from "../database/provider-schema.ts";
-import type { PluginCallFailure, PluginSupervisorService } from "../plugin/model.ts";
+import type {
+  PluginCallFailure,
+  PluginInstanceFenceMode,
+  PluginSupervisorService,
+} from "../plugin/model.ts";
 import { PluginSupervisor } from "../plugin/supervisor.ts";
 import {
   bundledProviderTypeIds,
@@ -157,7 +162,6 @@ type ProviderAuthenticationFailure = InstanceType<typeof ProviderAuthenticationF
 type ProviderIncompatibleFailure = InstanceType<typeof ProviderIncompatible>;
 type ProviderUnavailableFailure = InstanceType<typeof ProviderUnavailable>;
 type ProviderPluginUnavailableFailure = InstanceType<typeof ProviderPluginUnavailable>;
-type ProviderInstanceLimitFailure = InstanceType<typeof ProviderInstanceLimitReached>;
 type IdempotencyKeyReuseFailure = InstanceType<typeof IdempotencyKeyReused>;
 type RevisionMismatchFailure = InstanceType<typeof RevisionMismatch>;
 type ProviderUserChangedFailure = InstanceType<typeof ProviderUserChanged>;
@@ -169,7 +173,7 @@ type ProviderMutationFailure =
   | ProviderCommitAmbiguousFailure
   | ProviderCredentialsUnavailableFailure
   | ProviderIncompatibleFailure
-  | ProviderInstanceLimitFailure
+  | InstanceType<typeof ProviderInstanceLimitReached>
   | ProviderPersistenceFailure
   | ProviderPluginUnavailableFailure
   | ProviderResourceNotFoundFailure
@@ -196,7 +200,7 @@ interface InstanceAdmissionFence {
 
 type InstanceCutoverFence = (
   providerInstanceId: string,
-  retireCurrent: boolean,
+  mode: PluginInstanceFenceMode,
 ) => Effect.Effect<InstanceAdmissionFence, PluginCallFailure, Scope.Scope>;
 
 interface ProviderManagementService {
@@ -222,9 +226,6 @@ interface ProviderManagementService {
     input: ListProviderTypesInput,
   ) => Effect.Effect<ListProviderTypesResult, PageTokenInvalidFailure | ProviderPersistenceFailure>;
 }
-const noopInstanceAdmissionFence: InstanceAdmissionFence = Object.freeze({
-  open: () => Effect.void,
-});
 
 const pageTokenFailure = (error: unknown): PageTokenInvalidFailure => {
   if (error instanceof PageTokenInvalid) {
@@ -319,10 +320,10 @@ const verifyMutationCandidate = (
 
 interface ProviderManagementDependencies {
   readonly discover: ProviderDiscovery;
+  readonly fenceInstance: InstanceCutoverFence;
   readonly masterKey: string;
   readonly verifyCandidate?: CandidateVerification;
   readonly persistence: ProviderPersistence;
-  readonly fenceInstance?: InstanceCutoverFence;
 }
 
 const storedInstancesMatchSchema = (
@@ -1160,6 +1161,10 @@ interface ProviderUpdateCommitInput {
   readonly fenceInstance: InstanceCutoverFence;
 }
 
+interface ProviderUpdateResolution {
+  pretransactionFailure: boolean;
+}
+
 const recoverProviderUpdateCommit = (
   { ambiguousInstances, canonicalRequest, input, persistence }: ProviderUpdateCommitInput,
   admissionFence: InstanceAdmissionFence,
@@ -1246,6 +1251,7 @@ const persistProviderUpdate = (
   commit: ProviderUpdateCommitInput,
   lockedCurrent: ProviderInstanceRecord,
   admissionFence: InstanceAdmissionFence,
+  resolution: ProviderUpdateResolution,
 ) =>
   commit.persistence.updateInstance(providerUpdatePersistenceInput(commit, lockedCurrent)).pipe(
     Effect.catchTag("ProviderRevisionMismatch", () => Effect.fail(new RevisionMismatch({}))),
@@ -1259,6 +1265,11 @@ const persistProviderUpdate = (
     Effect.catchTag("ProviderPersistenceError", () =>
       recoverProviderUpdateCommit(commit, admissionFence),
     ),
+    Effect.catchTag("ProviderUpdatePreparationFailed", () => {
+      resolution.pretransactionFailure = true;
+      const failure = Effect.fail(persistenceFailure());
+      return failure;
+    }),
   );
 
 const reopenFailedProviderUpdate = (
@@ -1266,8 +1277,9 @@ const reopenFailedProviderUpdate = (
   persistence: ProviderPersistence,
   lockedCurrent: ProviderInstanceRecord,
   admissionFence: InstanceAdmissionFence,
+  pretransactionFailure: boolean,
 ): Effect.Effect<void, ProviderCommitAmbiguousFailure> => {
-  if (failure._tag === "ProviderValidationFailed") {
+  if (pretransactionFailure || failure._tag === "ProviderValidationFailed") {
     return lockedCurrent.enabled ? admissionFence.open(lockedCurrent.revision) : Effect.void;
   }
   return persistence.loadInstanceRecord(lockedCurrent.id).pipe(
@@ -1289,7 +1301,7 @@ const recoverReplayAdmission = (
       return Effect.void;
     }
     return Effect.gen(function* reopenReplayRevision() {
-      const admissionFence = yield* fenceInstance(input.providerInstanceId, false).pipe(
+      const admissionFence = yield* fenceInstance(input.providerInstanceId, "admission-only").pipe(
         Effect.mapError(() => new ProviderPluginUnavailable({})),
       );
       if (result.enabled) {
@@ -1327,17 +1339,24 @@ const commitProviderUpdate = (
     if (recoveringAmbiguity) {
       ambiguousInstances.delete(input.providerInstanceId);
     }
-    const requiresCutover =
-      hasConfigurationChange || reenabled || (lockedCurrent.enabled && input.enabled === false);
-    const admissionFence = yield* fenceInstance(input.providerInstanceId, requiresCutover).pipe(
+    const fenceMode: PluginInstanceFenceMode =
+      hasConfigurationChange || reenabled || (lockedCurrent.enabled && input.enabled === false)
+        ? "retire-current"
+        : "admission-only";
+    const admissionFence = yield* fenceInstance(input.providerInstanceId, fenceMode).pipe(
       Effect.mapError(() => new ProviderPluginUnavailable({})),
     );
-    return yield* persistProviderUpdate(commit, lockedCurrent, admissionFence).pipe(
+    const resolution: ProviderUpdateResolution = { pretransactionFailure: false };
+    return yield* persistProviderUpdate(commit, lockedCurrent, admissionFence, resolution).pipe(
       Effect.matchEffect({
         onFailure: (failure) =>
-          reopenFailedProviderUpdate(failure, persistence, lockedCurrent, admissionFence).pipe(
-            Effect.andThen(Effect.fail(failure)),
-          ),
+          reopenFailedProviderUpdate(
+            failure,
+            persistence,
+            lockedCurrent,
+            admissionFence,
+            resolution.pretransactionFailure,
+          ).pipe(Effect.andThen(Effect.fail(failure))),
         onSuccess: (result) =>
           result.enabled
             ? admissionFence.open(result.revision).pipe(Effect.as(result))
@@ -1400,6 +1419,17 @@ const loadInitialProviderUpdate = ({
     };
   });
 
+const normalizeProviderUpdateFailure = (
+  failure: ProviderMutationFailure,
+  ambiguousInstances: ReadonlySet<string>,
+  providerInstanceId: string,
+): ProviderMutationFailure => {
+  if (failure._tag === "ProviderPersistenceError" && ambiguousInstances.has(providerInstanceId)) {
+    return new ProviderCommitAmbiguous({});
+  }
+  return failure;
+};
+
 const updateProviderInstance = (
   persistence: ProviderPersistence,
   ambiguousInstances: Set<string>,
@@ -1455,10 +1485,7 @@ const updateProviderInstance = (
         return yield* gate.withPermits(WRITER_GATE_PERMITS)(Effect.uninterruptible(scopedCommit));
       }).pipe(
         Effect.mapError((failure) =>
-          failure._tag === "ProviderPersistenceError" &&
-          ambiguousInstances.has(input.providerInstanceId)
-            ? new ProviderCommitAmbiguous({})
-            : failure,
+          normalizeProviderUpdateFailure(failure, ambiguousInstances, input.providerInstanceId),
         ),
       ),
     (canonicalRequest) => Effect.sync(() => canonicalRequest.fill(ZERO)),
@@ -1584,8 +1611,6 @@ const makeProviderManagement = ({
     const candidateVerifier: CandidateVerification =
       verifyCandidate ??
       (() => Effect.die(new Error("provider candidate verifier is unavailable")));
-    const instanceFence: InstanceCutoverFence =
-      fenceInstance ?? (() => Effect.succeed(noopInstanceAdmissionFence));
     return Object.freeze({
       createProviderInstance: (input: CreateProviderInstanceInput) =>
         createProviderInstance(persistence, providerStatuses, candidateVerifier, input),
@@ -1601,7 +1626,7 @@ const makeProviderManagement = ({
           ambiguousInstances,
           providerStatuses,
           candidateVerifier,
-          instanceFence,
+          fenceInstance,
           instanceGate(input.providerInstanceId),
           input,
         ),
@@ -1621,8 +1646,8 @@ class ProviderManagement extends contextService<ProviderManagement, ProviderMana
       const supervisor = yield* PluginSupervisor;
       const service = yield* makeProviderManagement({
         discover: (provider) => discoverProvider(supervisor, provider),
-        fenceInstance: (providerInstanceId, retireCurrent) =>
-          supervisor.fenceInstance(providerInstanceId, retireCurrent),
+        fenceInstance: (providerInstanceId, mode) =>
+          supervisor.fenceInstance(providerInstanceId, mode),
         masterKey: Redacted.value(config.security.masterKey),
         persistence: database.providers,
         verifyCandidate: (provider, configuration, credentials) =>
@@ -1649,7 +1674,6 @@ export type {
   InstanceAdmissionFence,
   InstanceCutoverFence,
   ProviderIncompatibleFailure,
-  ProviderInstanceLimitFailure,
   ProviderDiscovery,
   ProviderManagementDependencies,
   ProviderManagementService,

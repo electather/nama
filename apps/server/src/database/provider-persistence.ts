@@ -105,5 +105,6 @@ export {
   type ProviderPersistenceFailure,
   type StoredProviderInstance,
   type StoredProviderInstallation,
+  persistenceFailure,
   makeProviderPersistence,
 };

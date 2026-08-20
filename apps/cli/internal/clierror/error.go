@@ -40,6 +40,7 @@ const (
 	CodePageTokenInvalid               = "page_token_invalid"
 	CodePluginUnavailable              = "plugin_unavailable"
 	CodeProviderAuthenticationFailed   = "provider_authentication_failed"
+	CodeProviderCommitAmbiguous        = "provider_commit_ambiguous"
 	CodeProviderCredentialsUnavailable = "provider_credentials_unavailable"
 	CodeProviderIncompatible           = "provider_incompatible"
 	CodeProviderInstanceLimitReached   = "provider_instance_limit_reached"
@@ -96,6 +97,7 @@ var messages = map[string]string{
 	CodePageTokenInvalid:               "The page token is invalid or expired.",
 	CodePluginUnavailable:              "The provider plugin is unavailable.",
 	CodeProviderAuthenticationFailed:   "The provider rejected the configured credentials.",
+	CodeProviderCommitAmbiguous:        "The provider update could not be confirmed.",
 	CodeProviderCredentialsUnavailable: "The stored provider credentials are unavailable.",
 	CodeProviderIncompatible:           "The provider is incompatible with this configuration.",
 	CodeProviderInstanceLimitReached:   "The provider instance limit has been reached.",
@@ -128,6 +130,7 @@ var reasonCodes = map[string]string{
 	"PAGE_TOKEN_INVALID":               CodePageTokenInvalid,
 	"PLUGIN_UNAVAILABLE":               CodePluginUnavailable,
 	"PROVIDER_AUTHENTICATION_FAILED":   CodeProviderAuthenticationFailed,
+	"PROVIDER_COMMIT_AMBIGUOUS":        CodeProviderCommitAmbiguous,
 	"PROVIDER_CREDENTIALS_UNAVAILABLE": CodeProviderCredentialsUnavailable,
 	"PROVIDER_INCOMPATIBLE":            CodeProviderIncompatible,
 	"PROVIDER_INSTANCE_LIMIT_REACHED":  CodeProviderInstanceLimitReached,
@@ -269,7 +272,7 @@ func (e *Error) ExitCode() int {
 		return 5
 	case CodeAlreadyInitialized, CodeNotInitialized, CodeSetupInProgress, CodeAlreadyExists, CodeFailedPrecondition, CodeAborted, CodeIdempotencyKeyReused, CodeProviderAuthenticationFailed, CodeProviderIncompatible, CodeProviderUserChanged, CodeRevisionMismatch:
 		return 6
-	case CodeAuthenticationUnavailable, CodeDeadlineExceeded, CodeRateLimited, CodeSessionRevocationUnconfirmed, CodeSetupUnavailable, CodeResourceExhausted, CodeUnavailable, CodeNetworkUnavailable, CodePluginUnavailable, CodeProviderCredentialsUnavailable, CodeProviderInstanceLimitReached, CodeProviderUnavailable:
+	case CodeAuthenticationUnavailable, CodeDeadlineExceeded, CodeRateLimited, CodeSessionRevocationUnconfirmed, CodeSetupUnavailable, CodeResourceExhausted, CodeUnavailable, CodeNetworkUnavailable, CodePluginUnavailable, CodeProviderCommitAmbiguous, CodeProviderCredentialsUnavailable, CodeProviderInstanceLimitReached, CodeProviderUnavailable:
 		return 7
 	default:
 		return 1

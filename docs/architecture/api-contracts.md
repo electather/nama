@@ -950,6 +950,7 @@ Clients first branch on Connect code, then on `ErrorInfo.reason`. They must fall
 | Playback session is terminal for a new event | `FAILED_PRECONDITION` | `PLAYBACK_SESSION_CLOSED` |
 | Same idempotency key was reused for another payload | `ALREADY_EXISTS` | `IDEMPOTENCY_KEY_REUSED` |
 | Expected provider revision is stale | `ABORTED` | `REVISION_MISMATCH` |
+| Provider update commit outcome remains unresolved | `UNAVAILABLE` | `PROVIDER_COMMIT_AMBIGUOUS` |
 | Updated configuration resolves to another provider principal | `FAILED_PRECONDITION` | `PROVIDER_USER_CHANGED` |
 | Candidate provider credentials are rejected | `FAILED_PRECONDITION` | `PROVIDER_AUTHENTICATION_FAILED` |
 | Remote provider is incompatible | `FAILED_PRECONDITION` | `PROVIDER_INCOMPATIBLE` |

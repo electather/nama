@@ -309,7 +309,7 @@ const mappedFailureCases = [
     "ambiguous provider update commit",
     { _tag: "ProviderCommitAmbiguous" },
     Code.Unavailable,
-    "INTERNAL",
+    "PROVIDER_COMMIT_AMBIGUOUS",
     [],
   ],
   [

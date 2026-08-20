@@ -32,6 +32,26 @@ func TestTranslatePrefersKnownErrorInfoReason(t *testing.T) {
 	}
 }
 
+func TestTranslateKeepsAmbiguousProviderCommitUnavailable(t *testing.T) {
+	detail, err := connect.NewErrorDetail(&errdetails.ErrorInfo{
+		Reason: "PROVIDER_COMMIT_AMBIGUOUS",
+		Domain: "nama.api.v1",
+	})
+	if err != nil {
+		t.Fatalf("NewErrorDetail() error = %v", err)
+	}
+
+	raw := connect.NewError(connect.CodeUnavailable, errors.New("provider update details"))
+	raw.AddDetail(detail)
+	translated := Translate(raw)
+	if translated.Code != "provider_commit_ambiguous" {
+		t.Errorf("Code = %q, want provider_commit_ambiguous", translated.Code)
+	}
+	if got := translated.ExitCode(); got != 7 {
+		t.Errorf("ExitCode() = %d, want 7", got)
+	}
+}
+
 func TestTranslateFallsBackToConnectCodeForUnknownReason(t *testing.T) {
 	detail, err := connect.NewErrorDetail(&errdetails.ErrorInfo{
 		Reason: "NEWER_SERVER_REASON",

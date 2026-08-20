@@ -28,6 +28,7 @@ type PublicErrorReason =
   | "PAGE_TOKEN_INVALID"
   | "PLUGIN_UNAVAILABLE"
   | "PROVIDER_AUTHENTICATION_FAILED"
+  | "PROVIDER_COMMIT_AMBIGUOUS"
   | "PROVIDER_CREDENTIALS_UNAVAILABLE"
   | "PROVIDER_INCOMPATIBLE"
   | "PROVIDER_INSTANCE_LIMIT_REACHED"
@@ -147,7 +148,7 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
   },
   ProviderCommitAmbiguous: {
     code: Code.Unavailable,
-    reason: "INTERNAL",
+    reason: "PROVIDER_COMMIT_AMBIGUOUS",
   },
   ProviderCredentialsUnavailable: {
     code: Code.Unavailable,

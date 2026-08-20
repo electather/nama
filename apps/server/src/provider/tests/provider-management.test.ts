@@ -2,6 +2,7 @@
 import { expect, it } from "@effect/vitest";
 import { Data, Effect } from "effect";
 
+import { ProviderUpdatePreparationFailed } from "../../database/provider-persistence-model-private.ts";
 import type {
   ProviderInstallationInput,
   ProviderPersistence,
@@ -10,7 +11,7 @@ import type { JsonObject } from "../../database/provider-schema.ts";
 import { unusedProviderPersistence } from "../../database/tests/provider-persistence.test-support.ts";
 import { PluginUnavailable } from "../../plugin/errors.ts";
 import { makeProviderManagement } from "../provider-management.ts";
-import type { ProviderDiscovery } from "../provider-management.ts";
+import type { InstanceCutoverFence, ProviderDiscovery } from "../provider-management.ts";
 
 const MASTER_KEY = `base64:${Buffer.alloc(32, 11).toString("base64")}`;
 const jellyfinSchema = {
@@ -57,6 +58,9 @@ const noOperationResult: ProviderPersistence["readOperationResult"] = () =>
   // oxlint-disable-next-line unicorn/no-useless-undefined -- The fixture must explicitly model an absent operation result.
   Effect.succeed(undefined);
 
+const admissionOnlyTestFence: InstanceCutoverFence = () =>
+  Effect.succeed({ open: () => Effect.void });
+
 const makePersistence = (initial?: ProviderInstallationInput) => {
   let installation = initial;
   let accepted = 0;
@@ -84,6 +88,7 @@ it.effect("reconciles valid discovery metadata and lists its accepted schema", (
     Effect.gen(function* successfulReconciliationTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: persistence.providers,
       });
@@ -124,6 +129,7 @@ it.effect("preserves the last accepted schema when discovery is incompatible", (
     Effect.gen(function* incompatibleReconciliationTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: persistence.providers,
       });
@@ -156,6 +162,7 @@ it.effect("reports an incompatible private contract without replacing accepted m
     Effect.gen(function* incompatibleContractTest() {
       yield* makeProviderManagement({
         discover: incompatibleDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: persistence.providers,
       });
@@ -194,6 +201,7 @@ it.effect("preserves accepted metadata when a stored instance fails the discover
     Effect.gen(function* storedInstanceCompatibilityTest() {
       yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: providers,
       });
@@ -221,6 +229,7 @@ it.effect("contains plugin absence without changing another accepted installatio
     Effect.gen(function* unavailableReconciliationTest() {
       const service = yield* makeProviderManagement({
         discover: unavailableDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: persistence.providers,
       });
@@ -281,6 +290,7 @@ it.effect("binds provider list continuations to administrator, page size, and cu
     Effect.gen(function* paginatedProviderTypesTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: providers,
       });
@@ -370,6 +380,7 @@ it.effect("splits write-only configuration and returns an idempotent safe instan
     Effect.gen(function* createProviderInstanceTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: providers,
         verifyCandidate: () =>
@@ -410,6 +421,7 @@ it.effect("rejects Jellyfin UTF-8 bounds before launching a candidate", () => {
     Effect.gen(function* providerConfigurationBoundsTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: providers,
         verifyCandidate: () =>
@@ -497,6 +509,7 @@ it.effect("updates metadata without verifying a provider candidate", () => {
     Effect.gen(function* updateMetadataTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: providers,
         verifyCandidate: () =>
@@ -594,6 +607,7 @@ it.effect("re-enables a patched instance with its retained credential and princi
     Effect.gen(function* reenablePatchedInstanceTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: providers,
         verifyCandidate: (_provider, configuration, credentials) =>
@@ -681,6 +695,7 @@ it.effect("rejects a credential replacement that changes the provider principal"
     Effect.gen(function* changedProviderPrincipalTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: providers,
         verifyCandidate: (_provider, _configuration, credentials) =>
@@ -749,9 +764,9 @@ it.effect("retires runtime admission before committing a disable-only update", (
     Effect.gen(function* disableInstanceTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
-        fenceInstance: (_providerInstanceId, retireCurrent) =>
+        fenceInstance: (_providerInstanceId, mode) =>
           Effect.sync(() => {
-            transitions.push(`fence:${String(retireCurrent)}`);
+            transitions.push(`fence:${mode}`);
             return {
               open: (revision: string) =>
                 Effect.sync(() => {
@@ -779,7 +794,7 @@ it.effect("retires runtime admission before committing a disable-only update", (
 
       expect(disabled.enabled).toBe(false);
       expect(candidateCalls).toBe(0);
-      expect(transitions).toEqual(["fence:true", "commit"]);
+      expect(transitions).toEqual(["fence:retire-current", "commit"]);
     }),
   );
 });
@@ -810,7 +825,7 @@ it.effect("keeps an ambiguous instance unavailable until durable replay", () => 
   const durableResult: { value?: JsonObject } = {};
   let databaseAvailable = true;
   let updateCalls = 0;
-  const fenceRetireFlags: boolean[] = [];
+  const fenceRetireFlags: string[] = [];
   const openedRevisions: string[] = [];
   const providers = {
     ...persistence.providers,
@@ -849,9 +864,9 @@ it.effect("keeps an ambiguous instance unavailable until durable replay", () => 
     Effect.gen(function* ambiguousUpdateRecoveryTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
-        fenceInstance: (_providerInstanceId, retireCurrent) =>
+        fenceInstance: (_providerInstanceId, mode) =>
           Effect.sync(() => {
-            fenceRetireFlags.push(retireCurrent);
+            fenceRetireFlags.push(mode);
             return {
               open: (revision: string) =>
                 Effect.sync(() => {
@@ -878,7 +893,7 @@ it.effect("keeps an ambiguous instance unavailable until durable replay", () => 
       const recovered = yield* service.updateProviderInstance(request);
       expect(recovered).toMatchObject({ displayName: "Family" });
       expect(updateCalls).toBe(1);
-      expect(fenceRetireFlags).toEqual([false, false]);
+      expect(fenceRetireFlags).toEqual(["admission-only", "admission-only"]);
       expect(openedRevisions).toEqual([recovered.revision]);
     }),
   );
@@ -938,6 +953,7 @@ it.effect("clears an optional configuration field without clearing retained secr
     Effect.gen(function* clearOptionalConfigurationTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: providers,
         verifyCandidate: () => Effect.succeed({ principalReference: "same-principal" }),
@@ -1065,6 +1081,7 @@ it.effect("returns every update violation in deterministic field order", () => {
     Effect.gen(function* completeUpdateValidationTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: providers,
         verifyCandidate: () =>
@@ -1152,6 +1169,7 @@ it.effect("distinguishes an omitted display name from the literal absent", () =>
     Effect.gen(function* optionalPresenceIdempotencyTest() {
       const service = yield* makeProviderManagement({
         discover: successfulDiscovery,
+        fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: providers,
       });
@@ -1234,6 +1252,66 @@ it.effect("reopens the old admission revision after a definite update conflict",
         _tag: "ProviderValidationFailed",
         violations: [{ field: "sync_priority", reason: "CONFLICT" }],
       });
+      expect(openedRevisions).toEqual(["revision-1"]);
+    }),
+  );
+});
+
+it.effect("reopens the old revision after a definite pretransaction update failure", () => {
+  const persistence = makePersistence();
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  const current = {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: true,
+    id: "provider-instance",
+    observation: { status: "healthy" as const, summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+  const openedRevisions: string[] = [];
+  const providers = {
+    ...persistence.providers,
+    loadInstanceRecord: () => Effect.succeed(current),
+    readOperationResult: noOperationResult,
+    updateInstance: () => Effect.fail(new ProviderUpdatePreparationFailed({})),
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* pretransactionFailureRecoveryTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: () =>
+          Effect.succeed({
+            open: (revision: string) =>
+              Effect.sync(() => {
+                openedRevisions.push(revision);
+              }),
+          }),
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+      const failure = yield* service
+        .updateProviderInstance({
+          administratorId: "administrator-a",
+          clearConfigurationFields: [],
+          configurationPatch: {},
+          displayName: "Family",
+          expectedRevision: "revision-1",
+          operationId: "pretransaction-failure",
+          providerInstanceId: "provider-instance",
+        })
+        .pipe(Effect.flip);
+
+      expect(failure).toMatchObject({ _tag: "ProviderPersistenceError" });
       expect(openedRevisions).toEqual(["revision-1"]);
     }),
   );

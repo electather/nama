@@ -154,7 +154,6 @@ const providerObservationForRevision = (
   }
   return { status: input.status, summary: input.summary };
 };
-
 const taggedError = Data.TaggedError;
 const ProviderPersistenceError = taggedError("ProviderPersistenceError")<Record<string, never>>;
 const ProviderCredentialsUnavailable = taggedError("ProviderCredentialsUnavailable")<
@@ -169,12 +168,14 @@ const ProviderSyncPriorityConflict = taggedError("ProviderSyncPriorityConflict")
 type ProviderInstanceLimitFailure = InstanceType<typeof ProviderInstanceLimitReached>;
 type ProviderSyncPriorityConflictFailure = InstanceType<typeof ProviderSyncPriorityConflict>;
 const ProviderRevisionMismatch = taggedError("ProviderRevisionMismatch")<Record<string, never>>;
+const ProviderUpdatePreparationFailed = taggedError("ProviderUpdatePreparationFailed")<
+  Record<string, never>
+>;
 type ProviderRevisionMismatchFailure = InstanceType<typeof ProviderRevisionMismatch>;
 const ProviderOperationKeyReused = taggedError("ProviderOperationKeyReused")<Record<string, never>>;
 type ProviderPersistenceFailure = InstanceType<typeof ProviderPersistenceError>;
 type ProviderCredentialsFailure = InstanceType<typeof ProviderCredentialsUnavailable>;
 type ProviderOperationKeyReuse = InstanceType<typeof ProviderOperationKeyReused>;
-
 interface ProviderPersistence {
   readonly acceptInstallation: (
     input: ProviderInstallationInput,
@@ -192,6 +193,7 @@ interface ProviderPersistence {
     | ProviderPersistenceFailure
     | ProviderRevisionMismatchFailure
     | ProviderSyncPriorityConflictFailure
+    | InstanceType<typeof ProviderUpdatePreparationFailed>
   >;
   readonly deleteInstance: (
     input: ProviderInstanceDeletionInput,
@@ -234,7 +236,6 @@ interface ProviderPersistence {
     input: ProviderObservationInput,
   ) => Effect.Effect<boolean, ProviderPersistenceFailure>;
 }
-
 interface ProviderPersistenceContext {
   readonly database: ProviderDatabase;
   readonly keys: ProtectionKeys;
@@ -290,6 +291,7 @@ export {
   ProviderInstanceLimitReached,
   ProviderRevisionMismatch,
   ProviderSyncPriorityConflict,
+  ProviderUpdatePreparationFailed,
   credentialFailure,
   operationLookupFailure,
   persistenceFailure,
