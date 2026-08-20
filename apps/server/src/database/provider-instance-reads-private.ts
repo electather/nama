@@ -1,7 +1,10 @@
 import { and, asc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
-import { persistenceFailure } from "./provider-persistence-model-private.ts";
+import {
+  persistenceFailure,
+  providerObservationForRevision,
+} from "./provider-persistence-model-private.ts";
 import type {
   ProviderDatabase,
   ProviderInstanceListInput,
@@ -26,6 +29,7 @@ const instanceSelection = Object.freeze({
   displayName: providerInstance.displayName,
   enabled: providerInstance.enabled,
   id: providerInstance.id,
+  observationRevision: providerInstanceObservation.instanceRevision,
   observationStatus: providerInstanceObservation.status,
   observationSummary: providerInstanceObservation.summary,
   providerTypeId: providerInstance.providerTypeId,
@@ -40,6 +44,7 @@ type SelectedInstance = Readonly<{
   displayName: string;
   enabled: boolean;
   id: string;
+  observationRevision: string;
   observationStatus: string;
   observationSummary: string;
   providerTypeId: string;
@@ -83,32 +88,25 @@ const recordsFromRows = async (
     context.database,
     rows.map((row) => row.id),
   );
-  return rows.map((row) => {
-    if (
-      row.observationStatus !== "authentication_failed" &&
-      row.observationStatus !== "healthy" &&
-      row.observationStatus !== "unavailable"
-    ) {
-      throw new Error("invalid provider observation status");
-    }
-    return {
-      configuration: row.configuration,
-      configuredSecretKeys: configuredSecrets.get(row.id) ?? [],
-      createdAt: row.createdAt,
-      credentialsAvailable: !context.unavailableInstances.has(row.id),
-      displayName: row.displayName,
-      enabled: row.enabled,
-      id: row.id,
-      observation: {
-        status: row.observationStatus,
-        summary: row.observationSummary,
-      },
-      providerTypeId: row.providerTypeId,
-      revision: row.revision,
-      syncPriority: row.syncPriority,
-      updatedAt: row.updatedAt,
-    };
-  });
+  return rows.map((row) => ({
+    configuration: row.configuration,
+    configuredSecretKeys: configuredSecrets.get(row.id) ?? [],
+    createdAt: row.createdAt,
+    credentialsAvailable: !context.unavailableInstances.has(row.id),
+    displayName: row.displayName,
+    enabled: row.enabled,
+    id: row.id,
+    observation: providerObservationForRevision({
+      currentRevision: row.revision,
+      observationRevision: row.observationRevision,
+      status: row.observationStatus,
+      summary: row.observationSummary,
+    }),
+    providerTypeId: row.providerTypeId,
+    revision: row.revision,
+    syncPriority: row.syncPriority,
+    updatedAt: row.updatedAt,
+  }));
 };
 
 const validatedListInput = (input: ProviderInstanceListInput): void => {

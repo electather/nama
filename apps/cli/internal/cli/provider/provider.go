@@ -18,12 +18,25 @@ type CreateInstanceInput struct {
 	SyncPriority      *uint32
 }
 
+// UpdateInstanceInput is one explicit provider-instance patch.
+type UpdateInstanceInput struct {
+	ProviderInstanceID       string
+	ExpectedRevision         string
+	ConfigurationPatchPath   string
+	ClearConfigurationFields []string
+	OperationID              string
+	DisplayName              *string
+	Enabled                  *bool
+	SyncPriority             *uint32
+}
+
 // Handlers bind provider command inputs to the CLI composition root.
 type Handlers struct {
 	CreateInstance   func(*cobra.Command, CreateInstanceInput) error
 	GetInstance      func(*cobra.Command, string) error
 	ListInstances    func(*cobra.Command, uint32, string) error
 	ListTypes        func(*cobra.Command, uint32, string) error
+	UpdateInstance   func(*cobra.Command, UpdateInstanceInput) error
 	InvalidArguments func(*cobra.Command, error) error
 }
 
@@ -85,6 +98,7 @@ func newInstanceCommand(handlers Handlers) *cobra.Command {
 		newCreateInstanceCommand(handlers),
 		newGetInstanceCommand(handlers),
 		newListInstancesCommand(handlers),
+		newUpdateInstanceCommand(handlers),
 	)
 	return command
 }
@@ -186,6 +200,83 @@ func newListInstancesCommand(handlers Handlers) *cobra.Command {
 	command.Flags().StringVar(&pageToken, "page-token", "", "Continue an earlier provider instance list")
 	surface.SetFlag(command, "page-size", surface.FlagMetadata{Default: "0"})
 	surface.SetFlag(command, "page-token", surface.FlagMetadata{})
+	setBearerInput(command)
+	return command
+}
+
+func newUpdateInstanceCommand(handlers Handlers) *cobra.Command {
+	var clearConfigurationFields []string
+	var configurationPatch string
+	var displayName string
+	var enabled bool
+	var expectedRevision string
+	var operationID string
+	var syncPriority uint32
+	command := &cobra.Command{
+		Use:     "update <provider-instance-id>",
+		Short:   "Update a provider instance",
+		Long:    "Patch provider-neutral metadata or read configuration changes from a file path or - for standard input. Omitted configuration and credentials remain unchanged.",
+		Example: "  nama provider instance update <provider-instance-id> --expected-revision <revision> --display-name Family --profile local\n  cat patch.json | nama provider instance update <provider-instance-id> --expected-revision <revision> --configuration - --profile local --output json",
+		Args: func(command *cobra.Command, arguments []string) error {
+			if len(arguments) != 1 {
+				return handlers.InvalidArguments(command, errors.New("exactly one provider instance ID is required"))
+			}
+			if expectedRevision == "" {
+				return handlers.InvalidArguments(command, errors.New("--expected-revision is required"))
+			}
+			if command.Flags().Changed("display-name") && displayName == "" {
+				return handlers.InvalidArguments(command, errors.New("--display-name must not be empty"))
+			}
+			if command.Flags().Changed("sync-priority") && syncPriority == 0 {
+				return handlers.InvalidArguments(command, errors.New("--sync-priority must be positive"))
+			}
+			if configurationPatch == "" &&
+				len(clearConfigurationFields) == 0 &&
+				!command.Flags().Changed("display-name") &&
+				!command.Flags().Changed("enabled") &&
+				!command.Flags().Changed("sync-priority") {
+				return handlers.InvalidArguments(command, errors.New("at least one update field is required"))
+			}
+			return nil
+		},
+		RunE: func(command *cobra.Command, arguments []string) error {
+			input := UpdateInstanceInput{
+				ProviderInstanceID:       arguments[0],
+				ExpectedRevision:         expectedRevision,
+				ConfigurationPatchPath:   configurationPatch,
+				ClearConfigurationFields: clearConfigurationFields,
+				OperationID:              operationID,
+			}
+			if command.Flags().Changed("display-name") {
+				input.DisplayName = new(displayName)
+			}
+			if command.Flags().Changed("enabled") {
+				input.Enabled = new(enabled)
+			}
+			if command.Flags().Changed("sync-priority") {
+				input.SyncPriority = new(syncPriority)
+			}
+			return handlers.UpdateInstance(command, input)
+		},
+	}
+	command.Flags().StringArrayVar(&clearConfigurationFields, "clear", nil, "Explicitly clear one optional configuration field; repeat for multiple fields")
+	command.Flags().StringVar(&configurationPatch, "configuration", "", "Read a JSON configuration patch from this file path or - for standard input")
+	command.Flags().StringVar(&displayName, "display-name", "", "Replace the provider instance display name")
+	command.Flags().BoolVar(&enabled, "enabled", false, "Enable or disable the provider instance")
+	command.Flags().StringVar(&expectedRevision, "expected-revision", "", "Require this current provider-instance revision (required)")
+	command.Flags().StringVar(&operationID, "operation-id", "", "Reuse this opaque operation ID for an exact retry; omitted generates one")
+	command.Flags().Uint32Var(&syncPriority, "sync-priority", 0, "Set a positive synchronization priority")
+	surface.SetArguments(command, surface.Argument{
+		Name: "provider-instance-id", Type: "string", Required: true,
+		Description: "Opaque provider instance ID",
+	})
+	surface.SetFlag(command, "clear", surface.FlagMetadata{})
+	surface.SetFlag(command, "configuration", surface.FlagMetadata{})
+	surface.SetFlag(command, "display-name", surface.FlagMetadata{})
+	surface.SetFlag(command, "enabled", surface.FlagMetadata{})
+	surface.SetFlag(command, "expected-revision", surface.FlagMetadata{Required: true})
+	surface.SetFlag(command, "operation-id", surface.FlagMetadata{})
+	surface.SetFlag(command, "sync-priority", surface.FlagMetadata{})
 	setBearerInput(command)
 	return command
 }

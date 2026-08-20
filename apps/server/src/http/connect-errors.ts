@@ -28,11 +28,15 @@ type PublicErrorReason =
   | "PAGE_TOKEN_INVALID"
   | "PLUGIN_UNAVAILABLE"
   | "PROVIDER_AUTHENTICATION_FAILED"
+  | "PROVIDER_COMMIT_AMBIGUOUS"
+  | "PROVIDER_CREDENTIALS_UNAVAILABLE"
   | "PROVIDER_INCOMPATIBLE"
   | "PROVIDER_INSTANCE_LIMIT_REACHED"
+  | "PROVIDER_USER_CHANGED"
   | "PROVIDER_UNAVAILABLE"
   | "RESOURCE_NOT_FOUND"
   | "RATE_LIMITED"
+  | "REVISION_MISMATCH"
   | "REQUEST_CANCELLED"
   | "SESSION_REVOCATION_UNCONFIRMED"
   | "SETUP_IN_PROGRESS"
@@ -60,14 +64,18 @@ type TaggedFailureTag =
   | "PageTokenInvalid"
   | "IdempotencyKeyReused"
   | "ProviderAuthenticationFailed"
+  | "ProviderCommitAmbiguous"
+  | "ProviderCredentialsUnavailable"
   | "ProviderIncompatible"
   | "ProviderInstanceLimitReached"
   | "ProviderPluginUnavailable"
   | "ProviderResourceNotFound"
   | "ProviderUnavailable"
+  | "ProviderUserChanged"
   | "ProviderValidationFailed"
   | "PrivateAuthenticationDefect"
   | "RequestCancelled"
+  | "RevisionMismatch"
   | "SessionRevocationUnconfirmed"
   | "SetupAlreadyInitialized"
   | "SetupCommitAmbiguous";
@@ -138,6 +146,14 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
     code: Code.FailedPrecondition,
     reason: "PROVIDER_AUTHENTICATION_FAILED",
   },
+  ProviderCommitAmbiguous: {
+    code: Code.Unavailable,
+    reason: "PROVIDER_COMMIT_AMBIGUOUS",
+  },
+  ProviderCredentialsUnavailable: {
+    code: Code.Unavailable,
+    reason: "PROVIDER_CREDENTIALS_UNAVAILABLE",
+  },
   ProviderIncompatible: {
     code: Code.FailedPrecondition,
     reason: "PROVIDER_INCOMPATIBLE",
@@ -158,6 +174,10 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
     code: Code.Unavailable,
     reason: "PROVIDER_UNAVAILABLE",
   },
+  ProviderUserChanged: {
+    code: Code.FailedPrecondition,
+    reason: "PROVIDER_USER_CHANGED",
+  },
   ProviderValidationFailed: {
     code: Code.InvalidArgument,
     reason: "VALIDATION_FAILED",
@@ -165,6 +185,10 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
   RequestCancelled: {
     code: Code.Canceled,
     reason: "REQUEST_CANCELLED",
+  },
+  RevisionMismatch: {
+    code: Code.Aborted,
+    reason: "REVISION_MISMATCH",
   },
   SessionRevocationUnconfirmed: {
     code: Code.Unavailable,

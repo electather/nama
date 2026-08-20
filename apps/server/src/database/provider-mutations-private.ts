@@ -1,5 +1,5 @@
 // oxlint-disable eslint/max-lines, eslint/max-lines-per-function, eslint/max-statements, eslint/prefer-destructuring -- Provider writes keep transaction ordering, protected-material lifetime, and rollback boundaries explicit.
-import { and, eq, max, sql } from "drizzle-orm";
+import { and, eq, inArray, max, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
 import {
@@ -9,18 +9,23 @@ import {
 import { cleanupExpiredOperationResults } from "./provider-operation-results-private.ts";
 import {
   ProviderInstanceLimitReached,
+  ProviderRevisionMismatch,
   ProviderSyncPriorityConflict,
+  ProviderUpdatePreparationFailed,
   persistenceFailure,
+  providerObservationForRevision,
 } from "./provider-persistence-model-private.ts";
 import type {
   ProviderDatabase,
   ProviderInstanceDeletionInput,
   ProviderInstanceInput,
+  ProviderInstanceUpdateInput,
   ProviderInstanceRecord,
   ProviderInstanceLimitFailure,
   ProviderInstallationInput,
   ProviderObservationInput,
   ProviderPersistenceContext,
+  ProviderRevisionMismatchFailure,
   ProviderSyncPriorityConflictFailure,
   ProviderPersistenceFailure,
 } from "./provider-persistence-model-private.ts";
@@ -37,6 +42,7 @@ import {
   providerInstanceObservation,
   providerOperationResult,
 } from "./provider-schema.ts";
+import type { JsonObject } from "./provider-schema.ts";
 
 const FIRST_INDEX = 0;
 const NO_ROWS = 0;
@@ -44,6 +50,12 @@ const PRIORITY_INCREMENT = 1;
 const SINGLE_ROW_LIMIT = 1;
 const MAXIMUM_FAILURE_CAUSE_DEPTH = 4;
 const ZERO = 0;
+class RevisionMismatchSignalError extends Error {
+  override readonly name = "RevisionMismatchSignalError";
+}
+
+const UPDATE_TRANSACTION_NOT_STARTED = new Error("update-transaction-not-started");
+type UpdatePreparationFailure = InstanceType<typeof ProviderUpdatePreparationFailed>;
 
 interface ProtectedCredentialRow extends CredentialEnvelope {
   readonly configurationKey: string;
@@ -54,6 +66,19 @@ interface ProtectedInstanceMaterial {
   readonly credentials: ProtectedCredentialRow[];
   readonly principalDigest: Buffer;
   readonly requestFingerprint: Buffer;
+}
+
+interface ProtectedUpdateMaterial {
+  readonly credentials: ProtectedCredentialRow[];
+  readonly requestFingerprint: Buffer;
+}
+
+interface PersistUpdatedInstanceInput {
+  readonly configurationSchema: JsonObject;
+  readonly credentialsAvailable: boolean;
+  readonly database: ProviderDatabase;
+  readonly input: ProviderInstanceUpdateInput;
+  readonly material: ProtectedUpdateMaterial;
 }
 // fallow-ignore-next-line code-duplication -- The database boundary unwraps only own data properties without importing HTTP failure machinery.
 const dataPropertyValue = (value: object, property: PropertyKey): unknown => {
@@ -76,33 +101,93 @@ const persistedInstanceSelection = Object.freeze({
   updatedAt: providerInstance.updatedAt,
 });
 
+type ProviderConstraintFailure =
+  | ProviderInstanceLimitFailure
+  | ProviderRevisionMismatchFailure
+  | ProviderSyncPriorityConflictFailure;
+
+const isRevisionMismatchFailure = (
+  failure: ProviderConstraintFailure,
+): failure is ProviderRevisionMismatchFailure => failure instanceof ProviderRevisionMismatch;
+
+const isInstanceLimitFailure = (
+  failure: ProviderConstraintFailure,
+): failure is ProviderInstanceLimitFailure => failure instanceof ProviderInstanceLimitReached;
+
+const constraintFailureAt = (current: unknown): ProviderConstraintFailure | undefined => {
+  if (current instanceof RevisionMismatchSignalError) {
+    return new ProviderRevisionMismatch({});
+  }
+  if (typeof current !== "object" || current === null) {
+    return undefined;
+  }
+  const code = dataPropertyValue(current, "code");
+  const constraint = dataPropertyValue(current, "constraint");
+  const message = dataPropertyValue(current, "message");
+  if (code === "23514" && message === "provider instance limit exceeded") {
+    return new ProviderInstanceLimitReached({});
+  }
+  if (code === "23505" && constraint === "provider_instance_enabled_sync_priority_unique") {
+    return new ProviderSyncPriorityConflict({});
+  }
+  return undefined;
+};
+
+const nextFailureCause = (current: unknown): unknown => {
+  if (typeof current !== "object" || current === null) {
+    return undefined;
+  }
+  const cause = dataPropertyValue(current, "cause");
+  if (cause === current) {
+    return undefined;
+  }
+  return cause;
+};
+
+const providerConstraintFailure = (error: unknown): ProviderConstraintFailure | undefined => {
+  let current = error;
+  for (let depth = ZERO; depth < MAXIMUM_FAILURE_CAUSE_DEPTH; depth += PRIORITY_INCREMENT) {
+    const failure = constraintFailureAt(current);
+    if (failure !== undefined) {
+      return failure;
+    }
+    const cause = nextFailureCause(current);
+    if (cause === undefined) {
+      return undefined;
+    }
+    current = cause;
+  }
+  return undefined;
+};
+
 const createInstanceFailure = (
   error: unknown,
 ):
   | ProviderInstanceLimitFailure
   | ProviderPersistenceFailure
   | ProviderSyncPriorityConflictFailure => {
-  let current = error;
-  for (let depth = ZERO; depth < MAXIMUM_FAILURE_CAUSE_DEPTH; depth += PRIORITY_INCREMENT) {
-    if (typeof current !== "object" || current === null) {
-      break;
-    }
-    const code = dataPropertyValue(current, "code");
-    const constraint = dataPropertyValue(current, "constraint");
-    const message = dataPropertyValue(current, "message");
-    if (code === "23514" && message === "provider instance limit exceeded") {
-      return new ProviderInstanceLimitReached({});
-    }
-    if (code === "23505" && constraint === "provider_instance_enabled_sync_priority_unique") {
-      return new ProviderSyncPriorityConflict({});
-    }
-    const cause = dataPropertyValue(current, "cause");
-    if (cause === current) {
-      break;
-    }
-    current = cause;
+  const failure = providerConstraintFailure(error);
+  if (failure === undefined || isRevisionMismatchFailure(failure)) {
+    return persistenceFailure();
   }
-  return persistenceFailure();
+  return failure;
+};
+
+const updateInstanceFailure = (
+  error: unknown,
+):
+  | ProviderPersistenceFailure
+  | ProviderRevisionMismatchFailure
+  | ProviderSyncPriorityConflictFailure
+  | UpdatePreparationFailure => {
+  if (error === UPDATE_TRANSACTION_NOT_STARTED) {
+    return new ProviderUpdatePreparationFailed({});
+  }
+  const failure = providerConstraintFailure(error);
+  if (failure === undefined || isInstanceLimitFailure(failure)) {
+    return persistenceFailure();
+  }
+  return failure;
 };
 
 const acceptInstallation = (
@@ -160,6 +245,43 @@ const protectInstanceMaterial = (
 
 const destroyInstanceMaterial = (material: ProtectedInstanceMaterial): void => {
   material.principalDigest.fill(ZERO);
+  material.requestFingerprint.fill(ZERO);
+  for (const envelope of material.credentials) {
+    envelope.authenticationTag.fill(ZERO);
+    envelope.ciphertext.fill(ZERO);
+    envelope.nonce.fill(ZERO);
+  }
+};
+
+const protectUpdateMaterial = (
+  keys: ProtectionKeys,
+  input: ProviderInstanceUpdateInput,
+): ProtectedUpdateMaterial => {
+  const credentials: ProtectedCredentialRow[] = [];
+  for (const [configurationKey, value] of Object.entries(input.credentialChanges)) {
+    const envelope = encryptCredential(
+      keys.credential,
+      {
+        configurationKey,
+        providerInstanceId: input.providerInstanceId,
+        providerTypeId: input.providerTypeId,
+      },
+      value,
+    );
+    credentials.push(
+      Object.assign(envelope, {
+        configurationKey,
+        providerInstanceId: input.providerInstanceId,
+      }),
+    );
+  }
+  return {
+    credentials,
+    requestFingerprint: fingerprintOperation(keys.operation, input.operation),
+  };
+};
+
+const destroyUpdateMaterial = (material: ProtectedUpdateMaterial): void => {
   material.requestFingerprint.fill(ZERO);
   for (const envelope of material.credentials) {
     envelope.authenticationTag.fill(ZERO);
@@ -274,6 +396,259 @@ const createInstance = (
     },
   });
 
+type ProviderTransaction = Parameters<
+  Parameters<ProviderDatabase["transaction"]>[typeof FIRST_INDEX]
+>[typeof FIRST_INDEX];
+type PersistedInstanceRow = Readonly<{
+  configuration: JsonObject;
+  createdAt: Date;
+  displayName: string;
+  enabled: boolean;
+  id: string;
+  providerTypeId: string;
+  revision: string;
+  syncPriority: number;
+  updatedAt: Date;
+}>;
+type PersistUpdatedTransactionInput = Omit<PersistUpdatedInstanceInput, "database"> &
+  Readonly<{ transaction: ProviderTransaction }>;
+
+const updateProviderInstanceRow = async ({
+  input,
+  transaction,
+}: PersistUpdatedTransactionInput): Promise<PersistedInstanceRow> => {
+  const configurationUpdate: { configuration?: JsonObject } = {};
+  if (input.configuration !== undefined) {
+    configurationUpdate.configuration = input.configuration;
+  }
+  const rows = await transaction
+    .update(providerInstance)
+    .set({
+      ...configurationUpdate,
+      displayName: input.displayName,
+      enabled: input.enabled,
+      revision: input.revision,
+      syncPriority: input.syncPriority,
+      updatedAt: sql`transaction_timestamp()`,
+    })
+    .where(
+      and(
+        eq(providerInstance.id, input.providerInstanceId),
+        eq(providerInstance.revision, input.expectedRevision),
+      ),
+    )
+    .returning(persistedInstanceSelection);
+  const stored = rows.at(FIRST_INDEX);
+  if (stored === undefined) {
+    throw new RevisionMismatchSignalError();
+  }
+  return stored;
+};
+
+const replaceUpdatedCredentials = async ({
+  configurationSchema,
+  input,
+  material,
+  transaction,
+}: PersistUpdatedTransactionInput): Promise<readonly string[]> => {
+  const changedCredentialKeys = [
+    ...new Set([
+      ...input.clearCredentialKeys,
+      ...material.credentials.map(({ configurationKey }) => configurationKey),
+    ]),
+  ];
+  if (changedCredentialKeys.length > NO_ROWS) {
+    await transaction
+      .delete(providerCredential)
+      .where(
+        and(
+          eq(providerCredential.providerInstanceId, input.providerInstanceId),
+          inArray(providerCredential.configurationKey, changedCredentialKeys),
+        ),
+      );
+  }
+  if (material.credentials.length > NO_ROWS) {
+    await transaction.insert(providerCredential).values(material.credentials);
+  }
+  const configuredCredentialRows = await transaction
+    .select({ configurationKey: providerCredential.configurationKey })
+    .from(providerCredential)
+    .where(eq(providerCredential.providerInstanceId, input.providerInstanceId))
+    .orderBy(providerCredential.configurationKey);
+  const configuredSecretKeys = configuredCredentialRows.map(
+    ({ configurationKey }) => configurationKey,
+  );
+  assertCredentialCompleteness(configurationSchema, configuredSecretKeys);
+  if (
+    input.configuration !== undefined &&
+    configuredSecretKeys.some((key) => Object.hasOwn(input.configuration ?? {}, key))
+  ) {
+    throw new Error("Provider secret supplied in non-secret configuration");
+  }
+  return configuredSecretKeys;
+};
+
+const carryObservationForward = async ({
+  input,
+  transaction,
+}: PersistUpdatedTransactionInput): Promise<void> => {
+  if (!input.carryObservationForward) {
+    return;
+  }
+  await transaction
+    .update(providerInstanceObservation)
+    .set({ instanceRevision: input.revision })
+    .where(
+      and(
+        eq(providerInstanceObservation.providerInstanceId, input.providerInstanceId),
+        eq(providerInstanceObservation.instanceRevision, input.expectedRevision),
+      ),
+    );
+};
+
+const loadUpdatedObservation = async ({
+  input,
+  transaction,
+}: PersistUpdatedTransactionInput): Promise<ProviderInstanceRecord["observation"]> => {
+  const observations = await transaction
+    .select({
+      instanceRevision: providerInstanceObservation.instanceRevision,
+      status: providerInstanceObservation.status,
+      summary: providerInstanceObservation.summary,
+    })
+    .from(providerInstanceObservation)
+    .where(eq(providerInstanceObservation.providerInstanceId, input.providerInstanceId))
+    .limit(SINGLE_ROW_LIMIT);
+  const observation = observations.at(FIRST_INDEX);
+  if (observation === undefined) {
+    throw new Error("provider instance observation is missing");
+  }
+  return providerObservationForRevision({
+    currentRevision: input.revision,
+    observationRevision: observation.instanceRevision,
+    status: observation.status,
+    summary: observation.summary,
+  });
+};
+
+const persistUpdatedOperationResult = async (
+  transactionInput: PersistUpdatedTransactionInput,
+  result: ProviderInstanceRecord,
+): Promise<void> => {
+  const { input, material, transaction } = transactionInput;
+  const serializedResult =
+    input.operation.serializeResult?.(result) ?? input.operation.serializedResult;
+  if (serializedResult === undefined) {
+    throw new Error("provider update operation result is missing");
+  }
+  await transaction.insert(providerOperationResult).values({
+    administratorUserId: input.operation.administratorUserId,
+    method: input.operation.method,
+    operationId: input.operation.operationId,
+    requestFingerprint: material.requestFingerprint,
+    serializedResult,
+  });
+};
+
+const prepareUpdatedInstance = (
+  context: ProviderPersistenceContext,
+  input: ProviderInstanceUpdateInput,
+): Effect.Effect<PersistUpdatedInstanceInput, UpdatePreparationFailure> =>
+  Effect.tryPromise({
+    catch: () => new ProviderUpdatePreparationFailed({}),
+    try: async () => {
+      await cleanupExpiredOperationResults(context.database);
+      return {
+        configurationSchema: await installationConfigurationSchema(
+          context.database,
+          input.providerTypeId,
+        ),
+        credentialsAvailable: !context.unavailableInstances.has(input.providerInstanceId),
+        database: context.database,
+        input,
+        material: protectUpdateMaterial(context.keys, input),
+      };
+    },
+  });
+
+const persistUpdatedInstance = async ({
+  configurationSchema,
+  credentialsAvailable,
+  database,
+  input,
+  material,
+}: PersistUpdatedInstanceInput): Promise<ProviderInstanceRecord> => {
+  let transactionStarted = false;
+  try {
+    return await database.transaction(async (transaction) => {
+      transactionStarted = true;
+      const transactionInput: PersistUpdatedTransactionInput = {
+        configurationSchema,
+        credentialsAvailable,
+        input,
+        material,
+        transaction,
+      };
+      const stored = await updateProviderInstanceRow(transactionInput);
+      const configuredSecretKeys = await replaceUpdatedCredentials(transactionInput);
+      await carryObservationForward(transactionInput);
+      const observation = await loadUpdatedObservation(transactionInput);
+      const result: ProviderInstanceRecord = {
+        configuration: stored.configuration,
+        configuredSecretKeys,
+        createdAt: stored.createdAt,
+        credentialsAvailable,
+        displayName: stored.displayName,
+        enabled: stored.enabled,
+        id: stored.id,
+        observation,
+        providerTypeId: stored.providerTypeId,
+        revision: stored.revision,
+        syncPriority: stored.syncPriority,
+        updatedAt: stored.updatedAt,
+      };
+      await persistUpdatedOperationResult(transactionInput, result);
+      return result;
+    });
+  } catch (error) {
+    if (!transactionStarted) {
+      throw UPDATE_TRANSACTION_NOT_STARTED;
+    }
+    throw error;
+  } finally {
+    destroyUpdateMaterial(material);
+  }
+};
+
+const updateInstance = (
+  context: ProviderPersistenceContext,
+  input: ProviderInstanceUpdateInput,
+): Effect.Effect<
+  ProviderInstanceRecord,
+  | ProviderPersistenceFailure
+  | ProviderRevisionMismatchFailure
+  | ProviderSyncPriorityConflictFailure
+  | InstanceType<typeof ProviderUpdatePreparationFailed>
+> =>
+  prepareUpdatedInstance(context, input).pipe(
+    Effect.flatMap((prepared) =>
+      Effect.tryPromise({
+        catch: updateInstanceFailure,
+        try: () => persistUpdatedInstance(prepared),
+      }),
+    ),
+    Effect.tap(() =>
+      Effect.sync(() => {
+        if (
+          input.configuration !== undefined ||
+          Object.keys(input.credentialChanges).length > NO_ROWS
+        ) {
+          context.unavailableInstances.delete(input.providerInstanceId);
+        }
+      }),
+    ),
+  );
+
 const recordObservation = (
   context: ProviderPersistenceContext,
   input: ProviderObservationInput,
@@ -357,4 +732,4 @@ const deleteInstance = (
     },
   });
 
-export { acceptInstallation, createInstance, deleteInstance, recordObservation };
+export { acceptInstallation, createInstance, deleteInstance, recordObservation, updateInstance };

@@ -1,10 +1,10 @@
 # API contracts
 
-Status: Setup and Auth runtime semantics, the private plugin-subprocess transport, production Jellyfin discovery/connection verification, authenticated provider-type listing, and provider-instance create/list/get are implemented and verified.
+Status: Setup and Auth runtime semantics, the private plugin-subprocess transport, production Jellyfin discovery/connection verification, authenticated provider-type listing, and provider-instance create/list/get/update including disable and re-enable are implemented and verified.
 
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
-The core implements Setup and Auth workflows plus `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, and `GetProviderInstance`. It also implements private plugin process launch, bearer authentication, health/identity handshake, deadline and cancellation propagation, bounded recovery, cleanup, code-owned bundled discovery, restricted-schema acceptance, durable installation reconciliation, one-shot candidate verification, encrypted provider credentials, immutable principal digests, and durable create idempotency against generated `nama.plugin.v1` clients. The remaining public and plugin method workflows are durable contracts, not evidence that their handlers, provider adapters, persistence flows, or scheduling exist.
+The core implements Setup and Auth workflows plus `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, `GetProviderInstance`, and `UpdateProviderInstance`. It also implements private plugin process launch, bearer authentication, health/identity handshake, deadline and cancellation propagation, bounded recovery, cleanup, code-owned bundled discovery, restricted-schema acceptance, durable installation reconciliation, one-shot candidate verification, encrypted provider credentials, immutable principal digests, durable create/update idempotency, revision-fenced update persistence, and supervised runtime cutover against generated `nama.plugin.v1` clients. The remaining public and plugin method workflows are durable contracts, not evidence that their handlers, provider adapters, persistence flows, or scheduling exist.
 
 ## Scope
 
@@ -950,6 +950,7 @@ Clients first branch on Connect code, then on `ErrorInfo.reason`. They must fall
 | Playback session is terminal for a new event | `FAILED_PRECONDITION` | `PLAYBACK_SESSION_CLOSED` |
 | Same idempotency key was reused for another payload | `ALREADY_EXISTS` | `IDEMPOTENCY_KEY_REUSED` |
 | Expected provider revision is stale | `ABORTED` | `REVISION_MISMATCH` |
+| Provider update commit outcome remains unresolved | `UNAVAILABLE` | `PROVIDER_COMMIT_AMBIGUOUS` |
 | Updated configuration resolves to another provider principal | `FAILED_PRECONDITION` | `PROVIDER_USER_CHANGED` |
 | Candidate provider credentials are rejected | `FAILED_PRECONDITION` | `PROVIDER_AUTHENTICATION_FAILED` |
 | Remote provider is incompatible | `FAILED_PRECONDITION` | `PROVIDER_INCOMPATIBLE` |

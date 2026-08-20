@@ -233,6 +233,7 @@ func NewRootCommand(dependencies Dependencies) *cobra.Command {
 			GetInstance:      runtime.getProviderInstance,
 			ListInstances:    runtime.listProviderInstances,
 			ListTypes:        runtime.listProviderTypes,
+			UpdateInstance:   runtime.updateProviderInstance,
 			InvalidArguments: runtime.invalidArguments,
 		}),
 		setupcommand.NewCommand(setupcommand.Handler{
@@ -601,6 +602,50 @@ func (r *runtime) createProviderInstance(
 				Configuration:  configuration,
 				Enabled:        input.Enabled,
 				SyncPriority:   input.SyncPriority,
+			},
+			providerClient,
+			r.dependencies.Credentials,
+		)
+		if err != nil {
+			return nil, classifyLocalError(err)
+		}
+		return result, nil
+	})
+}
+
+func (r *runtime) updateProviderInstance(
+	command *cobra.Command,
+	input providercommand.UpdateInstanceInput,
+) error {
+	return r.execute(command, true, func(state commandState) (any, error) {
+		if err := r.requireProfile(command, state); err != nil {
+			return nil, err
+		}
+		configurationPatch := map[string]any{}
+		if input.ConfigurationPatchPath != "" {
+			var err error
+			configurationPatch, err = readProviderConfiguration(command, input.ConfigurationPatchPath)
+			if err != nil {
+				return nil, clierror.InvalidArgument(err)
+			}
+		}
+		providerClient, err := r.providerClient(state)
+		if err != nil {
+			return nil, err
+		}
+		result, err := app.UpdateProviderInstance(
+			command.Context(),
+			app.UpdateProviderInstanceInput{
+				Profile:                  state.resolved.Profile,
+				Server:                   state.resolved.Server,
+				OperationID:              input.OperationID,
+				ProviderInstanceID:       input.ProviderInstanceID,
+				ExpectedRevision:         input.ExpectedRevision,
+				ConfigurationPatch:       configurationPatch,
+				ClearConfigurationFields: input.ClearConfigurationFields,
+				DisplayName:              input.DisplayName,
+				Enabled:                  input.Enabled,
+				SyncPriority:             input.SyncPriority,
 			},
 			providerClient,
 			r.dependencies.Credentials,

@@ -14,48 +14,52 @@ import (
 )
 
 const (
-	CodeUnexpectedFailure            = "unexpected_failure"
-	CodeInvalidArgument              = "invalid_argument"
-	CodeInvalidConfiguration         = "invalid_configuration"
-	CodeProfileNotFound              = "profile_not_found"
-	CodeCredentialStoreUnavailable   = "credential_store_unavailable"
-	CodeCredentialCleanupFailed      = "credential_cleanup_failed"
-	CodeUnsafeTransport              = "unsafe_transport"
-	CodeNetworkUnavailable           = "network_unavailable"
-	CodeAlreadyInitialized           = "already_initialized"
-	CodeAuthenticationFailed         = "authentication_failed"
-	CodeAuthenticationUnavailable    = "authentication_unavailable"
-	CodeCredentialInvalid            = "credential_invalid"
-	CodeDeadlineExceeded             = "deadline_exceeded"
-	CodeInternal                     = "internal"
-	CodeNotInitialized               = "not_initialized"
-	CodePermissionDenied             = "permission_denied"
-	CodeRateLimited                  = "rate_limited"
-	CodeRequestCancelled             = "request_cancelled"
-	CodeSessionRevocationUnconfirmed = "session_revocation_unconfirmed"
-	CodeSetupInProgress              = "setup_in_progress"
-	CodeSetupUnavailable             = "setup_unavailable"
-	CodeValidationFailed             = "validation_failed"
-	CodeIdempotencyKeyReused         = "idempotency_key_reused"
-	CodePageTokenInvalid             = "page_token_invalid"
-	CodePluginUnavailable            = "plugin_unavailable"
-	CodeProviderAuthenticationFailed = "provider_authentication_failed"
-	CodeProviderIncompatible         = "provider_incompatible"
-	CodeProviderInstanceLimitReached = "provider_instance_limit_reached"
-	CodeProviderUnavailable          = "provider_unavailable"
-	CodeResourceNotFound             = "resource_not_found"
-	CodeUnknown                      = "unknown"
-	CodeCancelled                    = "canceled"
-	CodeNotFound                     = "not_found"
-	CodeAlreadyExists                = "already_exists"
-	CodeResourceExhausted            = "resource_exhausted"
-	CodeFailedPrecondition           = "failed_precondition"
-	CodeAborted                      = "aborted"
-	CodeOutOfRange                   = "out_of_range"
-	CodeUnimplemented                = "unimplemented"
-	CodeUnavailable                  = "unavailable"
-	CodeDataLoss                     = "data_loss"
-	CodeUnauthenticated              = "unauthenticated"
+	CodeUnexpectedFailure              = "unexpected_failure"
+	CodeInvalidArgument                = "invalid_argument"
+	CodeInvalidConfiguration           = "invalid_configuration"
+	CodeProfileNotFound                = "profile_not_found"
+	CodeCredentialStoreUnavailable     = "credential_store_unavailable"
+	CodeCredentialCleanupFailed        = "credential_cleanup_failed"
+	CodeUnsafeTransport                = "unsafe_transport"
+	CodeNetworkUnavailable             = "network_unavailable"
+	CodeAlreadyInitialized             = "already_initialized"
+	CodeAuthenticationFailed           = "authentication_failed"
+	CodeAuthenticationUnavailable      = "authentication_unavailable"
+	CodeCredentialInvalid              = "credential_invalid"
+	CodeDeadlineExceeded               = "deadline_exceeded"
+	CodeInternal                       = "internal"
+	CodeNotInitialized                 = "not_initialized"
+	CodePermissionDenied               = "permission_denied"
+	CodeRateLimited                    = "rate_limited"
+	CodeRequestCancelled               = "request_cancelled"
+	CodeSessionRevocationUnconfirmed   = "session_revocation_unconfirmed"
+	CodeSetupInProgress                = "setup_in_progress"
+	CodeSetupUnavailable               = "setup_unavailable"
+	CodeValidationFailed               = "validation_failed"
+	CodeIdempotencyKeyReused           = "idempotency_key_reused"
+	CodePageTokenInvalid               = "page_token_invalid"
+	CodePluginUnavailable              = "plugin_unavailable"
+	CodeProviderAuthenticationFailed   = "provider_authentication_failed"
+	CodeProviderCommitAmbiguous        = "provider_commit_ambiguous"
+	CodeProviderCredentialsUnavailable = "provider_credentials_unavailable"
+	CodeProviderIncompatible           = "provider_incompatible"
+	CodeProviderInstanceLimitReached   = "provider_instance_limit_reached"
+	CodeProviderUserChanged            = "provider_user_changed"
+	CodeProviderUnavailable            = "provider_unavailable"
+	CodeRevisionMismatch               = "revision_mismatch"
+	CodeResourceNotFound               = "resource_not_found"
+	CodeUnknown                        = "unknown"
+	CodeCancelled                      = "canceled"
+	CodeNotFound                       = "not_found"
+	CodeAlreadyExists                  = "already_exists"
+	CodeResourceExhausted              = "resource_exhausted"
+	CodeFailedPrecondition             = "failed_precondition"
+	CodeAborted                        = "aborted"
+	CodeOutOfRange                     = "out_of_range"
+	CodeUnimplemented                  = "unimplemented"
+	CodeUnavailable                    = "unavailable"
+	CodeDataLoss                       = "data_loss"
+	CodeUnauthenticated                = "unauthenticated"
 )
 
 const (
@@ -67,73 +71,81 @@ const (
 )
 
 var messages = map[string]string{
-	CodeUnexpectedFailure:            "The request could not be completed.",
-	CodeInvalidArgument:              "The request is invalid.",
-	CodeInvalidConfiguration:         "The CLI configuration is invalid.",
-	CodeProfileNotFound:              "The requested profile was not found.",
-	CodeCredentialStoreUnavailable:   "The credential store is unavailable.",
-	CodeCredentialCleanupFailed:      "The invalid credential could not be removed.",
-	CodeUnsafeTransport:              "The server URL requires secure transport.",
-	CodeNetworkUnavailable:           "The server is unavailable.",
-	CodeAlreadyInitialized:           "The server is already initialized.",
-	CodeAuthenticationFailed:         "Authentication failed.",
-	CodeAuthenticationUnavailable:    "Authentication is temporarily unavailable.",
-	CodeCredentialInvalid:            "The credential is invalid or expired.",
-	CodeDeadlineExceeded:             "The request timed out.",
-	CodeInternal:                     "The request could not be completed.",
-	CodeNotInitialized:               "The server has not been initialized.",
-	CodePermissionDenied:             "Permission was denied.",
-	CodeRateLimited:                  "Too many requests. Try again later.",
-	CodeRequestCancelled:             "The request was cancelled.",
-	CodeSessionRevocationUnconfirmed: "The session could not be confirmed as revoked.",
-	CodeSetupInProgress:              "Setup is already in progress.",
-	CodeSetupUnavailable:             "Setup status is temporarily unavailable.",
-	CodeValidationFailed:             "The request is invalid.",
-	CodeIdempotencyKeyReused:         "The operation ID was already used for another request.",
-	CodePageTokenInvalid:             "The page token is invalid or expired.",
-	CodePluginUnavailable:            "The provider plugin is unavailable.",
-	CodeProviderAuthenticationFailed: "The provider rejected the configured credentials.",
-	CodeProviderIncompatible:         "The provider is incompatible with this configuration.",
-	CodeProviderInstanceLimitReached: "The provider instance limit has been reached.",
-	CodeProviderUnavailable:          "The provider is unavailable.",
-	CodeResourceNotFound:             "The requested resource was not found.",
-	CodeUnknown:                      "The request could not be completed.",
-	CodeCancelled:                    "The request was cancelled.",
-	CodeNotFound:                     "The requested resource was not found.",
-	CodeAlreadyExists:                "The resource already exists.",
-	CodeResourceExhausted:            "The server is temporarily unavailable.",
-	CodeFailedPrecondition:           "The request cannot be completed in the current state.",
-	CodeAborted:                      "The request could not be completed at this time.",
-	CodeOutOfRange:                   "The request is invalid.",
-	CodeUnimplemented:                "The requested operation is not available.",
-	CodeUnavailable:                  "The server is unavailable.",
-	CodeDataLoss:                     "The request could not be completed.",
-	CodeUnauthenticated:              "Authentication is required.",
+	CodeUnexpectedFailure:              "The request could not be completed.",
+	CodeInvalidArgument:                "The request is invalid.",
+	CodeInvalidConfiguration:           "The CLI configuration is invalid.",
+	CodeProfileNotFound:                "The requested profile was not found.",
+	CodeCredentialStoreUnavailable:     "The credential store is unavailable.",
+	CodeCredentialCleanupFailed:        "The invalid credential could not be removed.",
+	CodeUnsafeTransport:                "The server URL requires secure transport.",
+	CodeNetworkUnavailable:             "The server is unavailable.",
+	CodeAlreadyInitialized:             "The server is already initialized.",
+	CodeAuthenticationFailed:           "Authentication failed.",
+	CodeAuthenticationUnavailable:      "Authentication is temporarily unavailable.",
+	CodeCredentialInvalid:              "The credential is invalid or expired.",
+	CodeDeadlineExceeded:               "The request timed out.",
+	CodeInternal:                       "The request could not be completed.",
+	CodeNotInitialized:                 "The server has not been initialized.",
+	CodePermissionDenied:               "Permission was denied.",
+	CodeRateLimited:                    "Too many requests. Try again later.",
+	CodeRequestCancelled:               "The request was cancelled.",
+	CodeSessionRevocationUnconfirmed:   "The session could not be confirmed as revoked.",
+	CodeSetupInProgress:                "Setup is already in progress.",
+	CodeSetupUnavailable:               "Setup status is temporarily unavailable.",
+	CodeValidationFailed:               "The request is invalid.",
+	CodeIdempotencyKeyReused:           "The operation ID was already used for another request.",
+	CodePageTokenInvalid:               "The page token is invalid or expired.",
+	CodePluginUnavailable:              "The provider plugin is unavailable.",
+	CodeProviderAuthenticationFailed:   "The provider rejected the configured credentials.",
+	CodeProviderCommitAmbiguous:        "The provider update could not be confirmed.",
+	CodeProviderCredentialsUnavailable: "The stored provider credentials are unavailable.",
+	CodeProviderIncompatible:           "The provider is incompatible with this configuration.",
+	CodeProviderInstanceLimitReached:   "The provider instance limit has been reached.",
+	CodeProviderUserChanged:            "The configuration identifies a different provider principal.",
+	CodeProviderUnavailable:            "The provider is unavailable.",
+	CodeRevisionMismatch:               "The provider instance was changed by another operation.",
+	CodeResourceNotFound:               "The requested resource was not found.",
+	CodeUnknown:                        "The request could not be completed.",
+	CodeCancelled:                      "The request was cancelled.",
+	CodeNotFound:                       "The requested resource was not found.",
+	CodeAlreadyExists:                  "The resource already exists.",
+	CodeResourceExhausted:              "The server is temporarily unavailable.",
+	CodeFailedPrecondition:             "The request cannot be completed in the current state.",
+	CodeAborted:                        "The request could not be completed at this time.",
+	CodeOutOfRange:                     "The request is invalid.",
+	CodeUnimplemented:                  "The requested operation is not available.",
+	CodeUnavailable:                    "The server is unavailable.",
+	CodeDataLoss:                       "The request could not be completed.",
+	CodeUnauthenticated:                "Authentication is required.",
 }
 
 var reasonCodes = map[string]string{
-	"ALREADY_INITIALIZED":             CodeAlreadyInitialized,
-	"AUTHENTICATION_FAILED":           CodeAuthenticationFailed,
-	"AUTHENTICATION_UNAVAILABLE":      CodeAuthenticationUnavailable,
-	"CREDENTIAL_INVALID":              CodeCredentialInvalid,
-	"DEADLINE_EXCEEDED":               CodeDeadlineExceeded,
-	"INTERNAL":                        CodeInternal,
-	"IDEMPOTENCY_KEY_REUSED":          CodeIdempotencyKeyReused,
-	"PAGE_TOKEN_INVALID":              CodePageTokenInvalid,
-	"PLUGIN_UNAVAILABLE":              CodePluginUnavailable,
-	"PROVIDER_AUTHENTICATION_FAILED":  CodeProviderAuthenticationFailed,
-	"PROVIDER_INCOMPATIBLE":           CodeProviderIncompatible,
-	"PROVIDER_INSTANCE_LIMIT_REACHED": CodeProviderInstanceLimitReached,
-	"PROVIDER_UNAVAILABLE":            CodeProviderUnavailable,
-	"RESOURCE_NOT_FOUND":              CodeResourceNotFound,
-	"NOT_INITIALIZED":                 CodeNotInitialized,
-	"PERMISSION_DENIED":               CodePermissionDenied,
-	"RATE_LIMITED":                    CodeRateLimited,
-	"REQUEST_CANCELLED":               CodeRequestCancelled,
-	"SESSION_REVOCATION_UNCONFIRMED":  CodeSessionRevocationUnconfirmed,
-	"SETUP_IN_PROGRESS":               CodeSetupInProgress,
-	"SETUP_UNAVAILABLE":               CodeSetupUnavailable,
-	"VALIDATION_FAILED":               CodeValidationFailed,
+	"ALREADY_INITIALIZED":              CodeAlreadyInitialized,
+	"AUTHENTICATION_FAILED":            CodeAuthenticationFailed,
+	"AUTHENTICATION_UNAVAILABLE":       CodeAuthenticationUnavailable,
+	"CREDENTIAL_INVALID":               CodeCredentialInvalid,
+	"DEADLINE_EXCEEDED":                CodeDeadlineExceeded,
+	"INTERNAL":                         CodeInternal,
+	"IDEMPOTENCY_KEY_REUSED":           CodeIdempotencyKeyReused,
+	"PAGE_TOKEN_INVALID":               CodePageTokenInvalid,
+	"PLUGIN_UNAVAILABLE":               CodePluginUnavailable,
+	"PROVIDER_AUTHENTICATION_FAILED":   CodeProviderAuthenticationFailed,
+	"PROVIDER_COMMIT_AMBIGUOUS":        CodeProviderCommitAmbiguous,
+	"PROVIDER_CREDENTIALS_UNAVAILABLE": CodeProviderCredentialsUnavailable,
+	"PROVIDER_INCOMPATIBLE":            CodeProviderIncompatible,
+	"PROVIDER_INSTANCE_LIMIT_REACHED":  CodeProviderInstanceLimitReached,
+	"PROVIDER_USER_CHANGED":            CodeProviderUserChanged,
+	"PROVIDER_UNAVAILABLE":             CodeProviderUnavailable,
+	"RESOURCE_NOT_FOUND":               CodeResourceNotFound,
+	"REVISION_MISMATCH":                CodeRevisionMismatch,
+	"NOT_INITIALIZED":                  CodeNotInitialized,
+	"PERMISSION_DENIED":                CodePermissionDenied,
+	"RATE_LIMITED":                     CodeRateLimited,
+	"REQUEST_CANCELLED":                CodeRequestCancelled,
+	"SESSION_REVOCATION_UNCONFIRMED":   CodeSessionRevocationUnconfirmed,
+	"SETUP_IN_PROGRESS":                CodeSetupInProgress,
+	"SETUP_UNAVAILABLE":                CodeSetupUnavailable,
+	"VALIDATION_FAILED":                CodeValidationFailed,
 }
 
 var fieldReasons = map[string]struct{}{
@@ -258,9 +270,9 @@ func (e *Error) ExitCode() int {
 		return 4
 	case CodeProfileNotFound, CodeNotFound, CodeResourceNotFound:
 		return 5
-	case CodeAlreadyInitialized, CodeNotInitialized, CodeSetupInProgress, CodeAlreadyExists, CodeFailedPrecondition, CodeAborted, CodeIdempotencyKeyReused, CodeProviderAuthenticationFailed, CodeProviderIncompatible:
+	case CodeAlreadyInitialized, CodeNotInitialized, CodeSetupInProgress, CodeAlreadyExists, CodeFailedPrecondition, CodeAborted, CodeIdempotencyKeyReused, CodeProviderAuthenticationFailed, CodeProviderIncompatible, CodeProviderUserChanged, CodeRevisionMismatch:
 		return 6
-	case CodeAuthenticationUnavailable, CodeDeadlineExceeded, CodeRateLimited, CodeSessionRevocationUnconfirmed, CodeSetupUnavailable, CodeResourceExhausted, CodeUnavailable, CodeNetworkUnavailable, CodePluginUnavailable, CodeProviderInstanceLimitReached, CodeProviderUnavailable:
+	case CodeAuthenticationUnavailable, CodeDeadlineExceeded, CodeRateLimited, CodeSessionRevocationUnconfirmed, CodeSetupUnavailable, CodeResourceExhausted, CodeUnavailable, CodeNetworkUnavailable, CodePluginUnavailable, CodeProviderCommitAmbiguous, CodeProviderCredentialsUnavailable, CodeProviderInstanceLimitReached, CodeProviderUnavailable:
 		return 7
 	default:
 		return 1

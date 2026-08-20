@@ -2,9 +2,9 @@
 
 Nama is a self-hosted, iOS-first Jellyfin control plane. It has a TypeScript/Node core, a Go CLI, generated Swift bindings for a future universal app targeting iOS, tvOS, and macOS, and a first-party Jellyfin plugin; no Apple client application is currently checked in. The core is not a media relay: media travels directly from a provider to the client through safe, short-lived locators.
 
-- `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements Administrator setup and authentication, code-owned bundled-provider discovery, durable provider-installation reconciliation, and authenticated provider-type listing. Device pairing, provider-instance management, and client behavior remain unimplemented.
-- `apps/cli/` — Go public-API client surface; named server profiles, Administrator setup and sign-in, authentication status, and provider-type listing are implemented. The remaining management command families are unimplemented.
-- `plugins/jellyfin/` — first-party TypeScript provider adapter; its production discovery executable implements private health and provider-information RPCs with the accepted configuration schema. Connection and media behavior remain unimplemented.
+- `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements Administrator setup and authentication, bundled-provider discovery and reconciliation, provider-type listing, and verified provider-instance create/list/get/update including disable and re-enable. Device pairing, provider-instance deletion/testing, and client behavior remain unimplemented.
+- `apps/cli/` — Go public-API client surface; named server profiles, Administrator setup and sign-in, authentication status, provider-type listing, and provider-instance create/list/get/update are implemented. The remaining management command families are unimplemented.
+- `plugins/jellyfin/` — first-party TypeScript provider adapter; its production executable implements private health, provider-information, and connection RPCs with the accepted configuration schema. Media behavior remains unimplemented.
 - `proto/` — authoritative Protobuf schemas and generation configuration.
 - `gen/` — committed, Buf-owned generated bindings.
 
@@ -44,6 +44,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Do not build product playback on AetherEngine `6.21.0`: source review rejected it because it leaks locator headers across origins and logs locator URLs in Release.
 - Do not claim the generated Swift bindings prove iOS, tvOS, or macOS compilation or runtime behavior while no universal client application is checked in.
 - Do not expose provider resource IDs, SDK types, raw provider errors, configuration secrets, reusable credentials, locator URLs, or locator headers across the public boundary or in logs.
+- Hold each provider-instance supervisor admission fence through durable update resolution; release it only after pinning the committed or recovered revision, and leave it closed while durable truth remains ambiguous.
 - On a Nama fatal setup-commit ambiguity, make local `GetStatus` fail `UNAVAILABLE/SETUP_UNAVAILABLE` until exit; never report `initialized=false`.
 - While a Nama bootstrap attempt is active, return `SETUP_IN_PROGRESS` only for its matching token; every other candidate fails `AUTHENTICATION_FAILED`.
 - Emit Nama `server.runtime_failed` at `fatal` severity so configured `warn`, `error`, and `fatal` thresholds retain it.

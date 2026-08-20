@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"slices"
 	"time"
 
 	"connectrpc.com/connect"
@@ -100,6 +101,26 @@ type CreateProviderInstanceInput struct {
 
 // CreateProviderInstanceResult includes the retry key used for this mutation.
 type CreateProviderInstanceResult struct {
+	OperationID      string           `json:"operation_id"`
+	ProviderInstance ProviderInstance `json:"provider_instance"`
+}
+
+// UpdateProviderInstanceInput contains one optimistic provider-instance patch.
+type UpdateProviderInstanceInput struct {
+	Profile                  string
+	Server                   string
+	OperationID              string
+	ProviderInstanceID       string
+	ExpectedRevision         string
+	ConfigurationPatch       map[string]any
+	ClearConfigurationFields []string
+	DisplayName              *string
+	Enabled                  *bool
+	SyncPriority             *uint32
+}
+
+// UpdateProviderInstanceResult includes the retry key used for this mutation.
+type UpdateProviderInstanceResult struct {
 	OperationID      string           `json:"operation_id"`
 	ProviderInstance ProviderInstance `json:"provider_instance"`
 }
@@ -289,6 +310,54 @@ func CreateProviderInstance(
 		return CreateProviderInstanceResult{}, err
 	}
 	return CreateProviderInstanceResult{OperationID: operationID, ProviderInstance: instance}, nil
+}
+
+// UpdateProviderInstance verifies and atomically persists one provider-instance patch.
+func UpdateProviderInstance(
+	ctx context.Context,
+	input UpdateProviderInstanceInput,
+	client apiv1.ProviderServiceClient,
+	credentials auth.CredentialStore,
+) (UpdateProviderInstanceResult, error) {
+	credential, err := providerCredential(ctx, input.Profile, input.Server, credentials)
+	if err != nil {
+		return UpdateProviderInstanceResult{}, err
+	}
+	operationID := input.OperationID
+	if operationID == "" {
+		operationID, err = newOperationID()
+		if err != nil {
+			return UpdateProviderInstanceResult{}, clierror.Unexpected(err)
+		}
+	}
+	configurationPatch, err := structpb.NewStruct(input.ConfigurationPatch)
+	if err != nil {
+		return UpdateProviderInstanceResult{}, clierror.InvalidArgument(errors.New("configuration patch must be a JSON object"))
+	}
+	message := &apiv1.UpdateProviderInstanceRequest{
+		OperationId:              operationID,
+		ProviderInstanceId:       input.ProviderInstanceID,
+		ExpectedRevision:         input.ExpectedRevision,
+		ConfigurationPatch:       configurationPatch,
+		ClearConfigurationFields: slices.Clone(input.ClearConfigurationFields),
+		DisplayName:              input.DisplayName,
+		Enabled:                  input.Enabled,
+		SyncPriority:             input.SyncPriority,
+	}
+	request := connect.NewRequest(message)
+	attachProviderCredential(request, credential)
+	response, err := client.UpdateProviderInstance(ctx, request)
+	if err != nil {
+		return UpdateProviderInstanceResult{}, clierror.Translate(err)
+	}
+	if response == nil || response.Msg == nil {
+		return UpdateProviderInstanceResult{}, clierror.Unexpected(errors.New("invalid provider-instance response"))
+	}
+	instance, err := mapProviderInstance(response.Msg.GetProviderInstance())
+	if err != nil {
+		return UpdateProviderInstanceResult{}, err
+	}
+	return UpdateProviderInstanceResult{OperationID: operationID, ProviderInstance: instance}, nil
 }
 
 func newOperationID() (string, error) {

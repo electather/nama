@@ -19,6 +19,7 @@ import {
   createInstance,
   deleteInstance,
   recordObservation,
+  updateInstance,
 } from "./provider-mutations-private.ts";
 import {
   cleanupExpiredOperationResults,
@@ -34,6 +35,7 @@ import type {
   ProviderPersistence,
   ProviderPersistenceContext,
   ProviderPersistenceFailure,
+  StoredProviderInstance,
   StoredProviderInstallation,
 } from "./provider-persistence-model-private.ts";
 import { deriveProtectionKeys, destroyProtectionKeys } from "./provider-protection-private.ts";
@@ -81,6 +83,7 @@ const makeProviderPersistence = (
           matchesPrincipal(context, providerInstanceId, principalReference),
         readOperationResult: (lookup) => readOperationResult(context, lookup),
         recordObservation: (input) => recordObservation(context, input),
+        updateInstance: (input) => updateInstance(context, input),
       };
       Object.freeze(service);
       return Object.freeze({
@@ -100,6 +103,8 @@ export {
   type ProviderInstanceInput,
   type ProviderPersistence,
   type ProviderPersistenceFailure,
+  type StoredProviderInstance,
   type StoredProviderInstallation,
+  persistenceFailure,
   makeProviderPersistence,
 };

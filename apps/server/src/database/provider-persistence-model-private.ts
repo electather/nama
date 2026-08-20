@@ -87,6 +87,21 @@ interface ProviderInstanceInput {
   readonly syncPriority?: number;
 }
 
+interface ProviderInstanceUpdateInput {
+  readonly carryObservationForward: boolean;
+  readonly clearCredentialKeys: readonly string[];
+  readonly configuration?: JsonObject;
+  readonly credentialChanges: Readonly<Record<string, string>>;
+  readonly displayName: string;
+  readonly enabled: boolean;
+  readonly expectedRevision: string;
+  readonly operation: ProviderOperationInput;
+  readonly providerInstanceId: string;
+  readonly providerTypeId: string;
+  readonly revision: string;
+  readonly syncPriority: number;
+}
+
 interface ProviderInstanceDeletionInput {
   readonly operation: ProviderOperationInput;
   readonly providerInstanceId: string;
@@ -117,6 +132,28 @@ interface StoredProviderInstance {
   readonly syncPriority: number;
 }
 
+const STATUS_SUMMARY_NOT_OBSERVED = "Connection not yet observed";
+
+const providerObservationForRevision = (
+  input: Readonly<{
+    readonly currentRevision: string;
+    readonly observationRevision: string;
+    readonly status: string;
+    readonly summary: string;
+  }>,
+): ProviderInstanceRecord["observation"] => {
+  if (
+    input.status !== "authentication_failed" &&
+    input.status !== "healthy" &&
+    input.status !== "unavailable"
+  ) {
+    throw new Error("provider instance observation is invalid");
+  }
+  if (input.observationRevision !== input.currentRevision) {
+    return { status: "unavailable", summary: STATUS_SUMMARY_NOT_OBSERVED };
+  }
+  return { status: input.status, summary: input.summary };
+};
 const taggedError = Data.TaggedError;
 const ProviderPersistenceError = taggedError("ProviderPersistenceError")<Record<string, never>>;
 const ProviderCredentialsUnavailable = taggedError("ProviderCredentialsUnavailable")<
@@ -130,11 +167,15 @@ const ProviderSyncPriorityConflict = taggedError("ProviderSyncPriorityConflict")
 >;
 type ProviderInstanceLimitFailure = InstanceType<typeof ProviderInstanceLimitReached>;
 type ProviderSyncPriorityConflictFailure = InstanceType<typeof ProviderSyncPriorityConflict>;
+const ProviderRevisionMismatch = taggedError("ProviderRevisionMismatch")<Record<string, never>>;
+const ProviderUpdatePreparationFailed = taggedError("ProviderUpdatePreparationFailed")<
+  Record<string, never>
+>;
+type ProviderRevisionMismatchFailure = InstanceType<typeof ProviderRevisionMismatch>;
 const ProviderOperationKeyReused = taggedError("ProviderOperationKeyReused")<Record<string, never>>;
 type ProviderPersistenceFailure = InstanceType<typeof ProviderPersistenceError>;
 type ProviderCredentialsFailure = InstanceType<typeof ProviderCredentialsUnavailable>;
 type ProviderOperationKeyReuse = InstanceType<typeof ProviderOperationKeyReused>;
-
 interface ProviderPersistence {
   readonly acceptInstallation: (
     input: ProviderInstallationInput,
@@ -144,6 +185,15 @@ interface ProviderPersistence {
   ) => Effect.Effect<
     ProviderInstanceRecord,
     ProviderInstanceLimitFailure | ProviderPersistenceFailure | ProviderSyncPriorityConflictFailure
+  >;
+  readonly updateInstance: (
+    input: ProviderInstanceUpdateInput,
+  ) => Effect.Effect<
+    ProviderInstanceRecord,
+    | ProviderPersistenceFailure
+    | ProviderRevisionMismatchFailure
+    | ProviderSyncPriorityConflictFailure
+    | InstanceType<typeof ProviderUpdatePreparationFailed>
   >;
   readonly deleteInstance: (
     input: ProviderInstanceDeletionInput,
@@ -186,7 +236,6 @@ interface ProviderPersistence {
     input: ProviderObservationInput,
   ) => Effect.Effect<boolean, ProviderPersistenceFailure>;
 }
-
 interface ProviderPersistenceContext {
   readonly database: ProviderDatabase;
   readonly keys: ProtectionKeys;
@@ -222,6 +271,8 @@ export {
   type ProviderInstanceRecord,
   type ProviderInstanceLimitFailure,
   type ProviderInstanceInput,
+  type ProviderInstanceUpdateInput,
+  type ProviderRevisionMismatchFailure,
   type ProviderSyncPriorityConflictFailure,
   type ProviderInstallationListInput,
   type StoredProviderInstallation,
@@ -238,8 +289,11 @@ export {
   type StoredProviderInstance,
   ProviderOperationKeyReused,
   ProviderInstanceLimitReached,
+  ProviderRevisionMismatch,
   ProviderSyncPriorityConflict,
+  ProviderUpdatePreparationFailed,
   credentialFailure,
   operationLookupFailure,
   persistenceFailure,
+  providerObservationForRevision,
 };

@@ -1,6 +1,6 @@
 # Core server
 
-Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, authenticated plugin-subprocess supervisor, bundled-provider discovery/listing, and verified provider-instance create/list/get slice are implemented and verified.
+Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, authenticated plugin-subprocess supervisor, bundled-provider discovery/listing, and verified provider-instance create/list/get/update including disable and re-enable are implemented and verified.
 
 This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics.
 
@@ -17,10 +17,10 @@ This note is the canonical record for durable core-server boundaries. The implem
 - one native Node listener and one Effect managed request runtime for health and RPC callbacks;
 - runtime-controlled readiness and fatal post-bind failure;
 - one Effect-scoped authenticated, on-demand plugin-subprocess supervisor with context-free discovery, one-shot candidate, exact-revision instance launches, and bounded idle retirement;
-- one code-owned bundled-provider registry with bounded startup discovery, compatible installation reconciliation, safe availability status, authenticated provider-type listing, and provider-instance create/list/get; and
+- one code-owned bundled-provider registry with bounded startup discovery, compatible installation reconciliation, safe availability status, authenticated provider-type listing, and provider-instance create/list/get/update; and
 - deterministic signal shutdown, bounded drain, process-group termination, and resource finalization.
 
-The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; Setup, Auth, `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, and `GetProviderInstance` are implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. The private plugin transport launches, authenticates, handshakes with, calls, recovers, and terminates code-owned subprocesses. Its production Jellyfin executable implements authenticated health, static provider information, restricted configuration, and candidate connection verification without advertising media capabilities.
+The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; Setup, Auth, `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, `GetProviderInstance`, and `UpdateProviderInstance` are implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. The private plugin transport launches, authenticates, handshakes with, calls, recovers, and terminates code-owned subprocesses. Its production Jellyfin executable implements health, discovery, and connection verification.
 
 ## Architecture decisions
 
@@ -33,9 +33,10 @@ Effect owns composition, scopes, interruption, logging, expected failures, and s
 Under [ADR-0010](../adr/0010-postgresql-drizzle-persistence-boundary.md), Drizzle stays on the shared `pg.Pool`; do not introduce `@effect/sql-pg`. Wrap Promise-based database operations once inside the Effect module that owns the operation.
 
 The deep `ProviderManagement` Effect module owns provider-type reads and the
-implemented provider-instance create/list/get slice while hiding
+implemented provider-instance create/list/get/update slice while hiding
 restricted-schema validation, secret splitting, encryption, operation
-idempotency, status observations, persistence transactions, and pagination.
+idempotency, status observations, revision gates, runtime cutover, persistence
+transactions, and pagination.
 Connect handlers remain mappings, the supervised-plugin runtime remains a
 separate owner, and the database module exposes only the narrow provider
 transactions this module needs. Do not expose Drizzle or add generic repository,
@@ -289,8 +290,15 @@ in one transaction. List and get read configured-secret markers without
 decrypting credentials and project damaged stored credentials as unavailable.
 Count limits, enabled-priority uniqueness, default-priority allocation, and
 idempotency arbitration remain database-serialized under concurrent creates.
-Update, disable/re-enable, instance-runtime admission, and delete retain the
-documented target fencing and cleanup contract but are not yet implemented.
+
+Provider update applies display-name, priority, and disable-only changes without
+contacting the provider. Configuration, credential, and re-enable changes merge
+the complete configuration, retain omitted secrets, verify a one-shot candidate
+against the immutable provider principal, and commit only after the per-instance
+writer gate rechecks the expected revision and the supervisor drains and retires
+old-revision admission. Credential replacements receive fresh envelopes; safe
+responses retain presence markers only. Revision-fenced observation writes
+reject retired completions.
 
 Provider mutations use a seven-day completed-result ledger scoped by
 administrator, fully qualified method, and client operation ID. The ledger
@@ -299,7 +307,7 @@ plaintext credentials. Database uniqueness arbitrates concurrent duplicates;
 no transaction or pending-operation lease spans a provider call.
 
 A provider mutation whose commit result is ambiguous does not trigger the
-setup-specific fatal process rule. The affected instance gate stays closed
+setup-specific fatal process rule. The affected instance remains unavailable
 until a fresh database read resolves its durable operation result and revision.
 Unrelated provider instances and authentication remain available whenever
 their owners and PostgreSQL are healthy; no candidate test or provider mutation
@@ -331,4 +339,4 @@ The implemented coverage exercises generated-client and real-process setup/authe
 
 ## Deferred work
 
-Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. Provider-instance update/delete, explicit connection testing, Jellyfin media behavior, pairing, playback, and synchronization belong to their owning milestones.
+Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. Provider-instance delete and explicit connection testing, Jellyfin media behavior, pairing, playback, and synchronization belong to their owning milestones.
