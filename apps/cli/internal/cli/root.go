@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -230,6 +231,7 @@ func NewRootCommand(dependencies Dependencies) *cobra.Command {
 		}),
 		providercommand.NewCommand(providercommand.Handlers{
 			CreateInstance:   runtime.createProviderInstance,
+			DeleteInstance:   runtime.deleteProviderInstance,
 			GetInstance:      runtime.getProviderInstance,
 			ListInstances:    runtime.listProviderInstances,
 			ListTypes:        runtime.listProviderTypes,
@@ -655,6 +657,69 @@ func (r *runtime) updateProviderInstance(
 		}
 		return result, nil
 	})
+}
+
+func (r *runtime) deleteProviderInstance(
+	command *cobra.Command,
+	input providercommand.DeleteInstanceInput,
+) error {
+	return r.execute(command, true, func(state commandState) (any, error) {
+		if err := r.requireProfile(command, state); err != nil {
+			return nil, err
+		}
+		if err := r.confirmProviderDeletion(command, state, input); err != nil {
+			return nil, err
+		}
+		providerClient, err := r.providerClient(state)
+		if err != nil {
+			return nil, err
+		}
+		result, err := app.DeleteProviderInstance(
+			command.Context(),
+			app.DeleteProviderInstanceInput{
+				Profile:            state.resolved.Profile,
+				Server:             state.resolved.Server,
+				OperationID:        input.OperationID,
+				ProviderInstanceID: input.ProviderInstanceID,
+				ExpectedRevision:   input.ExpectedRevision,
+			},
+			providerClient,
+			r.dependencies.Credentials,
+		)
+		if err != nil {
+			return nil, classifyLocalError(err)
+		}
+		return result, nil
+	})
+}
+
+func (r *runtime) confirmProviderDeletion(
+	command *cobra.Command,
+	state commandState,
+	input providercommand.DeleteInstanceInput,
+) error {
+	if input.Yes {
+		return nil
+	}
+	if state.resolved.Output == config.OutputJSON || !r.dependencies.SecretInput.Terminal {
+		return clierror.InvalidArgument(errors.New("--yes is required for non-interactive provider-instance deletion"))
+	}
+	if _, err := io.WriteString(
+		command.ErrOrStderr(),
+		"Permanently delete provider instance "+input.ProviderInstanceID+"? [y/N] ",
+	); err != nil {
+		return clierror.Unexpected(err)
+	}
+	answer, err := bufio.NewReader(command.InOrStdin()).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return clierror.Unexpected(err)
+	}
+	confirmed := strings.EqualFold(strings.TrimSpace(answer), "y") ||
+		strings.EqualFold(strings.TrimSpace(answer), "yes")
+	if !confirmed {
+		return clierror.New(clierror.CodeRequestCancelled, errors.New("provider-instance deletion was not confirmed"))
+	}
+	return nil
 }
 
 func readProviderConfiguration(command *cobra.Command, path string) (map[string]any, error) {

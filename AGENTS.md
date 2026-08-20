@@ -2,8 +2,8 @@
 
 Nama is a self-hosted, iOS-first Jellyfin control plane. It has a TypeScript/Node core, a Go CLI, generated Swift bindings for a future universal app targeting iOS, tvOS, and macOS, and a first-party Jellyfin plugin; no Apple client application is currently checked in. The core is not a media relay: media travels directly from a provider to the client through safe, short-lived locators.
 
-- `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements Administrator setup and authentication, bundled-provider discovery and reconciliation, provider-type listing, and verified provider-instance create/list/get/update including disable and re-enable. Device pairing, provider-instance deletion/testing, and client behavior remain unimplemented.
-- `apps/cli/` — Go public-API client surface; named server profiles, Administrator setup and sign-in, authentication status, provider-type listing, and provider-instance create/list/get/update are implemented. The remaining management command families are unimplemented.
+- `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements Administrator setup and authentication, bundled-provider discovery and reconciliation, provider-type listing, and verified provider-instance create/list/get/update/delete including disable and re-enable. Device pairing, provider-instance testing, and client behavior remain unimplemented.
+- `apps/cli/` — Go public-API client surface; named server profiles, Administrator setup and sign-in, authentication status, provider-type listing, and provider-instance create/list/get/update/delete are implemented. The remaining management command families are unimplemented.
 - `plugins/jellyfin/` — first-party TypeScript provider adapter; its production executable implements private health, provider-information, and connection RPCs with the accepted configuration schema. Media behavior remains unimplemented.
 - `proto/` — authoritative Protobuf schemas and generation configuration.
 - `gen/` — committed, Buf-owned generated bindings.

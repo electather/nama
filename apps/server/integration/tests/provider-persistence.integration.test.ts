@@ -787,6 +787,74 @@ it.live("stores immutable instance-bound principal HMACs and discards raw refere
   ),
 );
 
+it.live("keeps enabled and stale-revision provider state intact on rejected deletion", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* guardedDeletionTest() {
+      yield* initializeProviderDatabase(databaseUrl);
+      const results = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* rejectUnsafeDeletion() {
+          yield* acceptJellyfinInstallation(database.providers);
+          yield* database.providers.createInstance(makeInstanceInput("enabled-instance", 1));
+          yield* database.providers.createInstance({
+            ...makeInstanceInput("disabled-instance", 2),
+            enabled: false,
+          });
+          const enabledInput = {
+            expectedRevision: REVISION,
+            operation: {
+              administratorUserId: ADMINISTRATOR_ID,
+              canonicalRequest: Buffer.from('{"delete":"enabled"}', "utf8"),
+              method: DELETE_METHOD,
+              operationId: "delete-enabled",
+              serializedResult: {},
+            },
+            providerInstanceId: "enabled-instance",
+          };
+          const staleInput = {
+            expectedRevision: "stale-revision",
+            operation: {
+              administratorUserId: ADMINISTRATOR_ID,
+              canonicalRequest: Buffer.from('{"delete":"stale"}', "utf8"),
+              method: DELETE_METHOD,
+              operationId: "delete-stale",
+              serializedResult: {},
+            },
+            providerInstanceId: "disabled-instance",
+          };
+          const enabled = yield* database.providers.deleteInstance(enabledInput);
+          const stale = yield* database.providers.deleteInstance(staleInput).pipe(Effect.flip);
+          return { enabled, stale: stale._tag };
+        }),
+      );
+      const retained = yield* withPool(databaseUrl, (pool) =>
+        Effect.promise(async () => {
+          const result = await pool.query<{
+            readonly credential_count: string;
+            readonly instance_count: string;
+            readonly observation_count: string;
+          }>(
+            `SELECT
+              (SELECT count(*) FROM provider_instance) AS instance_count,
+              (SELECT count(*) FROM provider_credential) AS credential_count,
+              (SELECT count(*) FROM provider_instance_observation) AS observation_count`,
+          );
+          return result.rows.at(0);
+        }),
+      );
+
+      expect(results).toEqual({
+        enabled: false,
+        stale: "ProviderRevisionMismatch",
+      });
+      expect(retained).toEqual({
+        credential_count: "2",
+        instance_count: "2",
+        observation_count: "2",
+      });
+    }),
+  ),
+);
+
 it.live("retains scoped keyed operation results for seven days after instance deletion", () =>
   withIsolatedDatabase((databaseUrl) =>
     Effect.gen(function* operationResultRetentionTest() {
@@ -795,7 +863,7 @@ it.live("retains scoped keyed operation results for seven days after instance de
         JSON.stringify({ api_key: SECRET_VALUE, operation_id: "create-retained" }),
         "utf8",
       );
-      const createInput = makeInstanceInput(INSTANCE_ID, 1);
+      const createInput = { ...makeInstanceInput(INSTANCE_ID, 1), enabled: false };
       const deleteOperation = {
         administratorUserId: ADMINISTRATOR_ID,
         canonicalRequest: Buffer.from(
@@ -821,10 +889,12 @@ it.live("retains scoped keyed operation results for seven days after instance de
               operationId: "create-retained",
             },
           });
-          const deleted = yield* database.providers.deleteInstance({
+          const deletionInput = {
+            expectedRevision: REVISION,
             operation: deleteOperation,
             providerInstanceId: INSTANCE_ID,
-          });
+          };
+          const deleted = yield* database.providers.deleteInstance(deletionInput);
           const createResult = yield* database.providers.readOperationResult({
             administratorUserId: ADMINISTRATOR_ID,
             canonicalRequest: createCanonicalRequest,
@@ -851,7 +921,9 @@ it.live("retains scoped keyed operation results for seven days after instance de
       const storedFacts = yield* withPool(databaseUrl, (pool) =>
         Effect.promise(async () => {
           const result = await pool.query<{
+            readonly credentials_removed: boolean;
             readonly fingerprints_are_keyed: boolean;
+            readonly observations_removed: boolean;
             readonly retained_after_delete: boolean;
             readonly seven_day_minimum: boolean;
           }>(
@@ -862,9 +934,15 @@ it.live("retains scoped keyed operation results for seven days after instance de
               ) AS fingerprints_are_keyed,
               count(*) = 2 AS retained_after_delete,
               bool_and(expires_at >= completed_at + interval '7 days')
-                AS seven_day_minimum
+                AS seven_day_minimum,
+              NOT EXISTS (
+                SELECT 1 FROM provider_credential WHERE provider_instance_id = $2
+              ) AS credentials_removed,
+              NOT EXISTS (
+                SELECT 1 FROM provider_instance_observation WHERE provider_instance_id = $2
+              ) AS observations_removed
             FROM provider_operation_result`,
-            [SECRET_VALUE],
+            [SECRET_VALUE, INSTANCE_ID],
           );
           return result.rows.at(0);
         }),
@@ -877,7 +955,9 @@ it.live("retains scoped keyed operation results for seven days after instance de
         reused: "ProviderOperationKeyReused",
       });
       expect(storedFacts).toEqual({
+        credentials_removed: true,
         fingerprints_are_keyed: true,
+        observations_removed: true,
         retained_after_delete: true,
         seven_day_minimum: true,
       });

@@ -125,6 +125,20 @@ type UpdateProviderInstanceResult struct {
 	ProviderInstance ProviderInstance `json:"provider_instance"`
 }
 
+// DeleteProviderInstanceInput contains one optimistic provider-instance deletion.
+type DeleteProviderInstanceInput struct {
+	Profile            string
+	Server             string
+	OperationID        string
+	ProviderInstanceID string
+	ExpectedRevision   string
+}
+
+// DeleteProviderInstanceResult includes the retry key used for this mutation.
+type DeleteProviderInstanceResult struct {
+	OperationID string `json:"operation_id"`
+}
+
 func providerCredential(
 	ctx context.Context,
 	profile string,
@@ -358,6 +372,40 @@ func UpdateProviderInstance(
 		return UpdateProviderInstanceResult{}, err
 	}
 	return UpdateProviderInstanceResult{OperationID: operationID, ProviderInstance: instance}, nil
+}
+
+// DeleteProviderInstance permanently removes one disabled provider instance.
+func DeleteProviderInstance(
+	ctx context.Context,
+	input DeleteProviderInstanceInput,
+	client apiv1.ProviderServiceClient,
+	credentials auth.CredentialStore,
+) (DeleteProviderInstanceResult, error) {
+	credential, err := providerCredential(ctx, input.Profile, input.Server, credentials)
+	if err != nil {
+		return DeleteProviderInstanceResult{}, err
+	}
+	operationID := input.OperationID
+	if operationID == "" {
+		operationID, err = newOperationID()
+		if err != nil {
+			return DeleteProviderInstanceResult{}, clierror.Unexpected(err)
+		}
+	}
+	request := connect.NewRequest(&apiv1.DeleteProviderInstanceRequest{
+		OperationId:        operationID,
+		ProviderInstanceId: input.ProviderInstanceID,
+		ExpectedRevision:   input.ExpectedRevision,
+	})
+	attachProviderCredential(request, credential)
+	response, err := client.DeleteProviderInstance(ctx, request)
+	if err != nil {
+		return DeleteProviderInstanceResult{}, clierror.Translate(err)
+	}
+	if response == nil || response.Msg == nil {
+		return DeleteProviderInstanceResult{}, clierror.Unexpected(errors.New("invalid provider-instance deletion response"))
+	}
+	return DeleteProviderInstanceResult{OperationID: operationID}, nil
 }
 
 func newOperationID() (string, error) {

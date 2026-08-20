@@ -52,6 +52,8 @@ const CREATE_PROVIDER_INSTANCE_METHOD =
   "nama.api.v1.ProviderService.CreateProviderInstance" as const;
 const UPDATE_PROVIDER_INSTANCE_METHOD =
   "nama.api.v1.ProviderService.UpdateProviderInstance" as const;
+const DELETE_PROVIDER_INSTANCE_METHOD =
+  "nama.api.v1.ProviderService.DeleteProviderInstance" as const;
 const LIST_PROVIDER_INSTANCES_METHOD = "nama.api.v1.ProviderService.ListProviderInstances";
 const NORMALIZED_PROVIDER_INSTANCE_QUERY = "{}";
 const CANDIDATE_DEADLINE_MILLISECONDS = 5000;
@@ -113,6 +115,13 @@ interface UpdateProviderInstanceInput {
   readonly syncPriority?: number;
 }
 
+interface DeleteProviderInstanceInput {
+  readonly administratorId: string;
+  readonly expectedRevision: string;
+  readonly operationId: string;
+  readonly providerInstanceId: string;
+}
+
 interface ListProviderInstancesInput {
   readonly administratorId: string;
   readonly pageSize: number;
@@ -155,6 +164,7 @@ const ProviderCredentialsUnavailable = taggedError("ProviderCredentialsUnavailab
   Record<string, never>
 >;
 const ProviderCommitAmbiguous = taggedError("ProviderCommitAmbiguous")<Record<string, never>>;
+const ProviderInstanceBusy = taggedError("ProviderInstanceBusy")<Record<string, never>>;
 
 type ProviderValidationFailure = InstanceType<typeof ProviderValidationFailed>;
 type ProviderResourceNotFoundFailure = InstanceType<typeof ProviderResourceNotFound>;
@@ -167,6 +177,7 @@ type RevisionMismatchFailure = InstanceType<typeof RevisionMismatch>;
 type ProviderUserChangedFailure = InstanceType<typeof ProviderUserChanged>;
 type ProviderCredentialsUnavailableFailure = InstanceType<typeof ProviderCredentialsUnavailable>;
 type ProviderCommitAmbiguousFailure = InstanceType<typeof ProviderCommitAmbiguous>;
+type ProviderInstanceBusyFailure = InstanceType<typeof ProviderInstanceBusy>;
 type ProviderMutationFailure =
   | IdempotencyKeyReuseFailure
   | ProviderAuthenticationFailure
@@ -174,6 +185,7 @@ type ProviderMutationFailure =
   | ProviderCredentialsUnavailableFailure
   | ProviderIncompatibleFailure
   | InstanceType<typeof ProviderInstanceLimitReached>
+  | ProviderInstanceBusyFailure
   | ProviderPersistenceFailure
   | ProviderPluginUnavailableFailure
   | ProviderResourceNotFoundFailure
@@ -203,10 +215,24 @@ type InstanceCutoverFence = (
   mode: PluginInstanceFenceMode,
 ) => Effect.Effect<InstanceAdmissionFence, PluginCallFailure, Scope.Scope>;
 
+interface InstanceActivityDeletionFence {
+  readonly open: Effect.Effect<void>;
+}
+
+type InstanceActivityDeletionFenceAcquire = (
+  providerInstanceId: string,
+) => Effect.Effect<InstanceActivityDeletionFence, ProviderInstanceBusyFailure>;
+
+const noProviderActivityFence: InstanceActivityDeletionFenceAcquire = () =>
+  Effect.succeed({ open: Effect.void });
+
 interface ProviderManagementService {
   readonly createProviderInstance: (
     input: CreateProviderInstanceInput,
   ) => Effect.Effect<ProviderInstanceRecord, ProviderMutationFailure>;
+  readonly deleteProviderInstance: (
+    input: DeleteProviderInstanceInput,
+  ) => Effect.Effect<void, ProviderMutationFailure>;
   readonly getProviderInstance: (
     input: GetProviderInstanceInput,
   ) => Effect.Effect<
@@ -321,6 +347,7 @@ const verifyMutationCandidate = (
 interface ProviderManagementDependencies {
   readonly discover: ProviderDiscovery;
   readonly fenceInstance: InstanceCutoverFence;
+  readonly fenceActivities?: InstanceActivityDeletionFenceAcquire;
   readonly masterKey: string;
   readonly verifyCandidate?: CandidateVerification;
   readonly persistence: ProviderPersistence;
@@ -897,7 +924,7 @@ const getProviderInstance = (
 
 const expectedProviderInstance = (
   persistence: ProviderPersistence,
-  input: UpdateProviderInstanceInput,
+  input: Readonly<{ readonly expectedRevision: string; readonly providerInstanceId: string }>,
 ): Effect.Effect<
   ProviderInstanceRecord,
   ProviderPersistenceFailure | ProviderResourceNotFoundFailure | RevisionMismatchFailure
@@ -1491,6 +1518,170 @@ const updateProviderInstance = (
     (canonicalRequest) => Effect.sync(() => canonicalRequest.fill(ZERO)),
   );
 
+const canonicalDeleteRequest = (input: DeleteProviderInstanceInput): Buffer =>
+  Buffer.from(
+    canonicalJson({
+      expected_revision: input.expectedRevision,
+      provider_instance_id: input.providerInstanceId,
+    }),
+    "utf8",
+  );
+
+const deleteOperationResult = (
+  persistence: ProviderPersistence,
+  input: DeleteProviderInstanceInput,
+  canonicalRequest: Uint8Array,
+): Effect.Effect<boolean, IdempotencyKeyReuseFailure | ProviderPersistenceFailure> =>
+  persistence
+    .readOperationResult({
+      administratorUserId: input.administratorId,
+      canonicalRequest,
+      method: DELETE_PROVIDER_INSTANCE_METHOD,
+      operationId: input.operationId,
+    })
+    .pipe(
+      Effect.mapError((failure) =>
+        failure._tag === "ProviderOperationKeyReused" ? new IdempotencyKeyReused({}) : failure,
+      ),
+      Effect.flatMap((serialized) => {
+        if (serialized === undefined) {
+          return Effect.succeed(false);
+        }
+        return Object.keys(serialized).length === ZERO
+          ? Effect.succeed(true)
+          : Effect.die(new Error("invalid durable provider delete result"));
+      }),
+    );
+
+interface ProviderDeleteInput {
+  readonly ambiguousInstances: Set<string>;
+  readonly fenceActivities: InstanceActivityDeletionFenceAcquire;
+  readonly fenceInstance: InstanceCutoverFence;
+  readonly input: DeleteProviderInstanceInput;
+  readonly persistence: ProviderPersistence;
+}
+
+interface ProviderDeleteCommitInput extends ProviderDeleteInput {
+  readonly canonicalRequest: Uint8Array;
+}
+
+const recoverProviderDeleteCommit = (
+  commit: ProviderDeleteCommitInput,
+  activityFence: InstanceActivityDeletionFence,
+): Effect.Effect<void, ProviderMutationFailure> => {
+  const { ambiguousInstances, canonicalRequest, input, persistence } = commit;
+  ambiguousInstances.add(input.providerInstanceId);
+  const ambiguousFailure = Effect.fail(new ProviderCommitAmbiguous({}));
+  return deleteOperationResult(persistence, input, canonicalRequest).pipe(
+    Effect.flatMap((committed) => {
+      if (committed) {
+        return Effect.sync(() => {
+          ambiguousInstances.delete(input.providerInstanceId);
+        });
+      }
+      return persistence.loadInstanceRecord(input.providerInstanceId).pipe(
+        Effect.flatMap((current) => {
+          if (current === undefined) {
+            return ambiguousFailure;
+          }
+          ambiguousInstances.delete(input.providerInstanceId);
+          return activityFence.open.pipe(Effect.andThen(ambiguousFailure));
+        }),
+      );
+    }),
+    Effect.catchTag("ProviderPersistenceError", () => ambiguousFailure),
+  );
+};
+
+const persistProviderDelete = (
+  commit: ProviderDeleteCommitInput,
+  activityFence: InstanceActivityDeletionFence,
+): Effect.Effect<void, ProviderMutationFailure> => {
+  const { ambiguousInstances, canonicalRequest, input, persistence } = commit;
+  return persistence
+    .deleteInstance({
+      expectedRevision: input.expectedRevision,
+      operation: {
+        administratorUserId: input.administratorId,
+        canonicalRequest,
+        method: DELETE_PROVIDER_INSTANCE_METHOD,
+        operationId: input.operationId,
+        serializedResult: {},
+      },
+      providerInstanceId: input.providerInstanceId,
+    })
+    .pipe(
+      Effect.catchTag("ProviderRevisionMismatch", () => Effect.fail(new RevisionMismatch({}))),
+      Effect.catchTag("ProviderPersistenceError", () =>
+        recoverProviderDeleteCommit(commit, activityFence),
+      ),
+      Effect.flatMap((deleted) => {
+        if (deleted === true) {
+          return Effect.void;
+        }
+        ambiguousInstances.add(input.providerInstanceId);
+        return Effect.fail(new ProviderCommitAmbiguous({}));
+      }),
+    );
+};
+
+const commitProviderDelete = (
+  commit: ProviderDeleteCommitInput,
+): Effect.Effect<void, ProviderMutationFailure, Scope.Scope> =>
+  Effect.gen(function* commitProviderDeleteEffect() {
+    const {
+      ambiguousInstances,
+      canonicalRequest,
+      fenceActivities,
+      fenceInstance,
+      input,
+      persistence,
+    } = commit;
+    const replay = yield* deleteOperationResult(persistence, input, canonicalRequest);
+    if (replay) {
+      ambiguousInstances.delete(input.providerInstanceId);
+      return yield* Effect.void;
+    }
+    const current = yield* expectedProviderInstance(persistence, input);
+    if (current.enabled) {
+      return yield* Effect.fail(new ProviderInstanceBusy({}));
+    }
+    ambiguousInstances.delete(input.providerInstanceId);
+    const activityFence = yield* fenceActivities(input.providerInstanceId);
+    const runtimeFence = fenceInstance(input.providerInstanceId, "retire-current").pipe(
+      Effect.mapError(() => new ProviderPluginUnavailable({})),
+      Effect.matchEffect({
+        onFailure: (failure) => activityFence.open.pipe(Effect.andThen(Effect.fail(failure))),
+        onSuccess: () => Effect.void,
+      }),
+    );
+    yield* runtimeFence;
+    return yield* persistProviderDelete(commit, activityFence).pipe(
+      Effect.matchEffect({
+        onFailure: (failure): Effect.Effect<never, ProviderMutationFailure> => {
+          if (failure._tag === "ProviderCommitAmbiguous") {
+            return Effect.fail(failure);
+          }
+          return activityFence.open.pipe(Effect.andThen(Effect.fail(failure)));
+        },
+        onSuccess: () => Effect.void,
+      }),
+    );
+  });
+
+const deleteProviderInstance = (
+  deletion: ProviderDeleteInput,
+  gate: Semaphore.Semaphore,
+): Effect.Effect<void, ProviderMutationFailure> =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => canonicalDeleteRequest(deletion.input)),
+    (canonicalRequest) => {
+      const commit = commitProviderDelete({ ...deletion, canonicalRequest });
+      return gate.withPermits(WRITER_GATE_PERMITS)(Effect.uninterruptible(Effect.scoped(commit)));
+    },
+    (canonicalRequest) => Effect.sync(() => canonicalRequest.fill(ZERO)),
+  );
+
 const providerTypeCursor = ({
   input,
   now,
@@ -1569,6 +1760,7 @@ const listProviderTypes = (
 
 const makeProviderManagement = ({
   discover,
+  fenceActivities,
   fenceInstance,
   masterKey,
   persistence,
@@ -1611,9 +1803,21 @@ const makeProviderManagement = ({
     const candidateVerifier: CandidateVerification =
       verifyCandidate ??
       (() => Effect.die(new Error("provider candidate verifier is unavailable")));
+    const activityFencer = fenceActivities ?? noProviderActivityFence;
     return Object.freeze({
       createProviderInstance: (input: CreateProviderInstanceInput) =>
         createProviderInstance(persistence, providerStatuses, candidateVerifier, input),
+      deleteProviderInstance: (input: DeleteProviderInstanceInput) =>
+        deleteProviderInstance(
+          {
+            ambiguousInstances,
+            fenceActivities: activityFencer,
+            fenceInstance,
+            input,
+            persistence,
+          },
+          instanceGate(input.providerInstanceId),
+        ),
       getProviderInstance: (input: GetProviderInstanceInput) =>
         getProviderInstance(persistence, input),
       listProviderInstances: (input: ListProviderInstancesInput) =>
@@ -1646,6 +1850,7 @@ class ProviderManagement extends contextService<ProviderManagement, ProviderMana
       const supervisor = yield* PluginSupervisor;
       const service = yield* makeProviderManagement({
         discover: (provider) => discoverProvider(supervisor, provider),
+        fenceActivities: noProviderActivityFence,
         fenceInstance: (providerInstanceId, mode) =>
           supervisor.fenceInstance(providerInstanceId, mode),
         masterKey: Redacted.value(config.security.masterKey),
@@ -1662,6 +1867,7 @@ export { ProviderManagement, makeProviderManagement };
 export type {
   CandidateVerification,
   CreateProviderInstanceInput,
+  DeleteProviderInstanceInput,
   GetProviderInstanceInput,
   ListProviderInstancesInput,
   ListProviderInstancesResult,
@@ -1671,8 +1877,11 @@ export type {
   ProviderAuthenticationFailure,
   ProviderCommitAmbiguousFailure,
   ProviderCredentialsUnavailableFailure,
+  ProviderInstanceBusyFailure,
   InstanceAdmissionFence,
   InstanceCutoverFence,
+  InstanceActivityDeletionFence,
+  InstanceActivityDeletionFenceAcquire,
   ProviderIncompatibleFailure,
   ProviderDiscovery,
   ProviderManagementDependencies,

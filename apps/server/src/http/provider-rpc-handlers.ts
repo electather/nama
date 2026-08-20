@@ -10,6 +10,7 @@ import { Effect } from "effect";
 
 import {
   CreateProviderInstanceResponseSchema,
+  DeleteProviderInstanceResponseSchema,
   GetProviderInstanceResponseSchema,
   ListProviderInstancesResponseSchema,
   ListProviderTypesResponseSchema,
@@ -151,6 +152,25 @@ const createProviderServiceHandlers = ({
             }),
           ),
         ),
+      context.signal,
+    );
+  },
+  // fallow-ignore-next-line code-duplication -- Every generated route independently enforces request-local Administrator presence.
+  deleteProviderInstance: (request, context) => {
+    const administrator = getRequestAdministrator(context.values);
+    if (administrator === undefined) {
+      return requestRuntime.runPromise(Effect.fail(privateAuthenticationDefect), context.signal);
+    }
+    const response = create(DeleteProviderInstanceResponseSchema);
+    return requestRuntime.runPromise(
+      providerManagement
+        .deleteProviderInstance({
+          administratorId: administrator.id,
+          expectedRevision: request.expectedRevision,
+          operationId: request.operationId,
+          providerInstanceId: request.providerInstanceId,
+        })
+        .pipe(Effect.as(response)),
       context.signal,
     );
   },

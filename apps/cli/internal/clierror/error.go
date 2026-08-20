@@ -44,6 +44,7 @@ const (
 	CodeProviderCredentialsUnavailable = "provider_credentials_unavailable"
 	CodeProviderIncompatible           = "provider_incompatible"
 	CodeProviderInstanceLimitReached   = "provider_instance_limit_reached"
+	CodeProviderInstanceBusy           = "provider_instance_busy"
 	CodeProviderUserChanged            = "provider_user_changed"
 	CodeProviderUnavailable            = "provider_unavailable"
 	CodeRevisionMismatch               = "revision_mismatch"
@@ -97,10 +98,11 @@ var messages = map[string]string{
 	CodePageTokenInvalid:               "The page token is invalid or expired.",
 	CodePluginUnavailable:              "The provider plugin is unavailable.",
 	CodeProviderAuthenticationFailed:   "The provider rejected the configured credentials.",
-	CodeProviderCommitAmbiguous:        "The provider update could not be confirmed.",
+	CodeProviderCommitAmbiguous:        "The provider mutation could not be confirmed.",
 	CodeProviderCredentialsUnavailable: "The stored provider credentials are unavailable.",
 	CodeProviderIncompatible:           "The provider is incompatible with this configuration.",
 	CodeProviderInstanceLimitReached:   "The provider instance limit has been reached.",
+	CodeProviderInstanceBusy:           "The provider instance is enabled or still in use.",
 	CodeProviderUserChanged:            "The configuration identifies a different provider principal.",
 	CodeProviderUnavailable:            "The provider is unavailable.",
 	CodeRevisionMismatch:               "The provider instance was changed by another operation.",
@@ -134,6 +136,7 @@ var reasonCodes = map[string]string{
 	"PROVIDER_CREDENTIALS_UNAVAILABLE": CodeProviderCredentialsUnavailable,
 	"PROVIDER_INCOMPATIBLE":            CodeProviderIncompatible,
 	"PROVIDER_INSTANCE_LIMIT_REACHED":  CodeProviderInstanceLimitReached,
+	"PROVIDER_INSTANCE_BUSY":           CodeProviderInstanceBusy,
 	"PROVIDER_USER_CHANGED":            CodeProviderUserChanged,
 	"PROVIDER_UNAVAILABLE":             CodeProviderUnavailable,
 	"RESOURCE_NOT_FOUND":               CodeResourceNotFound,
@@ -270,7 +273,7 @@ func (e *Error) ExitCode() int {
 		return 4
 	case CodeProfileNotFound, CodeNotFound, CodeResourceNotFound:
 		return 5
-	case CodeAlreadyInitialized, CodeNotInitialized, CodeSetupInProgress, CodeAlreadyExists, CodeFailedPrecondition, CodeAborted, CodeIdempotencyKeyReused, CodeProviderAuthenticationFailed, CodeProviderIncompatible, CodeProviderUserChanged, CodeRevisionMismatch:
+	case CodeAlreadyInitialized, CodeNotInitialized, CodeSetupInProgress, CodeAlreadyExists, CodeFailedPrecondition, CodeAborted, CodeIdempotencyKeyReused, CodeProviderAuthenticationFailed, CodeProviderIncompatible, CodeProviderInstanceBusy, CodeProviderUserChanged, CodeRevisionMismatch:
 		return 6
 	case CodeAuthenticationUnavailable, CodeDeadlineExceeded, CodeRateLimited, CodeSessionRevocationUnconfirmed, CodeSetupUnavailable, CodeResourceExhausted, CodeUnavailable, CodeNetworkUnavailable, CodePluginUnavailable, CodeProviderCommitAmbiguous, CodeProviderCredentialsUnavailable, CodeProviderInstanceLimitReached, CodeProviderUnavailable:
 		return 7

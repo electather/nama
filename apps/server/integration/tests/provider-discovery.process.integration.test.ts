@@ -14,6 +14,7 @@ import { expect, it } from "@effect/vitest";
 import { BadRequestSchema, ErrorInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
 import { ProviderService } from "@nama/api/nama/api/v1/provider_pb.js";
 import { Effect } from "effect";
+import { Pool } from "pg";
 
 import {
   bootstrapTokenFrom,
@@ -151,6 +152,7 @@ const runNamaWithInput = ({
         child.stdin.end(input);
       }),
   });
+
 const runNamaFailure = (
   binary: string,
   environment: NodeJS.ProcessEnv,
@@ -1106,6 +1108,234 @@ it.live(
               readonly data: { readonly operation_id: string };
             };
             expect(generatedOperationPayload.data.operation_id).toMatch(/^[A-Za-z0-9_-]{32}$/u);
+            const generatedInstance = providerInstanceFromNamaResult(generatedOperation);
+            const generatedInstanceId = requiredString(generatedInstance["id"]);
+            const generatedRevision = requiredString(generatedInstance["revision"]);
+            const [concurrentDisable, concurrentDelete] = yield* Effect.all(
+              [
+                runNama(binary, environment, [
+                  "provider",
+                  "instance",
+                  "update",
+                  generatedInstanceId,
+                  "--expected-revision",
+                  generatedRevision,
+                  "--enabled=false",
+                  "--operation-id",
+                  "concurrent-delete-disable",
+                  "--profile",
+                  "local",
+                  "--output",
+                  "json",
+                ]),
+                runNamaFailure(binary, environment, [
+                  "provider",
+                  "instance",
+                  "delete",
+                  generatedInstanceId,
+                  "--expected-revision",
+                  generatedRevision,
+                  "--operation-id",
+                  "concurrent-delete-attempt",
+                  "--yes",
+                  "--profile",
+                  "local",
+                  "--output",
+                  "json",
+                ]),
+              ] as const,
+              { concurrency: "unbounded" },
+            );
+            expect(providerInstanceFromNamaResult(concurrentDisable)).toMatchObject({
+              enabled: false,
+            });
+            expect(concurrentDelete.exitCode).toBe(6);
+            const concurrentDeletePayload = JSON.parse(concurrentDelete.stderr) as {
+              readonly error: { readonly code: string };
+            };
+            expect(["provider_instance_busy", "revision_mismatch"]).toContain(
+              concurrentDeletePayload.error.code,
+            );
+            expectNamaFailure(
+              yield* runNamaFailure(binary, environment, [
+                "provider",
+                "instance",
+                "delete",
+                providerInstanceId,
+                "--expected-revision",
+                winningRevision,
+                "--profile",
+                "local",
+                "--output",
+                "json",
+              ]),
+              2,
+              "invalid_argument",
+            );
+            expectNamaFailure(
+              yield* runNamaFailure(binary, environment, [
+                "provider",
+                "instance",
+                "delete",
+                providerInstanceId,
+                "--expected-revision",
+                winningRevision,
+                "--operation-id",
+                "provider-enabled-delete",
+                "--yes",
+                "--profile",
+                "local",
+                "--output",
+                "json",
+              ]),
+              6,
+              "provider_instance_busy",
+            );
+            const disabledForDeletion = yield* Effect.promise(() =>
+              providerClient.updateProviderInstance(
+                {
+                  configurationPatch: {},
+                  enabled: false,
+                  expectedRevision: winningRevision,
+                  operationId: "provider-delete-disable",
+                  providerInstanceId,
+                },
+                callOptions(`Bearer ${token}`),
+              ),
+            );
+            const deletionRevision = requiredString(disabledForDeletion.providerInstance?.revision);
+            expectNamaFailure(
+              yield* runNamaFailure(binary, environment, [
+                "provider",
+                "instance",
+                "delete",
+                providerInstanceId,
+                "--expected-revision",
+                winningRevision,
+                "--operation-id",
+                "provider-stale-delete",
+                "--yes",
+                "--profile",
+                "local",
+                "--output",
+                "json",
+              ]),
+              6,
+              "revision_mismatch",
+            );
+            const requestsBeforeDelete = requestCount();
+            const deleteArguments = [
+              "provider",
+              "instance",
+              "delete",
+              providerInstanceId,
+              "--expected-revision",
+              deletionRevision,
+              "--operation-id",
+              "provider-delete-operation",
+              "--yes",
+              "--profile",
+              "local",
+              "--output",
+              "json",
+            ] as const;
+            const deleted = yield* runNama(binary, environment, deleteArguments);
+            expect(deleted.stderr).toBe("");
+            expect(JSON.parse(deleted.stdout)).toMatchObject({
+              data: { operation_id: "provider-delete-operation" },
+            });
+            expect(deleted.stdout).not.toContain("provider-api-key-sentinel");
+            const deleteRetry = yield* runNama(binary, environment, deleteArguments);
+            expect(deleteRetry.stdout).toBe(deleted.stdout);
+            expectNamaFailure(
+              yield* runNamaFailure(binary, environment, [
+                ...deleteArguments.slice(0, 5),
+                "different-revision",
+                ...deleteArguments.slice(6),
+              ]),
+              6,
+              "idempotency_key_reused",
+            );
+            expectNamaFailure(
+              yield* runNamaFailure(binary, environment, [
+                "provider",
+                "instance",
+                "get",
+                providerInstanceId,
+                "--profile",
+                "local",
+                "--output",
+                "json",
+              ]),
+              5,
+              "resource_not_found",
+            );
+            const afterDeleteList = yield* runNama(binary, environment, [
+              "provider",
+              "instance",
+              "list",
+              "--profile",
+              "local",
+              "--output",
+              "json",
+            ]);
+            const afterDeletePayload = JSON.parse(afterDeleteList.stdout) as {
+              readonly data: {
+                readonly provider_instances: readonly Readonly<Record<string, unknown>>[];
+              };
+            };
+            expect(
+              afterDeletePayload.data.provider_instances.some(
+                (instance) => instance["id"] === providerInstanceId,
+              ),
+            ).toBe(false);
+            const providerTypesAfterDelete = yield* runNama(binary, environment, [
+              "provider",
+              "type",
+              "list",
+              "--profile",
+              "local",
+              "--output",
+              "json",
+            ]);
+            expect(providerTypesAfterDelete.stdout).toContain('"id":"jellyfin"');
+            const deletionFacts = yield* Effect.promise(async () => {
+              const observer = new Pool({ connectionString: databaseUrl });
+              try {
+                const result = await observer.query<{
+                  readonly credential_exists: boolean;
+                  readonly instance_exists: boolean;
+                  readonly observation_exists: boolean;
+                  readonly operation_exists: boolean;
+                }>(
+                  `SELECT
+                    EXISTS (SELECT 1 FROM provider_instance WHERE id = $1)
+                      AS instance_exists,
+                    EXISTS (SELECT 1 FROM provider_credential WHERE provider_instance_id = $1)
+                      AS credential_exists,
+                    EXISTS (
+                      SELECT 1 FROM provider_instance_observation
+                      WHERE provider_instance_id = $1
+                    ) AS observation_exists,
+                    EXISTS (
+                      SELECT 1 FROM provider_operation_result
+                      WHERE method = 'nama.api.v1.ProviderService.DeleteProviderInstance'
+                        AND operation_id = 'provider-delete-operation'
+                    ) AS operation_exists`,
+                  [providerInstanceId],
+                );
+                return result.rows[0];
+              } finally {
+                await observer.end();
+              }
+            });
+            expect(deletionFacts).toEqual({
+              credential_exists: false,
+              instance_exists: false,
+              observation_exists: false,
+              operation_exists: true,
+            });
+            expect(requestCount()).toBe(requestsBeforeDelete);
             expect(runningProcess.stdout()).not.toContain(token);
             expect(runningProcess.stderr()).not.toContain(token);
             yield* stopCleanly(runningProcess);

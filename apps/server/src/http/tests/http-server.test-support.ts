@@ -82,6 +82,7 @@ const defaultSetupCoordinator = SetupCoordinator.of({
 
 const defaultProviderManagement = ProviderManagement.of({
   createProviderInstance: () => Effect.die("unexpected provider instance creation"),
+  deleteProviderInstance: () => Effect.die("unexpected provider instance deletion"),
   getProviderInstance: () => Effect.die("unexpected provider instance read"),
   listProviderInstances: () => Effect.die("unexpected provider instance list"),
   listProviderTypes: () => Effect.succeed({ nextPageToken: "", providerTypes: [] }),

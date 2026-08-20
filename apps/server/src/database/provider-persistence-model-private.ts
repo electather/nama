@@ -103,6 +103,7 @@ interface ProviderInstanceUpdateInput {
 }
 
 interface ProviderInstanceDeletionInput {
+  readonly expectedRevision: string;
   readonly operation: ProviderOperationInput;
   readonly providerInstanceId: string;
 }
@@ -197,7 +198,7 @@ interface ProviderPersistence {
   >;
   readonly deleteInstance: (
     input: ProviderInstanceDeletionInput,
-  ) => Effect.Effect<boolean, ProviderPersistenceFailure>;
+  ) => Effect.Effect<boolean, ProviderPersistenceFailure | ProviderRevisionMismatchFailure>;
   readonly listInstances: (
     input: ProviderInstanceListInput,
   ) => Effect.Effect<readonly ProviderInstanceRecord[], ProviderPersistenceFailure>;
