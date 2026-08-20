@@ -223,8 +223,79 @@ type InstanceActivityDeletionFenceAcquire = (
   providerInstanceId: string,
 ) => Effect.Effect<InstanceActivityDeletionFence, ProviderInstanceBusyFailure>;
 
-const noProviderActivityFence: InstanceActivityDeletionFenceAcquire = () =>
-  Effect.succeed({ open: Effect.void });
+interface ProviderActivitySlot {
+  active: number;
+  deletionFenced: boolean;
+  readonly semaphore: Semaphore.Semaphore;
+}
+
+interface ProviderActivityAdmission {
+  readonly fenceForDeletion: InstanceActivityDeletionFenceAcquire;
+  readonly run: ProviderManagementService["runProviderActivity"];
+}
+
+const makeProviderActivityAdmission = (): ProviderActivityAdmission => {
+  const slots = new Map<string, ProviderActivitySlot>();
+  const slotFor = (providerInstanceId: string): ProviderActivitySlot => {
+    const current = slots.get(providerInstanceId);
+    if (current !== undefined) {
+      return current;
+    }
+    const created = {
+      active: ZERO,
+      deletionFenced: false,
+      semaphore: Semaphore.makeUnsafe(WRITER_GATE_PERMITS),
+    };
+    slots.set(providerInstanceId, created);
+    return created;
+  };
+  const run: ProviderManagementService["runProviderActivity"] = (providerInstanceId, activity) => {
+    const slot = slotFor(providerInstanceId);
+    const acquire = slot.semaphore.withPermits(WRITER_GATE_PERMITS)(
+      Effect.suspend(() => {
+        if (slot.deletionFenced) {
+          return Effect.fail(new ProviderInstanceBusy({}));
+        }
+        return Effect.sync(() => {
+          slot.active += WRITER_GATE_PERMITS;
+        });
+      }),
+    );
+    const release = slot.semaphore.withPermits(WRITER_GATE_PERMITS)(
+      Effect.sync(() => {
+        slot.active -= WRITER_GATE_PERMITS;
+      }),
+    );
+    return Effect.acquireUseRelease(
+      acquire,
+      () => activity,
+      () => release,
+    );
+  };
+  const fenceForDeletion: InstanceActivityDeletionFenceAcquire = (providerInstanceId) => {
+    const slot = slotFor(providerInstanceId);
+    return slot.semaphore.withPermits(WRITER_GATE_PERMITS)(
+      Effect.suspend(() => {
+        if (slot.deletionFenced || slot.active > ZERO) {
+          return Effect.fail(new ProviderInstanceBusy({}));
+        }
+        slot.deletionFenced = true;
+        let fenceClosed = true;
+        return Effect.succeed({
+          open: slot.semaphore.withPermits(WRITER_GATE_PERMITS)(
+            Effect.sync(() => {
+              if (fenceClosed) {
+                fenceClosed = false;
+                slot.deletionFenced = false;
+              }
+            }),
+          ),
+        });
+      }),
+    );
+  };
+  return Object.freeze({ fenceForDeletion, run });
+};
 
 interface ProviderManagementService {
   readonly createProviderInstance: (
@@ -251,6 +322,10 @@ interface ProviderManagementService {
   readonly listProviderTypes: (
     input: ListProviderTypesInput,
   ) => Effect.Effect<ListProviderTypesResult, PageTokenInvalidFailure | ProviderPersistenceFailure>;
+  readonly runProviderActivity: <Success, Failure, Requirements>(
+    providerInstanceId: string,
+    activity: Effect.Effect<Success, Failure, Requirements>,
+  ) => Effect.Effect<Success, Failure | ProviderInstanceBusyFailure, Requirements>;
 }
 
 const pageTokenFailure = (error: unknown): PageTokenInvalidFailure => {
@@ -347,7 +422,6 @@ const verifyMutationCandidate = (
 interface ProviderManagementDependencies {
   readonly discover: ProviderDiscovery;
   readonly fenceInstance: InstanceCutoverFence;
-  readonly fenceActivities?: InstanceActivityDeletionFenceAcquire;
   readonly masterKey: string;
   readonly verifyCandidate?: CandidateVerification;
   readonly persistence: ProviderPersistence;
@@ -1760,7 +1834,6 @@ const listProviderTypes = (
 
 const makeProviderManagement = ({
   discover,
-  fenceActivities,
   fenceInstance,
   masterKey,
   persistence,
@@ -1782,6 +1855,7 @@ const makeProviderManagement = ({
     const providerStatuses = new Map<string, ProviderDiscoveryStatus>();
     const instanceGates = new Map<string, Semaphore.Semaphore>();
     const ambiguousInstances = new Set<string>();
+    const activityAdmission = makeProviderActivityAdmission();
     const instanceGate = (providerInstanceId: string): Semaphore.Semaphore => {
       const current = instanceGates.get(providerInstanceId);
       if (current !== undefined) {
@@ -1803,7 +1877,7 @@ const makeProviderManagement = ({
     const candidateVerifier: CandidateVerification =
       verifyCandidate ??
       (() => Effect.die(new Error("provider candidate verifier is unavailable")));
-    const activityFencer = fenceActivities ?? noProviderActivityFence;
+    const activityFencer = activityAdmission.fenceForDeletion;
     return Object.freeze({
       createProviderInstance: (input: CreateProviderInstanceInput) =>
         createProviderInstance(persistence, providerStatuses, candidateVerifier, input),
@@ -1824,6 +1898,7 @@ const makeProviderManagement = ({
         listProviderInstances(persistence, pageTokens, input),
       listProviderTypes: (input: ListProviderTypesInput) =>
         listProviderTypes(persistence, pageTokens, input),
+      runProviderActivity: activityAdmission.run,
       updateProviderInstance: (input: UpdateProviderInstanceInput) =>
         updateProviderInstance(
           persistence,
@@ -1850,7 +1925,6 @@ class ProviderManagement extends contextService<ProviderManagement, ProviderMana
       const supervisor = yield* PluginSupervisor;
       const service = yield* makeProviderManagement({
         discover: (provider) => discoverProvider(supervisor, provider),
-        fenceActivities: noProviderActivityFence,
         fenceInstance: (providerInstanceId, mode) =>
           supervisor.fenceInstance(providerInstanceId, mode),
         masterKey: Redacted.value(config.security.masterKey),
@@ -1880,8 +1954,6 @@ export type {
   ProviderInstanceBusyFailure,
   InstanceAdmissionFence,
   InstanceCutoverFence,
-  InstanceActivityDeletionFence,
-  InstanceActivityDeletionFenceAcquire,
   ProviderIncompatibleFailure,
   ProviderDiscovery,
   ProviderManagementDependencies,

@@ -1,6 +1,6 @@
 // oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary -- Provider-management fixtures keep reconciliation, secret splitting, candidate admission, and token-boundary assertions explicit.
 import { expect, it } from "@effect/vitest";
-import { Data, Effect } from "effect";
+import { Data, Deferred, Effect, Exit, Fiber } from "effect";
 
 import { ProviderUpdatePreparationFailed } from "../../database/provider-persistence-model-private.ts";
 import type {
@@ -1339,7 +1339,61 @@ const disabledProviderInstance = (): ProviderInstanceRecord => {
   };
 };
 
-it.effect("fences activity and runtime before deleting once and replaying the safe result", () => {
+it.effect("blocks provider deletion while admitted core activity is active", () => {
+  const persistence = makePersistence();
+  let deleteCalls = 0;
+  let runtimeFences = 0;
+  const providers = {
+    ...persistence.providers,
+    deleteInstance: () =>
+      Effect.sync(() => {
+        deleteCalls += 1;
+        return true;
+      }),
+    loadInstanceRecord: () => Effect.succeed(disabledProviderInstance()),
+    readOperationResult: noOperationResult,
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* activeProviderActivityTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: () =>
+          Effect.sync(() => {
+            runtimeFences += 1;
+            return { open: () => Effect.void };
+          }),
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+      const activityStarted = yield* Deferred.make<void>();
+      const releaseActivity = yield* Deferred.make<void>();
+      const signalActivityStarted = Deferred.done(activityStarted, Exit.void);
+      const waitForActivityRelease = Deferred.await(releaseActivity);
+      const heldActivity = signalActivityStarted.pipe(Effect.andThen(waitForActivityRelease));
+      const admittedActivity = service.runProviderActivity("provider-instance", heldActivity);
+      const activity = yield* Effect.forkChild(admittedActivity);
+      yield* Deferred.await(activityStarted);
+
+      const failure = yield* service
+        .deleteProviderInstance({
+          administratorId: "administrator-a",
+          expectedRevision: "revision-1",
+          operationId: "active-core-activity-delete",
+          providerInstanceId: "provider-instance",
+        })
+        .pipe(Effect.flip);
+
+      expect(failure).toMatchObject({ _tag: "ProviderInstanceBusy" });
+      expect(runtimeFences).toBe(0);
+      expect(deleteCalls).toBe(0);
+      yield* Deferred.done(releaseActivity, Exit.void);
+      yield* Fiber.join(activity);
+    }),
+  );
+});
+
+it.effect("fences runtime before deleting once and replaying the safe result", () => {
   const persistence = makePersistence();
   const taggedError = Data.TaggedError;
   const OperationKeyReused = taggedError("ProviderOperationKeyReused")<Record<string, never>>;
@@ -1371,15 +1425,6 @@ it.effect("fences activity and runtime before deleting once and replaying the sa
   } satisfies ProviderPersistence;
   const dependencies = {
     discover: successfulDiscovery,
-    fenceActivities: () =>
-      Effect.sync(() => {
-        transitions.push("activities-fenced");
-        return {
-          open: Effect.sync(() => {
-            transitions.push("activities-opened");
-          }),
-        };
-      }),
     fenceInstance: () =>
       Effect.sync(() => {
         transitions.push("runtime-retired");
@@ -1409,7 +1454,7 @@ it.effect("fences activity and runtime before deleting once and replaying the sa
 
       expect(conflictingReuse).toMatchObject({ _tag: "IdempotencyKeyReused" });
       expect(deleteCalls).toBe(1);
-      expect(transitions).toEqual(["activities-fenced", "runtime-retired", "transaction"]);
+      expect(transitions).toEqual(["runtime-retired", "transaction"]);
       expect(durableCanonicalRequest).toBe(
         '{"expected_revision":"revision-1","provider_instance_id":"provider-instance"}',
       );
@@ -1417,12 +1462,9 @@ it.effect("fences activity and runtime before deleting once and replaying the sa
   );
 });
 
-it.effect("rejects enabled, active-playback, and active-synchronization deletion", () => {
+it.effect("rejects enabled provider-instance deletion before runtime cleanup", () => {
   const persistence = makePersistence();
-  const taggedError = Data.TaggedError;
-  const ProviderInstanceBusy = taggedError("ProviderInstanceBusy")<Record<string, never>>;
-  let current = { ...disabledProviderInstance(), enabled: true };
-  let busyActivity: "" | "playback" | "synchronization" = "";
+  const current = { ...disabledProviderInstance(), enabled: true };
   let runtimeFences = 0;
   let deleteCalls = 0;
   const providers = {
@@ -1437,10 +1479,6 @@ it.effect("rejects enabled, active-playback, and active-synchronization deletion
   } satisfies ProviderPersistence;
   const dependencies = {
     discover: successfulDiscovery,
-    fenceActivities: () =>
-      busyActivity === ""
-        ? Effect.succeed({ open: Effect.void })
-        : Effect.fail(new ProviderInstanceBusy({})),
     fenceInstance: () =>
       Effect.sync(() => {
         runtimeFences += 1;
@@ -1461,26 +1499,8 @@ it.effect("rejects enabled, active-playback, and active-synchronization deletion
           providerInstanceId: "provider-instance",
         })
         .pipe(Effect.flip);
-      current = disabledProviderInstance();
-      const activeFailures: object[] = [];
-      for (const activity of ["playback", "synchronization"] as const) {
-        busyActivity = activity;
-        const failure = yield* service
-          .deleteProviderInstance({
-            administratorId: "administrator-a",
-            expectedRevision: "revision-1",
-            operationId: `${activity}-delete`,
-            providerInstanceId: "provider-instance",
-          })
-          .pipe(Effect.flip);
-        activeFailures.push(failure);
-      }
 
       expect(enabled).toMatchObject({ _tag: "ProviderInstanceBusy" });
-      expect(activeFailures).toMatchObject([
-        { _tag: "ProviderInstanceBusy" },
-        { _tag: "ProviderInstanceBusy" },
-      ]);
       expect(runtimeFences).toBe(0);
       expect(deleteCalls).toBe(0);
     }),
@@ -1489,7 +1509,7 @@ it.effect("rejects enabled, active-playback, and active-synchronization deletion
 
 it.effect("reopens activity admission when supervised cleanup is uncertain", () => {
   const persistence = makePersistence();
-  let activityReopens = 0;
+  let activityRan = false;
   let deleteCalls = 0;
   const providers = {
     ...persistence.providers,
@@ -1503,12 +1523,6 @@ it.effect("reopens activity admission when supervised cleanup is uncertain", () 
   } satisfies ProviderPersistence;
   const dependencies = {
     discover: successfulDiscovery,
-    fenceActivities: () =>
-      Effect.succeed({
-        open: Effect.sync(() => {
-          activityReopens += 1;
-        }),
-      }),
     fenceInstance: () => Effect.fail(new PluginUnavailable({ reason: "plugin_exited" })),
     masterKey: MASTER_KEY,
     persistence: providers,
@@ -1527,7 +1541,13 @@ it.effect("reopens activity admission when supervised cleanup is uncertain", () 
         .pipe(Effect.flip);
 
       expect(failure).toMatchObject({ _tag: "ProviderPluginUnavailable" });
-      expect(activityReopens).toBe(1);
+      yield* service.runProviderActivity(
+        "provider-instance",
+        Effect.sync(() => {
+          activityRan = true;
+        }),
+      );
+      expect(activityRan).toBe(true);
       expect(deleteCalls).toBe(0);
     }),
   );

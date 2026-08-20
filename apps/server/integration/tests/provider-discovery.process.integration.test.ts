@@ -1,11 +1,11 @@
 // oxlint-disable import/max-dependencies, eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary, eslint/prefer-destructuring, eslint/sort-keys, promise/avoid-new, promise/prefer-await-to-callbacks, typescript/consistent-return, typescript/no-unsafe-assignment, typescript/no-unsafe-type-assertion, typescript/strict-boolean-expressions, typescript/strict-void-return -- This executable flow keeps the CLI, server, PostgreSQL, subprocess, controlled HTTP provider, and exact process streams visible in one scenario.
 import { execFile, spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
@@ -13,9 +13,21 @@ import { createConnectTransport } from "@connectrpc/connect-node";
 import { expect, it } from "@effect/vitest";
 import { BadRequestSchema, ErrorInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
 import { ProviderService } from "@nama/api/nama/api/v1/provider_pb.js";
-import { Effect } from "effect";
+import { HealthService } from "@nama/api/nama/plugin/v1/health_pb.js";
+import { Effect, Exit, Scope } from "effect";
 import { Pool } from "pg";
 
+import type {
+  ProviderInstanceRecord,
+  ProviderPersistence,
+} from "../../src/database/provider-persistence.ts";
+import { unusedProviderPersistence } from "../../src/database/tests/provider-persistence.test-support.ts";
+import {
+  createTestConnectRequestListener,
+  withEphemeralServer,
+} from "../../src/http/tests/connect-dispatch.test-support.ts";
+import { makeProviderDeleteTestManagement } from "../../src/http/tests/provider-delete-runtime.test-support.ts";
+import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 import {
   bootstrapTokenFrom,
   callOptions,
@@ -25,10 +37,15 @@ import {
   stopCleanly,
 } from "./authentication-process.test-support.ts";
 import { withIsolatedDatabase } from "./postgres.test-support.ts";
-import { startProcess } from "./process.test-support.ts";
+import { MASTER_KEY, startProcess } from "./process.test-support.ts";
 
 const execFilePromise = promisify(execFile);
 const REPOSITORY_ROOT = join(import.meta.dirname, "../../../..");
+const PLUGIN_FIXTURE_PATH = join(import.meta.dirname, "fixtures/plugin-subprocess.mjs");
+const PLUGIN_CALL_DEADLINE_MILLISECONDS = 1000;
+const ABSENT_RESULT_BY_KEY: Readonly<Record<string, undefined>> = Object.freeze({});
+const NO_OPERATION_RESULT = Effect.sync(() => ABSENT_RESULT_BY_KEY["operation"]);
+const PLUGIN_SUPERVISOR_LAYER = PluginSupervisor.layer();
 const TEST_TIMEOUT_MILLISECONDS = 30_000;
 const ADMINISTRATOR = Object.freeze({
   displayName: "Provider Discovery Administrator",
@@ -1342,6 +1359,157 @@ it.live(
           }),
         ),
       ),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+
+it.live(
+  "keeps provider state intact when real supervised cleanup blocks compiled deletion",
+  () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => mkdtemp(join(tmpdir(), "nama-provider-delete-cleanup-"))),
+      (controlDirectory) =>
+        withNamaBinary(({ binary, home }) =>
+          Effect.scoped(
+            Effect.gen(function* providerDeleteCleanupFailureTest() {
+              const supervisor = yield* PluginSupervisor;
+              const providerInstanceId = "provider-instance-cleanup-failure";
+              const revision = "revision-cleanup-failure";
+              const handleScope = yield* Scope.make();
+              const plugin = yield* Scope.provide(handleScope)(
+                supervisor.supervise(
+                  {
+                    arguments: [PLUGIN_FIXTURE_PATH, controlDirectory, "cleanup-failure"],
+                    executable: process.execPath,
+                    expectedProviderType: "fixture",
+                    stderrEvents: [],
+                  },
+                  {
+                    configuration: {},
+                    credentials: {},
+                    kind: "instance",
+                    providerInstanceId,
+                    revision,
+                  },
+                ),
+              );
+              yield* plugin.call(HealthService.method.check, {}, PLUGIN_CALL_DEADLINE_MILLISECONDS);
+              const launchContent = yield* Effect.promise(() =>
+                readFile(join(controlDirectory, "launches.ndjson"), "utf8"),
+              );
+              const firstLaunch = launchContent.trim().split("\n")[0];
+              if (firstLaunch === undefined) {
+                return yield* Effect.die(new Error("cleanup fixture launch record missing"));
+              }
+              const launchRecord = JSON.parse(firstLaunch) as Readonly<Record<string, unknown>>;
+              const runtimeRoot = dirname(dirname(requiredString(launchRecord["socketPath"])));
+
+              const createdAt = new Date("2026-08-20T08:00:00.000Z");
+              let current: ProviderInstanceRecord | undefined = {
+                configuration: {
+                  base_url: "http://127.0.0.1:8096",
+                  user_id: "provider-user",
+                },
+                configuredSecretKeys: ["api_key"],
+                createdAt,
+                credentialsAvailable: true,
+                displayName: "Cleanup failure",
+                enabled: false,
+                id: providerInstanceId,
+                observation: { status: "healthy", summary: "Connected" },
+                providerTypeId: "jellyfin",
+                revision,
+                syncPriority: 1,
+                updatedAt: createdAt,
+              };
+              let deleteCalls = 0;
+              const persistence = {
+                ...unusedProviderPersistence,
+                deleteInstance: () =>
+                  Effect.sync(() => {
+                    deleteCalls += 1;
+                    current = undefined;
+                    return true;
+                  }),
+                loadInstanceRecord: () => Effect.succeed(current),
+                readOperationResult: () => NO_OPERATION_RESULT,
+              } satisfies ProviderPersistence;
+              const providerManagement = yield* makeProviderDeleteTestManagement(
+                persistence,
+                (fencedProviderInstanceId, mode) =>
+                  supervisor.fenceInstance(fencedProviderInstanceId, mode),
+                MASTER_KEY,
+              );
+              const listener = createTestConnectRequestListener(providerManagement);
+              const verifyCleanupFailure = Effect.gen(function* compiledDeleteCleanupFailureTest() {
+                const retained = yield* Effect.promise(() =>
+                  withEphemeralServer(listener, (origin) =>
+                    Effect.runPromise(
+                      Effect.gen(function* compiledDeleteRequestTest() {
+                        const environment = cliEnvironment(home, "test.signed-bearer");
+                        yield* runNama(binary, environment, [
+                          "profile",
+                          "set",
+                          "local",
+                          "--server",
+                          origin,
+                          "--output",
+                          "json",
+                        ]);
+                        expectNamaFailure(
+                          yield* runNamaFailure(binary, environment, [
+                            "provider",
+                            "instance",
+                            "delete",
+                            providerInstanceId,
+                            "--expected-revision",
+                            revision,
+                            "--operation-id",
+                            "cleanup-failure-delete",
+                            "--yes",
+                            "--profile",
+                            "local",
+                            "--output",
+                            "json",
+                          ]),
+                          7,
+                          "plugin_unavailable",
+                        );
+                        return yield* runNama(binary, environment, [
+                          "provider",
+                          "instance",
+                          "get",
+                          providerInstanceId,
+                          "--profile",
+                          "local",
+                          "--output",
+                          "json",
+                        ]);
+                      }),
+                    ),
+                  ),
+                );
+
+                const retainedInstance = providerInstanceFromNamaResult(retained);
+                expect(retainedInstance).toMatchObject({
+                  enabled: false,
+                  id: providerInstanceId,
+                  revision,
+                });
+                expect(deleteCalls).toBe(0);
+              });
+              const restoreRuntimeRoot = Effect.promise(() => chmod(runtimeRoot, 0o700));
+              const closeHandleScope = Scope.close(handleScope, Exit.void);
+              const cleanupFixture = restoreRuntimeRoot.pipe(
+                Effect.andThen(closeHandleScope),
+                Effect.orDie,
+              );
+              yield* verifyCleanupFailure.pipe(Effect.ensuring(cleanupFixture));
+            }).pipe(Effect.provide(PLUGIN_SUPERVISOR_LAYER)),
+          ),
+        ),
+      (controlDirectory) =>
+        Effect.promise(() => rm(controlDirectory, { force: true, recursive: true })),
     ),
   TEST_TIMEOUT_MILLISECONDS,
 );

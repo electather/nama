@@ -86,6 +86,10 @@ const defaultProviderManagement = ProviderManagement.of({
   getProviderInstance: () => Effect.die("unexpected provider instance read"),
   listProviderInstances: () => Effect.die("unexpected provider instance list"),
   listProviderTypes: () => Effect.succeed({ nextPageToken: "", providerTypes: [] }),
+  runProviderActivity: <Success, Failure, Requirements>(
+    _providerInstanceId: string,
+    activity: Effect.Effect<Success, Failure, Requirements>,
+  ) => activity,
   updateProviderInstance: () => Effect.die("unexpected provider instance update"),
 });
 

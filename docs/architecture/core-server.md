@@ -300,14 +300,17 @@ old-revision admission. Credential replacements receive fresh envelopes; safe
 responses retain presence markers only. Revision-fenced observation writes
 reject retired completions.
 
-Provider delete first resolves an exact durable retry, then requires the current
-revision, disabled state, and an idle core-activity fence. Under the same
-per-instance writer gate as update, it closes new core and plugin admission,
-requires bounded supervised cleanup, and atomically removes the provider
-instance, encrypted credentials, and current-revision observation. The
-transaction preserves its independent empty operation result, so an exact retry
-succeeds after the instance row is gone. Cleanup uncertainty leaves durable
-state intact, and Jellyfin receives no destructive request.
+Provider management owns one process-local scoped admission gate for core
+activity associated with each provider instance. Provider delete first resolves
+an exact durable retry, then requires the current revision, disabled state, and
+an idle activity gate. An admitted activity returns `PROVIDER_INSTANCE_BUSY`;
+otherwise delete closes new core and plugin admission under the same
+per-instance writer gate as update, requires bounded supervised cleanup, and
+atomically removes the provider instance, encrypted credentials, and
+current-revision observation. Cleanup failure reopens core admission and leaves
+durable state intact. The transaction preserves its independent empty operation
+result, so an exact retry succeeds after the instance row is gone. Jellyfin
+receives no destructive request.
 
 Provider mutations use a seven-day completed-result ledger scoped by
 administrator, fully qualified method, and client operation ID. The ledger

@@ -66,6 +66,10 @@ const providerManagement: ProviderManagementService = Object.freeze({
       nextPageToken: "",
       providerTypes: [],
     }),
+  runProviderActivity: <Success, Failure, Requirements>(
+    _providerInstanceId: string,
+    activity: Effect.Effect<Success, Failure, Requirements>,
+  ) => activity,
   updateProviderInstance: () => Effect.die("provider update is outside dispatch coverage"),
 });
 
@@ -73,11 +77,13 @@ const requestValidator: RequestValidator = Object.freeze({
   validate: () => validRequestValidation,
 });
 
-const createTestConnectRequestListener = (): RequestListener =>
+const createTestConnectRequestListener = (
+  selectedProviderManagement: ProviderManagementService = providerManagement,
+): RequestListener =>
   createConnectRequestListener({
     authentication,
     monotonicNow: () => TEST_MONOTONIC_TIME,
-    providerManagement,
+    providerManagement: selectedProviderManagement,
     requestIdFactory: () => SERVER_REQUEST_ID,
     requestRuntime,
     requestValidator,

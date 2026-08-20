@@ -65,6 +65,10 @@ it.effect("maps provider create, update, and delete requests to safe responses",
         getProviderInstance: () => Effect.die("unexpected provider get"),
         listProviderInstances: () => Effect.die("unexpected provider list"),
         listProviderTypes: () => Effect.die("unexpected provider type list"),
+        runProviderActivity: <Success, Failure, Requirements>(
+          _providerInstanceId: string,
+          activity: Effect.Effect<Success, Failure, Requirements>,
+        ) => activity,
         updateProviderInstance: (input: UpdateProviderInstanceInput) => {
           received.update = input;
           return Effect.succeed({
