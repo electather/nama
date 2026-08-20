@@ -26,9 +26,11 @@ services:
       start_period: 30s
     ports:
       - "127.0.0.1::8096"
-    tmpfs:
-      - /cache
-      - /config
+    volumes:
+      - jellyfin-cache:/cache
+      - jellyfin-config:/config
 
 volumes:
+  jellyfin-cache:
+  jellyfin-config:
   postgres-data:

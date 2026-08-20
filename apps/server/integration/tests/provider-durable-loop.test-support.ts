@@ -186,6 +186,20 @@ const configuredJellyfinFixture = async (baseUrl: string): Promise<JellyfinFixtu
   };
 };
 
+const revokeJellyfinCredential = (fixture: JellyfinFixture) =>
+  Effect.tryPromise({
+    catch: (error) => error,
+    try: async (): Promise<void> => {
+      expectResponseStatus(
+        await jellyfinPost(fixture.baseUrl, {
+          authorization: jellyfinAuthorization("nama-primary", fixture.primaryApiKey),
+          path: "Sessions/Logout",
+        }),
+        HTTP_NO_CONTENT,
+      );
+    },
+  });
+
 const provisionJellyfin = Effect.tryPromise({
   catch: (error) => error,
   try: async (): Promise<JellyfinFixture> => {
@@ -198,5 +212,5 @@ const provisionJellyfin = Effect.tryPromise({
   },
 });
 
-export { provisionJellyfin, requiredString };
+export { provisionJellyfin, requiredString, revokeJellyfinCredential };
 export type { JellyfinFixture };

@@ -48,46 +48,42 @@ const cliEnvironment = (home: string, token: string): NodeJS.ProcessEnv => {
   };
 };
 
-// oxlint-disable-next-line eslint/max-params -- The subprocess seam deliberately exposes binary, environment, argv, and optional stdin as distinct operating-system channels.
-const runNama = (
-  binary: string,
-  environment: NodeJS.ProcessEnv,
-  arguments_: readonly string[],
-  input?: string,
-): Effect.Effect<NamaResult, Error> =>
-  Effect.callback<NamaResult, Error>((resume) => {
-    const child = spawn(binary, arguments_, {
-      cwd: REPOSITORY_ROOT,
-      env: environment,
-      stdio: ["pipe", "pipe", "pipe"],
+const createNamaRunner =
+  (binary: string, environment: NodeJS.ProcessEnv) =>
+  (arguments_: readonly string[], input?: string): Effect.Effect<NamaResult, Error> =>
+    Effect.callback<NamaResult, Error>((resume) => {
+      const child = spawn(binary, arguments_, {
+        cwd: REPOSITORY_ROOT,
+        env: environment,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const stdout: Buffer[] = [];
+      const stderr: Buffer[] = [];
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdout.push(chunk);
+      });
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderr.push(chunk);
+      });
+      child.once("error", (error) => {
+        resume(Effect.fail(error));
+      });
+      child.once("close", (exitCode) => {
+        resume(
+          Effect.succeed({
+            exitCode: exitCode ?? UNKNOWN_EXIT_CODE,
+            stderr: Buffer.concat(stderr).toString("utf8"),
+            stdout: Buffer.concat(stdout).toString("utf8"),
+          }),
+        );
+      });
+      child.stdin.end(input);
+      return Effect.sync(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+        }
+      });
     });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout.push(chunk);
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr.push(chunk);
-    });
-    child.once("error", (error) => {
-      resume(Effect.fail(error));
-    });
-    child.once("close", (exitCode) => {
-      resume(
-        Effect.succeed({
-          exitCode: exitCode ?? UNKNOWN_EXIT_CODE,
-          stderr: Buffer.concat(stderr).toString("utf8"),
-          stdout: Buffer.concat(stdout).toString("utf8"),
-        }),
-      );
-    });
-    child.stdin.end(input);
-    return Effect.sync(() => {
-      if (child.exitCode === null && child.signalCode === null) {
-        child.kill("SIGKILL");
-      }
-    });
-  });
 
 const dataFromNama = (result: NamaResult): Readonly<Record<string, unknown>> => {
   const payload: unknown = JSON.parse(result.stdout);
@@ -117,5 +113,5 @@ const providerInstanceFromNama = (result: NamaResult): Readonly<Record<string, u
   return Object.fromEntries(Object.entries(providerInstance));
 };
 
-export { cliEnvironment, dataFromNama, providerInstanceFromNama, runNama, withNamaBinary };
+export { cliEnvironment, createNamaRunner, dataFromNama, providerInstanceFromNama, withNamaBinary };
 export type { NamaResult };

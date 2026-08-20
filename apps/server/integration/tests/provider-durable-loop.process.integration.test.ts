@@ -2,32 +2,36 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
+import { Code } from "@connectrpc/connect";
 import { expect, it } from "@effect/vitest";
-import { PluginConnectionStatus, PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 import { Effect } from "effect";
 
-import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 import {
   bootstrapTokenFrom,
   callOptions,
   clientsFor,
+  expectConnectFailure,
   expectReady,
   expectRpcSuccess,
   stopCleanly,
 } from "./authentication-process.test-support.ts";
 import {
   cliEnvironment,
+  createNamaRunner,
   dataFromNama,
   providerInstanceFromNama,
-  runNama,
   withNamaBinary,
 } from "./compiled-cli.test-support.ts";
 import type { NamaResult } from "./compiled-cli.test-support.ts";
-import { productionMigrations, useConfiguredDatabase, withPool } from "./database.test-support.ts";
+import { withPool } from "./database.test-support.ts";
 import { withIsolatedDatabase } from "./postgres.test-support.ts";
 import { MASTER_KEY, startProcess, structuredLinesFrom } from "./process.test-support.ts";
 import type { RunningProcess } from "./process.test-support.ts";
-import { provisionJellyfin, requiredString } from "./provider-durable-loop.test-support.ts";
+import {
+  provisionJellyfin,
+  requiredString,
+  revokeJellyfinCredential,
+} from "./provider-durable-loop.test-support.ts";
 import type { JellyfinFixture } from "./provider-durable-loop.test-support.ts";
 
 const TEST_TIMEOUT_MILLISECONDS = 180_000;
@@ -39,22 +43,68 @@ const ADMINISTRATOR = Object.freeze({
 });
 const CREATE_OPERATION_ID = "durable-provider-operation";
 const PROVIDER_TYPE_ID = "jellyfin";
-const JELLYFIN_PLUGIN_DESCRIPTOR = Object.freeze({
-  arguments: Object.freeze([join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts")]),
-  executable: process.execPath,
-  expectedProviderType: PROVIDER_TYPE_ID,
-  stderrEvents: Object.freeze([]),
+const BUNDLED_PLUGIN_OVERRIDE_PATH = join(
+  import.meta.dirname,
+  "fixtures/bundled-plugin-override.mjs",
+);
+
+type BundledPluginState =
+  | "absent"
+  | "discovery-failure"
+  | "malformed-discovery"
+  | "newer-incompatible";
+type ReconciliationStatus = "available" | "incompatible" | "unavailable";
+
+const bundledPluginOverrideOptions = (home: string, state: BundledPluginState) => ({
+  environment: {
+    NAMA_TEST_BUNDLED_PLUGIN_CONTROL_DIRECTORY: join(home, `bundled-plugin-${state}`),
+    NAMA_TEST_BUNDLED_PLUGIN_MODE: state,
+  },
+  preloads: [BUNDLED_PLUGIN_OVERRIDE_PATH],
 });
+
+interface SecrecySentinel {
+  readonly name: string;
+  readonly value: string;
+}
+
+interface SecrecyBoundary {
+  readonly contents: readonly string[];
+  readonly sentinels: readonly SecrecySentinel[];
+}
 
 interface InstallationSnapshot {
   readonly configurationSchema: Readonly<Record<string, unknown>>;
   readonly pluginBuildVersion: string;
   readonly schemaRevision: string;
 }
+interface RetainedReconciliationStateExpectation {
+  readonly databaseUrl: string;
+  readonly expectedConfiguration: Readonly<Record<string, unknown>>;
+  readonly expectedInstallation: InstallationSnapshot;
+  readonly expectedStatus: ReconciliationStatus;
+  readonly providerInstanceId: string;
+  readonly runningProcess: RunningProcess;
+}
+
+interface RestartProcessInput {
+  readonly currentProcess: RunningProcess;
+  readonly databaseUrl: string;
+  readonly launchOptions?: Parameters<typeof startProcess>[2];
+  readonly port: number;
+  readonly processes: RunningProcess[];
+}
+
+const propertyFrom = (value: unknown, property: string): unknown => {
+  if (typeof value !== "object" || value === null || !(property in value)) {
+    return undefined;
+  }
+  return Reflect.get(value, property);
+};
 
 const expectNamaSuccess = (result: NamaResult): void => {
   expect(result.exitCode).toBe(0);
-  expect(result.stderr).toBe("");
+  expect(result.stderr.length === 0).toBe(true);
 };
 
 // oxlint-disable-next-line eslint/max-params -- One assertion binds the process result, exit class, stable code, and values that must remain redacted.
@@ -62,21 +112,24 @@ const expectNamaFailure = (
   result: NamaResult,
   exitCode: number,
   code: string,
-  secretValues: readonly string[],
+  sentinels: readonly SecrecySentinel[],
 ): void => {
   expect(result.exitCode).toBe(exitCode);
-  expect(result.stdout).toBe("");
+  expect(result.stdout.length === 0).toBe(true);
   const payload: unknown = JSON.parse(result.stderr);
-  expect(payload).toMatchObject({ error: { code } });
-  for (const value of secretValues) {
-    expect(result.stderr).not.toContain(value);
-  }
+  const error = propertyFrom(payload, "error");
+  const observedCode = propertyFrom(error, "code");
+  expect(observedCode).toBe(code);
+  expectSentinelsAbsent([{ contents: [result.stderr], sentinels }]);
 };
 
-const expectValuesAbsent = (contents: readonly string[], values: readonly string[]): void => {
-  for (const value of values) {
-    for (const content of contents) {
-      expect(content).not.toContain(value);
+const expectSentinelsAbsent = (boundaries: readonly SecrecyBoundary[]): void => {
+  for (const boundary of boundaries) {
+    for (const sentinel of boundary.sentinels) {
+      if (sentinel.value.length > 0) {
+        const exposed = boundary.contents.some((content) => content.includes(sentinel.value));
+        expect(exposed).toBe(false);
+      }
     }
   }
 };
@@ -131,10 +184,18 @@ const writeInstallation = (databaseUrl: string, installation: InstallationSnapsh
     ),
   );
 
-const readDurableProviderState = (databaseUrl: string, providerInstanceId: string) =>
+const readInstanceScopedProviderStateWithGlobalOperationResults = (
+  databaseUrl: string,
+  providerInstanceId: string,
+) =>
   withPool(databaseUrl, (pool) =>
     Effect.promise(async () => {
-      const [instances, credentials, observations, operations] = await Promise.all([
+      const [
+        instanceScopedInstances,
+        instanceScopedCredentials,
+        instanceScopedObservations,
+        globalOperationResults,
+      ] = await Promise.all([
         pool.query<{
           readonly configuration: unknown;
           readonly display_name: string;
@@ -176,44 +237,29 @@ const readDurableProviderState = (databaseUrl: string, providerInstanceId: strin
         ),
       ]);
       return {
-        credentials: credentials.rows,
-        instances: instances.rows,
-        observations: observations.rows,
-        operations: operations.rows,
+        globalOperationResults: globalOperationResults.rows,
+        instanceScopedCredentials: instanceScopedCredentials.rows,
+        instanceScopedInstances: instanceScopedInstances.rows,
+        instanceScopedObservations: instanceScopedObservations.rows,
       };
     }),
   );
-
-const exercisePersistedInstance = (
-  databaseUrl: string,
-  providerInstanceId: string,
-  expectedRevision: string,
-) =>
-  useConfiguredDatabase(databaseUrl, productionMigrations, {
-    masterKey: MASTER_KEY,
-    use: (database) =>
-      Effect.gen(function* persistedInstanceRuntime() {
-        const stored = yield* database.providers.loadInstance(providerInstanceId);
-        expect(stored).toMatchObject({
-          enabled: true,
-          id: providerInstanceId,
-          providerTypeId: PROVIDER_TYPE_ID,
-          revision: expectedRevision,
-        });
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(JELLYFIN_PLUGIN_DESCRIPTOR, {
-          configuration: stored.configuration,
-          credentials: stored.credentials,
-          kind: "instance",
-          providerInstanceId: stored.id,
-          revision: stored.revision,
-        });
-        const response = yield* plugin.call(PluginService.method.getConnection, {}, 5000);
-        expect(response.connection).toMatchObject({
-          remoteName: "Nama Integration Jellyfin",
-          status: PluginConnectionStatus.CONNECTED,
-        });
-      }).pipe(Effect.provide(PluginSupervisor.layer())),
+const expectRetainedReconciliationState = (input: RetainedReconciliationStateExpectation) =>
+  Effect.gen(function* retainedReconciliationState() {
+    expect(yield* readInstallation(input.databaseUrl)).toEqual(input.expectedInstallation);
+    const stateWithGlobalOperationResults =
+      yield* readInstanceScopedProviderStateWithGlobalOperationResults(
+        input.databaseUrl,
+        input.providerInstanceId,
+      );
+    expect(stateWithGlobalOperationResults.instanceScopedInstances).toHaveLength(1);
+    expect(stateWithGlobalOperationResults.instanceScopedInstances[0]?.configuration).toEqual(
+      input.expectedConfiguration,
+    );
+    const records = structuredLinesFrom(input.runningProcess).map((line) => structuredRecord(line));
+    expect(
+      records.find((record) => record["event"] === "provider.discovery_completed"),
+    ).toMatchObject({ provider_type: PROVIDER_TYPE_ID, status: input.expectedStatus });
   });
 
 const rawPrincipalReference = (jellyfin: JellyfinFixture): string => {
@@ -226,6 +272,19 @@ const rawPrincipalReference = (jellyfin: JellyfinFixture): string => {
   return `jellyfin/v1:${digest}`;
 };
 
+const restartProcess = (input: RestartProcessInput) =>
+  Effect.gen(function* restartingProcess() {
+    yield* stopCleanly(input.currentProcess);
+    const restartedProcess = yield* startProcess(
+      input.databaseUrl,
+      input.port,
+      input.launchOptions,
+    );
+    input.processes.push(restartedProcess);
+    yield* expectReady(restartedProcess);
+    return restartedProcess;
+  });
+
 it.live(
   "drives a durable provider loop through the compiled CLI and real Jellyfin",
   () =>
@@ -237,18 +296,34 @@ it.live(
               const processes: RunningProcess[] = [];
               const cliResults: NamaResult[] = [];
               const providerArguments: (readonly string[])[] = [];
+              const diagnosticMetadata: string[] = [];
+              const diagnosticResponses: string[] = [];
               const principalReference = rawPrincipalReference(jellyfin);
-              const initialConfiguration = JSON.stringify({
-                api_key: jellyfin.primaryApiKey,
+              const initialPersistedConfiguration = Object.freeze({
                 base_url: jellyfin.baseUrl,
                 user_id: jellyfin.primaryUserId,
               });
-              const secretValues = [
-                jellyfin.primaryApiKey,
-                jellyfin.replacementApiKey,
-                jellyfin.serverId,
-                principalReference,
-                WRONG_MASTER_KEY,
+              const initialConfiguration = JSON.stringify({
+                api_key: jellyfin.primaryApiKey,
+                ...initialPersistedConfiguration,
+              });
+              const secrecySentinels: SecrecySentinel[] = [
+                { name: "Jellyfin primary API key", value: jellyfin.primaryApiKey },
+                { name: "Jellyfin replacement API key", value: jellyfin.replacementApiKey },
+                { name: "Jellyfin server ID", value: jellyfin.serverId },
+                { name: "Jellyfin provider principal", value: principalReference },
+                { name: "server master key", value: MASTER_KEY },
+                { name: "wrong server master key", value: WRONG_MASTER_KEY },
+                { name: "Administrator password", value: ADMINISTRATOR.password },
+              ];
+              const nonPublicSentinels = (): readonly SecrecySentinel[] => [
+                ...secrecySentinels,
+                { name: "Jellyfin configuration payload", value: initialConfiguration },
+                { name: "Jellyfin base URL", value: jellyfin.baseUrl },
+                { name: "Jellyfin primary user ID", value: jellyfin.primaryUserId },
+                { name: "Jellyfin alternate user ID", value: jellyfin.otherUserId },
+                { name: "Jellyfin disabled user ID", value: jellyfin.disabledUserId },
+                { name: "database configuration URL", value: databaseUrl },
               ];
 
               let runningProcess = yield* startProcess(databaseUrl);
@@ -280,9 +355,13 @@ it.live(
               if (administratorToken === undefined || administratorToken.length === 0) {
                 return yield* Effect.die(new Error("expected an Administrator credential"));
               }
-              secretValues.push(administratorToken);
+              secrecySentinels.push({
+                name: "Administrator bearer token",
+                value: administratorToken,
+              });
               const environment = cliEnvironment(home, administratorToken);
-              const profile = yield* runNama(binary, environment, [
+              const runNama = createNamaRunner(binary, environment);
+              const profile = yield* runNama([
                 "profile",
                 "set",
                 "local",
@@ -294,7 +373,7 @@ it.live(
               cliResults.push(profile);
               expectNamaSuccess(profile);
 
-              const providerTypes = yield* runNama(binary, environment, [
+              const providerTypes = yield* runNama([
                 "provider",
                 "type",
                 "list",
@@ -332,12 +411,7 @@ it.live(
                 "json",
               ] as const;
               providerArguments.push(createArguments);
-              const created = yield* runNama(
-                binary,
-                environment,
-                createArguments,
-                initialConfiguration,
-              );
+              const created = yield* runNama(createArguments, initialConfiguration);
               cliResults.push(created);
               expectNamaSuccess(created);
               const createdInstance = providerInstanceFromNama(created);
@@ -356,11 +430,12 @@ it.live(
               });
               const providerInstanceId = requiredString(createdInstance, "id");
               const createdRevision = requiredString(createdInstance, "revision");
-              const durableCreated = yield* readDurableProviderState(
-                databaseUrl,
-                providerInstanceId,
-              );
-              const [durableInstance] = durableCreated.instances;
+              const durableCreated =
+                yield* readInstanceScopedProviderStateWithGlobalOperationResults(
+                  databaseUrl,
+                  providerInstanceId,
+                );
+              const [durableInstance] = durableCreated.instanceScopedInstances;
               expect(durableInstance).toMatchObject({
                 configuration: {
                   base_url: jellyfin.baseUrl,
@@ -373,7 +448,7 @@ it.live(
                 sync_priority: "1",
               });
               expect(durableInstance?.principal_digest).toMatch(/^[0-9a-f]{64}$/u);
-              expect(durableCreated.credentials).toMatchObject([
+              expect(durableCreated.instanceScopedCredentials).toMatchObject([
                 {
                   authentication_tag_bytes: 16,
                   configuration_key: "api_key",
@@ -381,27 +456,49 @@ it.live(
                   nonce_bytes: 12,
                 },
               ]);
-              expect(durableCreated.credentials[0]?.ciphertext).not.toContain(
-                Buffer.from(jellyfin.primaryApiKey, "utf8").toString("hex"),
-              );
-              expect(durableCreated.observations).toMatchObject([
+              expectSentinelsAbsent([
+                {
+                  contents: [durableCreated.instanceScopedCredentials[0]?.ciphertext ?? ""],
+                  sentinels: [
+                    {
+                      name: "hex-encoded Jellyfin primary API key",
+                      value: Buffer.from(jellyfin.primaryApiKey, "utf8").toString("hex"),
+                    },
+                  ],
+                },
+              ]);
+              expect(durableCreated.instanceScopedObservations).toMatchObject([
                 {
                   instance_revision: createdRevision,
                   status: "healthy",
                   summary: "Connected",
                 },
               ]);
-              expectValuesAbsent(
-                [JSON.stringify(durableCreated)],
-                [jellyfin.primaryApiKey, jellyfin.serverId, principalReference],
+              expectSentinelsAbsent([
+                { contents: [JSON.stringify(durableCreated)], sentinels: secrecySentinels },
+              ]);
+              const diagnosticFailure = yield* expectConnectFailure({
+                expectedCode: Code.Unimplemented,
+                invoke: () =>
+                  clients.health.getDiagnostics({}, callOptions(`Bearer ${administratorToken}`)),
+                publicErrors: [],
+              });
+              diagnosticResponses.push(
+                JSON.stringify({
+                  code: diagnosticFailure.code,
+                  rawMessage: diagnosticFailure.rawMessage,
+                }),
               );
+              diagnosticMetadata.push(JSON.stringify([...diagnosticFailure.metadata.entries()]));
 
               const port = Number(new URL(runningProcess.origin).port);
-              yield* stopCleanly(runningProcess);
-              runningProcess = yield* startProcess(databaseUrl, port);
-              processes.push(runningProcess);
-              yield* expectReady(runningProcess);
-              const restartedGet = yield* runNama(binary, environment, [
+              runningProcess = yield* restartProcess({
+                currentProcess: runningProcess,
+                databaseUrl,
+                port,
+                processes,
+              });
+              const restartedGet = yield* runNama([
                 "provider",
                 "instance",
                 "get",
@@ -414,16 +511,10 @@ it.live(
               cliResults.push(restartedGet);
               expectNamaSuccess(restartedGet);
               expect(providerInstanceFromNama(restartedGet)).toEqual(createdInstance);
-              const createRetry = yield* runNama(
-                binary,
-                environment,
-                createArguments,
-                initialConfiguration,
-              );
+              const createRetry = yield* runNama(createArguments, initialConfiguration);
               cliResults.push(createRetry);
               expectNamaSuccess(createRetry);
               expect(createRetry.stdout).toBe(created.stdout);
-              yield* exercisePersistedInstance(databaseUrl, providerInstanceId, createdRevision);
 
               yield* stopCleanly(runningProcess);
               const acceptedInstallation = yield* readInstallation(databaseUrl);
@@ -435,7 +526,74 @@ it.live(
               runningProcess = yield* startProcess(databaseUrl, port);
               processes.push(runningProcess);
               yield* expectReady(runningProcess);
-              expect((yield* readInstallation(databaseUrl)).schemaRevision).toBe("1");
+              yield* expectRetainedReconciliationState({
+                databaseUrl,
+                expectedConfiguration: initialPersistedConfiguration,
+                expectedInstallation: acceptedInstallation,
+                expectedStatus: "available",
+                providerInstanceId,
+                runningProcess,
+              });
+              runningProcess = yield* restartProcess({
+                currentProcess: runningProcess,
+                databaseUrl,
+                launchOptions: bundledPluginOverrideOptions(home, "absent"),
+                port,
+                processes,
+              });
+              yield* expectRetainedReconciliationState({
+                databaseUrl,
+                expectedConfiguration: initialPersistedConfiguration,
+                expectedInstallation: acceptedInstallation,
+                expectedStatus: "unavailable",
+                providerInstanceId,
+                runningProcess,
+              });
+              runningProcess = yield* restartProcess({
+                currentProcess: runningProcess,
+                databaseUrl,
+                launchOptions: bundledPluginOverrideOptions(home, "discovery-failure"),
+                port,
+                processes,
+              });
+              yield* expectRetainedReconciliationState({
+                databaseUrl,
+                expectedConfiguration: initialPersistedConfiguration,
+                expectedInstallation: acceptedInstallation,
+                expectedStatus: "unavailable",
+                providerInstanceId,
+                runningProcess,
+              });
+              runningProcess = yield* restartProcess({
+                currentProcess: runningProcess,
+                databaseUrl,
+                launchOptions: bundledPluginOverrideOptions(home, "malformed-discovery"),
+                port,
+                processes,
+              });
+              yield* expectRetainedReconciliationState({
+                databaseUrl,
+                expectedConfiguration: initialPersistedConfiguration,
+                expectedInstallation: acceptedInstallation,
+                expectedStatus: "incompatible",
+                providerInstanceId,
+                runningProcess,
+              });
+              runningProcess = yield* restartProcess({
+                currentProcess: runningProcess,
+                databaseUrl,
+                launchOptions: bundledPluginOverrideOptions(home, "newer-incompatible"),
+                port,
+                processes,
+              });
+              yield* expectRetainedReconciliationState({
+                databaseUrl,
+                expectedConfiguration: initialPersistedConfiguration,
+                expectedInstallation: acceptedInstallation,
+                expectedStatus: "incompatible",
+                providerInstanceId,
+                runningProcess,
+              });
               yield* stopCleanly(runningProcess);
 
               const { properties } = acceptedInstallation.configurationSchema;
@@ -461,13 +619,15 @@ it.live(
               runningProcess = yield* startProcess(databaseUrl, port);
               processes.push(runningProcess);
               yield* expectReady(runningProcess);
-              expect(yield* readInstallation(databaseUrl)).toEqual(futureInstallation);
-              expect(
-                structuredLinesFrom(runningProcess)
-                  .map((line) => structuredRecord(line))
-                  .find((record) => record["event"] === "provider.discovery_completed"),
-              ).toMatchObject({ provider_type: PROVIDER_TYPE_ID, status: "incompatible" });
-              const upgradeSafeRead = yield* runNama(binary, environment, [
+              yield* expectRetainedReconciliationState({
+                databaseUrl,
+                expectedConfiguration: initialPersistedConfiguration,
+                expectedInstallation: futureInstallation,
+                expectedStatus: "incompatible",
+                providerInstanceId,
+                runningProcess,
+              });
+              const upgradeSafeRead = yield* runNama([
                 "provider",
                 "instance",
                 "get",
@@ -483,7 +643,9 @@ it.live(
               yield* stopCleanly(runningProcess);
               yield* writeInstallation(databaseUrl, acceptedInstallation);
 
-              runningProcess = yield* startProcess(databaseUrl, port, WRONG_MASTER_KEY);
+              runningProcess = yield* startProcess(databaseUrl, port, {
+                masterKey: WRONG_MASTER_KEY,
+              });
               processes.push(runningProcess);
               yield* expectReady(runningProcess);
               clients = clientsFor(runningProcess.origin);
@@ -504,9 +666,15 @@ it.live(
               if (wrongKeyToken === undefined || wrongKeyToken.length === 0) {
                 return yield* Effect.die(new Error("expected a wrong-key process credential"));
               }
-              secretValues.push(wrongKeyToken);
-              const wrongKeyEnvironment = cliEnvironment(home, wrongKeyToken);
-              const wrongKeyGet = yield* runNama(binary, wrongKeyEnvironment, [
+              secrecySentinels.push({
+                name: "wrong-key Administrator bearer token",
+                value: wrongKeyToken,
+              });
+              const runNamaWithWrongMasterKey = createNamaRunner(
+                binary,
+                cliEnvironment(home, wrongKeyToken),
+              );
+              const wrongKeyGet = yield* runNamaWithWrongMasterKey([
                 "provider",
                 "instance",
                 "get",
@@ -540,9 +708,7 @@ it.live(
                 "json",
               ] as const;
               providerArguments.push(wrongKeyUpdateArguments);
-              const wrongKeyUpdate = yield* runNama(
-                binary,
-                wrongKeyEnvironment,
+              const wrongKeyUpdate = yield* runNamaWithWrongMasterKey(
                 wrongKeyUpdateArguments,
                 JSON.stringify({ api_key: jellyfin.replacementApiKey }),
               );
@@ -551,14 +717,15 @@ it.live(
                 wrongKeyUpdate,
                 7,
                 "provider_credentials_unavailable",
-                secretValues,
+                nonPublicSentinels(),
               );
-              yield* stopCleanly(runningProcess);
-
-              runningProcess = yield* startProcess(databaseUrl, port);
-              processes.push(runningProcess);
-              yield* expectReady(runningProcess);
-              const recoveredGet = yield* runNama(binary, environment, [
+              runningProcess = yield* restartProcess({
+                currentProcess: runningProcess,
+                databaseUrl,
+                port,
+                processes,
+              });
+              const recoveredGet = yield* runNama([
                 "provider",
                 "instance",
                 "get",
@@ -593,12 +760,7 @@ it.live(
                 "json",
               ] as const;
               providerArguments.push(updateArguments);
-              const updated = yield* runNama(
-                binary,
-                environment,
-                updateArguments,
-                replacementPatch,
-              );
+              const updated = yield* runNama(updateArguments, replacementPatch);
               cliResults.push(updated);
               expectNamaSuccess(updated);
               const updatedInstance = providerInstanceFromNama(updated);
@@ -613,6 +775,15 @@ it.live(
               });
               const updatedRevision = requiredString(updatedInstance, "revision");
               expect(updatedRevision).not.toBe(createdRevision);
+              const durableUpdated =
+                yield* readInstanceScopedProviderStateWithGlobalOperationResults(
+                  databaseUrl,
+                  providerInstanceId,
+                );
+              expect(durableUpdated.instanceScopedCredentials).not.toEqual(
+                durableCreated.instanceScopedCredentials,
+              );
+              yield* revokeJellyfinCredential(jellyfin);
 
               const changedPrincipalArguments = [
                 "provider",
@@ -632,36 +803,72 @@ it.live(
               ] as const;
               providerArguments.push(changedPrincipalArguments);
               const changedPrincipal = yield* runNama(
-                binary,
-                environment,
                 changedPrincipalArguments,
                 JSON.stringify({ user_id: jellyfin.otherUserId }),
               );
               cliResults.push(changedPrincipal);
-              expectNamaFailure(changedPrincipal, 6, "provider_user_changed", secretValues);
+              expectNamaFailure(changedPrincipal, 6, "provider_user_changed", nonPublicSentinels());
 
-              yield* stopCleanly(runningProcess);
-              runningProcess = yield* startProcess(databaseUrl, port);
-              processes.push(runningProcess);
-              yield* expectReady(runningProcess);
-              const updateRetry = yield* runNama(
-                binary,
-                environment,
-                updateArguments,
-                replacementPatch,
-              );
+              runningProcess = yield* restartProcess({
+                currentProcess: runningProcess,
+                databaseUrl,
+                port,
+                processes,
+              });
+              const updateRetry = yield* runNama(updateArguments, replacementPatch);
               cliResults.push(updateRetry);
               expectNamaSuccess(updateRetry);
               expect(updateRetry.stdout).toBe(updated.stdout);
               const conflictingUpdate = yield* runNama(
-                binary,
-                environment,
                 updateArguments,
                 JSON.stringify({ api_key: jellyfin.primaryApiKey }),
               );
               cliResults.push(conflictingUpdate);
-              expectNamaFailure(conflictingUpdate, 6, "idempotency_key_reused", secretValues);
-              yield* exercisePersistedInstance(databaseUrl, providerInstanceId, updatedRevision);
+              expectNamaFailure(
+                conflictingUpdate,
+                6,
+                "idempotency_key_reused",
+                nonPublicSentinels(),
+              );
+              const persistedCredentialVerificationArguments = [
+                "provider",
+                "instance",
+                "update",
+                providerInstanceId,
+                "--expected-revision",
+                updatedRevision,
+                "--configuration",
+                "-",
+                "--operation-id",
+                "restarted-persisted-credential-verification",
+                "--profile",
+                "local",
+                "--output",
+                "json",
+              ] as const;
+              providerArguments.push(persistedCredentialVerificationArguments);
+              const persistedCredentialVerification = yield* runNama(
+                persistedCredentialVerificationArguments,
+                JSON.stringify({ base_url: jellyfin.baseUrl.replace(/\/$/u, "") }),
+              );
+              cliResults.push(persistedCredentialVerification);
+              expectNamaSuccess(persistedCredentialVerification);
+              const persistedCredentialInstance = providerInstanceFromNama(
+                persistedCredentialVerification,
+              );
+              expect(persistedCredentialInstance).toMatchObject({
+                configuration: {
+                  base_url: jellyfin.baseUrl.replace(/\/$/u, ""),
+                  user_id: jellyfin.primaryUserId,
+                },
+                configured_secrets: [{ configured: true, key: "api_key" }],
+                enabled: true,
+              });
+              const persistedCredentialRevision = requiredString(
+                persistedCredentialInstance,
+                "revision",
+              );
+              expect(persistedCredentialRevision).not.toBe(updatedRevision);
 
               const disabledUserCreateArguments = [
                 "provider",
@@ -681,8 +888,6 @@ it.live(
               ] as const;
               providerArguments.push(disabledUserCreateArguments);
               const disabledUserCreate = yield* runNama(
-                binary,
-                environment,
                 disabledUserCreateArguments,
                 JSON.stringify({
                   api_key: jellyfin.replacementApiKey,
@@ -691,10 +896,15 @@ it.live(
                 }),
               );
               cliResults.push(disabledUserCreate);
-              expectNamaFailure(disabledUserCreate, 6, "provider_incompatible", secretValues);
+              expectNamaFailure(
+                disabledUserCreate,
+                6,
+                "provider_incompatible",
+                nonPublicSentinels(),
+              );
 
               const damagedConfiguration = JSON.stringify({
-                api_key: jellyfin.primaryApiKey,
+                api_key: jellyfin.replacementApiKey,
                 base_url: jellyfin.baseUrl,
                 user_id: jellyfin.primaryUserId,
               });
@@ -717,19 +927,14 @@ it.live(
                 "json",
               ] as const;
               providerArguments.push(damagedCreateArguments);
-              const damagedCreated = yield* runNama(
-                binary,
-                environment,
-                damagedCreateArguments,
-                damagedConfiguration,
-              );
+              const damagedCreated = yield* runNama(damagedCreateArguments, damagedConfiguration);
               cliResults.push(damagedCreated);
               expectNamaSuccess(damagedCreated);
               const damagedInstance = providerInstanceFromNama(damagedCreated);
               const damagedInstanceId = requiredString(damagedInstance, "id");
               const damagedRevision = requiredString(damagedInstance, "revision");
 
-              const firstPage = yield* runNama(binary, environment, [
+              const firstPage = yield* runNama([
                 "provider",
                 "instance",
                 "list",
@@ -753,7 +958,7 @@ it.live(
                 replacementTokenCharacter = "B";
               }
               const tamperedToken = `${pageToken.slice(0, -1)}${replacementTokenCharacter}`;
-              const tamperedPage = yield* runNama(binary, environment, [
+              const tamperedPage = yield* runNama([
                 "provider",
                 "instance",
                 "list",
@@ -767,8 +972,8 @@ it.live(
                 "json",
               ]);
               cliResults.push(tamperedPage);
-              expectNamaFailure(tamperedPage, 2, "page_token_invalid", secretValues);
-              const crossMethodPage = yield* runNama(binary, environment, [
+              expectNamaFailure(tamperedPage, 2, "page_token_invalid", nonPublicSentinels());
+              const crossMethodPage = yield* runNama([
                 "provider",
                 "type",
                 "list",
@@ -782,8 +987,8 @@ it.live(
                 "json",
               ]);
               cliResults.push(crossMethodPage);
-              expectNamaFailure(crossMethodPage, 2, "page_token_invalid", secretValues);
-              const crossSizePage = yield* runNama(binary, environment, [
+              expectNamaFailure(crossMethodPage, 2, "page_token_invalid", nonPublicSentinels());
+              const crossSizePage = yield* runNama([
                 "provider",
                 "instance",
                 "list",
@@ -797,7 +1002,7 @@ it.live(
                 "json",
               ]);
               cliResults.push(crossSizePage);
-              expectNamaFailure(crossSizePage, 2, "page_token_invalid", secretValues);
+              expectNamaFailure(crossSizePage, 2, "page_token_invalid", nonPublicSentinels());
 
               yield* stopCleanly(runningProcess);
               yield* withPool(databaseUrl, (pool) =>
@@ -811,7 +1016,7 @@ it.live(
               runningProcess = yield* startProcess(databaseUrl, port);
               processes.push(runningProcess);
               yield* expectReady(runningProcess);
-              const healthyAfterDamage = yield* runNama(binary, environment, [
+              const healthyAfterDamage = yield* runNama([
                 "provider",
                 "instance",
                 "get",
@@ -823,8 +1028,10 @@ it.live(
               ]);
               cliResults.push(healthyAfterDamage);
               expectNamaSuccess(healthyAfterDamage);
-              expect(providerInstanceFromNama(healthyAfterDamage)).toEqual(updatedInstance);
-              const damagedGet = yield* runNama(binary, environment, [
+              expect(providerInstanceFromNama(healthyAfterDamage)).toEqual(
+                persistedCredentialInstance,
+              );
+              const damagedGet = yield* runNama([
                 "provider",
                 "instance",
                 "get",
@@ -863,7 +1070,7 @@ it.live(
                 "--output",
                 "json",
               ] as const;
-              const damagedDisabled = yield* runNama(binary, environment, disableDamagedArguments);
+              const damagedDisabled = yield* runNama(disableDamagedArguments);
               cliResults.push(damagedDisabled);
               expectNamaSuccess(damagedDisabled);
               const damagedDisabledRevision = requiredString(
@@ -885,7 +1092,7 @@ it.live(
                 "--output",
                 "json",
               ] as const;
-              const damagedDeleted = yield* runNama(binary, environment, deleteDamagedArguments);
+              const damagedDeleted = yield* runNama(deleteDamagedArguments);
               cliResults.push(damagedDeleted);
               expectNamaSuccess(damagedDeleted);
 
@@ -895,7 +1102,7 @@ it.live(
                 "update",
                 providerInstanceId,
                 "--expected-revision",
-                updatedRevision,
+                persistedCredentialRevision,
                 "--enabled=false",
                 "--operation-id",
                 "disable-durable-provider",
@@ -904,18 +1111,20 @@ it.live(
                 "--output",
                 "json",
               ] as const;
-              const disabled = yield* runNama(binary, environment, disableArguments);
+              const disabled = yield* runNama(disableArguments);
               cliResults.push(disabled);
               expectNamaSuccess(disabled);
               const disabledInstance = providerInstanceFromNama(disabled);
               expect(disabledInstance).toMatchObject({ enabled: false, status: "disabled" });
               const disabledRevision = requiredString(disabledInstance, "revision");
 
-              yield* stopCleanly(runningProcess);
-              runningProcess = yield* startProcess(databaseUrl, port);
-              processes.push(runningProcess);
-              yield* expectReady(runningProcess);
-              const restartedDisabled = yield* runNama(binary, environment, [
+              runningProcess = yield* restartProcess({
+                currentProcess: runningProcess,
+                databaseUrl,
+                port,
+                processes,
+              });
+              const restartedDisabled = yield* runNama([
                 "provider",
                 "instance",
                 "get",
@@ -944,7 +1153,7 @@ it.live(
                 "--output",
                 "json",
               ] as const;
-              const reenabled = yield* runNama(binary, environment, reenableArguments);
+              const reenabled = yield* runNama(reenableArguments);
               cliResults.push(reenabled);
               expectNamaSuccess(reenabled);
               const reenabledInstance = providerInstanceFromNama(reenabled);
@@ -965,11 +1174,7 @@ it.live(
                 "--output",
                 "json",
               ] as const;
-              const disabledForDeletion = yield* runNama(
-                binary,
-                environment,
-                disableForDeletionArguments,
-              );
+              const disabledForDeletion = yield* runNama(disableForDeletionArguments);
               cliResults.push(disabledForDeletion);
               expectNamaSuccess(disabledForDeletion);
               const deletionRevision = requiredString(
@@ -992,20 +1197,22 @@ it.live(
                 "json",
               ] as const;
               providerArguments.push(deleteArguments);
-              const deleted = yield* runNama(binary, environment, deleteArguments);
+              const deleted = yield* runNama(deleteArguments);
               cliResults.push(deleted);
               expectNamaSuccess(deleted);
               expect(dataFromNama(deleted)).toEqual({ operation_id: CREATE_OPERATION_ID });
 
-              yield* stopCleanly(runningProcess);
-              runningProcess = yield* startProcess(databaseUrl, port);
-              processes.push(runningProcess);
-              yield* expectReady(runningProcess);
-              const deleteRetry = yield* runNama(binary, environment, deleteArguments);
+              runningProcess = yield* restartProcess({
+                currentProcess: runningProcess,
+                databaseUrl,
+                port,
+                processes,
+              });
+              const deleteRetry = yield* runNama(deleteArguments);
               cliResults.push(deleteRetry);
               expectNamaSuccess(deleteRetry);
               expect(deleteRetry.stdout).toBe(deleted.stdout);
-              const missingGet = yield* runNama(binary, environment, [
+              const missingGet = yield* runNama([
                 "provider",
                 "instance",
                 "get",
@@ -1016,8 +1223,8 @@ it.live(
                 "json",
               ]);
               cliResults.push(missingGet);
-              expectNamaFailure(missingGet, 5, "resource_not_found", secretValues);
-              const retainedProviderType = yield* runNama(binary, environment, [
+              expectNamaFailure(missingGet, 5, "resource_not_found", nonPublicSentinels());
+              const retainedProviderType = yield* runNama([
                 "provider",
                 "type",
                 "list",
@@ -1032,44 +1239,47 @@ it.live(
                 provider_types: [{ id: PROVIDER_TYPE_ID, schema_revision: "1" }],
               });
 
-              const deletedState = yield* readDurableProviderState(databaseUrl, providerInstanceId);
-              expect(deletedState.instances).toEqual([]);
-              expect(deletedState.credentials).toEqual([]);
-              expect(deletedState.observations).toEqual([]);
-              expect(deletedState.operations.length).toBeGreaterThanOrEqual(7);
-              expectValuesAbsent(
-                [JSON.stringify(deletedState.operations)],
-                [
-                  jellyfin.primaryApiKey,
-                  jellyfin.replacementApiKey,
-                  jellyfin.serverId,
-                  principalReference,
-                ],
+              const deletedState = yield* readInstanceScopedProviderStateWithGlobalOperationResults(
+                databaseUrl,
+                providerInstanceId,
               );
+              expect(deletedState.instanceScopedInstances).toEqual([]);
+              expect(deletedState.instanceScopedCredentials).toEqual([]);
+              expect(deletedState.instanceScopedObservations).toEqual([]);
+              expect(deletedState.globalOperationResults.length).toBeGreaterThanOrEqual(7);
+              expectSentinelsAbsent([
+                {
+                  contents: [JSON.stringify(deletedState.globalOperationResults)],
+                  sentinels: secrecySentinels,
+                },
+              ]);
 
-              expectValuesAbsent(
-                cliResults.flatMap((result) => [result.stdout, result.stderr]),
-                [
-                  jellyfin.primaryApiKey,
-                  jellyfin.replacementApiKey,
-                  jellyfin.serverId,
-                  principalReference,
-                ],
-              );
-              expectValuesAbsent(
-                processes.flatMap((process) => [process.stdout(), process.stderr()]),
-                secretValues,
-              );
-              expectValuesAbsent(
-                providerArguments.map((arguments_) => JSON.stringify(arguments_)),
-                [
-                  jellyfin.primaryApiKey,
-                  jellyfin.replacementApiKey,
-                  jellyfin.primaryUserId,
-                  jellyfin.otherUserId,
-                  jellyfin.disabledUserId,
-                ],
-              );
+              expectSentinelsAbsent([
+                {
+                  contents: cliResults.flatMap((result) => [result.stdout, result.stderr]),
+                  sentinels: secrecySentinels,
+                },
+                {
+                  contents: cliResults
+                    .filter((result) => result.exitCode !== 0)
+                    .flatMap((result) => [result.stdout, result.stderr]),
+                  sentinels: nonPublicSentinels(),
+                },
+                { contents: diagnosticResponses, sentinels: nonPublicSentinels() },
+                { contents: diagnosticMetadata, sentinels: nonPublicSentinels() },
+              ]);
+              expectSentinelsAbsent([
+                {
+                  contents: processes.flatMap((process) => [process.stdout(), process.stderr()]),
+                  sentinels: nonPublicSentinels(),
+                },
+              ]);
+              expectSentinelsAbsent([
+                {
+                  contents: providerArguments.map((arguments_) => JSON.stringify(arguments_)),
+                  sentinels: nonPublicSentinels(),
+                },
+              ]);
               yield* stopCleanly(runningProcess);
               return yield* Effect.void;
             }),

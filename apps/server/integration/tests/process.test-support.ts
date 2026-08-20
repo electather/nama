@@ -43,6 +43,11 @@ interface StatusTarget {
   readonly path: string;
   readonly status: number;
 }
+interface ProcessLaunchOptions {
+  readonly environment?: NodeJS.ProcessEnv;
+  readonly masterKey?: string;
+  readonly preloads?: readonly string[];
+}
 
 const childOutputClosed = (child: ChildProcess): boolean =>
   (child.stderr?.readableEnded ?? true) && (child.stdout?.readableEnded ?? true);
@@ -104,6 +109,16 @@ master_key = "${masterKey}"
 [logging]
 level = "info"
 `;
+const preloadExecutionArguments = (preloads: readonly string[] | undefined): string[] => {
+  const executionArguments: string[] = [];
+  if (preloads === undefined) {
+    return executionArguments;
+  }
+  for (const preload of preloads) {
+    executionArguments.push("--import", preload);
+  }
+  return executionArguments;
+};
 
 const outputCapture = (): OutputCapture => {
   let output = "";
@@ -128,7 +143,7 @@ const killChildIfRunning = (child: ChildProcess): void => {
   }
 };
 
-const startProcess = (databaseUrl: string, port?: number, masterKey = MASTER_KEY) =>
+const startProcess = (databaseUrl: string, port?: number, options: ProcessLaunchOptions = {}) =>
   Effect.gen(function* runningServerProcess() {
     const selectedPort = port ?? (yield* reservePort);
     const fileSystem = yield* FileSystem.FileSystem;
@@ -138,7 +153,7 @@ const startProcess = (databaseUrl: string, port?: number, masterKey = MASTER_KEY
     const configPath = join(directory, "nama.toml");
     yield* fileSystem.writeFileString(
       configPath,
-      configuration(databaseUrl, selectedPort, masterKey),
+      configuration(databaseUrl, selectedPort, options.masterKey ?? MASTER_KEY),
     );
     const stdout = outputCapture();
     const stderr = outputCapture();
@@ -146,7 +161,8 @@ const startProcess = (databaseUrl: string, port?: number, masterKey = MASTER_KEY
       Effect.sync(() =>
         fork(MAIN_MODULE, [], {
           cwd: SERVER_ROOT,
-          env: { ...process.env, NAMA_CONFIG: configPath },
+          env: { ...process.env, ...options.environment, NAMA_CONFIG: configPath },
+          execArgv: [...process.execArgv, ...preloadExecutionArguments(options.preloads)],
           stdio: ["ignore", "pipe", "pipe", "ipc"],
         }),
       ),
@@ -272,4 +288,4 @@ export {
   waitForStatus,
   waitForStdout,
 };
-export type { RunningProcess };
+export type { ProcessLaunchOptions, RunningProcess };

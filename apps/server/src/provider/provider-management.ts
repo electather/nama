@@ -447,10 +447,7 @@ const reconcileProvider = (
 ): Effect.Effect<ProviderDiscoveryStatus, ProviderPersistenceFailure> =>
   Effect.matchEffect(discover(provider), {
     onFailure: (failure) => {
-      if (
-        "reason" in failure &&
-        (failure.reason === "descriptor_invalid" || failure.reason === "executable_invalid")
-      ) {
+      if ("reason" in failure && failure.reason === "descriptor_invalid") {
         return Effect.die(new Error("invalid bundled provider descriptor"));
       }
       if (

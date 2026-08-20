@@ -47,8 +47,8 @@ const discoveredPluginInfo = Object.freeze({
 const successfulDiscovery = (() =>
   Effect.succeed(discoveredPluginInfo)) satisfies ProviderDiscovery;
 
-const unavailableDiscovery = (() =>
-  Effect.fail(new PluginUnavailable({ reason: "plugin_exited" }))) satisfies ProviderDiscovery;
+const absentExecutableDiscovery = (() =>
+  Effect.fail(new PluginUnavailable({ reason: "executable_invalid" }))) satisfies ProviderDiscovery;
 
 const incompatibleDiscovery = (() =>
   Effect.fail(
@@ -213,7 +213,7 @@ it.effect("preserves accepted metadata when a stored instance fails the discover
   );
 });
 
-it.effect("contains plugin absence without changing another accepted installation", () => {
+it.effect("contains an absent bundled executable without changing accepted metadata", () => {
   const previous: ProviderInstallationInput = {
     capabilities: [],
     configurationSchema: jellyfinSchema,
@@ -229,7 +229,7 @@ it.effect("contains plugin absence without changing another accepted installatio
   return Effect.scoped(
     Effect.gen(function* unavailableReconciliationTest() {
       const service = yield* makeProviderManagement({
-        discover: unavailableDiscovery,
+        discover: absentExecutableDiscovery,
         fenceInstance: admissionOnlyTestFence,
         masterKey: MASTER_KEY,
         persistence: persistence.providers,
