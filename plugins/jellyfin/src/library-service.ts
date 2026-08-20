@@ -3,7 +3,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { LibraryService } from "@nama/api/nama/plugin/v1/library_pb.js";
 
 import type { LaunchDocument, ProviderLaunchDocument } from "./launch-document.ts";
-import { normalizeJellyfinMovie } from "./movie.ts";
+import { normalizeJellyfinItem } from "./media-item.ts";
 import { createJellyfinRequest } from "./request.ts";
 import type { JellyfinJsonResponse } from "./request.ts";
 import { hasMaximumCodePointLength } from "./value.ts";
@@ -14,9 +14,9 @@ const MAXIMUM_MEDIA_RESPONSE_BYTES = 1_048_576;
 
 type RequireAuthorization = (authorization: string | null, bearer: string) => void;
 
-const movieFromResponse = (response: JellyfinJsonResponse, itemId: string) => {
+const itemFromResponse = (response: JellyfinJsonResponse, itemId: string) => {
   if (response.kind === "success") {
-    return normalizeJellyfinMovie(response.body, itemId);
+    return normalizeJellyfinItem(response.body, itemId);
   }
   if (response.kind === "authentication_failed" || response.kind === "forbidden") {
     throw new ConnectError("Jellyfin item is forbidden", Code.PermissionDenied);
@@ -27,10 +27,10 @@ const movieFromResponse = (response: JellyfinJsonResponse, itemId: string) => {
   if (response.kind === "unreachable") {
     throw new ConnectError("Jellyfin server is unavailable", Code.Unavailable);
   }
-  throw new ConnectError("Jellyfin movie response is invalid", Code.Internal);
+  throw new ConnectError("Jellyfin media response is invalid", Code.Internal);
 };
 
-const readJellyfinMovie = async (
+const readJellyfinItem = async (
   launch: ProviderLaunchDocument,
   itemId: string,
   signal: AbortSignal,
@@ -48,7 +48,7 @@ const readJellyfinMovie = async (
     query: { userId: launch.configuration.user_id },
     signal,
   });
-  return movieFromResponse(response, itemId);
+  return itemFromResponse(response, itemId);
 };
 
 const registerJellyfinLibraryService = (
@@ -69,7 +69,7 @@ const registerJellyfinLibraryService = (
     ) {
       throw new ConnectError("item reference is invalid", Code.InvalidArgument);
     }
-    return { item: await readJellyfinMovie(launch, itemId, context.signal) };
+    return { item: await readJellyfinItem(launch, itemId, context.signal) };
   });
 };
 
