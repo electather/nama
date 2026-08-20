@@ -45,8 +45,9 @@ creation, exact durable restart recovery, accepted-schema upgrade containment,
 wrong-key and damaged-envelope containment beside healthy mutation, connection
 testing through candidate and exact stored-revision subprocesses, credential
 and configuration cutover, disable/re-enable/delete, retained operation replay,
-and safe boundary output. Media behavior, user-facing connection-test commands,
-and application-image packaging remain unimplemented.
+and safe boundary output. One targeted normalized Jellyfin movie observation
+is implemented; catalog scanning, core media ingestion, user-facing
+connection-test commands, and application-image packaging remain unimplemented.
 
 
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.

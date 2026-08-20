@@ -37,14 +37,17 @@ cancellation and deadlines into `GetConnection`; only a completed
 stored-instance result can conditionally update that same revision's
 observation.
 
-## Jellyfin discovery and connection profile
+## Jellyfin discovery, connection, and targeted library profile
 
 The production Jellyfin executable implements authenticated health, `GetInfo`
-for context-free discovery, and `GetConnection` for candidate and instance
-launches. It declares provider type `jellyfin`, contract major `1`, no media
-capabilities, and a restricted schema requiring `base_url`, `user_id`, and
-write-only `api_key`. Startup validates and persists that information before
-the public provider-type list becomes available.
+for context-free discovery, `GetConnection` for candidate and instance
+launches, and targeted `LibraryService.GetItem` for configured instance
+launches. It declares provider type `jellyfin`, contract major `1`, and a
+restricted schema requiring `base_url`, `user_id`, and write-only `api_key`.
+It still declares no media capability: `LIBRARY_READ` remains unadvertised
+until the complete supported catalog can be scanned. Startup validates and
+persists discovery information before the public provider-type list becomes
+available.
 
 `GetConnection` first reads unauthenticated public system information, then
 reads the explicitly configured user with Jellyfin's credentialed
@@ -62,24 +65,35 @@ credentials, query strings, fragments, public destinations, and additional
 path segments.
 
 One concrete Jellyfin request module builds endpoints from encoded path
-segments, confines them to that origin and prefix, applies the API key only to
-authenticated calls, rejects redirects, and receives RPC cancellation. It
-streams each JSON body under the caller-selected positive byte limit; connection
-inspection selects its existing 64 KiB limit independently of future media
-response limits. Callers receive only normalized response categories and parsed
-records, so raw provider bodies and credential-bearing request details never
-enter responses or logs.
+segments and code-owned query names, confines them to the configured origin
+and prefix, applies the API key only to authenticated calls, rejects redirects,
+and receives RPC cancellation. It streams each JSON body under the
+caller-selected positive byte limit: connection inspection selects 64 KiB and
+the targeted movie read selects 1 MiB. Callers receive only normalized response
+categories and parsed records, so raw provider bodies and credential-bearing
+request details never enter responses or logs.
+
+`GetItem` reads one explicitly referenced Jellyfin movie for the configured
+user. It normalizes required and optional metadata, movie details, supported
+matching identifiers, credits, genres, studios, bounded artwork, and every
+media source. Each source contains one part; only video, audio, and subtitle
+streams become bounded normalized tracks, while source and stream identifiers
+remain private references. Filesystem paths, provider objects, authorized
+URLs, and arbitrary identifier namespaces are discarded. Missing, forbidden,
+unavailable, oversized, malformed, and cancelled reads return only sanitized
+Connect outcomes.
 
 The provider-management process flow provisions a controlled Jellyfin endpoint
 and reaches it through both public connection-test RPCs using candidate and
 exact persisted-instance launches. It verifies cancellation reaches the real
 subprocess and provider request, exact-revision observations are conditional,
-and public results omit provider credentials and principal references. The
-controlled HTTP Jellyfin subprocess coverage retains deterministic redirect,
-malformed-response, size-bound, hostile-failure, and raw-body redaction cases.
+and public results omit provider credentials and principal references.
+Controlled HTTP subprocess coverage also exercises the targeted movie RPC,
+source and track normalization, bounded response handling, cancellation,
+safe failure codes, and raw-body redaction.
 
 Windows transport and persistent or background native-media plugins remain
-deferred until a real plugin requires them. Production library reads, public
+deferred until a real plugin requires them. Complete catalog scans, public
 artwork resolution, watch-state reads, and watched/unwatched writes belong to
 issue #30. Production playback belongs to issue #96, coherent exact progress
 export belongs to issue #97, explicit connection-test commands belong to issue

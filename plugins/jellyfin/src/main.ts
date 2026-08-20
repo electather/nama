@@ -8,45 +8,21 @@ import type { Server } from "node:http";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { connectNodeAdapter } from "@connectrpc/connect-node";
 import { HealthService, ServingStatus } from "@nama/api/nama/plugin/v1/health_pb.js";
-import { PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 
-import { getJellyfinConnection } from "./connection.ts";
-import { jellyfinPluginInfo } from "./info.ts";
+import { LAUNCH_DOCUMENT_VERSION } from "./launch-document.ts";
+import type { LaunchDocument } from "./launch-document.ts";
+import { registerJellyfinLibraryService } from "./library-service.ts";
+import { registerJellyfinPluginService } from "./plugin-service.ts";
 
 const MAXIMUM_LAUNCH_DOCUMENT_BYTES = 65_536;
 const MAXIMUM_BASE_URL_BYTES = 2048;
 const MAXIMUM_USER_ID_BYTES = 128;
 const MAXIMUM_API_KEY_BYTES = 4096;
-const LAUNCH_DOCUMENT_VERSION = 2;
 const EXIT_CONFIGURATION_ERROR = 64;
 const EMPTY_LENGTH = 0;
 const PRIVATE_PROCESS_UMASK = 0o177;
 const PRIVATE_SOCKET_MODE = 0o600;
 const SUCCESS_EXIT_CODE = 0;
-
-interface DiscoveryLaunchDocument {
-  readonly bearer: string;
-  readonly kind: "discovery";
-  readonly socket_path: string;
-  readonly version: typeof LAUNCH_DOCUMENT_VERSION;
-}
-
-interface ProviderLaunchDocument {
-  readonly bearer: string;
-  readonly configuration: Readonly<{
-    readonly base_url: string;
-    readonly user_id: string;
-  }>;
-  readonly credentials: Readonly<{ readonly api_key: string }>;
-  readonly kind: "candidate" | "instance";
-  readonly provider_instance_id?: string;
-  readonly provider_type: "jellyfin";
-  readonly revision?: string;
-  readonly socket_path: string;
-  readonly version: typeof LAUNCH_DOCUMENT_VERSION;
-}
-
-type LaunchDocument = DiscoveryLaunchDocument | ProviderLaunchDocument;
 
 const dataProperties = (value: object): Readonly<Record<string, unknown>> | undefined => {
   const properties: Record<string, unknown> = {};
@@ -224,28 +200,8 @@ const makeHandler = (launch: LaunchDocument) =>
           return { status: ServingStatus.SERVING };
         },
       });
-      router.service(PluginService, {
-        getConnection: async (_request, context) => {
-          requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
-          if (launch.kind === "discovery") {
-            throw new ConnectError("connection unavailable", Code.Unimplemented);
-          }
-          return {
-            connection: await getJellyfinConnection(
-              {
-                apiKey: launch.credentials.api_key,
-                baseUrl: launch.configuration.base_url,
-                userId: launch.configuration.user_id,
-              },
-              context.signal,
-            ),
-          };
-        },
-        getInfo: (_request, context) => {
-          requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
-          return { pluginInfo: jellyfinPluginInfo };
-        },
-      });
+      registerJellyfinLibraryService(router, launch, requireAuthorization);
+      registerJellyfinPluginService(router, launch, requireAuthorization);
     },
   });
 
