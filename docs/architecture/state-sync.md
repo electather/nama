@@ -21,8 +21,9 @@ current truth.
 
 Production synchronization remains unimplemented: core scheduling,
 persistence, complete provider scans, bounded fingerprint retention, and retry
-execution remain target work. The Jellyfin adapter implements only bounded
-targeted movie and episode reads for repair and later confirmation; it does not
-advertise complete watch-state reads. The contract supports one or more
-configured Jellyfin instances without adding a queue or provider-owned durable
-state; later provider types reuse that contract.
+execution remain target work. The Jellyfin adapter implements bounded targeted
+movie and episode reads for repair and confirmation plus explicit
+watched/unwatched writes with bounded ambiguity readback. It advertises
+`WATCHED_WRITE` but not complete `WATCH_STATE_READ`. The contract supports one
+or more configured Jellyfin instances without adding a queue or provider-owned
+durable state; later provider types reuse that contract.

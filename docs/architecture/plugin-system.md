@@ -35,19 +35,20 @@ cancellation and deadlines into `GetConnection`; only a completed
 stored-instance result can conditionally update that same revision's
 observation.
 
-## Jellyfin discovery, connection, and targeted read profile
+## Jellyfin discovery, connection, targeted read, and watched-write profile
 
 The production Jellyfin executable implements authenticated health, `GetInfo`
 for context-free discovery, `GetConnection` for candidate and instance
-launches, targeted `LibraryService.GetItem`, and targeted
-`WatchStateService.GetWatchStates` for configured instance launches. It
-declares provider type `jellyfin`, contract major `1`, and a restricted schema
-requiring `base_url`, `user_id`, and write-only `api_key`. It still declares no
-media capabilities: `LIBRARY_READ` remains unadvertised until the complete
-supported catalog can be scanned, and `WATCH_STATE_READ` remains unadvertised
-until complete best-effort scans are implemented. Startup validates and
-persists discovery information before the public provider-type list becomes
-available.
+launches, targeted `LibraryService.GetItem`, targeted
+`WatchStateService.GetWatchStates`, and explicit
+`WatchStateService.PushWatchStates` watched/unwatched mutations for configured
+instance launches. It declares provider type `jellyfin`, contract major `1`,
+and a restricted schema requiring `base_url`, `user_id`, and write-only
+`api_key`. It advertises `WATCHED_WRITE`; `LIBRARY_READ` remains unadvertised
+until the complete supported catalog can be scanned, and `WATCH_STATE_READ`
+remains unadvertised until complete best-effort scans are implemented. Startup
+validates and persists discovery information before the public provider-type
+list becomes available.
 
 `GetConnection` first reads unauthenticated public system information, then
 reads the explicitly configured user with Jellyfin's credentialed
@@ -69,12 +70,12 @@ segments and code-owned query names, confines them to the configured origin
 and prefix, applies the API key only to authenticated calls, rejects redirects,
 and receives RPC cancellation. It streams each JSON body under the
 caller-selected positive byte limit: connection inspection selects 64 KiB, the
-targeted item reads select 1 MiB, and targeted watch-state reads select 16
-MiB. Targeted watch-state reads admit at most four provider responses
-concurrently so the per-response bound cannot multiply across the complete
-100-member request. Callers receive only normalized response categories and
-parsed records, so raw provider bodies and credential-bearing request details
-never enter responses or logs.
+targeted item reads select 1 MiB, and targeted watch-state read and mutation
+responses select 16 MiB. Targeted watch-state reads and independent writes each
+admit at most four provider responses concurrently so the per-response bound
+cannot multiply across the complete 100-member request. Callers receive only
+normalized response categories and parsed records, so raw provider bodies and
+credential-bearing request details never enter responses or logs.
 
 `GetItem` reads one explicitly referenced supported Jellyfin movie, show,
 season, or episode for the configured user. It normalizes required and optional
@@ -105,9 +106,29 @@ permanent member failures remain distinct; no provider revision is invented.
 The generated RPC remains callable for targeted repair while
 `WATCH_STATE_READ` stays unadvertised until complete best-effort scans exist.
 
+Explicit watched and unwatched targets first consume one bounded targeted-read
+batch. Equal targets return the normalized observation without a provider
+write. Unique, independent differing targets use at most four concurrent
+Jellyfin absolute played/unplayed writes while results remain in request order;
+duplicate mutation IDs or item targets are invalid per member. Structurally
+valid exact-progress targets are unsupported without provider traffic, while
+malformed targets are invalid. The pre-read batch and each write response
+receive at most half the remaining caller deadline. An internally timed-out
+pre-read normalizes as `RETRYABLE_FAILURE` per member; direct caller
+cancellation remains a generated-RPC cancellation. The write bound preserves
+readback budget after a timed-out, potentially committed mutation. A lost or
+timed-out response, or a malformed or oversized successful response, causes one
+targeted readback. An observed target succeeds; an unresolved target remains
+retryable ambiguity, and the plugin never replays the possibly committed write.
+
+Static plugin information and successful configured connections advertise only
+`WATCHED_WRITE` from this implemented profile. Missing, forbidden, retryable,
+permanent, ambiguous, and cancelled paths retain sanitized generated-RPC
+outcomes without exposing provider bodies, identifiers, or authorization.
+
 Windows transport and persistent or background native-media plugins remain
 deferred until a real plugin requires them. Complete catalog scans, public
-artwork resolution, complete watch-state scans, and watched/unwatched writes
-belong to issue #30. Production playback belongs to issue #96, coherent exact
-progress export belongs to issue #97, explicit connection-test commands belong
-to issue #31, and container packaging belongs to issue #32.
+artwork resolution, and complete watch-state scans belong to issue #30.
+Production playback belongs to issue #96, coherent exact progress export
+belongs to issue #97, explicit connection-test commands belong to issue #31,
+and container packaging belongs to issue #32.

@@ -387,7 +387,7 @@ it.live(
               expect(dataFromNama(providerTypes)).toMatchObject({
                 provider_types: [
                   {
-                    capabilities: [],
+                    capabilities: ["watched_write"],
                     id: PROVIDER_TYPE_ID,
                     schema_revision: "1",
                   },

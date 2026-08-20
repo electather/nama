@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { PluginConnectionStatus } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 
+import { jellyfinCapabilities } from "./info.ts";
 import { createJellyfinRequest } from "./request.ts";
 import { isUnknownRecord } from "./value.ts";
 
@@ -93,7 +94,7 @@ const verifyConnectionIdentity = (
     );
   }
   return {
-    capabilities: [],
+    capabilities: jellyfinCapabilities,
     ...remoteDetails(system),
     providerUserReference: principalReference(serverId, context.userId),
     status: PluginConnectionStatus.CONNECTED,

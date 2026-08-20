@@ -1,3 +1,5 @@
+import { ProviderCapability } from "@nama/api/nama/plugin/v1/plugin_pb.js";
+
 const jellyfinConfigurationSchema = {
   additionalProperties: false,
   properties: {
@@ -30,9 +32,11 @@ const jellyfinConfigurationSchema = {
   type: "object",
 };
 
+const jellyfinCapabilities = [ProviderCapability.WATCHED_WRITE];
+
 const jellyfinPluginInfo = {
   buildVersion: "0.0.0-dev",
-  capabilities: [],
+  capabilities: jellyfinCapabilities,
   configurationSchema: jellyfinConfigurationSchema,
   contractMajor: 1,
   description: "Connect Nama to a Jellyfin server.",
@@ -42,4 +46,4 @@ const jellyfinPluginInfo = {
   schemaRevision: "1",
 };
 
-export { jellyfinConfigurationSchema, jellyfinPluginInfo };
+export { jellyfinCapabilities, jellyfinConfigurationSchema, jellyfinPluginInfo };

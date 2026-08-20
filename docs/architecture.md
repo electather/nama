@@ -40,7 +40,8 @@ observations on the revision that was tested.
 The production Jellyfin adapter also serves bounded targeted library
 observations for movies, shows, positive-numbered seasons, and
 positive-numbered episodes, plus targeted movie and episode watch-state reads
-for exact instance launches. `LIBRARY_READ` and `WATCH_STATE_READ` remain
+and explicit watched/unwatched writes for exact instance launches. It
+advertises `WATCHED_WRITE`; `LIBRARY_READ` and `WATCH_STATE_READ` remain
 unadvertised because complete best-effort scans are not implemented.
 
 The provider-management verification gate drives a compiled `nama` binary

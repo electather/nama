@@ -1,11 +1,8 @@
-import { once } from "node:events";
-import { createServer } from "node:http";
-import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import { join } from "node:path";
+import type { ServerResponse } from "node:http";
 
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { expect, it } from "@effect/vitest";
-import { PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
+import { PluginService, ProviderCapability } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 import {
   ProviderActivityReliability,
   ProviderActivitySemantics,
@@ -20,14 +17,20 @@ import { Effect } from "effect";
 
 import type { SupervisedPlugin } from "../../src/plugin/model.ts";
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
+import {
+  API_KEY,
+  USER_ID,
+  controlledJellyfin,
+  respondJson,
+  respondRaw,
+  superviseJellyfin,
+} from "./jellyfin-process.test-support.ts";
+import type { ControlledHandler, ControlledJellyfin } from "./jellyfin-process.test-support.ts";
 
-const JELLYFIN_PLUGIN_PATH = join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts");
 const CALL_DEADLINE_MILLISECONDS = 2000;
 const CANCELLATION_DEADLINE_MILLISECONDS = 50;
 const TEST_TIMEOUT_MILLISECONDS = 10_000;
 const MILLISECONDS_PER_SECOND = 1000;
-const API_KEY = "jellyfin-api-key-sentinel";
-const USER_ID = "user-identity";
 const MOVIE_ID = "movie-identity";
 const EPISODE_ID = "episode-identity";
 const LAST_PLAYED_DATE = "2026-08-19T21:14:15.123Z";
@@ -42,7 +45,6 @@ const MALFORMED_RESPONSE_SENTINEL = "malformed-watch-state-sentinel";
 const OVERSIZED_RESPONSE_SENTINEL = "oversized-watch-state-sentinel";
 const UNAVAILABLE_RESPONSE_SENTINEL = "unavailable-watch-state-sentinel";
 const RATE_LIMITED_RESPONSE_SENTINEL = "rate-limited-watch-state-sentinel";
-const EPHEMERAL_PORT = 0;
 const HTTP_OK = 200;
 const HTTP_FORBIDDEN = 403;
 const HTTP_RATE_LIMITED = 429;
@@ -55,16 +57,6 @@ const MAXIMUM_MEDIA_RESPONSE_BYTES = 16_777_216;
 const SINGLE_RESULT_COUNT = 1;
 const REPEATED_REFERENCE_COUNT = 3;
 
-interface ObservedRequest {
-  readonly authorization: string | undefined;
-  readonly url: string;
-}
-
-interface ControlledJellyfin {
-  readonly baseUrl: string;
-  readonly requests: ObservedRequest[];
-  readonly server: Server;
-}
 interface ProviderItemReferenceInput {
   readonly itemId: string;
 }
@@ -73,18 +65,6 @@ interface CallTimeBounds {
   readonly afterSeconds: bigint;
   readonly beforeSeconds: bigint;
 }
-
-const respondJson = (response: ServerResponse, value: unknown): void => {
-  response.statusCode = HTTP_OK;
-  response.setHeader("content-type", "application/json");
-  response.end(JSON.stringify(value));
-};
-
-const respondRaw = (response: ServerResponse, statusCode: number, body: string): void => {
-  response.statusCode = statusCode;
-  response.setHeader("content-type", "application/json");
-  response.end(body);
-};
 
 const respondKnownWatchState = (url: string, response: ServerResponse): boolean => {
   if (url === `/jellyfin/Items/${MOVIE_ID}?userId=${USER_ID}`) {
@@ -151,13 +131,7 @@ const respondPermanentFailure = (url: string, response: ServerResponse): boolean
   }
   return false;
 };
-const handleJellyfinRequest = (
-  requests: ObservedRequest[],
-  request: IncomingMessage,
-  response: ServerResponse,
-): void => {
-  const url = request.url ?? "";
-  requests.push({ authorization: request.headers.authorization, url });
+const handleJellyfinRequest: ControlledHandler = (_request, response, { url }) => {
   if (
     respondKnownWatchState(url, response) ||
     respondMemberFailure(url, response) ||
@@ -170,46 +144,7 @@ const handleJellyfinRequest = (
   response.end();
 };
 
-const acquireControlledJellyfin = Effect.acquireRelease(
-  Effect.tryPromise({
-    catch: (error) => error,
-    try: async (): Promise<ControlledJellyfin> => {
-      const requests: ObservedRequest[] = [];
-      const server = createServer((request, response) => {
-        handleJellyfinRequest(requests, request, response);
-      });
-      server.listen(EPHEMERAL_PORT, "127.0.0.1");
-      await once(server, "listening");
-      const address = server.address();
-      if (address === null || typeof address === "string") {
-        throw new Error("Controlled Jellyfin server did not bind to a TCP address");
-      }
-      return {
-        baseUrl: `http://127.0.0.1:${address.port}/jellyfin`,
-        requests,
-        server,
-      };
-    },
-  }),
-  ({ server }) => Effect.promise(() => server[Symbol.asyncDispose]()),
-);
-
-const superviseJellyfin = (supervisor: PluginSupervisor["Service"], jellyfin: ControlledJellyfin) =>
-  supervisor.supervise(
-    {
-      arguments: [JELLYFIN_PLUGIN_PATH],
-      executable: process.execPath,
-      expectedProviderType: "jellyfin",
-      stderrEvents: [],
-    },
-    {
-      configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-      credentials: { api_key: API_KEY },
-      kind: "instance",
-      providerInstanceId: "provider-instance",
-      revision: "revision-1",
-    },
-  );
+const acquireControlledJellyfin = controlledJellyfin(handleJellyfinRequest);
 
 const callWatchStates = (
   plugin: SupervisedPlugin,
@@ -257,6 +192,7 @@ const expectMovieResponse = (
   expect(jellyfin.requests).toEqual([
     {
       authorization: `MediaBrowser Token="${API_KEY}"`,
+      method: "GET",
       url: `/jellyfin/Items/${MOVIE_ID}?userId=${USER_ID}`,
     },
   ]);
@@ -336,7 +272,7 @@ const targetedMovieWatchStateTest = () => {
     const supervisor = yield* PluginSupervisor;
     const plugin = yield* superviseJellyfin(supervisor, jellyfin);
     const info = yield* plugin.call(PluginService.method.getInfo, {}, CALL_DEADLINE_MILLISECONDS);
-    expect(info.pluginInfo?.capabilities).toEqual([]);
+    expect(info.pluginInfo?.capabilities).toEqual([ProviderCapability.WATCHED_WRITE]);
     const beforeCallSeconds = BigInt(Math.floor(Date.now() / MILLISECONDS_PER_SECOND));
     const response = yield* callWatchStates(plugin, [{ itemId: MOVIE_ID }]);
     const afterCallSeconds = BigInt(Math.floor(Date.now() / MILLISECONDS_PER_SECOND));
@@ -398,6 +334,7 @@ const cancelledTargetedWatchStateTest = () => {
     expect(jellyfin.requests).toEqual([
       {
         authorization: `MediaBrowser Token="${API_KEY}"`,
+        method: "GET",
         url: `/jellyfin/Items/${HANGING_ID}?userId=${USER_ID}`,
       },
     ]);

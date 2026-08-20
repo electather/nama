@@ -1,234 +1,69 @@
 import type { ProviderItemReference } from "@nama/api/nama/plugin/v1/common_pb.js";
 import {
-  ProviderActivityReliability,
-  ProviderActivitySemantics,
+  WatchStateMutationStatus,
   WatchStateReadStatus,
 } from "@nama/api/nama/plugin/v1/watch_state_pb.js";
 
+import { forEachBounded } from "./bounded-concurrency.ts";
+import { jellyfinFailureCategory } from "./request-failure.ts";
+import type { JellyfinFailureCategory } from "./request-failure.ts";
 import { createJellyfinRequest } from "./request.ts";
 import type { JellyfinJsonResponse } from "./request.ts";
-import { isUnknownRecord } from "./value.ts";
+import {
+  ABSENT_VALUE,
+  normalizeJellyfinWatchState,
+  timestampFromMilliseconds,
+} from "./watch-state-value.ts";
+import type { NormalizedWatchState, ProtobufTimestamp } from "./watch-state-value.ts";
 
 const MAXIMUM_MEDIA_RESPONSE_BYTES = 16_777_216;
 const MAXIMUM_CONCURRENT_READS = 4;
-const JELLYFIN_TICKS_PER_SECOND = 10_000_000;
-const NANOSECONDS_PER_JELLYFIN_TICK = 100;
-const MILLISECONDS_PER_SECOND = 1000;
-const NANOSECONDS_PER_MILLISECOND = 1_000_000;
-const UNIX_EPOCH_MILLISECONDS = 0;
-const MONTH_NUMBER_OFFSET = 1;
-const MINIMUM_PROTOBUF_TIMESTAMP_MILLISECONDS = Date.parse("0001-01-01T00:00:00.000Z");
-const MAXIMUM_PROTOBUF_TIMESTAMP_MILLISECONDS = Date.parse("9999-12-31T23:59:59.999Z");
-const PROVIDER_ACTIVITY_TIMESTAMP_PATTERN =
-  /^(?<year>(?!0000)[0-9]{4})-(?<month>0[1-9]|1[0-2])-(?<day>0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]{1,9})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$/u;
-const ZERO_TICKS = 0;
-const INDEX_INCREMENT = 1;
-const INVALID_TICKS = Symbol("invalid_ticks");
-const ABSENT_VALUE = Symbol("absent_value");
 
 type JellyfinWatchStateContext = Readonly<{
   apiKey: string;
   baseUrl: string;
   userId: string;
 }>;
-
-type ProtobufTimestamp = Readonly<{ nanos: number; seconds: bigint }>;
-type ProtobufDuration = Readonly<{ nanos: number; seconds: bigint }>;
-type NormalizedProviderActivity = Readonly<{
-  occurredAt: ProtobufTimestamp;
-  reliability: ProviderActivityReliability;
-  semantics: ProviderActivitySemantics;
-}>;
-
-interface NormalizedWatchState {
-  duration?: ProtobufDuration;
-  readonly itemReference: ProviderItemReference;
-  readonly observedAt: ProtobufTimestamp;
-  position?: ProtobufDuration;
-  providerActivity?: NormalizedProviderActivity;
-  readonly watched: boolean;
-}
-interface JellyfinUserData {
-  readonly played: boolean;
-  readonly record: Readonly<Record<string, unknown>>;
+interface JellyfinWatchStateSignals {
+  readonly cancellation: AbortSignal;
+  readonly request: AbortSignal;
 }
 interface NormalizedReadResult {
   readonly itemReference: ProviderItemReference;
   readonly state?: NormalizedWatchState;
   readonly status: WatchStateReadStatus;
 }
+interface WatchStateFailureStatuses {
+  readonly mutation: WatchStateMutationStatus;
+  readonly read: WatchStateReadStatus;
+}
 
-const timestampFromMilliseconds = (milliseconds: number): ProtobufTimestamp => {
-  const wholeSeconds = Math.floor(milliseconds / MILLISECONDS_PER_SECOND);
-  return {
-    nanos: (milliseconds - wholeSeconds * MILLISECONDS_PER_SECOND) * NANOSECONDS_PER_MILLISECOND,
-    seconds: BigInt(wholeSeconds),
-  };
-};
+const WATCH_STATE_STATUSES_BY_FAILURE_CATEGORY = {
+  forbidden: {
+    mutation: WatchStateMutationStatus.FORBIDDEN,
+    read: WatchStateReadStatus.FORBIDDEN,
+  },
+  missing: {
+    mutation: WatchStateMutationStatus.NOT_FOUND,
+    read: WatchStateReadStatus.NOT_FOUND,
+  },
+  permanent: {
+    mutation: WatchStateMutationStatus.PERMANENT_FAILURE,
+    read: WatchStateReadStatus.PERMANENT_FAILURE,
+  },
+  retryable: {
+    mutation: WatchStateMutationStatus.RETRYABLE_FAILURE,
+    read: WatchStateReadStatus.RETRYABLE_FAILURE,
+  },
+} as const satisfies Readonly<Record<JellyfinFailureCategory, WatchStateFailureStatuses>>;
 
-const parseOptionalTicks = (
-  value: unknown,
-): number | typeof ABSENT_VALUE | typeof INVALID_TICKS => {
-  if (value === undefined || value === null) {
-    return ABSENT_VALUE;
-  }
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < ZERO_TICKS) {
-    return INVALID_TICKS;
-  }
-  return value;
-};
-
-const durationFromTicks = (ticks: number): ProtobufDuration => ({
-  nanos: (ticks % JELLYFIN_TICKS_PER_SECOND) * NANOSECONDS_PER_JELLYFIN_TICK,
-  seconds: BigInt(Math.floor(ticks / JELLYFIN_TICKS_PER_SECOND)),
-});
-
-const hasValidProviderActivityCalendarDate = (
-  year: string,
-  month: string,
-  day: string,
-): boolean => {
-  const calendarYear = Number(year);
-  const calendarMonth = Number(month);
-  const calendarDay = Number(day);
-  const calendarDate = new Date(UNIX_EPOCH_MILLISECONDS);
-  calendarDate.setUTCFullYear(calendarYear, calendarMonth - MONTH_NUMBER_OFFSET, calendarDay);
-  return (
-    calendarDate.getUTCFullYear() === calendarYear &&
-    calendarDate.getUTCMonth() + MONTH_NUMBER_OFFSET === calendarMonth &&
-    calendarDate.getUTCDate() === calendarDay
-  );
-};
-const hasValidProviderActivityTimestampFormat = (value: unknown): value is string => {
-  if (typeof value !== "string") {
-    return false;
-  }
-  const groups = PROVIDER_ACTIVITY_TIMESTAMP_PATTERN.exec(value)?.groups;
-  if (groups === undefined) {
-    return false;
-  }
-  const { day, month, year } = groups;
-  return (
-    year !== undefined &&
-    month !== undefined &&
-    day !== undefined &&
-    hasValidProviderActivityCalendarDate(year, month, day)
-  );
-};
-
-const providerActivityMilliseconds = (value: unknown): number | typeof ABSENT_VALUE => {
-  if (!hasValidProviderActivityTimestampFormat(value)) {
-    return ABSENT_VALUE;
-  }
-  const occurredAtMilliseconds = Date.parse(value);
-  if (
-    !Number.isFinite(occurredAtMilliseconds) ||
-    occurredAtMilliseconds < MINIMUM_PROTOBUF_TIMESTAMP_MILLISECONDS ||
-    occurredAtMilliseconds > MAXIMUM_PROTOBUF_TIMESTAMP_MILLISECONDS
-  ) {
-    return ABSENT_VALUE;
-  }
-  return occurredAtMilliseconds;
-};
-
-const providerActivity = (value: unknown): NormalizedProviderActivity | typeof ABSENT_VALUE => {
-  const occurredAtMilliseconds = providerActivityMilliseconds(value);
-  if (occurredAtMilliseconds === ABSENT_VALUE) {
-    return ABSENT_VALUE;
-  }
-  return {
-    occurredAt: timestampFromMilliseconds(occurredAtMilliseconds),
-    reliability: ProviderActivityReliability.HEURISTIC,
-    semantics: ProviderActivitySemantics.UNKNOWN,
-  };
-};
-
-const watchStateUserData = (
+const failedRead = (
   itemReference: ProviderItemReference,
-  body: Readonly<Record<string, unknown>>,
-): JellyfinUserData | typeof ABSENT_VALUE => {
-  const userData = body["UserData"];
-  if (
-    body["Id"] !== itemReference.itemId ||
-    (body["Type"] !== "Movie" && body["Type"] !== "Episode") ||
-    !isUnknownRecord(userData) ||
-    typeof userData["Played"] !== "boolean"
-  ) {
-    return ABSENT_VALUE;
-  }
-  return { played: userData["Played"], record: userData };
-};
-
-const applyProviderActivity = (state: NormalizedWatchState, userData: JellyfinUserData): void => {
-  const activity = providerActivity(userData.record["LastPlayedDate"]);
-  if (activity !== ABSENT_VALUE) {
-    state.providerActivity = activity;
-  }
-};
-
-const applyOptionalState = (
-  state: NormalizedWatchState,
-  body: Readonly<Record<string, unknown>>,
-  userData: JellyfinUserData,
-): boolean => {
-  const positionTicks = parseOptionalTicks(userData.record["PlaybackPositionTicks"]);
-  const durationTicks = parseOptionalTicks(body["RunTimeTicks"]);
-  if (positionTicks === INVALID_TICKS || durationTicks === INVALID_TICKS) {
-    return false;
-  }
-  if (durationTicks !== ABSENT_VALUE && durationTicks > ZERO_TICKS) {
-    state.duration = durationFromTicks(durationTicks);
-  }
-  if (positionTicks !== ABSENT_VALUE && positionTicks > ZERO_TICKS) {
-    state.position = durationFromTicks(positionTicks);
-  }
-  applyProviderActivity(state, userData);
-  return true;
-};
-
-const normalizeWatchState = (
-  itemReference: ProviderItemReference,
-  body: Readonly<Record<string, unknown>>,
-  observedAt: ProtobufTimestamp,
-): NormalizedWatchState | typeof ABSENT_VALUE => {
-  const userData = watchStateUserData(itemReference, body);
-  if (userData === ABSENT_VALUE) {
-    return ABSENT_VALUE;
-  }
-  const state: NormalizedWatchState = {
-    itemReference,
-    observedAt,
-    watched: userData.played,
-  };
-  if (!applyOptionalState(state, body, userData)) {
-    return ABSENT_VALUE;
-  }
-  return state;
-};
-
-const failedRead = (itemReference: ProviderItemReference, status: WatchStateReadStatus) => ({
-  itemReference,
-  status,
-});
+  status: WatchStateReadStatus,
+): NormalizedReadResult => ({ itemReference, status });
 
 const permanentFailure = (itemReference: ProviderItemReference) =>
   failedRead(itemReference, WatchStateReadStatus.PERMANENT_FAILURE);
-
-const providerFailure = (
-  itemReference: ProviderItemReference,
-  kind: "authentication_failed" | "forbidden" | "incompatible" | "not_found" | "unreachable",
-) => {
-  if (kind === "authentication_failed" || kind === "forbidden") {
-    return failedRead(itemReference, WatchStateReadStatus.FORBIDDEN);
-  }
-  if (kind === "not_found") {
-    return failedRead(itemReference, WatchStateReadStatus.NOT_FOUND);
-  }
-  if (kind === "unreachable") {
-    return failedRead(itemReference, WatchStateReadStatus.RETRYABLE_FAILURE);
-  }
-  return permanentFailure(itemReference);
-};
 
 const watchStateReadResult = (
   itemReference: ProviderItemReference,
@@ -236,9 +71,10 @@ const watchStateReadResult = (
   observedAt: ProtobufTimestamp,
 ): NormalizedReadResult => {
   if (response.kind !== "success") {
-    return providerFailure(itemReference, response.kind);
+    const category = jellyfinFailureCategory(response.kind);
+    return failedRead(itemReference, WATCH_STATE_STATUSES_BY_FAILURE_CATEGORY[category].read);
   }
-  const state = normalizeWatchState(itemReference, response.body, observedAt);
+  const state = normalizeJellyfinWatchState(itemReference, response.body, observedAt);
   if (state === ABSENT_VALUE) {
     return permanentFailure(itemReference);
   }
@@ -248,45 +84,29 @@ const watchStateReadResult = (
 const getJellyfinWatchStates = async (
   context: JellyfinWatchStateContext,
   itemReferences: readonly ProviderItemReference[],
-  signal: AbortSignal,
+  signals: JellyfinWatchStateSignals,
 ) => {
   const request = createJellyfinRequest({ apiKey: context.apiKey, baseUrl: context.baseUrl });
   if (request === undefined) {
     return { results: itemReferences.map((itemReference) => permanentFailure(itemReference)) };
   }
-  const resultsByIndex = new Map<number, NormalizedReadResult>();
   const observedAt = timestampFromMilliseconds(Date.now());
-  let nextIndex = 0;
-  const readNext = async (): Promise<void> => {
-    const index = nextIndex;
-    nextIndex += INDEX_INCREMENT;
-    const itemReference = itemReferences[index];
-    if (itemReference === undefined) {
-      return;
-    }
-    const response = await request.requestJson(["Items", itemReference.itemId], {
-      authentication: "api_key",
-      maximumResponseBytes: MAXIMUM_MEDIA_RESPONSE_BYTES,
-      query: { userId: context.userId },
-      signal,
-    });
-    resultsByIndex.set(index, watchStateReadResult(itemReference, response, observedAt));
-    await readNext();
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(MAXIMUM_CONCURRENT_READS, itemReferences.length) }, () =>
-      readNext(),
-    ),
+  const results = await forEachBounded(
+    itemReferences,
+    MAXIMUM_CONCURRENT_READS,
+    async (itemReference) => {
+      const response = await request.requestJson(["Items", itemReference.itemId], {
+        authentication: "api_key",
+        cancellationSignal: signals.cancellation,
+        maximumResponseBytes: MAXIMUM_MEDIA_RESPONSE_BYTES,
+        query: { userId: context.userId },
+        signal: signals.request,
+      });
+      return watchStateReadResult(itemReference, response, observedAt);
+    },
   );
-  const results = itemReferences.map((_itemReference, index) => {
-    const result = resultsByIndex.get(index);
-    if (result === undefined) {
-      throw new Error("Jellyfin read result is unavailable");
-    }
-    return result;
-  });
   return { results };
 };
 
-export { getJellyfinWatchStates };
-export type { JellyfinWatchStateContext };
+export { WATCH_STATE_STATUSES_BY_FAILURE_CATEGORY, getJellyfinWatchStates };
+export type { JellyfinWatchStateContext, NormalizedReadResult };
