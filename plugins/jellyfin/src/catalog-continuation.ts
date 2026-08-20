@@ -1,6 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { Code, ConnectError } from "@connectrpc/connect";
+import { ErrorInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
+import type { ErrorInfo } from "@nama/api/google/rpc/error_details_pb.js";
 
 const CATALOG_CONTINUATION_VERSION = 1;
 const CATALOG_CONTINUATION_OPERATION = "nama.plugin.v1.LibraryService.ListItems";
@@ -14,6 +16,8 @@ const MAXIMUM_PROVIDER_OFFSET = 2_147_483_647;
 const MAXIMUM_SCAN_ID_LENGTH = 128;
 const BASE64URL = /^[A-Za-z0-9_-]+$/u;
 const ZERO = 0;
+const PLUGIN_ERROR_DOMAIN = "nama.plugin.v1";
+const PAGE_TOKEN_INVALID_REASON = "PAGE_TOKEN_INVALID";
 
 interface CatalogContinuationBindings {
   readonly apiKey: string;
@@ -59,6 +63,17 @@ const PAYLOAD_KEYS = [
   "scan_id",
   "version",
 ] as const;
+const invalidCatalogContinuation = (): ConnectError => {
+  const errorInfo: ErrorInfo = {
+    $typeName: "google.rpc.ErrorInfo",
+    domain: PLUGIN_ERROR_DOMAIN,
+    metadata: {},
+    reason: PAGE_TOKEN_INVALID_REASON,
+  };
+  return new ConnectError("catalog continuation is invalid", Code.InvalidArgument, undefined, [
+    { desc: ErrorInfoSchema, value: errorInfo },
+  ]);
+};
 
 const dataProperties = (value: object): Readonly<Record<string, unknown>> | undefined => {
   const properties: Record<string, unknown> = {};
@@ -105,7 +120,7 @@ const payloadFor = (input: CatalogContinuationEncodeInput): CatalogContinuationP
 const propertiesFromJson = (canonicalJson: string): Readonly<Record<string, unknown>> => {
   const value: unknown = JSON.parse(canonicalJson);
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new ConnectError("catalog continuation is invalid", Code.InvalidArgument);
+    throw invalidCatalogContinuation();
   }
   const properties = dataProperties(value);
   if (
@@ -113,7 +128,7 @@ const propertiesFromJson = (canonicalJson: string): Readonly<Record<string, unkn
     Reflect.ownKeys(properties).length !== PAYLOAD_KEYS.length ||
     !PAYLOAD_KEYS.every((key) => Object.hasOwn(properties, key))
   ) {
-    throw new ConnectError("catalog continuation is invalid", Code.InvalidArgument);
+    throw invalidCatalogContinuation();
   }
   return properties;
 };
@@ -163,14 +178,14 @@ const parsePayload = (canonicalJson: string): CatalogContinuationPayload => {
   try {
     const payload = payloadFromProperties(propertiesFromJson(canonicalJson));
     if (payload === undefined || JSON.stringify(payload) !== canonicalJson) {
-      throw new ConnectError("catalog continuation is invalid", Code.InvalidArgument);
+      throw invalidCatalogContinuation();
     }
     return payload;
   } catch (error) {
     if (error instanceof ConnectError && error.code === Code.InvalidArgument) {
       throw error;
     }
-    throw new ConnectError("catalog continuation is invalid", Code.InvalidArgument);
+    throw invalidCatalogContinuation();
   }
 };
 
@@ -187,12 +202,12 @@ const deriveSigningKey = (apiKey: string): Buffer => {
 
 const decodeEnvelope = (token: string): Buffer => {
   if (token.length === ZERO || token.length > MAXIMUM_TOKEN_LENGTH || !BASE64URL.test(token)) {
-    throw new ConnectError("catalog continuation is invalid", Code.InvalidArgument);
+    throw invalidCatalogContinuation();
   }
   const envelope = Buffer.from(token, "base64url");
   if (envelope.toString("base64url") !== token || envelope.byteLength <= HMAC_BYTES) {
     envelope.fill(ZERO);
-    throw new ConnectError("catalog continuation is invalid", Code.InvalidArgument);
+    throw invalidCatalogContinuation();
   }
   return envelope;
 };
@@ -205,7 +220,7 @@ const tokenFromPayload = (input: CatalogContinuationEncodeInput): string => {
   try {
     const token = envelope.toString("base64url");
     if (token.length > MAXIMUM_TOKEN_LENGTH) {
-      throw new ConnectError("catalog continuation is invalid", Code.InvalidArgument);
+      throw invalidCatalogContinuation();
     }
     return token;
   } finally {
@@ -220,7 +235,7 @@ const encodeCatalogContinuation = (input: CatalogContinuationEncodeInput): strin
     input.providerRevision.length === ZERO ||
     !validPosition(input)
   ) {
-    throw new ConnectError("catalog continuation is invalid", Code.InvalidArgument);
+    throw invalidCatalogContinuation();
   }
   return tokenFromPayload(input);
 };
@@ -233,7 +248,7 @@ const authenticatedPayloadJson = (token: string, apiKey: string): string => {
   const expectedSignature = createHmac(HMAC_ALGORITHM, key).update(payloadBytes).digest();
   try {
     if (!timingSafeEqual(envelope.subarray(signatureOffset), expectedSignature)) {
-      throw new ConnectError("catalog continuation is invalid", Code.InvalidArgument);
+      throw invalidCatalogContinuation();
     }
     return payloadBytes.toString("utf8");
   } finally {
@@ -250,7 +265,7 @@ const decodeCatalogContinuation = (
     input.providerRevision.length === ZERO ||
     !Number.isSafeInteger(input.now)
   ) {
-    throw new ConnectError("catalog continuation is invalid", Code.InvalidArgument);
+    throw invalidCatalogContinuation();
   }
   const payload = parsePayload(authenticatedPayloadJson(input.token, input.apiKey));
   if (
@@ -258,7 +273,7 @@ const decodeCatalogContinuation = (
     payload.provider_revision !== input.providerRevision ||
     payload.expires_at <= input.now
   ) {
-    throw new ConnectError("catalog continuation is invalid", Code.InvalidArgument);
+    throw invalidCatalogContinuation();
   }
   return {
     expiresAt: payload.expires_at,

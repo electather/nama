@@ -1,12 +1,10 @@
-import { randomUUID } from "node:crypto";
-
 import type { ConnectRouter } from "@connectrpc/connect";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { LibraryService, ListConsistency } from "@nama/api/nama/plugin/v1/library_pb.js";
-import type { ListItemsRequest } from "@nama/api/nama/plugin/v1/library_pb.js";
 
-import { decodeCatalogContinuation, encodeCatalogContinuation } from "./catalog-continuation.ts";
+import { encodeCatalogContinuation } from "./catalog-continuation.ts";
 import type { CatalogContinuationPosition } from "./catalog-continuation.ts";
+import { catalogPositionForRequest } from "./catalog-scan.ts";
 import type { LaunchDocument, ProviderLaunchDocument } from "./launch-document.ts";
 import { normalizeJellyfinItem } from "./media-item.ts";
 import { createJellyfinRequest } from "./request.ts";
@@ -16,10 +14,7 @@ import { hasMaximumCodePointLength, isUnknownRecord } from "./value.ts";
 const EMPTY_LENGTH = 0;
 const MAXIMUM_ITEM_REFERENCE_CODE_POINTS = 256;
 const MAXIMUM_MEDIA_RESPONSE_BYTES = 1_048_576;
-const DEFAULT_CATALOG_PAGE_SIZE = 50;
-const MAXIMUM_CATALOG_PAGE_SIZE = 100;
 const MAXIMUM_CATALOG_RESPONSE_BYTES = 16_777_216;
-const CATALOG_CONTINUATION_LIFETIME_SECONDS = 86_400;
 const MILLISECONDS_PER_SECOND = 1000;
 const SUPPORTED_CATALOG_ITEM_TYPES: Readonly<Record<string, true>> = Object.freeze({
   Episode: true,
@@ -27,7 +22,8 @@ const SUPPORTED_CATALOG_ITEM_TYPES: Readonly<Record<string, true>> = Object.free
   Season: true,
   Series: true,
 });
-const CATALOG_FIELDS = "Genres,MediaStreams,Overview,People,ProviderIds,Studios,Taglines";
+const CATALOG_FIELDS =
+  "ChildCount,Genres,MediaSources,MediaStreams,OriginalTitle,Overview,People,PlayAccess,ProviderIds,RecursiveItemCount,Studios,Taglines";
 
 type RequireAuthorization = (authorization: string | null, bearer: string) => void;
 
@@ -201,54 +197,6 @@ const readJellyfinItem = async (
     signal,
   });
   return itemFromResponse(response, itemId);
-};
-
-const beginCatalogPosition = (
-  request: ListItemsRequest,
-  now: number,
-): CatalogContinuationPosition => {
-  if (request.scan.case !== "begin") {
-    throw new ConnectError("catalog scan is invalid", Code.InvalidArgument);
-  }
-  const { pageSize: requestedPageSize } = request.scan.value;
-  let pageSize = requestedPageSize;
-  if (pageSize === EMPTY_LENGTH) {
-    pageSize = DEFAULT_CATALOG_PAGE_SIZE;
-  }
-  if (pageSize > MAXIMUM_CATALOG_PAGE_SIZE) {
-    throw new ConnectError("catalog page size is invalid", Code.InvalidArgument);
-  }
-  return {
-    expiresAt: now + CATALOG_CONTINUATION_LIFETIME_SECONDS,
-    offset: EMPTY_LENGTH,
-    pageSize,
-    scanId: randomUUID(),
-  };
-};
-
-const catalogPositionForRequest = (
-  launch: ProviderLaunchDocument,
-  request: ListItemsRequest,
-  now: number,
-): CatalogContinuationPosition => {
-  if (request.scan.case === "begin") {
-    return beginCatalogPosition(request, now);
-  }
-  if (request.scan.case !== "continuation") {
-    throw new ConnectError("catalog scan is required", Code.InvalidArgument);
-  }
-  const providerInstanceId = launch.provider_instance_id;
-  const providerRevision = launch.revision;
-  if (providerInstanceId === undefined || providerRevision === undefined) {
-    throw new ConnectError("Jellyfin adapter is unavailable", Code.Internal);
-  }
-  return decodeCatalogContinuation({
-    apiKey: launch.credentials.api_key,
-    now,
-    providerInstanceId,
-    providerRevision,
-    token: request.scan.value,
-  });
 };
 
 const registerJellyfinLibraryService = (
