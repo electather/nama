@@ -382,6 +382,43 @@ Sources:
   - kind `environment`; source `NAMA_TOKEN`; condition `always`
   - kind `native_credential_store`; source `operating_system`; condition `NAMA_TOKEN_unset`
 
+## `nama provider instance delete`
+
+Permanently delete a disabled provider instance
+
+Permanently remove a disabled provider instance and its Nama-owned state. Interactive human use prompts for confirmation; JSON and non-interactive use require --yes.
+
+### Arguments
+
+| Name | Type | Required | Variadic | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- |
+| `provider-instance-id` | `string` | yes | no | — | Opaque provider instance ID |
+
+### Effective flags
+
+| Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `--expected-revision` | `string` | yes | local | — | `` | — | Require this current provider-instance revision (required) |
+| `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |
+| `--operation-id` | `string` | no | local | — | `` | — | Reuse this opaque operation ID for an exact retry; omitted generates one |
+| `--output` | `string` | no | inherited | `NAMA_OUTPUT` | `human` | `human`, `json` | Select human or json output (env: NAMA_OUTPUT) |
+| `--profile` | `string` | no | inherited | `NAMA_PROFILE` | `` | — | Select a server profile (env: NAMA_PROFILE) |
+| `--server` | `string` | no | inherited | `NAMA_SERVER` | `` | — | Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER) |
+| `--version` | `bool` | no | inherited | — | `false` | — | Print the Nama CLI semantic version |
+| `--yes` | `bool` | no | local | — | `false` | — | Confirm permanent deletion without prompting (required for JSON or non-interactive use) |
+
+### Conditional inputs
+
+| Name | Type | Required | Secret | Description |
+| --- | --- | --- | --- | --- |
+| `bearer` | `string` | yes | yes | Administrator bearer credential |
+
+Sources:
+
+- `bearer`:
+  - kind `environment`; source `NAMA_TOKEN`; condition `always`
+  - kind `native_credential_store`; source `operating_system`; condition `NAMA_TOKEN_unset`
+
 ## `nama provider instance get`
 
 Inspect one provider instance
@@ -626,5 +663,5 @@ Sources:
 | 3 | authentication failure | `authentication_failed`, `credential_invalid`, `unauthenticated` |
 | 4 | permission denied | `permission_denied` |
 | 5 | resource not found | `not_found`, `profile_not_found`, `resource_not_found` |
-| 6 | conflict or invalid state | `aborted`, `already_exists`, `already_initialized`, `failed_precondition`, `idempotency_key_reused`, `not_initialized`, `provider_authentication_failed`, `provider_incompatible`, `provider_user_changed`, `revision_mismatch`, `setup_in_progress` |
+| 6 | conflict or invalid state | `aborted`, `already_exists`, `already_initialized`, `failed_precondition`, `idempotency_key_reused`, `not_initialized`, `provider_authentication_failed`, `provider_incompatible`, `provider_instance_busy`, `provider_user_changed`, `revision_mismatch`, `setup_in_progress` |
 | 7 | network or API unavailable, rate limited, or resource exhausted | `authentication_unavailable`, `deadline_exceeded`, `network_unavailable`, `plugin_unavailable`, `provider_commit_ambiguous`, `provider_credentials_unavailable`, `provider_instance_limit_reached`, `provider_unavailable`, `rate_limited`, `resource_exhausted`, `session_revocation_unconfirmed`, `setup_unavailable`, `unavailable` |

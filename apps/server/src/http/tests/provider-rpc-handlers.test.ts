@@ -8,6 +8,7 @@ import { Effect } from "effect";
 import type { AuthenticationService } from "../../authentication/authentication-service.ts";
 import type {
   CreateProviderInstanceInput,
+  DeleteProviderInstanceInput,
   ProviderManagementService,
   UpdateProviderInstanceInput,
 } from "../../provider/provider-management.ts";
@@ -20,12 +21,20 @@ const ADMINISTRATOR = Object.freeze({
 });
 const CREATED_AT = new Date("2026-08-19T12:00:00.000Z");
 const DEFAULT_SYNC_PRIORITY = 1;
+const authentication: AuthenticationService = Object.freeze({
+  consumeGlobalSignInBudget: Effect.die("unexpected sign-in limit"),
+  consumeIdentitySignInBudget: () => Effect.die("unexpected sign-in limit"),
+  resolveAdministrator: () => Effect.succeed(ADMINISTRATOR),
+  signIn: () => Effect.die("unexpected sign-in"),
+  signOut: () => Effect.die("unexpected sign-out"),
+});
 
-it.effect("maps provider create and update requests to safe instance responses", () =>
+it.effect("maps provider create, update, and delete requests to safe responses", () =>
   Effect.scoped(
     Effect.gen(function* providerCreateHandlerTest() {
       const received = {
         configuration: undefined as Readonly<Record<string, unknown>> | undefined,
+        deletion: undefined as DeleteProviderInstanceInput | undefined,
         update: undefined as UpdateProviderInstanceInput | undefined,
       };
       const providerManagement: ProviderManagementService = Object.freeze({
@@ -49,9 +58,17 @@ it.effect("maps provider create and update requests to safe instance responses",
             updatedAt: CREATED_AT,
           });
         },
+        deleteProviderInstance: (input: DeleteProviderInstanceInput) => {
+          received.deletion = input;
+          return Effect.void;
+        },
         getProviderInstance: () => Effect.die("unexpected provider get"),
         listProviderInstances: () => Effect.die("unexpected provider list"),
         listProviderTypes: () => Effect.die("unexpected provider type list"),
+        runProviderActivity: <Success, Failure, Requirements>(
+          _providerInstanceId: string,
+          activity: Effect.Effect<Success, Failure, Requirements>,
+        ) => activity,
         updateProviderInstance: (input: UpdateProviderInstanceInput) => {
           received.update = input;
           return Effect.succeed({
@@ -72,13 +89,6 @@ it.effect("maps provider create and update requests to safe instance responses",
             updatedAt: new Date("2026-08-19T12:01:00.000Z"),
           });
         },
-      });
-      const authentication: AuthenticationService = Object.freeze({
-        consumeGlobalSignInBudget: Effect.die("unexpected sign-in limit"),
-        consumeIdentitySignInBudget: () => Effect.die("unexpected sign-in limit"),
-        resolveAdministrator: () => Effect.succeed(ADMINISTRATOR),
-        signIn: () => Effect.die("unexpected sign-in"),
-        signOut: () => Effect.die("unexpected sign-out"),
       });
       const server = yield* startServer(makeDatabase(Effect.succeed(true), "configured"), {
         authentication,
@@ -170,6 +180,22 @@ it.effect("maps provider create and update requests to safe instance responses",
           syncPriority: 2,
         },
         secretExposed: false,
+      });
+      yield* Effect.promise(() =>
+        client.deleteProviderInstance(
+          {
+            expectedRevision: "revision-2",
+            operationId: "operation-3",
+            providerInstanceId: "provider-instance-1",
+          },
+          { headers: { authorization: "Bearer administrator-bearer" } },
+        ),
+      );
+      expect(received.deletion).toEqual({
+        administratorId: ADMINISTRATOR.id,
+        expectedRevision: "revision-2",
+        operationId: "operation-3",
+        providerInstanceId: "provider-instance-1",
       });
     }),
   ),

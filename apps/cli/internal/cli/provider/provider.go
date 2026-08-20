@@ -30,9 +30,18 @@ type UpdateInstanceInput struct {
 	SyncPriority             *uint32
 }
 
+// DeleteInstanceInput is one confirmed provider-instance deletion.
+type DeleteInstanceInput struct {
+	ProviderInstanceID string
+	ExpectedRevision   string
+	OperationID        string
+	Yes                bool
+}
+
 // Handlers bind provider command inputs to the CLI composition root.
 type Handlers struct {
 	CreateInstance   func(*cobra.Command, CreateInstanceInput) error
+	DeleteInstance   func(*cobra.Command, DeleteInstanceInput) error
 	GetInstance      func(*cobra.Command, string) error
 	ListInstances    func(*cobra.Command, uint32, string) error
 	ListTypes        func(*cobra.Command, uint32, string) error
@@ -96,6 +105,7 @@ func newInstanceCommand(handlers Handlers) *cobra.Command {
 	}
 	command.AddCommand(
 		newCreateInstanceCommand(handlers),
+		newDeleteInstanceCommand(handlers),
 		newGetInstanceCommand(handlers),
 		newListInstancesCommand(handlers),
 		newUpdateInstanceCommand(handlers),
@@ -155,6 +165,47 @@ func newCreateInstanceCommand(handlers Handlers) *cobra.Command {
 	surface.SetFlag(command, "enabled", surface.FlagMetadata{Default: "true"})
 	surface.SetFlag(command, "operation-id", surface.FlagMetadata{})
 	surface.SetFlag(command, "sync-priority", surface.FlagMetadata{})
+	setBearerInput(command)
+	return command
+}
+
+func newDeleteInstanceCommand(handlers Handlers) *cobra.Command {
+	var expectedRevision string
+	var operationID string
+	var yes bool
+	command := &cobra.Command{
+		Use:     "delete <provider-instance-id>",
+		Short:   "Permanently delete a disabled provider instance",
+		Long:    "Permanently remove a disabled provider instance and its Nama-owned state. Interactive human use prompts for confirmation; JSON and non-interactive use require --yes.",
+		Example: "  nama provider instance delete <provider-instance-id> --expected-revision <revision> --profile local\n  nama provider instance delete <provider-instance-id> --expected-revision <revision> --yes --profile local --output json",
+		Args: func(command *cobra.Command, arguments []string) error {
+			if len(arguments) != 1 {
+				return handlers.InvalidArguments(command, errors.New("exactly one provider instance ID is required"))
+			}
+			if expectedRevision == "" {
+				return handlers.InvalidArguments(command, errors.New("--expected-revision is required"))
+			}
+			return nil
+		},
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return handlers.DeleteInstance(command, DeleteInstanceInput{
+				ProviderInstanceID: arguments[0],
+				ExpectedRevision:   expectedRevision,
+				OperationID:        operationID,
+				Yes:                yes,
+			})
+		},
+	}
+	command.Flags().StringVar(&expectedRevision, "expected-revision", "", "Require this current provider-instance revision (required)")
+	command.Flags().StringVar(&operationID, "operation-id", "", "Reuse this opaque operation ID for an exact retry; omitted generates one")
+	command.Flags().BoolVar(&yes, "yes", false, "Confirm permanent deletion without prompting (required for JSON or non-interactive use)")
+	surface.SetArguments(command, surface.Argument{
+		Name: "provider-instance-id", Type: "string", Required: true,
+		Description: "Opaque provider instance ID",
+	})
+	surface.SetFlag(command, "expected-revision", surface.FlagMetadata{Required: true})
+	surface.SetFlag(command, "operation-id", surface.FlagMetadata{})
+	surface.SetFlag(command, "yes", surface.FlagMetadata{Default: "false"})
 	setBearerInput(command)
 	return command
 }

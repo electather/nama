@@ -284,6 +284,13 @@ const mappedFailureCases = [
     [],
   ],
   [
+    "busy provider instance",
+    { _tag: "ProviderInstanceBusy" },
+    Code.FailedPrecondition,
+    "PROVIDER_INSTANCE_BUSY",
+    [],
+  ],
+  [
     "provider operation key reuse",
     { _tag: "IdempotencyKeyReused" },
     Code.AlreadyExists,

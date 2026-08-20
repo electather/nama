@@ -1,10 +1,11 @@
 // oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary -- Provider-management fixtures keep reconciliation, secret splitting, candidate admission, and token-boundary assertions explicit.
 import { expect, it } from "@effect/vitest";
-import { Data, Effect } from "effect";
+import { Data, Deferred, Effect, Exit, Fiber } from "effect";
 
 import { ProviderUpdatePreparationFailed } from "../../database/provider-persistence-model-private.ts";
 import type {
   ProviderInstallationInput,
+  ProviderInstanceRecord,
   ProviderPersistence,
 } from "../../database/provider-persistence.ts";
 import type { JsonObject } from "../../database/provider-schema.ts";
@@ -1313,6 +1314,241 @@ it.effect("reopens the old revision after a definite pretransaction update failu
 
       expect(failure).toMatchObject({ _tag: "ProviderPersistenceError" });
       expect(openedRevisions).toEqual(["revision-1"]);
+    }),
+  );
+});
+
+const disabledProviderInstance = (): ProviderInstanceRecord => {
+  const createdAt = new Date("2026-08-19T12:00:00.000Z");
+  return {
+    configuration: {
+      base_url: "http://127.0.0.1:8096",
+      user_id: "provider-user",
+    },
+    configuredSecretKeys: ["api_key"],
+    createdAt,
+    credentialsAvailable: true,
+    displayName: "Home",
+    enabled: false,
+    id: "provider-instance",
+    observation: { status: "healthy", summary: "Connected" },
+    providerTypeId: "jellyfin",
+    revision: "revision-1",
+    syncPriority: 1,
+    updatedAt: createdAt,
+  };
+};
+
+it.effect("blocks provider deletion while admitted core activity is active", () => {
+  const persistence = makePersistence();
+  let deleteCalls = 0;
+  let runtimeFences = 0;
+  const providers = {
+    ...persistence.providers,
+    deleteInstance: () =>
+      Effect.sync(() => {
+        deleteCalls += 1;
+        return true;
+      }),
+    loadInstanceRecord: () => Effect.succeed(disabledProviderInstance()),
+    readOperationResult: noOperationResult,
+  } satisfies ProviderPersistence;
+
+  return Effect.scoped(
+    Effect.gen(function* activeProviderActivityTest() {
+      const service = yield* makeProviderManagement({
+        discover: successfulDiscovery,
+        fenceInstance: () =>
+          Effect.sync(() => {
+            runtimeFences += 1;
+            return { open: () => Effect.void };
+          }),
+        masterKey: MASTER_KEY,
+        persistence: providers,
+      });
+      const activityStarted = yield* Deferred.make<void>();
+      const releaseActivity = yield* Deferred.make<void>();
+      const signalActivityStarted = Deferred.done(activityStarted, Exit.void);
+      const waitForActivityRelease = Deferred.await(releaseActivity);
+      const heldActivity = signalActivityStarted.pipe(Effect.andThen(waitForActivityRelease));
+      const admittedActivity = service.runProviderActivity("provider-instance", heldActivity);
+      const activity = yield* Effect.forkChild(admittedActivity);
+      yield* Deferred.await(activityStarted);
+
+      const failure = yield* service
+        .deleteProviderInstance({
+          administratorId: "administrator-a",
+          expectedRevision: "revision-1",
+          operationId: "active-core-activity-delete",
+          providerInstanceId: "provider-instance",
+        })
+        .pipe(Effect.flip);
+
+      expect(failure).toMatchObject({ _tag: "ProviderInstanceBusy" });
+      expect(runtimeFences).toBe(0);
+      expect(deleteCalls).toBe(0);
+      yield* Deferred.done(releaseActivity, Exit.void);
+      yield* Fiber.join(activity);
+    }),
+  );
+});
+
+it.effect("fences runtime before deleting once and replaying the safe result", () => {
+  const persistence = makePersistence();
+  const taggedError = Data.TaggedError;
+  const OperationKeyReused = taggedError("ProviderOperationKeyReused")<Record<string, never>>;
+  let current: ProviderInstanceRecord | undefined = disabledProviderInstance();
+  let durableCanonicalRequest = "";
+  let durableResult: JsonObject | false = false;
+  let deleteCalls = 0;
+  const transitions: string[] = [];
+  const providers = {
+    ...persistence.providers,
+    deleteInstance: (input: Parameters<ProviderPersistence["deleteInstance"]>[0]) =>
+      Effect.sync(() => {
+        transitions.push("transaction");
+        deleteCalls += 1;
+        durableCanonicalRequest = Buffer.from(input.operation.canonicalRequest).toString("utf8");
+        durableResult = {};
+        current = undefined;
+        return true;
+      }),
+    loadInstanceRecord: () => Effect.succeed(current),
+    readOperationResult: (lookup: Parameters<ProviderPersistence["readOperationResult"]>[0]) => {
+      if (durableResult === false) {
+        return noOperationResult(lookup);
+      }
+      return Buffer.from(lookup.canonicalRequest).toString("utf8") === durableCanonicalRequest
+        ? Effect.succeed(durableResult)
+        : Effect.fail(new OperationKeyReused({}));
+    },
+  } satisfies ProviderPersistence;
+  const dependencies = {
+    discover: successfulDiscovery,
+    fenceInstance: () =>
+      Effect.sync(() => {
+        transitions.push("runtime-retired");
+        return { open: () => Effect.void };
+      }),
+    masterKey: MASTER_KEY,
+    persistence: providers,
+  };
+  const request = {
+    administratorId: "administrator-a",
+    expectedRevision: "revision-1",
+    operationId: "delete-operation",
+    providerInstanceId: "provider-instance",
+  } as const;
+
+  return Effect.scoped(
+    Effect.gen(function* deleteInstanceTest() {
+      const service = yield* makeProviderManagement(dependencies);
+      yield* service.deleteProviderInstance(request);
+      yield* service.deleteProviderInstance(request);
+      const conflictingReuse = yield* service
+        .deleteProviderInstance({
+          ...request,
+          expectedRevision: "different-revision",
+        })
+        .pipe(Effect.flip);
+
+      expect(conflictingReuse).toMatchObject({ _tag: "IdempotencyKeyReused" });
+      expect(deleteCalls).toBe(1);
+      expect(transitions).toEqual(["runtime-retired", "transaction"]);
+      expect(durableCanonicalRequest).toBe(
+        '{"expected_revision":"revision-1","provider_instance_id":"provider-instance"}',
+      );
+    }),
+  );
+});
+
+it.effect("rejects enabled provider-instance deletion before runtime cleanup", () => {
+  const persistence = makePersistence();
+  const current = { ...disabledProviderInstance(), enabled: true };
+  let runtimeFences = 0;
+  let deleteCalls = 0;
+  const providers = {
+    ...persistence.providers,
+    deleteInstance: () =>
+      Effect.sync(() => {
+        deleteCalls += 1;
+        return true;
+      }),
+    loadInstanceRecord: () => Effect.succeed(current),
+    readOperationResult: noOperationResult,
+  } satisfies ProviderPersistence;
+  const dependencies = {
+    discover: successfulDiscovery,
+    fenceInstance: () =>
+      Effect.sync(() => {
+        runtimeFences += 1;
+        return { open: () => Effect.void };
+      }),
+    masterKey: MASTER_KEY,
+    persistence: providers,
+  };
+
+  return Effect.scoped(
+    Effect.gen(function* busyDeletionTest() {
+      const service = yield* makeProviderManagement(dependencies);
+      const enabled = yield* service
+        .deleteProviderInstance({
+          administratorId: "administrator-a",
+          expectedRevision: "revision-1",
+          operationId: "enabled-delete",
+          providerInstanceId: "provider-instance",
+        })
+        .pipe(Effect.flip);
+
+      expect(enabled).toMatchObject({ _tag: "ProviderInstanceBusy" });
+      expect(runtimeFences).toBe(0);
+      expect(deleteCalls).toBe(0);
+    }),
+  );
+});
+
+it.effect("reopens activity admission when supervised cleanup is uncertain", () => {
+  const persistence = makePersistence();
+  let activityRan = false;
+  let deleteCalls = 0;
+  const providers = {
+    ...persistence.providers,
+    deleteInstance: () =>
+      Effect.sync(() => {
+        deleteCalls += 1;
+        return true;
+      }),
+    loadInstanceRecord: () => Effect.succeed(disabledProviderInstance()),
+    readOperationResult: noOperationResult,
+  } satisfies ProviderPersistence;
+  const dependencies = {
+    discover: successfulDiscovery,
+    fenceInstance: () => Effect.fail(new PluginUnavailable({ reason: "plugin_exited" })),
+    masterKey: MASTER_KEY,
+    persistence: providers,
+  };
+
+  return Effect.scoped(
+    Effect.gen(function* uncertainCleanupTest() {
+      const service = yield* makeProviderManagement(dependencies);
+      const failure = yield* service
+        .deleteProviderInstance({
+          administratorId: "administrator-a",
+          expectedRevision: "revision-1",
+          operationId: "cleanup-failure-delete",
+          providerInstanceId: "provider-instance",
+        })
+        .pipe(Effect.flip);
+
+      expect(failure).toMatchObject({ _tag: "ProviderPluginUnavailable" });
+      yield* service.runProviderActivity(
+        "provider-instance",
+        Effect.sync(() => {
+          activityRan = true;
+        }),
+      );
+      expect(activityRan).toBe(true);
+      expect(deleteCalls).toBe(0);
     }),
   );
 });

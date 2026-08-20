@@ -190,6 +190,15 @@ const updateInstanceFailure = (
   return failure;
 };
 
+const deleteInstanceFailure = (
+  error: unknown,
+): ProviderPersistenceFailure | ProviderRevisionMismatchFailure => {
+  if (error instanceof ProviderRevisionMismatch) {
+    return error;
+  }
+  return persistenceFailure();
+};
+
 const acceptInstallation = (
   context: ProviderPersistenceContext,
   input: ProviderInstallationInput,
@@ -695,9 +704,9 @@ const recordObservation = (
 const deleteInstance = (
   context: ProviderPersistenceContext,
   input: ProviderInstanceDeletionInput,
-): Effect.Effect<boolean, ProviderPersistenceFailure> =>
+): Effect.Effect<boolean, ProviderPersistenceFailure | ProviderRevisionMismatchFailure> =>
   Effect.tryPromise({
-    catch: persistenceFailure,
+    catch: deleteInstanceFailure,
     try: async () => {
       await cleanupExpiredOperationResults(context.database);
       const requestFingerprint = fingerprintOperation(context.keys.operation, input.operation);
@@ -708,19 +717,35 @@ const deleteInstance = (
         }
         const deleted = await context.database.transaction(async (transaction) => {
           const rows = await transaction
-            .delete(providerInstance)
+            .select({
+              enabled: providerInstance.enabled,
+              revision: providerInstance.revision,
+            })
+            .from(providerInstance)
             .where(eq(providerInstance.id, input.providerInstanceId))
-            .returning({ id: providerInstance.id });
-          if (rows.length > NO_ROWS) {
-            await transaction.insert(providerOperationResult).values({
-              administratorUserId: input.operation.administratorUserId,
-              method: input.operation.method,
-              operationId: input.operation.operationId,
-              requestFingerprint,
-              serializedResult,
-            });
+            .for("update")
+            .limit(SINGLE_ROW_LIMIT);
+          const current = rows[FIRST_INDEX];
+          if (current === undefined) {
+            return false;
           }
-          return rows.length > NO_ROWS;
+          if (current.revision !== input.expectedRevision) {
+            throw new ProviderRevisionMismatch({});
+          }
+          if (current.enabled) {
+            return false;
+          }
+          await transaction
+            .delete(providerInstance)
+            .where(eq(providerInstance.id, input.providerInstanceId));
+          await transaction.insert(providerOperationResult).values({
+            administratorUserId: input.operation.administratorUserId,
+            method: input.operation.method,
+            operationId: input.operation.operationId,
+            requestFingerprint,
+            serializedResult,
+          });
+          return true;
         });
         if (deleted) {
           context.unavailableInstances.delete(input.providerInstanceId);

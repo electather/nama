@@ -32,6 +32,7 @@ type PublicErrorReason =
   | "PROVIDER_CREDENTIALS_UNAVAILABLE"
   | "PROVIDER_INCOMPATIBLE"
   | "PROVIDER_INSTANCE_LIMIT_REACHED"
+  | "PROVIDER_INSTANCE_BUSY"
   | "PROVIDER_USER_CHANGED"
   | "PROVIDER_UNAVAILABLE"
   | "RESOURCE_NOT_FOUND"
@@ -68,6 +69,7 @@ type TaggedFailureTag =
   | "ProviderCredentialsUnavailable"
   | "ProviderIncompatible"
   | "ProviderInstanceLimitReached"
+  | "ProviderInstanceBusy"
   | "ProviderPluginUnavailable"
   | "ProviderResourceNotFound"
   | "ProviderUnavailable"
@@ -157,6 +159,10 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
   ProviderIncompatible: {
     code: Code.FailedPrecondition,
     reason: "PROVIDER_INCOMPATIBLE",
+  },
+  ProviderInstanceBusy: {
+    code: Code.FailedPrecondition,
+    reason: "PROVIDER_INSTANCE_BUSY",
   },
   ProviderInstanceLimitReached: {
     code: Code.ResourceExhausted,

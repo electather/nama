@@ -104,6 +104,141 @@ func TestProfileCommandsUseTheCobraTreeAndJSONStreams(t *testing.T) {
 	}
 }
 
+func TestProviderDeleteRequiresExplicitAutomationConsentAndInteractiveConfirmation(t *testing.T) {
+	const (
+		profileName        = "local"
+		providerInstanceID = "provider-instance-1"
+		revision           = "revision-2"
+		server             = "http://127.0.0.1:8080"
+		token              = "administrator-bearer"
+	)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	credentials := &cliCredentialStoreFake{
+		credential: auth.Credential{
+			Token:     token,
+			ExpiresAt: time.Date(2027, time.January, 1, 0, 0, 0, 0, time.UTC),
+			Server:    server,
+		},
+		exists: true,
+	}
+	providerClient := &cliProviderServiceFake{}
+	dependencies := testCLIDependencies(configPath, nil, false, credentials, nil, nil)
+	dependencies.ProviderClient = providerClient
+	setProfile(t, dependencies, profileName, server)
+
+	stdout, stderr, err := executeCLI(
+		t,
+		dependencies,
+		"",
+		"provider",
+		"instance",
+		"delete",
+		providerInstanceID,
+		"--expected-revision",
+		revision,
+		"--profile",
+		profileName,
+		"--output",
+		"json",
+	)
+	requireCLIError(t, err, clierror.CodeInvalidArgument, 2)
+	if len(stdout) != 0 || len(stderr) == 0 {
+		t.Errorf("unconfirmed noninteractive delete stdout=%q stderr=%q, want only an error", stdout, stderr)
+	}
+	if providerClient.deleteRequest != nil {
+		t.Fatal("unconfirmed noninteractive delete called the server")
+	}
+
+	stdout, stderr, err = executeCLI(
+		t,
+		dependencies,
+		"",
+		"provider",
+		"instance",
+		"delete",
+		providerInstanceID,
+		"--expected-revision",
+		revision,
+		"--operation-id",
+		"delete-operation",
+		"--yes",
+		"--profile",
+		profileName,
+		"--output",
+		"json",
+	)
+	if err != nil {
+		t.Fatalf("confirmed noninteractive delete error = %v", err)
+	}
+	if len(stderr) != 0 {
+		t.Errorf("confirmed noninteractive delete stderr = %q, want empty", stderr)
+	}
+	if got, want := decodeCLIData(t, stdout)["operation_id"], "delete-operation"; got != want {
+		t.Errorf("delete operation ID = %#v, want %q", got, want)
+	}
+	if providerClient.deleteRequest == nil {
+		t.Fatal("confirmed noninteractive delete did not call the server")
+	}
+	if got, want := providerClient.deleteRequest.Msg.GetProviderInstanceId(), providerInstanceID; got != want {
+		t.Errorf("delete provider instance ID = %q, want %q", got, want)
+	}
+	if got, want := providerClient.deleteRequest.Msg.GetExpectedRevision(), revision; got != want {
+		t.Errorf("delete expected revision = %q, want %q", got, want)
+	}
+	if got, want := providerClient.deleteRequest.Header().Get("Authorization"), "Bearer "+token; got != want {
+		t.Errorf("delete authorization = %q, want bearer credential", got)
+	}
+
+	providerClient.deleteRequest = nil
+	dependencies.SecretInput.Terminal = true
+	stdout, stderr, err = executeCLI(
+		t,
+		dependencies,
+		"yes\n",
+		"provider",
+		"instance",
+		"delete",
+		providerInstanceID,
+		"--expected-revision",
+		revision,
+		"--profile",
+		profileName,
+	)
+	if err != nil {
+		t.Fatalf("interactive confirmed delete error = %v", err)
+	}
+	if providerClient.deleteRequest == nil {
+		t.Fatal("interactive confirmed delete did not call the server")
+	}
+	if got := providerClient.deleteRequest.Msg.GetOperationId(); len(got) != 32 {
+		t.Errorf("generated delete operation ID = %q, want 32 base64url characters", got)
+	}
+	if !bytes.Contains(stderr, []byte("Permanently delete provider instance")) {
+		t.Errorf("interactive delete stderr = %q, want confirmation prompt", stderr)
+	}
+	requireNoCLILeak(t, stdout, token)
+	requireNoCLILeak(t, stderr, token)
+
+	providerClient.deleteRequest = nil
+	_, _, err = executeCLI(
+		t,
+		dependencies,
+		"no\n",
+		"provider",
+		"instance",
+		"delete",
+		providerInstanceID,
+		"--expected-revision",
+		revision,
+		"--profile",
+		profileName,
+	)
+	requireCLIError(t, err, clierror.CodeRequestCancelled, 1)
+	if providerClient.deleteRequest != nil {
+		t.Fatal("declined interactive delete called the server")
+	}
+}
+
 func TestProfileSetIgnoresMissingSelectedProfile(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	dependencies := testCLIDependencies(configPath, map[string]string{
@@ -683,7 +818,7 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 	if len(stderr) != 0 {
 		t.Errorf("human schema stderr = %q, want empty", stderr)
 	}
-	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama provider instance create", "nama provider instance update", "nama provider type list", "nama schema"} {
+	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama provider instance create", "nama provider instance delete", "nama provider instance update", "nama provider type list", "nama schema"} {
 		if !bytes.Contains(human, []byte(command)) {
 			t.Errorf("human schema inventory omits %q:\n%s", command, human)
 		}
@@ -723,6 +858,7 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		"nama provider",
 		"nama provider instance",
 		"nama provider instance create",
+		"nama provider instance delete",
 		"nama provider instance get",
 		"nama provider instance list",
 		"nama provider instance update",
@@ -840,6 +976,18 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		t.Errorf("provider create argument name = %#v, want %q", got, want)
 	}
 
+	providerDeleteFlags := schemaObjectsByName(t, byPath["nama provider instance delete"]["flags"], "provider instance delete flags")
+	if got, want := providerDeleteFlags["expected-revision"]["required"], true; got != want {
+		t.Errorf("provider delete expected revision required = %#v, want %t", got, want)
+	}
+	if got, want := providerDeleteFlags["yes"]["default"], "false"; got != want {
+		t.Errorf("provider delete yes default = %#v, want %q", got, want)
+	}
+	providerDeleteArguments := schemaObjectList(t, byPath["nama provider instance delete"]["arguments"], "provider instance delete arguments")
+	if got, want := providerDeleteArguments[0]["name"], "provider-instance-id"; got != want {
+		t.Errorf("provider delete argument name = %#v, want %q", got, want)
+	}
+
 	providerUpdateFlags := schemaObjectsByName(t, byPath["nama provider instance update"]["flags"], "provider instance update flags")
 	if got, want := providerUpdateFlags["expected-revision"]["required"], true; got != want {
 		t.Errorf("provider update expected revision required = %#v, want %t", got, want)
@@ -916,6 +1064,7 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		clierror.CodeProviderCredentialsUnavailable: 7,
 		clierror.CodeProviderIncompatible:           6,
 		clierror.CodeProviderInstanceLimitReached:   7,
+		clierror.CodeProviderInstanceBusy:           6,
 		clierror.CodeProviderUserChanged:            6,
 		clierror.CodeProviderUnavailable:            7,
 		clierror.CodeRevisionMismatch:               6,
@@ -1659,6 +1808,19 @@ func (w *cliFailOnceWriter) Write(value []byte) (int, error) {
 
 func (w *cliFailOnceWriter) Bytes() []byte {
 	return w.output.Bytes()
+}
+
+type cliProviderServiceFake struct {
+	apiv1.ProviderServiceClient
+	deleteRequest *connect.Request[apiv1.DeleteProviderInstanceRequest]
+}
+
+func (f *cliProviderServiceFake) DeleteProviderInstance(
+	_ context.Context,
+	request *connect.Request[apiv1.DeleteProviderInstanceRequest],
+) (*connect.Response[apiv1.DeleteProviderInstanceResponse], error) {
+	f.deleteRequest = request
+	return connect.NewResponse(&apiv1.DeleteProviderInstanceResponse{}), nil
 }
 
 type cliCredentialStoreFake struct {

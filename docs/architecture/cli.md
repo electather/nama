@@ -1,6 +1,6 @@
 # Management CLI
 
-Status: issue #24 profiles, Administrator setup/sign-in, and authentication status; issue #25's complete public process contract; issue #76's authenticated provider-type listing; issue #77's provider-instance create/list/get commands; and issue #78's provider-instance update, disable, and re-enable command are implemented and verified. The remaining MVP command families are unfinished.
+Status: issue #24 profiles, Administrator setup/sign-in, and authentication status; issue #25's complete public process contract; issue #76's authenticated provider-type listing; issue #77's provider-instance create/list/get commands; issue #78's provider-instance update, disable, and re-enable command; and issue #79's confirmed provider-instance delete command are implemented and verified. The remaining MVP command families are unfinished.
 
 ## Purpose
 
@@ -18,7 +18,7 @@ The complete MVP management surface covers initial administrator setup, authenti
 - Issue #76 adds the provider-neutral `nama provider type list` command over the implemented authenticated RPC.
 - Issue #77 adds provider-neutral instance create, list, and get commands over the verified candidate and encrypted persistence flow.
 - Issue #78 adds revision-checked provider-instance patch, explicit clear, disable, and re-enable over the verified candidate and runtime-cutover flow.
-- Health, diagnostics, provider-instance delete, device, and synchronization commands enter only with their implemented API behavior; no Jellyfin-specific family is added.
+- Issue #79 adds revision-checked permanent deletion with interactive confirmation and an explicit non-interactive `--yes` boundary.
 
 The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no management web application or CLI plugin framework in the MVP.
 
@@ -98,13 +98,15 @@ nama
 Only commands backed by an implemented public RPC are added. Exact leaf commands, arguments, and flags are designed with those RPCs; this list reserves no unimplemented server behavior.
 
 Provider commands are generic `ProviderService` clients; no Jellyfin-specific
-public command family exists. Implemented create and update generate a random
-operation ID unless the caller supplies `--operation-id` for scripted retry or
-ambiguity recovery, and mutation JSON output includes the ID used. Update
-requires `--expected-revision`; the CLI never fetches a newer revision and
-silently overwrites it. Future delete retains the same operation-ID and revision
-rules. Issue #31 may add provider-type inspection and explicit candidate or
-stored-instance connection tests over their existing RPCs.
+public command family exists. Implemented create, update, and delete generate a
+random operation ID unless the caller supplies `--operation-id` for scripted
+retry or ambiguity recovery, and mutation JSON output includes the ID used.
+Update and delete require `--expected-revision`; the CLI never fetches a newer
+revision and silently overwrites or removes it. Provider delete prompts only in
+interactive human mode. JSON or non-interactive deletion requires explicit
+`--yes` and never reads configuration or credentials. Issue #31 may add
+provider-type inspection and explicit candidate or stored-instance connection
+tests over their existing RPCs.
 
 Human provider create and update may render the restricted configuration schema
 through ordinary prompts and mask `writeOnly` strings. Their non-interactive
@@ -114,7 +116,7 @@ environment variables, positional arguments, or inline JSON flags.
 `--clear <key>` names optional ordinary or secret fields without carrying their
 values.
 
-The canonical binary name is `nama`. The live Cobra tree now supplies complete human help, a global version flag, four shell-completion formats, machine schema version 1, the generated CLI reference, the compatibility baseline, authenticated provider-type listing, and provider-instance create/list/get/update.
+The canonical binary name is `nama`. The live Cobra tree now supplies complete human help, a global version flag, four shell-completion formats, machine schema version 1, the generated CLI reference, the compatibility baseline, authenticated provider-type listing, and provider-instance create/list/get/update/delete.
 
 ## Output contract
 
@@ -257,11 +259,11 @@ The implemented surface is tested in process through the real Cobra tree with in
 - terminal and non-interactive secret input plus native-credential semantics;
 - generated-client metadata, deadlines, and method-specific bearer attachment over test Connect handlers;
 - setup recovery, sign-in replacement, authentication status, revocation, cleanup, and typed errors;
-- provider-type and provider-instance page input, authenticated profile selection, accepted schema mapping, file/stdin configuration and patch input, explicit clears, operation IDs, expected revisions, and human/JSON rendering;
-- exact JSON stream behavior plus human warning and prompt placement, exit codes, update conflicts, and secret redaction; and
-- compiled-binary production server/PostgreSQL/Jellyfin flows covering discovery, verified encrypted create, update, disable/re-enable, same-principal enforcement, list/get, validation, authentication rejection, idempotent retry, pagination, and concurrent mutations.
+- provider-type and provider-instance page input, authenticated profile selection, accepted schema mapping, file/stdin configuration and patch input, explicit clears, operation IDs, expected revisions, delete confirmation and `--yes`, and human/JSON rendering;
+- exact JSON stream behavior plus human warning and prompt placement, exit codes, update and deletion conflicts, and secret redaction; and
+- compiled-binary production server/PostgreSQL/Jellyfin flows covering discovery, verified encrypted create, update, disable/re-enable, safe deletion and exact retry, same-principal enforcement, list/get, validation, authentication rejection, idempotent retry, pagination, and concurrent mutations.
 
-The owning Go check runs formatting, vet, Staticcheck, tests, compilation, generated-reference drift, and schema-v1 semantic compatibility. Focused in-process and compiled-binary coverage verifies help, local output precedence, version/header identity, all completion formats, schema ordering and metadata, exit mappings, provider rendering, update patch/clear/revision inputs, secret redaction, and exact JSON stream placement. A disposable Node server and PostgreSQL flow verifies real provider discovery and provider-instance create/list/get/update including disable and re-enable through the compiled CLI; the macOS Keychain flow separately verifies Administrator setup and stored-credential status and is not portable keyring evidence.
+The owning Go check runs formatting, vet, Staticcheck, tests, compilation, generated-reference drift, and schema-v1 semantic compatibility. Focused in-process and compiled-binary coverage verifies help, local output precedence, version/header identity, all completion formats, schema ordering and metadata, exit mappings, provider rendering, update patch/clear/revision inputs, deletion confirmation, secret redaction, and exact JSON stream placement. A disposable Node server and PostgreSQL flow verifies real provider discovery and provider-instance create/list/get/update/delete including disable, re-enable, safe cascading removal, and exact retry through the compiled CLI; the macOS Keychain flow separately verifies Administrator setup and stored-credential status and is not portable keyring evidence.
 
 ## Deferred
 
