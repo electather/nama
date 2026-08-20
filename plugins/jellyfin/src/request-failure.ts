@@ -18,23 +18,23 @@ type JellyfinFailureKind =
 type JellyfinFailureResponse = Readonly<{ kind: JellyfinFailureKind }>;
 type JellyfinFailureCategory = "forbidden" | "missing" | "permanent" | "retryable";
 
-const credentialFailureKind = (
+const accessFailureKind = (
   status: number,
   authentication: JellyfinRequestAuthentication,
 ): JellyfinFailureKind | undefined => {
-  if (status !== HTTP_UNAUTHORIZED && status !== HTTP_FORBIDDEN && status !== HTTP_NOT_FOUND) {
-    return undefined;
-  }
-  if (authentication !== "api_key") {
-    return "incompatible";
+  if (status === HTTP_NOT_FOUND) {
+    return "not_found";
   }
   if (status === HTTP_UNAUTHORIZED) {
-    return "authentication_failed";
+    if (authentication === "api_key") {
+      return "authentication_failed";
+    }
+    return "forbidden";
   }
   if (status === HTTP_FORBIDDEN) {
     return "forbidden";
   }
-  return "not_found";
+  return undefined;
 };
 
 const jellyfinFailureKind = (response: Response): JellyfinFailureKind | undefined => {
@@ -80,8 +80,7 @@ const readJellyfinFailureResponse = async (
   authentication: JellyfinRequestAuthentication,
   signal: AbortSignal,
 ): Promise<JellyfinFailureResponse | undefined> => {
-  const kind =
-    credentialFailureKind(response.status, authentication) ?? jellyfinFailureKind(response);
+  const kind = accessFailureKind(response.status, authentication) ?? jellyfinFailureKind(response);
   if (kind === undefined) {
     return undefined;
   }

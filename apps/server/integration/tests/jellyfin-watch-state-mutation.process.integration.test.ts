@@ -290,7 +290,10 @@ const explicitTargetsTest = () => {
     const supervisor = yield* PluginSupervisor;
     const plugin = yield* superviseJellyfin(supervisor, jellyfin);
     const info = yield* plugin.call(PluginService.method.getInfo, {}, CALL_DEADLINE_MILLISECONDS);
-    expect(info.pluginInfo?.capabilities).toEqual([ProviderCapability.WATCHED_WRITE]);
+    expect(info.pluginInfo?.capabilities).toEqual([
+      ProviderCapability.ARTWORK_RESOLVE,
+      ProviderCapability.WATCHED_WRITE,
+    ]);
 
     const response = yield* pushWatchStates(plugin, [
       watchedMutation("already-watched-mutation", "already-watched", true),

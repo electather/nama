@@ -368,7 +368,7 @@ it.live("runs the production Jellyfin discovery contract without provider contex
       expect(health.status).toBe(ServingStatus.SERVING);
       expect(response.pluginInfo).toMatchObject({
         buildVersion: "0.0.0-dev",
-        capabilities: [ProviderCapability.WATCHED_WRITE],
+        capabilities: [ProviderCapability.ARTWORK_RESOLVE, ProviderCapability.WATCHED_WRITE],
         contractMajor: 1,
         description: "Connect Nama to a Jellyfin server.",
         displayName: "Jellyfin",
