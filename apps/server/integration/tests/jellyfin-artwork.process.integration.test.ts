@@ -43,8 +43,10 @@ const UNAVAILABLE_WIDTH = 503;
 const INVALID_CONTENT_WIDTH = 1;
 const OVERSIZED_MIME_WIDTH = 2;
 const CANCELED_WIDTH = 3;
+const NO_CONTENT_WIDTH = 204;
 const OVERSIZED_DIMENSION = 2_147_483_648;
 const HTTP_REDIRECT = 302;
+const HTTP_NO_CONTENT = 204;
 const HTTP_UNAUTHORIZED = 401;
 const HTTP_NOT_FOUND = 404;
 const HTTP_UNAVAILABLE = 503;
@@ -186,6 +188,9 @@ const acquireControlledJellyfin = Effect.acquireRelease(
               "content-type",
               `image/${"x".repeat(OVERSIZED_MIME_PADDING_LENGTH)}`,
             );
+          } else if (maximumWidth === NO_CONTENT_WIDTH) {
+            response.statusCode = HTTP_NO_CONTENT;
+            response.setHeader("content-type", "image/png");
           }
           response.end();
           return;
@@ -375,6 +380,7 @@ it.live(
           [REDIRECT_WIDTH, Code.FailedPrecondition],
           [INVALID_CONTENT_WIDTH, Code.FailedPrecondition],
           [OVERSIZED_MIME_WIDTH, Code.FailedPrecondition],
+          [NO_CONTENT_WIDTH, Code.FailedPrecondition],
           [UNAVAILABLE_WIDTH, Code.Unavailable],
         ] as const;
         for (const [maxWidth, code] of cases) {
@@ -410,6 +416,24 @@ it.live(
           _tag: "PluginRpcError",
           code: Code.InvalidArgument,
         });
+        for (const itemId of [".", ".."]) {
+          const dotSegmentFailure = yield* plugin
+            .call(
+              LibraryService.method.resolveArtwork,
+              {
+                artworkReference: {
+                  artworkId: artworkReference.artworkId,
+                  itemReference: { itemId },
+                },
+              },
+              CALL_DEADLINE_MILLISECONDS,
+            )
+            .pipe(Effect.flip);
+          expect(dotSegmentFailure).toMatchObject({
+            _tag: "PluginRpcError",
+            code: Code.InvalidArgument,
+          });
+        }
         const oversizedDimensionFailure = yield* plugin
           .call(
             LibraryService.method.resolveArtwork,

@@ -14,6 +14,7 @@ const BACKSLASH = "\\";
 const ESCAPED_BACKSLASH = BACKSLASH.repeat(2);
 const FAILURE_SENTINEL = Symbol("failure");
 const MAXIMUM_MIME_TYPE_LENGTH = 256;
+const HTTP_OK = 200;
 
 type JellyfinRequestContext = Readonly<{ apiKey: string; baseUrl: string }>;
 
@@ -292,6 +293,9 @@ const sendArtworkProbe = async (
   const failureResponse = await readJellyfinFailureResponse(response, "none", options.signal);
   if (failureResponse !== undefined) {
     return failureResponse;
+  }
+  if (response.status !== HTTP_OK) {
+    return { kind: "incompatible" };
   }
   const mimeType = normalizedImageMimeType(response.headers.get("content-type"));
   return mimeType === undefined

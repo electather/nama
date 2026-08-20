@@ -34,6 +34,8 @@ const decodedArtworkRequest = (artworkReference: ProviderArtworkReference | unde
   if (
     itemId === undefined ||
     itemId.length === EMPTY_LENGTH ||
+    itemId === "." ||
+    itemId === ".." ||
     !hasMaximumCodePointLength(itemId, MAXIMUM_ITEM_REFERENCE_CODE_POINTS) ||
     artworkId === undefined
   ) {
@@ -62,11 +64,7 @@ const itemFromResponse = (response: JellyfinJsonResponse, itemId: string) => {
   throw new ConnectError("Jellyfin media response is invalid", Code.Internal);
 };
 
-const readJellyfinItem = async (
-  launch: ProviderLaunchDocument,
-  itemId: string,
-  signal: AbortSignal,
-) => {
+const jellyfinRequestForLaunch = (launch: ProviderLaunchDocument) => {
   const request = createJellyfinRequest({
     apiKey: launch.credentials.api_key,
     baseUrl: launch.configuration.base_url,
@@ -74,6 +72,15 @@ const readJellyfinItem = async (
   if (request === undefined) {
     throw new ConnectError("Jellyfin adapter is unavailable", Code.Internal);
   }
+  return request;
+};
+
+const readJellyfinItem = async (
+  launch: ProviderLaunchDocument,
+  itemId: string,
+  signal: AbortSignal,
+) => {
+  const request = jellyfinRequestForLaunch(launch);
   const response = await request.requestJson(["Items", itemId], {
     authentication: "api_key",
     maximumResponseBytes: MAXIMUM_MEDIA_RESPONSE_BYTES,
@@ -140,13 +147,7 @@ const resolveJellyfinArtwork = async (
   launch: ProviderLaunchDocument,
   resolution: ArtworkResolutionRequest,
 ) => {
-  const request = createJellyfinRequest({
-    apiKey: launch.credentials.api_key,
-    baseUrl: launch.configuration.base_url,
-  });
-  if (request === undefined) {
-    throw new ConnectError("Jellyfin adapter is unavailable", Code.Internal);
-  }
+  const request = jellyfinRequestForLaunch(launch);
   const response = await request.probePublicArtwork(
     [
       "Items",
