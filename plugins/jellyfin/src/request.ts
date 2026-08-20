@@ -35,7 +35,6 @@ interface JellyfinArtworkProbeOptions {
   readonly signal: AbortSignal;
 }
 
-
 type JellyfinRequestTarget = Readonly<{ authorization: string; baseUrl: URL }>;
 
 type JellyfinJsonResponse =
