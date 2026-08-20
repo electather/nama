@@ -13,22 +13,6 @@ import {
 const ZERO = 0;
 const MAXIMUM_UINT32 = 4_294_967_295;
 
-type SupportedJellyfinMediaType = "Episode" | "Movie" | "Season" | "Series";
-
-const MEDIA_KIND_BY_TYPE: Readonly<Record<SupportedJellyfinMediaType, MediaKind>> = Object.freeze({
-  Episode: MediaKind.EPISODE,
-  Movie: MediaKind.MOVIE,
-  Season: MediaKind.SEASON,
-  Series: MediaKind.SHOW,
-});
-
-const normalizedMediaType = (value: unknown): SupportedJellyfinMediaType => {
-  if (value === "Movie" || value === "Series" || value === "Season" || value === "Episode") {
-    return value;
-  }
-  throw new ConnectError("Jellyfin media kind is unsupported", Code.Unimplemented);
-};
-
 const optionalCount = (value: unknown) => {
   if (value === undefined || value === null) {
     return ABSENT_MEDIA_VALUE;
@@ -55,6 +39,21 @@ const requiredPositiveUint32 = (value: unknown): number => {
   }
   return value;
 };
+
+const normalizedMovieDetails = (item: Readonly<Record<string, unknown>>) => ({
+  case: "movie" as const,
+  value: { ...optionalProperty("releaseDate", normalizedDate(item["PremiereDate"])) },
+});
+
+const normalizedShowDetails = (item: Readonly<Record<string, unknown>>) => ({
+  case: "show" as const,
+  value: {
+    ...optionalProperty("firstReleaseDate", normalizedDate(item["PremiereDate"])),
+    ...optionalProperty("lastReleaseDate", normalizedDate(item["EndDate"])),
+    ...optionalProperty("seasonCount", optionalCount(item["ChildCount"])),
+    ...optionalProperty("episodeCount", optionalCount(item["RecursiveItemCount"])),
+  },
+});
 
 const normalizedSeasonDetails = (item: Readonly<Record<string, unknown>>) => {
   if (item["IndexNumber"] === ZERO) {
@@ -86,58 +85,47 @@ const normalizedEpisodeDetails = (item: Readonly<Record<string, unknown>>) => {
   };
 };
 
-const normalizedKindDetails = (
-  item: Readonly<Record<string, unknown>>,
-  mediaType: SupportedJellyfinMediaType,
-) => {
-  if (mediaType === "Movie") {
-    return {
-      case: "movie" as const,
-      value: { ...optionalProperty("releaseDate", normalizedDate(item["PremiereDate"])) },
-    };
-  }
-  if (mediaType === "Series") {
-    return {
-      case: "show" as const,
-      value: {
-        ...optionalProperty("firstReleaseDate", normalizedDate(item["PremiereDate"])),
-        ...optionalProperty("lastReleaseDate", normalizedDate(item["EndDate"])),
-        ...optionalProperty("seasonCount", optionalCount(item["ChildCount"])),
-        ...optionalProperty("episodeCount", optionalCount(item["RecursiveItemCount"])),
-      },
-    };
-  }
-  if (mediaType === "Season") {
-    return normalizedSeasonDetails(item);
-  }
-  return normalizedEpisodeDetails(item);
-};
-
 const normalizeJellyfinItemStructure = (
   item: Readonly<Record<string, unknown>>,
   itemId: string,
 ) => {
-  const mediaType = normalizedMediaType(item["Type"]);
-  const kind = MEDIA_KIND_BY_TYPE[mediaType];
-  const kindDetails = normalizedKindDetails(item, mediaType);
-  if (mediaType === "Movie" || mediaType === "Episode") {
-    let primaryArtworkRole = ArtworkRole.POSTER;
-    if (mediaType === "Episode") {
-      primaryArtworkRole = ArtworkRole.THUMBNAIL;
+  switch (item["Type"]) {
+    case "Movie": {
+      return {
+        kind: MediaKind.MOVIE,
+        kindDetails: normalizedMovieDetails(item),
+        primaryArtworkRole: ArtworkRole.POSTER,
+        sources: normalizeJellyfinSources(item["MediaSources"], itemId, item["LocationType"]),
+      };
     }
-    return {
-      kind,
-      kindDetails,
-      primaryArtworkRole,
-      sources: normalizeJellyfinSources(item["MediaSources"], itemId, item["LocationType"]),
-    };
+    case "Series": {
+      return {
+        kind: MediaKind.SHOW,
+        kindDetails: normalizedShowDetails(item),
+        primaryArtworkRole: ArtworkRole.POSTER,
+        sources: [],
+      };
+    }
+    case "Season": {
+      return {
+        kind: MediaKind.SEASON,
+        kindDetails: normalizedSeasonDetails(item),
+        primaryArtworkRole: ArtworkRole.POSTER,
+        sources: [],
+      };
+    }
+    case "Episode": {
+      return {
+        kind: MediaKind.EPISODE,
+        kindDetails: normalizedEpisodeDetails(item),
+        primaryArtworkRole: ArtworkRole.THUMBNAIL,
+        sources: normalizeJellyfinSources(item["MediaSources"], itemId, item["LocationType"]),
+      };
+    }
+    default: {
+      throw new ConnectError("Jellyfin media kind is unsupported", Code.Unimplemented);
+    }
   }
-  return {
-    kind,
-    kindDetails,
-    primaryArtworkRole: ArtworkRole.POSTER,
-    sources: [],
-  };
 };
 
 export { normalizeJellyfinItemStructure };

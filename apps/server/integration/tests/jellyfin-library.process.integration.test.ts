@@ -367,6 +367,26 @@ const MALFORMED_DATE_MOVIE_RESPONSE = {
   PremiereDate: "2016-09-01Tgarbage",
 };
 
+const TARGETED_ITEM_RESPONSE_BY_URL: Readonly<Record<string, unknown>> = {
+  [`/jellyfin/Items/${encodeURIComponent(INTERNATIONALIZED_MOVIE_ID)}?userId=${USER_ID}`]:
+    INTERNATIONALIZED_MOVIE_RESPONSE,
+  [`/jellyfin/Items/${SHOW_ID}?userId=${USER_ID}`]: SHOW_RESPONSE,
+  [`/jellyfin/Items/${SPARSE_SHOW_ID}?userId=${USER_ID}`]: SPARSE_SHOW_RESPONSE,
+  [`/jellyfin/Items/${SEASON_ID}?userId=${USER_ID}`]: SEASON_RESPONSE,
+  [`/jellyfin/Items/${EPISODE_ID}?userId=${USER_ID}`]: EPISODE_RESPONSE,
+  [`/jellyfin/Items/${SPECIALS_SEASON_ID}?userId=${USER_ID}`]: SPECIALS_SEASON_RESPONSE,
+  [`/jellyfin/Items/${SPECIAL_EPISODE_ID}?userId=${USER_ID}`]: SPECIAL_EPISODE_RESPONSE,
+  [`/jellyfin/Items/${SPARSE_EPISODE_ID}?userId=${USER_ID}`]: SPARSE_EPISODE_RESPONSE,
+  [`/jellyfin/Items/${MALFORMED_SHOW_ID}?userId=${USER_ID}`]: MALFORMED_SHOW_RESPONSE,
+  [`/jellyfin/Items/${MALFORMED_SEASON_ID}?userId=${USER_ID}`]: MALFORMED_SEASON_RESPONSE,
+  [`/jellyfin/Items/${MALFORMED_EPISODE_ID}?userId=${USER_ID}`]: MALFORMED_EPISODE_RESPONSE,
+  [`/jellyfin/Items/${ZERO_EPISODE_ID}?userId=${USER_ID}`]: ZERO_EPISODE_RESPONSE,
+  [`/jellyfin/Items/${SOURCELESS_MOVIE_ID}?userId=${USER_ID}`]: SOURCELESS_MOVIE_RESPONSE,
+  [`/jellyfin/Items/${UNKNOWN_AVAILABILITY_MOVIE_ID}?userId=${USER_ID}`]:
+    UNKNOWN_AVAILABILITY_MOVIE_RESPONSE,
+  [`/jellyfin/Items/${MALFORMED_DATE_MOVIE_ID}?userId=${USER_ID}`]: MALFORMED_DATE_MOVIE_RESPONSE,
+};
+
 const respondJson = (response: ServerResponse, value: unknown): void => {
   response.statusCode = HTTP_OK;
   response.setHeader("content-type", "application/json");
@@ -395,67 +415,9 @@ const acquireControlledJellyfin = Effect.acquireRelease(
           respondJson(response, MOVIE_RESPONSE);
           return;
         }
-        if (
-          request.url ===
-          `/jellyfin/Items/${encodeURIComponent(INTERNATIONALIZED_MOVIE_ID)}?userId=${USER_ID}`
-        ) {
-          respondJson(response, INTERNATIONALIZED_MOVIE_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${SHOW_ID}?userId=${USER_ID}`) {
-          respondJson(response, SHOW_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${SPARSE_SHOW_ID}?userId=${USER_ID}`) {
-          respondJson(response, SPARSE_SHOW_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${SEASON_ID}?userId=${USER_ID}`) {
-          respondJson(response, SEASON_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${EPISODE_ID}?userId=${USER_ID}`) {
-          respondJson(response, EPISODE_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${SPECIALS_SEASON_ID}?userId=${USER_ID}`) {
-          respondJson(response, SPECIALS_SEASON_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${SPECIAL_EPISODE_ID}?userId=${USER_ID}`) {
-          respondJson(response, SPECIAL_EPISODE_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${SPARSE_EPISODE_ID}?userId=${USER_ID}`) {
-          respondJson(response, SPARSE_EPISODE_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${MALFORMED_SHOW_ID}?userId=${USER_ID}`) {
-          respondJson(response, MALFORMED_SHOW_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${MALFORMED_SEASON_ID}?userId=${USER_ID}`) {
-          respondJson(response, MALFORMED_SEASON_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${MALFORMED_EPISODE_ID}?userId=${USER_ID}`) {
-          respondJson(response, MALFORMED_EPISODE_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${ZERO_EPISODE_ID}?userId=${USER_ID}`) {
-          respondJson(response, ZERO_EPISODE_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${SOURCELESS_MOVIE_ID}?userId=${USER_ID}`) {
-          respondJson(response, SOURCELESS_MOVIE_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${UNKNOWN_AVAILABILITY_MOVIE_ID}?userId=${USER_ID}`) {
-          respondJson(response, UNKNOWN_AVAILABILITY_MOVIE_RESPONSE);
-          return;
-        }
-        if (request.url === `/jellyfin/Items/${MALFORMED_DATE_MOVIE_ID}?userId=${USER_ID}`) {
-          respondJson(response, MALFORMED_DATE_MOVIE_RESPONSE);
+        const itemResponse = TARGETED_ITEM_RESPONSE_BY_URL[request.url ?? ""];
+        if (itemResponse !== undefined) {
+          respondJson(response, itemResponse);
           return;
         }
         if (request.url === `/jellyfin/Items/${FORBIDDEN_MOVIE_ID}?userId=${USER_ID}`) {
@@ -517,6 +479,27 @@ const acquireControlledJellyfin = Effect.acquireRelease(
   }),
   ({ server }) => Effect.promise(() => server[Symbol.asyncDispose]()),
 );
+
+const acquireConfiguredJellyfinPlugin = Effect.gen(function* acquireConfiguredJellyfinPlugin() {
+  const jellyfin = yield* acquireControlledJellyfin;
+  const supervisor = yield* PluginSupervisor;
+  const plugin = yield* supervisor.supervise(
+    {
+      arguments: [JELLYFIN_PLUGIN_PATH],
+      executable: process.execPath,
+      expectedProviderType: "jellyfin",
+      stderrEvents: [],
+    },
+    {
+      configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
+      credentials: { api_key: API_KEY },
+      kind: "instance",
+      providerInstanceId: "provider-instance",
+      revision: "revision-1",
+    },
+  );
+  return { jellyfin, plugin };
+});
 
 const assertNormalizedMetadata = (item: ProviderMediaItem) => {
   expect(item).toMatchObject({
@@ -892,23 +875,7 @@ it.live(
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinMovieObservationTest() {
-        const jellyfin = yield* acquireControlledJellyfin;
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          {
-            arguments: [JELLYFIN_PLUGIN_PATH],
-            executable: process.execPath,
-            expectedProviderType: "jellyfin",
-            stderrEvents: [],
-          },
-          {
-            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-            credentials: { api_key: API_KEY },
-            kind: "instance",
-            providerInstanceId: "provider-instance",
-            revision: "revision-1",
-          },
-        );
+        const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
         const info = yield* plugin.call(
           PluginService.method.getInfo,
           {},
@@ -970,23 +937,7 @@ it.live(
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinShowObservationTest() {
-        const jellyfin = yield* acquireControlledJellyfin;
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          {
-            arguments: [JELLYFIN_PLUGIN_PATH],
-            executable: process.execPath,
-            expectedProviderType: "jellyfin",
-            stderrEvents: [],
-          },
-          {
-            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-            credentials: { api_key: API_KEY },
-            kind: "instance",
-            providerInstanceId: "provider-instance",
-            revision: "revision-1",
-          },
-        );
+        const { plugin } = yield* acquireConfiguredJellyfinPlugin;
 
         const response = yield* plugin.call(
           LibraryService.method.getItem,
@@ -1021,23 +972,7 @@ it.live(
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinSeasonObservationTest() {
-        const jellyfin = yield* acquireControlledJellyfin;
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          {
-            arguments: [JELLYFIN_PLUGIN_PATH],
-            executable: process.execPath,
-            expectedProviderType: "jellyfin",
-            stderrEvents: [],
-          },
-          {
-            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-            credentials: { api_key: API_KEY },
-            kind: "instance",
-            providerInstanceId: "provider-instance",
-            revision: "revision-1",
-          },
-        );
+        const { plugin } = yield* acquireConfiguredJellyfinPlugin;
 
         const response = yield* plugin.call(
           LibraryService.method.getItem,
@@ -1057,23 +992,7 @@ it.live(
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinEpisodeObservationTest() {
-        const jellyfin = yield* acquireControlledJellyfin;
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          {
-            arguments: [JELLYFIN_PLUGIN_PATH],
-            executable: process.execPath,
-            expectedProviderType: "jellyfin",
-            stderrEvents: [],
-          },
-          {
-            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-            credentials: { api_key: API_KEY },
-            kind: "instance",
-            providerInstanceId: "provider-instance",
-            revision: "revision-1",
-          },
-        );
+        const { plugin } = yield* acquireConfiguredJellyfinPlugin;
 
         const response = yield* plugin.call(
           LibraryService.method.getItem,
@@ -1141,23 +1060,7 @@ it.live(
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinInternationalizedMovieTest() {
-        const jellyfin = yield* acquireControlledJellyfin;
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          {
-            arguments: [JELLYFIN_PLUGIN_PATH],
-            executable: process.execPath,
-            expectedProviderType: "jellyfin",
-            stderrEvents: [],
-          },
-          {
-            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-            credentials: { api_key: API_KEY },
-            kind: "instance",
-            providerInstanceId: "provider-instance",
-            revision: "revision-1",
-          },
-        );
+        const { plugin } = yield* acquireConfiguredJellyfinPlugin;
 
         const response = yield* plugin.call(
           LibraryService.method.getItem,
@@ -1178,23 +1081,7 @@ it.live(
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinItemFailureTest() {
-        const jellyfin = yield* acquireControlledJellyfin;
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          {
-            arguments: [JELLYFIN_PLUGIN_PATH],
-            executable: process.execPath,
-            expectedProviderType: "jellyfin",
-            stderrEvents: [],
-          },
-          {
-            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-            credentials: { api_key: API_KEY },
-            kind: "instance",
-            providerInstanceId: "provider-instance",
-            revision: "revision-1",
-          },
-        );
+        const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
         const cases = [
           [MISSING_MOVIE_ID, Code.NotFound],
           [FORBIDDEN_MOVIE_ID, Code.PermissionDenied],
