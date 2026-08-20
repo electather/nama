@@ -20,7 +20,7 @@ import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { expect, it } from "@effect/vitest";
 import { HealthService, ServingStatus } from "@nama/api/nama/plugin/v1/health_pb.js";
-import { PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
+import { PluginService, ProviderCapability } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 import { Cause, Context, Effect, Exit, Fiber, Layer, Redacted, Scope } from "effect";
 import { TestClock } from "effect/testing";
 
@@ -368,7 +368,7 @@ it.live("runs the production Jellyfin discovery contract without provider contex
       expect(health.status).toBe(ServingStatus.SERVING);
       expect(response.pluginInfo).toMatchObject({
         buildVersion: "0.0.0-dev",
-        capabilities: [],
+        capabilities: [ProviderCapability.LIBRARY_READ],
         contractMajor: 1,
         description: "Connect Nama to a Jellyfin server.",
         displayName: "Jellyfin",

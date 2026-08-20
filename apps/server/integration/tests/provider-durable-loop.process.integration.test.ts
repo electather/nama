@@ -387,7 +387,7 @@ it.live(
               expect(dataFromNama(providerTypes)).toMatchObject({
                 provider_types: [
                   {
-                    capabilities: [],
+                    capabilities: ["library_read"],
                     id: PROVIDER_TYPE_ID,
                     schema_revision: "1",
                   },

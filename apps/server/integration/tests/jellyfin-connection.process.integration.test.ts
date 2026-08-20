@@ -4,7 +4,11 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { join } from "node:path";
 
 import { expect, it } from "@effect/vitest";
-import { PluginConnectionStatus, PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
+import {
+  PluginConnectionStatus,
+  PluginService,
+  ProviderCapability,
+} from "@nama/api/nama/plugin/v1/plugin_pb.js";
 import { Effect, Redacted } from "effect";
 
 import { Config } from "../../src/config/config.ts";
@@ -223,7 +227,7 @@ it.live(
         );
 
         expect(response.connection).toMatchObject({
-          capabilities: [],
+          capabilities: [ProviderCapability.LIBRARY_READ],
           remoteName: "Living Room",
           remoteVersion: "10.11.0",
           status: PluginConnectionStatus.CONNECTED,

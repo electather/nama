@@ -35,19 +35,18 @@ cancellation and deadlines into `GetConnection`; only a completed
 stored-instance result can conditionally update that same revision's
 observation.
 
-## Jellyfin discovery, connection, and targeted read profile
+## Jellyfin discovery, connection, and library profile
 
 The production Jellyfin executable implements authenticated health, `GetInfo`
 for context-free discovery, `GetConnection` for candidate and instance
-launches, targeted `LibraryService.GetItem`, and targeted
-`WatchStateService.GetWatchStates` for configured instance launches. It
-declares provider type `jellyfin`, contract major `1`, and a restricted schema
-requiring `base_url`, `user_id`, and write-only `api_key`. It still declares no
-media capabilities: `LIBRARY_READ` remains unadvertised until the complete
-supported catalog can be scanned, and `WATCH_STATE_READ` remains unadvertised
-until complete best-effort scans are implemented. Startup validates and
-persists discovery information before the public provider-type list becomes
-available.
+launches, targeted `LibraryService.GetItem`, resumable
+`LibraryService.ListItems`, and targeted `WatchStateService.GetWatchStates` for
+configured instance launches. It declares provider type `jellyfin`, contract
+major `1`, and a restricted schema requiring `base_url`, `user_id`, and
+write-only `api_key`. Static information and successful configured connections
+advertise `LIBRARY_READ`; `WATCH_STATE_READ` remains unadvertised until complete
+best-effort watch-state scans are implemented. Startup validates and persists
+discovery information before the public provider-type list becomes available.
 
 `GetConnection` first reads unauthenticated public system information, then
 reads the explicitly configured user with Jellyfin's credentialed
@@ -68,9 +67,9 @@ One concrete Jellyfin request module builds endpoints from encoded path
 segments and code-owned query names, confines them to the configured origin
 and prefix, applies the API key only to authenticated calls, rejects redirects,
 and receives RPC cancellation. It streams each JSON body under the
-caller-selected positive byte limit: connection inspection selects 64 KiB, the
-targeted item reads select 1 MiB, and targeted watch-state reads select 16
-MiB. Targeted watch-state reads admit at most four provider responses
+caller-selected positive byte limit: connection inspection selects 64 KiB,
+targeted item reads select 1 MiB, and catalog and targeted watch-state reads
+select 16 MiB. Targeted watch-state reads admit at most four provider responses
 concurrently so the per-response bound cannot multiply across the complete
 100-member request. Callers receive only normalized response categories and
 parsed records, so raw provider bodies and credential-bearing request details
@@ -88,14 +87,32 @@ provider objects, authorized URLs, and arbitrary identifier namespaces are
 discarded. Missing, forbidden, unavailable, oversized, malformed, and
 cancelled reads return only sanitized Connect outcomes.
 
+`ListItems` requests one recursive, non-watch-state `SortName` pass containing
+only movies, series, seasons, and episodes. It defaults zero page size to 50,
+accepts at most 100, deliberately drops unsupported families and season-zero
+specials, and normalizes every retained item through the targeted-read path.
+Completion follows provider page length rather than mutable totals, so an exact
+page multiple requires a final empty call.
+
+Each begin call creates a random scan identity and one 24-hour continuation
+expiry. Its versioned canonical JSON continuation authenticates operation and
+query scope, scan identity, provider instance and exact revision, page size,
+offset, and expiry with HMAC-SHA-256 under an API-key-derived,
+catalog-domain-separated key. It contains no credential or plugin-owned durable
+state. A later same-revision process can resume it; tampering, expiry, another
+scope or instance, credential replacement, and revision replacement fail
+`INVALID_ARGUMENT` before a provider read.
+
 The provider-management process flow provisions a controlled Jellyfin endpoint
 and reaches it through both public connection-test RPCs using candidate and
 exact persisted-instance launches. It verifies cancellation reaches the real
 subprocess and provider request, exact-revision observations are conditional,
 and public results omit provider credentials and principal references.
-Controlled HTTP subprocess coverage also exercises targeted movie, show,
-season, and episode RPCs, hierarchy and source normalization, bounded response
-handling, cancellation, safe failure codes, and raw-body redaction.
+Controlled HTTP subprocess coverage exercises targeted movie, show, season,
+and episode RPCs plus catalog begin, continuation after idle process
+replacement, exact-page completion, hierarchy and source normalization,
+bounded response handling, cancellation, safe failure codes, and raw-body
+redaction.
 
 Targeted watch-state reads return one result per requested private item
 reference in order. Existing movies and episodes normalize watched state,
@@ -106,8 +123,8 @@ The generated RPC remains callable for targeted repair while
 `WATCH_STATE_READ` stays unadvertised until complete best-effort scans exist.
 
 Windows transport and persistent or background native-media plugins remain
-deferred until a real plugin requires them. Complete catalog scans, public
-artwork resolution, complete watch-state scans, and watched/unwatched writes
-belong to issue #30. Production playback belongs to issue #96, coherent exact
-progress export belongs to issue #97, explicit connection-test commands belong
-to issue #31, and container packaging belongs to issue #32.
+deferred until a real plugin requires them. Public artwork resolution, complete
+watch-state scans, and watched/unwatched writes belong to issue #30. Production
+playback belongs to issue #96, coherent exact progress export belongs to issue
+#97, explicit connection-test commands belong to issue #31, and container
+packaging belongs to issue #32.

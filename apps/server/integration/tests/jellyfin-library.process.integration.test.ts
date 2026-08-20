@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { Code } from "@connectrpc/connect";
 import { expect, it } from "@effect/vitest";
-import { LibraryService } from "@nama/api/nama/plugin/v1/library_pb.js";
+import { LibraryService, ListConsistency } from "@nama/api/nama/plugin/v1/library_pb.js";
 import {
   ArtworkRole,
   ArtworkTextPresence,
@@ -18,8 +18,8 @@ import {
   SubtitleRepresentation,
 } from "@nama/api/nama/plugin/v1/media_pb.js";
 import type { ProviderMediaItem } from "@nama/api/nama/plugin/v1/media_pb.js";
-import { PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 import { Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 
@@ -32,6 +32,11 @@ const HTTP_FORBIDDEN = 403;
 const HTTP_NOT_FOUND = 404;
 const HTTP_UNAVAILABLE = 503;
 const OVERSIZED_RESPONSE_PADDING_LENGTH = 1_100_000;
+const OVERSIZED_CATALOG_PADDING_LENGTH = 16_777_216;
+const CATALOG_PAGE_SIZE = 2;
+const IDLE_RETIREMENT_MILLISECONDS = 30_000;
+const SINGLE_ITEM_COUNT = 1;
+const FIRST_CODE_UNIT_LENGTH = 1;
 const API_KEY = "jellyfin-api-key-sentinel";
 const USER_ID = "user-identity";
 const MOVIE_ID = "movie-identity";
@@ -46,6 +51,8 @@ const MALFORMED_SHOW_ID = "malformed-show";
 const MALFORMED_SEASON_ID = "malformed-season";
 const MALFORMED_EPISODE_ID = "malformed-episode";
 const ZERO_EPISODE_ID = "zero-episode";
+const UNSUPPORTED_AUDIO_ID = "unsupported-audio";
+const UNSUPPORTED_PHOTO_ID = "unsupported-photo";
 const INTERNATIONALIZED_TEXT_REPETITIONS = 50;
 const INTERNATIONALIZED_MOVIE_ID = "映画".repeat(INTERNATIONALIZED_TEXT_REPETITIONS);
 const INTERNATIONALIZED_MOVIE_TITLE = "到着".repeat(INTERNATIONALIZED_TEXT_REPETITIONS);
@@ -69,12 +76,22 @@ const OVERSIZED_RESPONSE_BODY = JSON.stringify({
   Type: "Movie",
 });
 
+type CatalogResponseMode =
+  | "canceled"
+  | "forbidden"
+  | "malformed_item"
+  | "malformed_json"
+  | "normal"
+  | "oversized"
+  | "unavailable";
+
 interface ObservedRequest {
   readonly authorization: string | undefined;
   readonly url: string;
 }
 
 interface ControlledJellyfin {
+  readonly catalog: { mode: CatalogResponseMode };
   readonly baseUrl: string;
   readonly cancellationObserved: Promise<void>;
   readonly hangingRequestObserved: Promise<void>;
@@ -356,6 +373,13 @@ const SOURCELESS_MOVIE_RESPONSE = {
   PlayAccess: "Full",
   Type: "Movie",
 };
+const MALFORMED_MOVIE_RESPONSE = {
+  Id: MALFORMED_MOVIE_ID,
+  MediaSources: [],
+  Path: PRIVATE_PATH,
+  PlayAccess: "Full",
+  Type: "Movie",
+};
 const UNKNOWN_AVAILABILITY_MOVIE_RESPONSE = {
   ...MOVIE_RESPONSE,
   Id: UNKNOWN_AVAILABILITY_MOVIE_ID,
@@ -366,6 +390,29 @@ const MALFORMED_DATE_MOVIE_RESPONSE = {
   Id: MALFORMED_DATE_MOVIE_ID,
   PremiereDate: "2016-09-01Tgarbage",
 };
+const UNSUPPORTED_AUDIO_RESPONSE = {
+  Id: UNSUPPORTED_AUDIO_ID,
+  Name: "Unsupported audio",
+  PlayAccess: "Full",
+  Type: "Audio",
+};
+const UNSUPPORTED_PHOTO_RESPONSE = {
+  Id: UNSUPPORTED_PHOTO_ID,
+  Name: "Unsupported photo",
+  PlayAccess: "Full",
+  Type: "Photo",
+};
+
+const CATALOG_RESPONSES = [
+  MOVIE_RESPONSE,
+  SHOW_RESPONSE,
+  SPECIALS_SEASON_RESPONSE,
+  SEASON_RESPONSE,
+  SPECIAL_EPISODE_RESPONSE,
+  EPISODE_RESPONSE,
+  UNSUPPORTED_AUDIO_RESPONSE,
+  UNSUPPORTED_PHOTO_RESPONSE,
+] as const;
 
 const TARGETED_ITEM_RESPONSE_BY_URL: Readonly<Record<string, unknown>> = {
   [`/jellyfin/Items/${encodeURIComponent(INTERNATIONALIZED_MOVIE_ID)}?userId=${USER_ID}`]:
@@ -404,10 +451,66 @@ const acquireControlledJellyfin = Effect.acquireRelease(
     catch: (error) => error,
     try: async (): Promise<ControlledJellyfin> => {
       const requests: ObservedRequest[] = [];
+      const catalog: { mode: CatalogResponseMode } = { mode: "normal" };
       const hangingRequest = Promise.withResolvers<void>();
       const cancellation = Promise.withResolvers<void>();
       const server = createServer((request: IncomingMessage, response: ServerResponse) => {
         requests.push({ authorization: request.headers.authorization, url: request.url ?? "" });
+        const endpoint = new URL(request.url ?? "", "http://jellyfin.invalid");
+        if (
+          endpoint.pathname === "/jellyfin/Items" &&
+          request.headers.authorization === `MediaBrowser Token="${API_KEY}"`
+        ) {
+          if (catalog.mode === "forbidden") {
+            respondRaw(
+              response,
+              HTTP_FORBIDDEN,
+              `${PROVIDER_ERROR_SENTINEL}:${PRIVATE_PATH}:MediaBrowser Token="${API_KEY}"`,
+            );
+            return;
+          }
+          if (catalog.mode === "unavailable") {
+            respondRaw(
+              response,
+              HTTP_UNAVAILABLE,
+              `${PROVIDER_ERROR_SENTINEL}:${PRIVATE_PATH}:MediaBrowser Token="${API_KEY}"`,
+            );
+            return;
+          }
+          if (catalog.mode === "malformed_json") {
+            respondRaw(response, HTTP_OK, `{${PROVIDER_ERROR_SENTINEL}:${PRIVATE_PATH}`);
+            return;
+          }
+          if (catalog.mode === "malformed_item") {
+            respondJson(response, { Items: [MALFORMED_MOVIE_RESPONSE] });
+            return;
+          }
+          if (catalog.mode === "oversized") {
+            respondJson(response, {
+              Items: [
+                {
+                  ...MOVIE_RESPONSE,
+                  Padding: `${PROVIDER_ERROR_SENTINEL}:${PRIVATE_PATH}:${"x".repeat(
+                    OVERSIZED_CATALOG_PADDING_LENGTH,
+                  )}`,
+                },
+              ],
+            });
+            return;
+          }
+          if (catalog.mode === "canceled") {
+            hangingRequest.resolve();
+            response.once("close", cancellation.resolve);
+            return;
+          }
+          const startIndex = Number(endpoint.searchParams.get("startIndex"));
+          const limit = Number(endpoint.searchParams.get("limit"));
+          respondJson(response, {
+            Items: CATALOG_RESPONSES.slice(startIndex, startIndex + limit),
+            TotalRecordCount: 1,
+          });
+          return;
+        }
         if (
           request.url === `/jellyfin/Items/${MOVIE_ID}?userId=${USER_ID}` &&
           request.headers.authorization === `MediaBrowser Token="${API_KEY}"`
@@ -471,6 +574,7 @@ const acquireControlledJellyfin = Effect.acquireRelease(
       return {
         baseUrl: `http://127.0.0.1:${address.port}/jellyfin`,
         cancellationObserved: cancellation.promise,
+        catalog,
         hangingRequestObserved: hangingRequest.promise,
         requests,
         server,
@@ -498,7 +602,7 @@ const acquireConfiguredJellyfinPlugin = Effect.gen(function* acquireConfiguredJe
       revision: "revision-1",
     },
   );
-  return { jellyfin, plugin };
+  return { jellyfin, plugin, supervisor };
 });
 
 const assertNormalizedMetadata = (item: ProviderMediaItem) => {
@@ -870,18 +974,277 @@ const assertNormalizedSources = (item: ProviderMediaItem, itemId = MOVIE_ID) => 
   ]);
 };
 
+it.effect("resumes a complete normalized catalog scan after plugin replacement", () =>
+  Effect.scoped(
+    Effect.gen(function* jellyfinCatalogScanTest() {
+      const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
+      const first = yield* plugin.call(
+        LibraryService.method.listItems,
+        { scan: { case: "begin", value: { pageSize: CATALOG_PAGE_SIZE } } },
+        CALL_DEADLINE_MILLISECONDS,
+      );
+      expect(first.complete).toBe(false);
+      expect(first.consistency).toBe(ListConsistency.BEST_EFFORT_SCAN);
+      expect(first.items).toHaveLength(CATALOG_PAGE_SIZE);
+      const [movie, show] = first.items;
+      if (movie === undefined || show === undefined || first.nextPageToken === undefined) {
+        throw new Error("first Jellyfin catalog page was incomplete");
+      }
+      assertNormalizedMetadata(movie);
+      assertNormalizedSources(movie);
+      assertNormalizedShow(show);
+
+      yield* TestClock.adjust(IDLE_RETIREMENT_MILLISECONDS);
+      const second = yield* plugin.call(
+        LibraryService.method.listItems,
+        { scan: { case: "continuation", value: first.nextPageToken } },
+        CALL_DEADLINE_MILLISECONDS,
+      );
+      expect(second.complete).toBe(false);
+      expect(second.items).toHaveLength(SINGLE_ITEM_COUNT);
+      const [season] = second.items;
+      if (season === undefined || second.nextPageToken === undefined) {
+        throw new Error("second Jellyfin catalog page was incomplete");
+      }
+      assertNormalizedSeason(season);
+
+      const third = yield* plugin.call(
+        LibraryService.method.listItems,
+        { scan: { case: "continuation", value: second.nextPageToken } },
+        CALL_DEADLINE_MILLISECONDS,
+      );
+      expect(third.complete).toBe(false);
+      expect(third.items).toHaveLength(SINGLE_ITEM_COUNT);
+      const [episode] = third.items;
+      if (episode === undefined || third.nextPageToken === undefined) {
+        throw new Error("third Jellyfin catalog page was incomplete");
+      }
+      assertNormalizedSources(episode, EPISODE_ID);
+
+      const fourth = yield* plugin.call(
+        LibraryService.method.listItems,
+        { scan: { case: "continuation", value: third.nextPageToken } },
+        CALL_DEADLINE_MILLISECONDS,
+      );
+      expect(fourth).toMatchObject({
+        complete: false,
+        consistency: ListConsistency.BEST_EFFORT_SCAN,
+        items: [],
+      });
+      if (fourth.nextPageToken === undefined) {
+        throw new Error("fourth Jellyfin catalog page was incomplete");
+      }
+
+      const complete = yield* plugin.call(
+        LibraryService.method.listItems,
+        { scan: { case: "continuation", value: fourth.nextPageToken } },
+        CALL_DEADLINE_MILLISECONDS,
+      );
+      expect(complete).toMatchObject({
+        complete: true,
+        consistency: ListConsistency.BEST_EFFORT_SCAN,
+        items: [],
+      });
+      expect(complete.nextPageToken).toBeUndefined();
+
+      const catalogRequests = jellyfin.requests.map(({ authorization, url }) => {
+        const endpoint = new URL(url, "http://jellyfin.invalid");
+        return {
+          authorization,
+          pathname: endpoint.pathname,
+          query: Object.fromEntries(endpoint.searchParams),
+        };
+      });
+      expect(catalogRequests).toEqual(
+        ["0", "2", "4", "6", "8"].map((startIndex) => ({
+          authorization: `MediaBrowser Token="${API_KEY}"`,
+          pathname: "/jellyfin/Items",
+          query: {
+            collapseBoxSetItems: "false",
+            enableImages: "true",
+            enableTotalRecordCount: "false",
+            enableUserData: "false",
+            fields: "Genres,MediaStreams,Overview,People,ProviderIds,Studios,Taglines",
+            imageTypeLimit: "20",
+            includeItemTypes: "Movie,Series,Season,Episode",
+            limit: String(CATALOG_PAGE_SIZE),
+            recursive: "true",
+            sortBy: "SortName",
+            sortOrder: "Ascending",
+            startIndex,
+            userId: USER_ID,
+          },
+        })),
+      );
+    }).pipe(Effect.provide(PluginSupervisor.layer())),
+  ),
+);
+
+it.live(
+  "defaults catalog pages to 50, accepts 100, and rejects larger requests",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinCatalogPageBoundsTest() {
+        const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
+        const defaultPage = yield* plugin.call(
+          LibraryService.method.listItems,
+          { scan: { case: "begin", value: { pageSize: 0 } } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(defaultPage.complete).toBe(true);
+        expect(defaultPage.items.map((item) => item.itemReference?.itemId)).toEqual([
+          MOVIE_ID,
+          SHOW_ID,
+          SEASON_ID,
+          EPISODE_ID,
+        ]);
+
+        const maximumPage = yield* plugin.call(
+          LibraryService.method.listItems,
+          { scan: { case: "begin", value: { pageSize: 100 } } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(maximumPage.complete).toBe(true);
+        const excessivePageFailure = yield* plugin
+          .call(
+            LibraryService.method.listItems,
+            { scan: { case: "begin", value: { pageSize: 101 } } },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(excessivePageFailure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.InvalidArgument,
+        });
+        expect(
+          jellyfin.requests.map(({ url }) =>
+            new URL(url, "http://jellyfin.invalid").searchParams.get("limit"),
+          ),
+        ).toEqual(["50", "100"]);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+
+it.live(
+  "rejects tampered and revision-mismatched catalog continuations before provider reads",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinCatalogContinuationBindingTest() {
+        const { jellyfin, plugin, supervisor } = yield* acquireConfiguredJellyfinPlugin;
+        const first = yield* plugin.call(
+          LibraryService.method.listItems,
+          { scan: { case: "begin", value: { pageSize: CATALOG_PAGE_SIZE } } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        const token = first.nextPageToken;
+        if (token === undefined) {
+          throw new Error("Jellyfin catalog continuation was absent");
+        }
+        let replacementCharacter = "A";
+        if (token.startsWith(replacementCharacter)) {
+          replacementCharacter = "B";
+        }
+        const tamperedFailure = yield* plugin
+          .call(
+            LibraryService.method.listItems,
+            {
+              scan: {
+                case: "continuation",
+                value: `${replacementCharacter}${token.slice(FIRST_CODE_UNIT_LENGTH)}`,
+              },
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(tamperedFailure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.InvalidArgument,
+        });
+
+        const replacement = yield* supervisor.supervise(
+          {
+            arguments: [JELLYFIN_PLUGIN_PATH],
+            executable: process.execPath,
+            expectedProviderType: "jellyfin",
+            stderrEvents: [],
+          },
+          {
+            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
+            credentials: { api_key: API_KEY },
+            kind: "instance",
+            providerInstanceId: "provider-instance",
+            revision: "revision-2",
+          },
+        );
+        const revisionFailure = yield* replacement
+          .call(
+            LibraryService.method.listItems,
+            { scan: { case: "continuation", value: token } },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(revisionFailure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.InvalidArgument,
+        });
+        expect(jellyfin.requests).toHaveLength(SINGLE_ITEM_COUNT);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+
+it.live(
+  "returns safe visible failures for unsuccessful catalog scans",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinCatalogFailureTest() {
+        const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
+        const cases = [
+          ["forbidden", Code.PermissionDenied],
+          ["unavailable", Code.Unavailable],
+          ["malformed_json", Code.Internal],
+          ["malformed_item", Code.Internal],
+          ["oversized", Code.Internal],
+        ] as const;
+        for (const [mode, code] of cases) {
+          jellyfin.catalog.mode = mode;
+          const failure = yield* plugin
+            .call(
+              LibraryService.method.listItems,
+              { scan: { case: "begin", value: { pageSize: CATALOG_PAGE_SIZE } } },
+              CALL_DEADLINE_MILLISECONDS,
+            )
+            .pipe(Effect.flip);
+          expect(failure).toMatchObject({ _tag: "PluginRpcError", code });
+          const serializedFailure = JSON.stringify(failure);
+          expect(serializedFailure).not.toContain(API_KEY);
+          expect(serializedFailure).not.toContain(PRIVATE_PATH);
+          expect(serializedFailure).not.toContain(PROVIDER_ERROR_SENTINEL);
+        }
+
+        jellyfin.catalog.mode = "canceled";
+        const canceledCall = yield* Effect.forkChild(
+          plugin.call(
+            LibraryService.method.listItems,
+            { scan: { case: "begin", value: { pageSize: CATALOG_PAGE_SIZE } } },
+            TEST_TIMEOUT_MILLISECONDS,
+          ),
+        );
+        yield* Effect.promise(() => jellyfin.hangingRequestObserved);
+        yield* Fiber.interrupt(canceledCall);
+        yield* Effect.promise(() => jellyfin.cancellationObserved);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+
 it.live(
   "returns one normalized movie through the targeted library RPC",
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinMovieObservationTest() {
         const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
-        const info = yield* plugin.call(
-          PluginService.method.getInfo,
-          {},
-          CALL_DEADLINE_MILLISECONDS,
-        );
-        expect(info.pluginInfo?.capabilities).toEqual([]);
 
         const response = yield* plugin.call(
           LibraryService.method.getItem,
