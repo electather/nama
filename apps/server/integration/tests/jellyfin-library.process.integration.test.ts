@@ -62,6 +62,7 @@ const SOURCELESS_MOVIE_ID = "sourceless-movie";
 const UNKNOWN_AVAILABILITY_MOVIE_ID = "unknown-availability-movie";
 const MALFORMED_DATE_MOVIE_ID = "malformed-date-movie";
 const PROVIDER_ERROR_SENTINEL = "private-provider-error-sentinel";
+const OPAQUE_ARTWORK_REFERENCE = /^jellyfin\/artwork\/v1:[\w-]+$/u;
 const OVERSIZED_RESPONSE_BODY = JSON.stringify({
   Id: OVERSIZED_MOVIE_ID,
   Padding: `${PROVIDER_ERROR_SENTINEL}:${"x".repeat(OVERSIZED_RESPONSE_PADDING_LENGTH)}`,
@@ -506,7 +507,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
     artwork: [
       {
         artworkReference: {
-          artworkId: "Primary:poster-tag",
           itemReference: { itemId: MOVIE_ID },
         },
         role: ArtworkRole.POSTER,
@@ -514,7 +514,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
       },
       {
         artworkReference: {
-          artworkId: "Backdrop:0:backdrop-tag-a",
           itemReference: { itemId: MOVIE_ID },
         },
         role: ArtworkRole.BACKDROP,
@@ -522,7 +521,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
       },
       {
         artworkReference: {
-          artworkId: "Backdrop:1:backdrop-tag-b",
           itemReference: { itemId: MOVIE_ID },
         },
         role: ArtworkRole.BACKDROP,
@@ -530,7 +528,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
       },
       {
         artworkReference: {
-          artworkId: "Logo:logo-tag",
           itemReference: { itemId: MOVIE_ID },
         },
         role: ArtworkRole.LOGO,
@@ -538,7 +535,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
       },
       {
         artworkReference: {
-          artworkId: "Thumb:thumbnail-tag",
           itemReference: { itemId: MOVIE_ID },
         },
         role: ArtworkRole.THUMBNAIL,
@@ -551,7 +547,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
         characterName: "Louise Banks",
         name: "Amy Adams",
         portraitArtworkReference: {
-          artworkId: "Primary:actor-portrait-tag",
           itemReference: { itemId: "person-actor" },
         },
         role: MediaCreditRole.ACTOR,
@@ -559,7 +554,6 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
       {
         name: "Denis Villeneuve",
         portraitArtworkReference: {
-          artworkId: "Primary:director-portrait-tag",
           itemReference: { itemId: "person-director" },
         },
         role: MediaCreditRole.DIRECTOR,
@@ -586,6 +580,14 @@ const assertNormalizedMetadata = (item: ProviderMediaItem) => {
     tagline: "Why are they here?",
     title: "Arrival",
   });
+  for (const artwork of item.artwork) {
+    expect(artwork.artworkReference?.artworkId).toMatch(OPAQUE_ARTWORK_REFERENCE);
+  }
+  for (const credit of item.credits) {
+    if (credit.portraitArtworkReference !== undefined) {
+      expect(credit.portraitArtworkReference.artworkId).toMatch(OPAQUE_ARTWORK_REFERENCE);
+    }
+  }
 };
 const assertNormalizedShow = (item: ProviderMediaItem) => {
   expect(item).toMatchObject({
@@ -881,7 +883,10 @@ it.live(
           {},
           CALL_DEADLINE_MILLISECONDS,
         );
-        expect(info.pluginInfo?.capabilities).toEqual([ProviderCapability.WATCHED_WRITE]);
+        expect(info.pluginInfo?.capabilities).toEqual([
+          ProviderCapability.ARTWORK_RESOLVE,
+          ProviderCapability.WATCHED_WRITE,
+        ]);
 
         const response = yield* plugin.call(
           LibraryService.method.getItem,

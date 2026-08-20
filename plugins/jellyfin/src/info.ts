@@ -32,7 +32,10 @@ const jellyfinConfigurationSchema = {
   type: "object",
 };
 
-const jellyfinCapabilities = [ProviderCapability.WATCHED_WRITE];
+const jellyfinCapabilities = [
+  ProviderCapability.ARTWORK_RESOLVE,
+  ProviderCapability.WATCHED_WRITE,
+];
 
 const jellyfinPluginInfo = {
   buildVersion: "0.0.0-dev",

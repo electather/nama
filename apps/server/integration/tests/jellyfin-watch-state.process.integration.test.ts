@@ -272,7 +272,10 @@ const targetedMovieWatchStateTest = () => {
     const supervisor = yield* PluginSupervisor;
     const plugin = yield* superviseJellyfin(supervisor, jellyfin);
     const info = yield* plugin.call(PluginService.method.getInfo, {}, CALL_DEADLINE_MILLISECONDS);
-    expect(info.pluginInfo?.capabilities).toEqual([ProviderCapability.WATCHED_WRITE]);
+    expect(info.pluginInfo?.capabilities).toEqual([
+      ProviderCapability.ARTWORK_RESOLVE,
+      ProviderCapability.WATCHED_WRITE,
+    ]);
     const beforeCallSeconds = BigInt(Math.floor(Date.now() / MILLISECONDS_PER_SECOND));
     const response = yield* callWatchStates(plugin, [{ itemId: MOVIE_ID }]);
     const afterCallSeconds = BigInt(Math.floor(Date.now() / MILLISECONDS_PER_SECOND));

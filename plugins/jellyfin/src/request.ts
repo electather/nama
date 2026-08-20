@@ -1,5 +1,7 @@
 // oxlint-disable eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary -- Private-network and HTTP-status policy stays literal and sequential so the request trust boundary is auditable.
 
+import { MIMEType } from "node:util";
+
 import { Code, ConnectError } from "@connectrpc/connect";
 
 import { readJellyfinFailureResponse } from "./request-failure.ts";
@@ -11,6 +13,7 @@ const EMPTY_LENGTH = 0;
 const BACKSLASH = "\\";
 const ESCAPED_BACKSLASH = BACKSLASH.repeat(2);
 const FAILURE_SENTINEL = Symbol("failure");
+const MAXIMUM_MIME_TYPE_LENGTH = 256;
 
 type JellyfinRequestContext = Readonly<{ apiKey: string; baseUrl: string }>;
 
@@ -25,6 +28,12 @@ interface JellyfinMutationRequestOptions extends JellyfinRequestOptions {
   readonly cancellationSignal: AbortSignal;
   readonly method: "DELETE" | "POST";
 }
+
+interface JellyfinArtworkProbeOptions {
+  readonly query: Readonly<Record<string, string>>;
+  readonly signal: AbortSignal;
+}
+
 
 type JellyfinRequestTarget = Readonly<{ authorization: string; baseUrl: URL }>;
 
@@ -42,10 +51,15 @@ interface PreparedJellyfinRequest {
 interface JellyfinFetchRequest {
   readonly endpoint: URL;
   readonly headers: Readonly<Record<string, string>>;
-  readonly method: "DELETE" | "GET" | "POST";
+  readonly method: "DELETE" | "GET" | "HEAD" | "POST";
   readonly signal: AbortSignal;
 }
 interface JellyfinRequest {
+  readonly origin: string;
+  readonly probePublicArtwork: (
+    pathSegments: readonly string[],
+    options: JellyfinArtworkProbeOptions,
+  ) => Promise<JellyfinArtworkProbeResponse>;
   readonly requestJson: (
     pathSegments: readonly string[],
     options: JellyfinRequestOptions,
@@ -55,6 +69,14 @@ interface JellyfinRequest {
     options: JellyfinMutationRequestOptions,
   ) => Promise<JellyfinMutationResponse>;
 }
+
+type JellyfinArtworkProbeResponse =
+  | {
+      readonly kind: "success";
+      readonly mimeType: string;
+      readonly url: string;
+    }
+  | JellyfinFailureResponse;
 
 const parseJsonRecord = (bytes: Uint8Array[], length: number) => {
   try {
@@ -231,6 +253,52 @@ const sendMutationRequest = async (
   }
 };
 
+const normalizedImageMimeType = (value: string | null): string | undefined => {
+  if (value === null || Buffer.byteLength(value, "utf8") > MAXIMUM_MIME_TYPE_LENGTH) {
+    return undefined;
+  }
+  try {
+    const mimeType = new MIMEType(value);
+    if (mimeType.type !== "image") {
+      return undefined;
+    }
+    return mimeType.essence;
+  } catch {
+    return undefined;
+  }
+};
+
+const sendArtworkProbe = async (
+  baseUrl: URL,
+  pathSegments: readonly string[],
+  options: JellyfinArtworkProbeOptions,
+): Promise<JellyfinArtworkProbeResponse> => {
+  const endpoint = confinedEndpoint(baseUrl, pathSegments, options.query);
+  if (endpoint === INVALID_REQUEST_TARGET) {
+    return { kind: "incompatible" };
+  }
+  const response = await fetchResponse({
+    endpoint,
+    headers: { accept: "image/*" },
+    method: "HEAD",
+    signal: options.signal,
+  });
+  if (response === FAILURE_SENTINEL) {
+    if (options.signal.aborted) {
+      throw new ConnectError("request cancelled", Code.Canceled);
+    }
+    return { kind: "unreachable" };
+  }
+  const failureResponse = await readJellyfinFailureResponse(response, "none", options.signal);
+  if (failureResponse !== undefined) {
+    return failureResponse;
+  }
+  const mimeType = normalizedImageMimeType(response.headers.get("content-type"));
+  return mimeType === undefined
+    ? { kind: "incompatible" }
+    : { kind: "success", mimeType, url: endpoint.href };
+};
+
 const createJellyfinRequest = (context: JellyfinRequestContext): JellyfinRequest | undefined => {
   const baseUrl = normalizedBaseUrl(context.baseUrl);
   if (baseUrl === INVALID_REQUEST_TARGET) {
@@ -243,6 +311,9 @@ const createJellyfinRequest = (context: JellyfinRequestContext): JellyfinRequest
   const target = { authorization, baseUrl };
 
   return {
+    origin: baseUrl.origin,
+    probePublicArtwork: (pathSegments: readonly string[], options: JellyfinArtworkProbeOptions) =>
+      sendArtworkProbe(baseUrl, pathSegments, options),
     requestJson: (pathSegments: readonly string[], options: JellyfinRequestOptions) =>
       sendJsonRequest(target, pathSegments, options),
     requestMutationJson: (
@@ -253,4 +324,9 @@ const createJellyfinRequest = (context: JellyfinRequestContext): JellyfinRequest
 };
 
 export { createJellyfinRequest };
-export type { JellyfinJsonResponse, JellyfinMutationResponse, JellyfinRequest };
+export type {
+  JellyfinArtworkProbeResponse,
+  JellyfinJsonResponse,
+  JellyfinMutationResponse,
+  JellyfinRequest,
+};

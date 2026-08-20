@@ -1,6 +1,18 @@
 # API contracts
 
-Status: Setup and Auth runtime semantics, the private plugin-subprocess transport, production Jellyfin discovery/connection verification, authenticated provider-type listing, candidate and stored-instance connection testing, and provider-instance create/list/get/update/delete including disable and re-enable are implemented and verified through real Connect, PostgreSQL, supervised-plugin, compiled-CLI, and disposable-Jellyfin flows. Targeted Jellyfin movie, show, positive-numbered season, and positive-numbered episode observations plus movie and episode watch-state reads and explicit watched/unwatched writes are implemented and verified through the generated private Connect interface, supervised production plugin, and controlled provider fixtures. `WATCHED_WRITE` is advertised; `LIBRARY_READ` and `WATCH_STATE_READ` remain unadvertised until complete best-effort scans exist.
+Status: Setup and Auth runtime semantics, the private plugin-subprocess
+transport, production Jellyfin discovery/connection verification,
+authenticated provider-type listing, candidate and stored-instance connection
+testing, and provider-instance create/list/get/update/delete including disable
+and re-enable are implemented and verified through real Connect, PostgreSQL,
+supervised-plugin, compiled-CLI, and disposable-Jellyfin flows. Targeted
+Jellyfin movie, show, positive-numbered season, and positive-numbered episode
+observations, movie and episode watch-state reads, explicit watched/unwatched
+writes, and anonymous public artwork resolution are implemented and verified
+through the generated private Connect interface, supervised production plugin,
+and controlled provider fixtures. `ARTWORK_RESOLVE` and `WATCHED_WRITE` are
+advertised; `LIBRARY_READ` and `WATCH_STATE_READ` remain unadvertised until
+complete best-effort scans exist.
 
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
