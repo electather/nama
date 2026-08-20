@@ -7,12 +7,13 @@ testing, and provider-instance create/list/get/update/delete including disable
 and re-enable are implemented and verified through real Connect, PostgreSQL,
 supervised-plugin, compiled-CLI, and disposable-Jellyfin flows. Targeted
 Jellyfin movie, show, positive-numbered season, and positive-numbered episode
-observations, movie and episode watch-state reads, explicit watched/unwatched
-writes, and anonymous public artwork resolution are implemented and verified
-through the generated private Connect interface, supervised production plugin,
-and controlled provider fixtures. `ARTWORK_RESOLVE` and `WATCHED_WRITE` are
-advertised; `LIBRARY_READ` and `WATCH_STATE_READ` remain unadvertised until
-complete best-effort scans exist.
+observations, resumable best-effort catalog scans, movie and episode watch-state
+reads, explicit watched/unwatched writes, and anonymous public artwork
+resolution are implemented and verified through the generated private Connect
+interface, supervised production plugin, and controlled provider fixtures.
+`LIBRARY_READ`, `ARTWORK_RESOLVE`, and `WATCHED_WRITE` are advertised;
+`WATCH_STATE_READ` remains unadvertised until complete best-effort watch-state
+scans exist.
 
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 

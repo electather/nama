@@ -273,6 +273,7 @@ const targetedMovieWatchStateTest = () => {
     const plugin = yield* superviseJellyfin(supervisor, jellyfin);
     const info = yield* plugin.call(PluginService.method.getInfo, {}, CALL_DEADLINE_MILLISECONDS);
     expect(info.pluginInfo?.capabilities).toEqual([
+      ProviderCapability.LIBRARY_READ,
       ProviderCapability.ARTWORK_RESOLVE,
       ProviderCapability.WATCHED_WRITE,
     ]);

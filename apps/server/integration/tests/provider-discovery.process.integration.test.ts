@@ -441,6 +441,7 @@ it.live(
               });
               expect(configurationTest.result).toMatchObject({
                 capabilities: [
+                  ProviderCapability.LIBRARY_READ,
                   ProviderCapability.ARTWORK_RESOLVE,
                   ProviderCapability.WATCHED_WRITE,
                 ],
@@ -515,7 +516,7 @@ it.live(
               expect(payload.data).toEqual({
                 provider_types: [
                   {
-                    capabilities: ["artwork_resolve", "watched_write"],
+                    capabilities: ["library_read", "artwork_resolve", "watched_write"],
                     configuration_schema: {
                       additionalProperties: false,
                       properties: {
@@ -713,6 +714,7 @@ it.live(
               });
               expect(storedTest.result).toMatchObject({
                 capabilities: [
+                  ProviderCapability.LIBRARY_READ,
                   ProviderCapability.ARTWORK_RESOLVE,
                   ProviderCapability.WATCHED_WRITE,
                 ],

@@ -5,6 +5,7 @@ import { ArtworkAuthorizationScope, LibraryService } from "@nama/api/nama/plugin
 
 import { decodeArtworkReference } from "./artwork-reference.ts";
 import type { JellyfinArtworkReference } from "./artwork-reference.ts";
+import { registerJellyfinCatalogService } from "./catalog-service.ts";
 import type { LaunchDocument, ProviderLaunchDocument } from "./launch-document.ts";
 import { normalizeJellyfinItem } from "./media-item.ts";
 import { createJellyfinRequest } from "./request.ts";
@@ -169,6 +170,8 @@ const registerJellyfinLibraryService = (
   launch: LaunchDocument,
   requireAuthorization: RequireAuthorization,
 ): void => {
+  registerJellyfinCatalogService(router, launch, requireAuthorization);
+
   router.rpc(LibraryService.method.getItem, async (request, context) => {
     requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
     if (launch.kind !== "instance") {

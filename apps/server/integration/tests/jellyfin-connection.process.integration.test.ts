@@ -227,7 +227,11 @@ it.live(
         );
 
         expect(response.connection).toMatchObject({
-          capabilities: [ProviderCapability.ARTWORK_RESOLVE, ProviderCapability.WATCHED_WRITE],
+          capabilities: [
+            ProviderCapability.LIBRARY_READ,
+            ProviderCapability.ARTWORK_RESOLVE,
+            ProviderCapability.WATCHED_WRITE,
+          ],
           remoteName: "Living Room",
           remoteVersion: "10.11.0",
           status: PluginConnectionStatus.CONNECTED,

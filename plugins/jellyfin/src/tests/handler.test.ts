@@ -6,11 +6,15 @@ import { test } from "node:test";
 
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
-import { BadRequestSchema, ErrorInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
+import {
+  BadRequestSchema,
+  ErrorInfoSchema,
+  RetryInfoSchema,
+} from "@nama/api/google/rpc/error_details_pb.js";
+import { LibraryService } from "@nama/api/nama/plugin/v1/library_pb.js";
 import { WatchStateService } from "@nama/api/nama/plugin/v1/watch_state_pb.js";
 
 import { makeJellyfinHandler } from "../handler.ts";
-import { isUnknownRecord } from "../value.ts";
 
 const BEARER = "plugin-bearer";
 const API_KEY = "provider-api-key";
@@ -19,12 +23,15 @@ const USER_ID = "provider-user";
 const HTTP_OK = 200;
 const HTTP_BAD_REQUEST = 400;
 const HTTP_UNAUTHORIZED = 401;
+const HTTP_FORBIDDEN = 403;
+const HTTP_UNAVAILABLE = 503;
 const ITEM_COUNT = 8;
 const MAXIMUM_CONCURRENT_READS = 4;
 const MAXIMUM_ITEM_REFERENCES = 100;
 const MAXIMUM_ITEM_ID_LENGTH = 256;
 const EXCESS_COUNT_INCREMENT = 1;
 const EXCESS_ITEM_REFERENCE_COUNT = MAXIMUM_ITEM_REFERENCES + EXCESS_COUNT_INCREMENT;
+const EXCESS_CATALOG_PAGE_SIZE = 101;
 const EXCESS_ITEM_ID_LENGTH = MAXIMUM_ITEM_ID_LENGTH + EXCESS_COUNT_INCREMENT;
 const EPHEMERAL_PORT = 0;
 const FIRST_RESULT_INDEX = 0;
@@ -32,14 +39,27 @@ const LAST_PATH_SEGMENT = -1;
 const GET_WATCH_STATES_PATH = "/nama.plugin.v1.WatchStateService/GetWatchStates";
 const LIST_WATCH_STATES_PATH = "/nama.plugin.v1.WatchStateService/ListWatchStates";
 const PUSH_WATCH_STATES_PATH = "/nama.plugin.v1.WatchStateService/PushWatchStates";
+const CATALOG_PAGE_SIZE_FIELD = "scan.begin.page_size";
+const CATALOG_CONTINUATION_FIELD = "scan.continuation";
 const INVALID_ARGUMENT_CODE = "invalid_argument";
 const UNAUTHENTICATED_CODE = "unauthenticated";
 const NO_PROVIDER_REQUESTS = 0;
 const VALIDATION_FAILED_REASON = "VALIDATION_FAILED";
+const PAGE_TOKEN_INVALID_REASON = "PAGE_TOKEN_INVALID";
+const REQUIRED_REASON = "REQUIRED";
 const PLUGIN_ERROR_DOMAIN = "nama.plugin.v1";
+const INTERNAL_REASON = "INTERNAL";
+const PERMISSION_DENIED_REASON = "PERMISSION_DENIED";
+const PROVIDER_UNAVAILABLE_REASON = "PROVIDER_UNAVAILABLE";
+const PROVIDER_RETRY_DELAY_SECONDS = 5n;
+const SINGLE_ERROR_DETAIL_COUNT = 1;
+const ZERO_NANOSECONDS = 0;
 const OUT_OF_RANGE_REASON = "OUT_OF_RANGE";
 const ITEM_REFERENCES_FIELD = "item_references";
 const OUT_OF_RANGE_PROVIDER_ACTIVITY = "+010000-01-01T00:00:00.000Z";
+
+const isUnknownRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 interface ConcurrencyObservation {
   active: number;
@@ -55,6 +75,12 @@ interface ConnectRequest {
   readonly authenticated: boolean;
   readonly body: Readonly<Record<string, unknown>>;
   readonly path: string;
+}
+
+interface CatalogFailureExpectation {
+  readonly code: Code;
+  readonly reason: string;
+  readonly retrySeconds?: bigint;
 }
 
 const startHandlerServer = async (): Promise<Server> => {
@@ -264,6 +290,138 @@ const expectValidationDetails = async (server: Server): Promise<void> => {
     [{ field: ITEM_REFERENCES_FIELD, reason: OUT_OF_RANGE_REASON }],
   );
 };
+
+const expectValidationErrorDetails = (
+  error: ConnectError,
+  field: string,
+  reason: "OUT_OF_RANGE" | "REQUIRED",
+): void => {
+  assert.equal(error.code, Code.InvalidArgument);
+  const [errorInfo] = error.findDetails(ErrorInfoSchema);
+  assert.equal(errorInfo?.reason, VALIDATION_FAILED_REASON);
+  assert.equal(errorInfo?.domain, PLUGIN_ERROR_DOMAIN);
+  const [badRequest] = error.findDetails(BadRequestSchema);
+  assert.deepEqual(
+    badRequest?.fieldViolations.map((violation) => ({
+      field: violation.field,
+      reason: violation.reason,
+    })),
+    [{ field, reason }],
+  );
+};
+
+const expectPageTokenErrorDetails = (error: ConnectError): void => {
+  assert.equal(error.code, Code.InvalidArgument);
+  const [errorInfo] = error.findDetails(ErrorInfoSchema);
+  assert.equal(errorInfo?.reason, PAGE_TOKEN_INVALID_REASON);
+  assert.equal(errorInfo?.domain, PLUGIN_ERROR_DOMAIN);
+};
+
+const expectCatalogErrorDetails = async (server: Server): Promise<void> => {
+  const client = createClient(
+    LibraryService,
+    createConnectTransport({
+      baseUrl: `http://127.0.0.1:${serverPort(server)}`,
+      httpVersion: "1.1",
+    }),
+  );
+  const options = { headers: { authorization: `Bearer ${BEARER}` } };
+  const pageSizeError = await captureConnectError(
+    client.listItems(
+      { scan: { case: "begin", value: { pageSize: EXCESS_CATALOG_PAGE_SIZE } } },
+      options,
+    ),
+  );
+  expectValidationErrorDetails(pageSizeError, CATALOG_PAGE_SIZE_FIELD, OUT_OF_RANGE_REASON);
+
+  const emptyContinuationError = await captureConnectError(
+    client.listItems({ scan: { case: "continuation", value: "" } }, options),
+  );
+  expectValidationErrorDetails(emptyContinuationError, CATALOG_CONTINUATION_FIELD, REQUIRED_REASON);
+
+  const pageTokenError = await captureConnectError(
+    client.listItems({ scan: { case: "continuation", value: "tampered" } }, options),
+  );
+  expectPageTokenErrorDetails(pageTokenError);
+};
+
+const captureCatalogFailure = (server: Server, response: Response): Promise<ConnectError> => {
+  globalThis.fetch = () => Promise.resolve(response);
+  const client = createClient(
+    LibraryService,
+    createConnectTransport({
+      baseUrl: `http://127.0.0.1:${serverPort(server)}`,
+      httpVersion: "1.1",
+    }),
+  );
+  return captureConnectError(
+    client.listItems(
+      { scan: { case: "begin", value: { pageSize: ITEM_COUNT } } },
+      { headers: { authorization: `Bearer ${BEARER}` } },
+    ),
+  );
+};
+
+const expectCatalogFailureDetails = (
+  error: ConnectError,
+  expectation: CatalogFailureExpectation,
+): void => {
+  const [errorInfo] = error.findDetails(ErrorInfoSchema);
+  assert.deepEqual(
+    {
+      code: error.code,
+      domain: errorInfo?.domain,
+      metadata: errorInfo?.metadata,
+      reason: errorInfo?.reason,
+    },
+    {
+      code: expectation.code,
+      domain: PLUGIN_ERROR_DOMAIN,
+      metadata: {},
+      reason: expectation.reason,
+    },
+  );
+  const retryDetails = error.findDetails(RetryInfoSchema);
+  if (expectation.retrySeconds === undefined) {
+    assert.deepEqual(retryDetails, []);
+    return;
+  }
+  assert.equal(retryDetails.length, SINGLE_ERROR_DETAIL_COUNT);
+  const [retryInfo] = retryDetails;
+  assert.equal(retryInfo?.retryDelay?.seconds, expectation.retrySeconds);
+  assert.equal(retryInfo?.retryDelay?.nanos, ZERO_NANOSECONDS);
+};
+
+const expectCatalogResponseFailureDetails = async (server: Server): Promise<void> => {
+  const forbiddenError = await captureCatalogFailure(
+    server,
+    new Response("", { status: HTTP_FORBIDDEN }),
+  );
+  expectCatalogFailureDetails(forbiddenError, {
+    code: Code.PermissionDenied,
+    reason: PERMISSION_DENIED_REASON,
+  });
+
+  const unavailableError = await captureCatalogFailure(
+    server,
+    new Response("", { status: HTTP_UNAVAILABLE }),
+  );
+  expectCatalogFailureDetails(unavailableError, {
+    code: Code.Unavailable,
+    reason: PROVIDER_UNAVAILABLE_REASON,
+    retrySeconds: PROVIDER_RETRY_DELAY_SECONDS,
+  });
+
+  const invalidResponseError = await captureCatalogFailure(
+    server,
+    new Response("{", { status: HTTP_OK }),
+  );
+  expectCatalogFailureDetails(invalidResponseError, {
+    code: Code.Internal,
+    reason: INTERNAL_REASON,
+  });
+};
+
 const expectRejectedBounds = async (
   server: Server,
   observation: ConcurrencyObservation,
@@ -327,6 +485,26 @@ void test("rejects targeted request bounds before provider calls", async () => {
   const server = await startHandlerServer();
   try {
     await expectRejectedBounds(server, observation);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await server[Symbol.asyncDispose]();
+  }
+});
+
+void test("returns stable catalog validation and page-token details", async () => {
+  const server = await startHandlerServer();
+  try {
+    await expectCatalogErrorDetails(server);
+  } finally {
+    await server[Symbol.asyncDispose]();
+  }
+});
+
+void test("returns stable details for unsuccessful catalog scans", async () => {
+  const originalFetch = globalThis.fetch;
+  const server = await startHandlerServer();
+  try {
+    await expectCatalogResponseFailureDetails(server);
   } finally {
     globalThis.fetch = originalFetch;
     await server[Symbol.asyncDispose]();
