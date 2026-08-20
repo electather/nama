@@ -16,6 +16,7 @@ type JellyfinFailureKind =
   | "not_found"
   | "unreachable";
 type JellyfinFailureResponse = Readonly<{ kind: JellyfinFailureKind }>;
+type JellyfinFailureCategory = "forbidden" | "missing" | "permanent" | "retryable";
 
 const credentialFailureKind = (
   status: number,
@@ -47,6 +48,19 @@ const jellyfinFailureKind = (response: Response): JellyfinFailureKind | undefine
     return "unreachable";
   }
   return "incompatible";
+};
+
+const jellyfinFailureCategory = (kind: JellyfinFailureKind): JellyfinFailureCategory => {
+  if (kind === "authentication_failed" || kind === "forbidden") {
+    return "forbidden";
+  }
+  if (kind === "not_found") {
+    return "missing";
+  }
+  if (kind === "unreachable") {
+    return "retryable";
+  }
+  return "permanent";
 };
 
 const cancelResponseBody = async (response: Response): Promise<boolean> => {
@@ -81,5 +95,10 @@ const readJellyfinFailureResponse = async (
   return { kind };
 };
 
-export { readJellyfinFailureResponse };
-export type { JellyfinFailureResponse, JellyfinRequestAuthentication };
+export { jellyfinFailureCategory, readJellyfinFailureResponse };
+export type {
+  JellyfinFailureCategory,
+  JellyfinFailureKind,
+  JellyfinFailureResponse,
+  JellyfinRequestAuthentication,
+};

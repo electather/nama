@@ -7,42 +7,35 @@ import type {
   ErrorInfo,
 } from "@nama/api/google/rpc/error_details_pb.js";
 import { WatchStateService } from "@nama/api/nama/plugin/v1/watch_state_pb.js";
-import type { GetWatchStatesRequest } from "@nama/api/nama/plugin/v1/watch_state_pb.js";
+import type {
+  GetWatchStatesRequest,
+  PushWatchStatesRequest,
+} from "@nama/api/nama/plugin/v1/watch_state_pb.js";
 
+import { identifierViolationReason } from "./identifier.ts";
 import type { LaunchDocument } from "./launch-document.ts";
+import { pushJellyfinWatchStates } from "./watch-state-mutation.ts";
 import { getJellyfinWatchStates } from "./watch-state.ts";
 
 const MINIMUM_ITEM_REFERENCES = 1;
 const MAXIMUM_ITEM_REFERENCES = 100;
-const MINIMUM_ITEM_ID_LENGTH = 1;
+const MINIMUM_MUTATIONS = 1;
+const MAXIMUM_MUTATIONS = 100;
 const MAXIMUM_ITEM_ID_LENGTH = 256;
-const LENGTH_INCREMENT = 1;
 const MAXIMUM_FIELD_VIOLATIONS = 50;
 const NO_FIELD_VIOLATIONS = 0;
 const PLUGIN_ERROR_DOMAIN = "nama.plugin.v1";
 const VALIDATION_FAILED_REASON = "VALIDATION_FAILED";
-const REQUIRED_REASON = "REQUIRED";
 const OUT_OF_RANGE_REASON = "OUT_OF_RANGE";
 const ITEM_REFERENCES_FIELD = "item_references";
+const BATCH_ID_FIELD = "batch_id";
+const MUTATIONS_FIELD = "mutations";
 const ITEM_ID_DESCRIPTION = "Must contain between 1 and 256 characters.";
 const ITEM_REFERENCES_DESCRIPTION = "Must contain between 1 and 100 references.";
+const BATCH_ID_DESCRIPTION = "Must contain between 1 and 256 characters.";
+const MUTATIONS_DESCRIPTION = "Must contain between 1 and 100 mutations.";
 
 type RequireAuthorization = (authorization: string | null, bearer: string) => void;
-
-const itemIdViolationReason = (itemId: string): false | "OUT_OF_RANGE" | "REQUIRED" => {
-  const characters = itemId[Symbol.iterator]();
-  let length = 0;
-  for (let character = characters.next(); character.done !== true; character = characters.next()) {
-    length += LENGTH_INCREMENT;
-    if (length > MAXIMUM_ITEM_ID_LENGTH) {
-      return OUT_OF_RANGE_REASON;
-    }
-  }
-  if (length < MINIMUM_ITEM_ID_LENGTH) {
-    return REQUIRED_REASON;
-  }
-  return false;
-};
 
 const fieldViolation = (
   field: string,
@@ -71,12 +64,28 @@ const watchStateRequestViolations = (
     if (violations.length >= MAXIMUM_FIELD_VIOLATIONS) {
       break;
     }
-    const reason = itemIdViolationReason(itemId);
+    const reason = identifierViolationReason(itemId, MAXIMUM_ITEM_ID_LENGTH);
     if (reason !== false) {
       violations.push(
         fieldViolation(`item_references[${index}].item_id`, ITEM_ID_DESCRIPTION, reason),
       );
     }
+  }
+  return violations;
+};
+const pushWatchStateRequestViolations = (
+  request: PushWatchStatesRequest,
+): BadRequest_FieldViolation[] => {
+  const violations: BadRequest_FieldViolation[] = [];
+  const batchIdReason = identifierViolationReason(request.batchId, MAXIMUM_ITEM_ID_LENGTH);
+  if (batchIdReason !== false) {
+    violations.push(fieldViolation(BATCH_ID_FIELD, BATCH_ID_DESCRIPTION, batchIdReason));
+  }
+  if (
+    request.mutations.length < MINIMUM_MUTATIONS ||
+    request.mutations.length > MAXIMUM_MUTATIONS
+  ) {
+    violations.push(fieldViolation(MUTATIONS_FIELD, MUTATIONS_DESCRIPTION, OUT_OF_RANGE_REASON));
   }
   return violations;
 };
@@ -127,7 +136,26 @@ const registerJellyfinWatchStateService = (
     );
   });
   router.rpc(WatchStateService.method.listWatchStates, unavailable);
-  router.rpc(WatchStateService.method.pushWatchStates, unavailable);
+  router.rpc(WatchStateService.method.pushWatchStates, (request, context) => {
+    requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
+    if (launch.kind !== "instance") {
+      throw new ConnectError("watch state unavailable", Code.Unimplemented);
+    }
+    const violations = pushWatchStateRequestViolations(request);
+    if (violations.length > NO_FIELD_VIOLATIONS) {
+      throw validationError(violations);
+    }
+    return pushJellyfinWatchStates({
+      context: {
+        apiKey: launch.credentials.api_key,
+        baseUrl: launch.configuration.base_url,
+        userId: launch.configuration.user_id,
+      },
+      mutations: request.mutations,
+      signal: context.signal,
+      timeoutMs: context.timeoutMs,
+    });
+  });
 };
 
 export { registerJellyfinWatchStateService };

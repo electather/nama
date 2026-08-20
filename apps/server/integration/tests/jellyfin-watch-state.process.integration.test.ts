@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { expect, it } from "@effect/vitest";
-import { PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
+import { PluginService, ProviderCapability } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 import {
   ProviderActivityReliability,
   ProviderActivitySemantics,
@@ -336,7 +336,7 @@ const targetedMovieWatchStateTest = () => {
     const supervisor = yield* PluginSupervisor;
     const plugin = yield* superviseJellyfin(supervisor, jellyfin);
     const info = yield* plugin.call(PluginService.method.getInfo, {}, CALL_DEADLINE_MILLISECONDS);
-    expect(info.pluginInfo?.capabilities).toEqual([]);
+    expect(info.pluginInfo?.capabilities).toEqual([ProviderCapability.WATCHED_WRITE]);
     const beforeCallSeconds = BigInt(Math.floor(Date.now() / MILLISECONDS_PER_SECOND));
     const response = yield* callWatchStates(plugin, [{ itemId: MOVIE_ID }]);
     const afterCallSeconds = BigInt(Math.floor(Date.now() / MILLISECONDS_PER_SECOND));

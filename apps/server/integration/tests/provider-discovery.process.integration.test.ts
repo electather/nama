@@ -12,7 +12,11 @@ import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { expect, it } from "@effect/vitest";
 import { BadRequestSchema, ErrorInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
-import { ProviderConnectionStatus, ProviderService } from "@nama/api/nama/api/v1/provider_pb.js";
+import {
+  ProviderCapability,
+  ProviderConnectionStatus,
+  ProviderService,
+} from "@nama/api/nama/api/v1/provider_pb.js";
 import { HealthService } from "@nama/api/nama/plugin/v1/health_pb.js";
 import { Effect, Exit, Scope } from "effect";
 import { Pool } from "pg";
@@ -436,7 +440,7 @@ it.live(
                 phase: "TestProviderConfiguration",
               });
               expect(configurationTest.result).toMatchObject({
-                capabilities: [],
+                capabilities: [ProviderCapability.WATCHED_WRITE],
                 remoteName: "Provider Test Jellyfin",
                 remoteVersion: "10.11.0",
                 status: ProviderConnectionStatus.CONNECTED,
@@ -508,7 +512,7 @@ it.live(
               expect(payload.data).toEqual({
                 provider_types: [
                   {
-                    capabilities: [],
+                    capabilities: ["watched_write"],
                     configuration_schema: {
                       additionalProperties: false,
                       properties: {
@@ -705,7 +709,7 @@ it.live(
                 phase: "TestProviderInstance",
               });
               expect(storedTest.result).toMatchObject({
-                capabilities: [],
+                capabilities: [ProviderCapability.WATCHED_WRITE],
                 remoteName: "Provider Test Jellyfin",
                 remoteVersion: "10.11.0",
                 status: ProviderConnectionStatus.CONNECTED,

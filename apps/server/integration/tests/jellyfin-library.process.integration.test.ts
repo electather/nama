@@ -18,7 +18,7 @@ import {
   SubtitleRepresentation,
 } from "@nama/api/nama/plugin/v1/media_pb.js";
 import type { ProviderMediaItem } from "@nama/api/nama/plugin/v1/media_pb.js";
-import { PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
+import { PluginService, ProviderCapability } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 import { Effect, Fiber } from "effect";
 
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
@@ -628,7 +628,7 @@ it.live(
           {},
           CALL_DEADLINE_MILLISECONDS,
         );
-        expect(info.pluginInfo?.capabilities).toEqual([]);
+        expect(info.pluginInfo?.capabilities).toEqual([ProviderCapability.WATCHED_WRITE]);
 
         const response = yield* plugin.call(
           LibraryService.method.getItem,
