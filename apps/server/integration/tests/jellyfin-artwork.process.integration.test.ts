@@ -35,7 +35,12 @@ const BACKDROP_CACHE_TAG = "backdrop-cache-tag";
 const CACHE_TAG = "poster-cache-tag";
 const MAXIMUM_WIDTH = 600;
 const MAXIMUM_HEIGHT = 900;
-const ARTWORK_CAPABILITIES = [ProviderCapability.ARTWORK_RESOLVE, ProviderCapability.WATCHED_WRITE];
+const ARTWORK_CAPABILITIES = [
+  ProviderCapability.LIBRARY_READ,
+  ProviderCapability.ARTWORK_RESOLVE,
+  ProviderCapability.WATCH_STATE_READ,
+  ProviderCapability.WATCHED_WRITE,
+];
 const REDIRECT_WIDTH = 301;
 const PROTECTED_WIDTH = 401;
 const MISSING_WIDTH = 404;

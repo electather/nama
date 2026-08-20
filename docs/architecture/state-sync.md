@@ -19,11 +19,12 @@ one non-overlapping run per provider instance. Provider events remain future
 invalidation hints; the unary MVP does not subscribe to them or treat them as
 current truth.
 
-Production synchronization remains unimplemented: core scheduling,
-persistence, complete provider scans, bounded fingerprint retention, and retry
-execution remain target work. The Jellyfin adapter implements bounded targeted
-movie and episode reads for repair and confirmation plus explicit
-watched/unwatched writes with bounded ambiguity readback. It advertises
-`WATCHED_WRITE` but not complete `WATCH_STATE_READ`. The contract supports one
-or more configured Jellyfin instances without adding a queue or provider-owned
-durable state; later provider types reuse that contract.
+Production core synchronization remains unimplemented: scheduling, provider
+replica and checkpoint persistence, reconciliation, bounded fingerprint
+retention, and retry execution remain target work. The Jellyfin adapter
+implements resumable best-effort full movie and episode scans, bounded targeted
+reads for repair and confirmation, and explicit watched/unwatched writes with
+bounded ambiguity readback. It advertises `WATCH_STATE_READ` and
+`WATCHED_WRITE`. The contract supports one or more configured Jellyfin
+instances without adding a queue or provider-owned durable state; later
+provider types reuse that contract.

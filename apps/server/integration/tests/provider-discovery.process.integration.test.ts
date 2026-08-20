@@ -443,6 +443,7 @@ it.live(
                 capabilities: [
                   ProviderCapability.LIBRARY_READ,
                   ProviderCapability.ARTWORK_RESOLVE,
+                  ProviderCapability.WATCH_STATE_READ,
                   ProviderCapability.WATCHED_WRITE,
                 ],
                 remoteName: "Provider Test Jellyfin",
@@ -516,7 +517,12 @@ it.live(
               expect(payload.data).toEqual({
                 provider_types: [
                   {
-                    capabilities: ["library_read", "artwork_resolve", "watched_write"],
+                    capabilities: [
+                      "library_read",
+                      "artwork_resolve",
+                      "watch_state_read",
+                      "watched_write",
+                    ],
                     configuration_schema: {
                       additionalProperties: false,
                       properties: {
@@ -716,6 +722,7 @@ it.live(
                 capabilities: [
                   ProviderCapability.LIBRARY_READ,
                   ProviderCapability.ARTWORK_RESOLVE,
+                  ProviderCapability.WATCH_STATE_READ,
                   ProviderCapability.WATCHED_WRITE,
                 ],
                 remoteName: "Provider Test Jellyfin",

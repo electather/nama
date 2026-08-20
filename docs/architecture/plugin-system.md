@@ -35,21 +35,21 @@ cancellation and deadlines into `GetConnection`; only a completed
 stored-instance result can conditionally update that same revision's
 observation.
 
-## Jellyfin discovery, connection, artwork, library, and watched-write profile
+## Jellyfin discovery, connection, artwork, library, and watch-state profile
 
 The production Jellyfin executable implements authenticated health, `GetInfo`
 for context-free discovery, `GetConnection` for candidate and instance
 launches, targeted `LibraryService.GetItem`, resumable
 `LibraryService.ListItems`, `LibraryService.ResolveArtwork`, targeted
-`WatchStateService.GetWatchStates`, and explicit
+`WatchStateService.GetWatchStates`, resumable
+`WatchStateService.ListWatchStates`, and explicit
 `WatchStateService.PushWatchStates` watched/unwatched mutations for configured
 instance launches. It declares provider type `jellyfin`, contract major `1`,
 and a restricted schema requiring `base_url`, `user_id`, and write-only
 `api_key`. Static information and successful configured connections advertise
-`LIBRARY_READ`, `ARTWORK_RESOLVE`, and `WATCHED_WRITE`; `WATCH_STATE_READ`
-remains unadvertised until complete best-effort watch-state scans are
-implemented. Startup validates and persists discovery information before the
-public provider-type list becomes available.
+`LIBRARY_READ`, `ARTWORK_RESOLVE`, `WATCH_STATE_READ`, and `WATCHED_WRITE`.
+Startup validates and persists discovery information before the public
+provider-type list becomes available.
 
 `GetConnection` first reads unauthenticated public system information, then
 reads the explicitly configured user with Jellyfin's credentialed
@@ -73,9 +73,10 @@ and receives RPC cancellation. Artwork probes use anonymous `HEAD` against the
 exact reconstructed endpoint and never receive the request module's provider
 authorization. JSON operations stream each body under the caller-selected
 positive byte limit: connection inspection selects 64 KiB, targeted item reads
-select 1 MiB, and catalog, targeted watch-state read, and mutation responses
-select 16 MiB. Targeted watch-state reads and independent writes each admit at
-most four provider responses concurrently so the per-response bound cannot
+select 1 MiB, and catalog, watch-state scan, targeted watch-state read, and
+mutation responses select 16 MiB.
+Targeted watch-state reads and independent writes each admit at most four
+provider responses concurrently so the per-response bound cannot
 multiply across the complete 100-member request. Callers receive only
 normalized response categories and parsed records, so raw provider bodies and
 credential-bearing request details never enter responses or logs.
@@ -99,14 +100,15 @@ specials, and normalizes every retained item through the targeted-read path.
 Completion follows provider page length rather than mutable totals, so an exact
 page multiple requires a final empty call.
 
-Each begin call creates a random scan identity and one 24-hour continuation
-expiry. Its versioned canonical JSON continuation authenticates operation and
-query scope, scan identity, provider instance and exact revision, page size,
-offset, and expiry with HMAC-SHA-256 under an API-key-derived,
-catalog-domain-separated key. It contains no credential or plugin-owned durable
-state. A later same-revision process can resume it; tampering, expiry, another
-scope or instance, credential replacement, and revision replacement fail
-`INVALID_ARGUMENT` before a provider read.
+Each catalog or watch-state begin call creates an independent random scan
+identity and one 24-hour continuation expiry. The versioned canonical JSON
+continuation authenticates its operation and query scope, scan identity,
+provider instance and exact revision, page size, offset, and expiry with
+HMAC-SHA-256 under an API-key-derived operation-domain-separated key. Catalog
+and watch-state scopes cannot reuse each other's tokens. A token contains no
+credential or plugin-owned durable state. A later same-revision process can
+resume it; tampering, expiry, another scope or instance, credential replacement,
+and revision replacement fail `INVALID_ARGUMENT` before a provider read.
 
 Artwork observations use a versioned opaque payload containing only one
 allowlisted Jellyfin image type, bounded non-negative index, and bounded cache
@@ -125,18 +127,25 @@ exact persisted-instance launches. It verifies cancellation reaches the real
 subprocess and provider request, exact-revision observations are conditional,
 and public results omit provider credentials and principal references.
 Controlled HTTP subprocess coverage exercises targeted movie, show, season,
-episode, and artwork RPCs plus catalog begin, continuation after idle process
-replacement, exact-page completion, hierarchy, source, and track normalization,
-bounded response handling, anonymous exact-resource probes, cancellation, safe
-failure codes, and raw-body and credential redaction.
+episode, artwork, and watch-state RPCs plus catalog and watch-state begin,
+continuation after idle process replacement, exact-page completion, hierarchy,
+source, track, and watch-state normalization, bounded response handling,
+anonymous exact-resource probes, cancellation, safe failure codes, and
+raw-body and credential redaction.
 
 Targeted watch-state reads return one result per requested private item
 reference in order. Existing movies and episodes normalize watched state,
 positive resume position, known duration, one receipt time, and only heuristic
 unknown-semantics Jellyfin activity. Missing, forbidden, retryable, and
 permanent member failures remain distinct; no provider revision is invented.
-The generated RPC remains callable for targeted repair while
-`WATCH_STATE_READ` stays unadvertised until complete best-effort scans exist.
+
+`ListWatchStates` requests one recursive, non-watch-state `SortName` pass
+containing only movies and episodes. It defaults zero page size to 50, accepts
+at most 100, enables configured-user data, and normalizes every item through
+the targeted-read path, including provider-default unwatched observations.
+Missing user data fails visibly rather than becoming unwatched. Completion
+follows provider page length rather than mutable totals, so an exact page
+multiple requires a final empty call.
 
 Explicit watched and unwatched targets first consume one bounded targeted-read
 batch. Equal targets return the normalized observation without a provider
@@ -153,13 +162,14 @@ timed-out response, or a malformed or oversized successful response, causes one
 targeted readback. An observed target succeeds; an unresolved target remains
 retryable ambiguity, and the plugin never replays the possibly committed write.
 
-Static plugin information and successful configured connections advertise only
-`WATCHED_WRITE` from this implemented profile. Missing, forbidden, retryable,
-permanent, ambiguous, and cancelled paths retain sanitized generated-RPC
-outcomes without exposing provider bodies, identifiers, or authorization.
+Static plugin information and successful configured connections advertise
+`WATCH_STATE_READ` and `WATCHED_WRITE` from this implemented profile. Missing,
+forbidden, retryable, permanent, ambiguous, malformed, oversized, and cancelled
+paths retain sanitized generated-RPC outcomes without exposing provider bodies,
+identifiers, or authorization.
 
 Windows transport and persistent or background native-media plugins remain
-deferred until a real plugin requires them. Complete watch-state scans belong
-to issue #30. Production playback belongs to issue #96, coherent exact progress
-export belongs to issue #97, explicit connection-test commands belong to issue
-#31, and container packaging belongs to issue #32.
+deferred until a real plugin requires them. Core-owned synchronization
+execution remains in issue #30. Production playback belongs to issue #96,
+coherent exact progress export belongs to issue #97, explicit connection-test
+commands belong to issue #31, and container packaging belongs to issue #32.

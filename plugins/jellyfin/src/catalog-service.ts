@@ -5,12 +5,12 @@ import type { ErrorInfo, RetryInfo } from "@nama/api/google/rpc/error_details_pb
 import { LibraryService, ListConsistency } from "@nama/api/nama/plugin/v1/library_pb.js";
 
 import { encodeCatalogContinuation } from "./catalog-continuation.ts";
-import type { CatalogContinuationPosition } from "./catalog-continuation.ts";
-import { catalogPositionForRequest } from "./catalog-scan.ts";
 import type { LaunchDocument, ProviderLaunchDocument } from "./launch-document.ts";
 import { normalizeJellyfinItem } from "./media-item.ts";
 import { createJellyfinRequest } from "./request.ts";
 import type { JellyfinJsonResponse } from "./request.ts";
+import type { ScanContinuationPosition } from "./scan-continuation.ts";
+import { catalogPositionForRequest } from "./scan-request.ts";
 import { isUnknownRecord } from "./value.ts";
 
 const EMPTY_LENGTH = 0;
@@ -104,7 +104,7 @@ const catalogPageFromResponse = (response: JellyfinJsonResponse, pageSize: numbe
   };
 };
 
-const catalogQuery = (launch: ProviderLaunchDocument, position: CatalogContinuationPosition) => ({
+const catalogQuery = (launch: ProviderLaunchDocument, position: ScanContinuationPosition) => ({
   collapseBoxSetItems: "false",
   enableImages: "true",
   enableTotalRecordCount: "false",
@@ -122,7 +122,7 @@ const catalogQuery = (launch: ProviderLaunchDocument, position: CatalogContinuat
 
 const requestJellyfinCatalogPage = (
   launch: ProviderLaunchDocument,
-  position: CatalogContinuationPosition,
+  position: ScanContinuationPosition,
   signal: AbortSignal,
 ) => {
   const request = createJellyfinRequest({
@@ -142,7 +142,7 @@ const requestJellyfinCatalogPage = (
 
 const continuationForPage = (
   launch: ProviderLaunchDocument,
-  position: CatalogContinuationPosition,
+  position: ScanContinuationPosition,
   providerItemCount: number,
 ): string => {
   const providerInstanceId = launch.provider_instance_id;
@@ -163,7 +163,7 @@ const continuationForPage = (
 
 const catalogResponseForPage = (
   launch: ProviderLaunchDocument,
-  position: CatalogContinuationPosition,
+  position: ScanContinuationPosition,
   response: JellyfinJsonResponse,
 ) => {
   const page = catalogPageFromResponse(response, position.pageSize);
@@ -184,7 +184,7 @@ const catalogResponseForPage = (
 
 const readJellyfinCatalogPage = async (
   launch: ProviderLaunchDocument,
-  position: CatalogContinuationPosition,
+  position: ScanContinuationPosition,
   signal: AbortSignal,
 ) => {
   const response = await requestJellyfinCatalogPage(launch, position, signal);

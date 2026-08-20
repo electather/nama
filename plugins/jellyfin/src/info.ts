@@ -35,6 +35,7 @@ const jellyfinConfigurationSchema = {
 const jellyfinCapabilities = [
   ProviderCapability.LIBRARY_READ,
   ProviderCapability.ARTWORK_RESOLVE,
+  ProviderCapability.WATCH_STATE_READ,
   ProviderCapability.WATCHED_WRITE,
 ];
 

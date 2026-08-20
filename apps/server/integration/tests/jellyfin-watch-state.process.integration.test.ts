@@ -275,6 +275,7 @@ const targetedMovieWatchStateTest = () => {
     expect(info.pluginInfo?.capabilities).toEqual([
       ProviderCapability.LIBRARY_READ,
       ProviderCapability.ARTWORK_RESOLVE,
+      ProviderCapability.WATCH_STATE_READ,
       ProviderCapability.WATCHED_WRITE,
     ]);
     const beforeCallSeconds = BigInt(Math.floor(Date.now() / MILLISECONDS_PER_SECOND));
