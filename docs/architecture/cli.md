@@ -1,6 +1,6 @@
 # Management CLI
 
-Status: issue #24 profiles, Administrator setup/sign-in, and authentication status; issue #25's complete public process contract; issue #76's authenticated provider-type listing; issue #77's provider-instance create/list/get commands; issue #78's provider-instance update, disable, and re-enable command; and issue #79's confirmed provider-instance delete command are implemented and verified. The remaining MVP command families are unfinished.
+Status: issue #24 profiles, Administrator setup/sign-in, and authentication status; issue #25's complete public process contract; issue #76's authenticated provider-type listing; issue #77's provider-instance create/list/get commands; issue #78's provider-instance update, disable, and re-enable command; issue #79's confirmed provider-instance delete command; and issue #80's durable compiled-CLI provider-management tracer are implemented and verified. The remaining MVP command families are unfinished.
 
 ## Purpose
 
@@ -19,6 +19,7 @@ The complete MVP management surface covers initial administrator setup, authenti
 - Issue #77 adds provider-neutral instance create, list, and get commands over the verified candidate and encrypted persistence flow.
 - Issue #78 adds revision-checked provider-instance patch, explicit clear, disable, and re-enable over the verified candidate and runtime-cutover flow.
 - Issue #79 adds revision-checked permanent deletion with interactive confirmation and an explicit non-interactive `--yes` boundary.
+- Issue #80 proves those commands as one restart and upgrade flow against the production server, PostgreSQL, supervisor, Jellyfin plugin, and a disposable Jellyfin server.
 
 The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no management web application or CLI plugin framework in the MVP.
 
@@ -261,7 +262,7 @@ The implemented surface is tested in process through the real Cobra tree with in
 - setup recovery, sign-in replacement, authentication status, revocation, cleanup, and typed errors;
 - provider-type and provider-instance page input, authenticated profile selection, accepted schema mapping, file/stdin configuration and patch input, explicit clears, operation IDs, expected revisions, delete confirmation and `--yes`, and human/JSON rendering;
 - exact JSON stream behavior plus human warning and prompt placement, exit codes, update and deletion conflicts, and secret redaction; and
-- compiled-binary production server/PostgreSQL/Jellyfin flows covering discovery, verified encrypted create, update, disable/re-enable, safe deletion and exact retry, same-principal enforcement, list/get, validation, authentication rejection, idempotent retry, pagination, and concurrent mutations.
+- compiled-binary production server/PostgreSQL/Jellyfin flows covering discovery, verified encrypted create, durable restart recovery, accepted-schema upgrade containment, credential replacement, same-principal enforcement, disable/re-enable, safe deletion and exact replay across restarts, wrong-key and damaged-envelope containment, list/get, validation, disabled-user rejection, idempotency, pagination misuse, and security sentinels.
 
 The owning Go check runs formatting, vet, Staticcheck, tests, compilation, generated-reference drift, and schema-v1 semantic compatibility. Focused in-process and compiled-binary coverage verifies help, local output precedence, version/header identity, all completion formats, schema ordering and metadata, exit mappings, provider rendering, update patch/clear/revision inputs, deletion confirmation, secret redaction, and exact JSON stream placement. A disposable Node server and PostgreSQL flow verifies real provider discovery and provider-instance create/list/get/update/delete including disable, re-enable, safe cascading removal, and exact retry through the compiled CLI; the macOS Keychain flow separately verifies Administrator setup and stored-credential status and is not portable keyring evidence.
 

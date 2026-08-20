@@ -5,8 +5,10 @@ import { join } from "node:path";
 
 import { expect, it } from "@effect/vitest";
 import { PluginConnectionStatus, PluginService } from "@nama/api/nama/plugin/v1/plugin_pb.js";
-import { Effect } from "effect";
+import { Effect, Redacted } from "effect";
 
+import { Config } from "../../src/config/config.ts";
+import { configuredLoggingLayer } from "../../src/logging/logging.ts";
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 
 const JELLYFIN_PLUGIN_PATH = join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts");
@@ -14,6 +16,25 @@ const CALL_DEADLINE_MILLISECONDS = 2000;
 const API_KEY = "jellyfin-api-key-sentinel";
 const SERVER_ID = "server-identity";
 const USER_ID = "user-identity";
+const MALFORMED_RESPONSE_SENTINEL = "malformed-jellyfin-response-sentinel";
+const OVERSIZED_RESPONSE_SENTINEL = "oversized-jellyfin-response-sentinel";
+const HOSTILE_RESPONSE_SENTINEL = "hostile-jellyfin-response-sentinel";
+const loggingConfig = Config.of({
+  database: Object.freeze({ maxConnections: 1, url: Redacted.make("unused") }),
+  logging: Object.freeze({ level: "info" as const }),
+  security: Object.freeze({ masterKey: Redacted.make("unused") }),
+  server: Object.freeze({
+    bind: "127.0.0.1:8080",
+    publicUrl: "http://127.0.0.1:8080/",
+  }),
+});
+
+const OVERSIZED_RESPONSE_BODY = JSON.stringify({
+  Id: SERVER_ID,
+  Padding: `${OVERSIZED_RESPONSE_SENTINEL}:${"x".repeat(131_072)}`,
+  ServerName: "Living Room",
+  Version: "10.11.0",
+});
 
 interface ObservedRequest {
   readonly authorization: string | undefined;
@@ -33,6 +54,12 @@ const respondJson = (response: ServerResponse, value: unknown): void => {
   response.end(JSON.stringify(value));
 };
 
+const respondRaw = (response: ServerResponse, statusCode: number, body: string): void => {
+  response.statusCode = statusCode;
+  response.setHeader("content-type", "application/json");
+  response.end(body);
+};
+
 const acquireControlledJellyfin = Effect.acquireRelease(
   Effect.tryPromise({
     catch: (error) => error,
@@ -47,6 +74,33 @@ const acquireControlledJellyfin = Effect.acquireRelease(
           return;
         }
         if (request.url === "/hanging/System/Info/Public") {
+          return;
+        }
+        if (request.url === "/malformed/System/Info/Public") {
+          respondRaw(response, 200, `{${MALFORMED_RESPONSE_SENTINEL}`);
+          return;
+        }
+        if (request.url === "/oversized/System/Info/Public") {
+          respondRaw(response, 200, OVERSIZED_RESPONSE_BODY);
+          return;
+        }
+        if (request.url === "/hostile/System/Info/Public") {
+          respondRaw(response, 503, `${HOSTILE_RESPONSE_SENTINEL}:MediaBrowser Token="${API_KEY}"`);
+          return;
+        }
+        if (request.url === "/hostile-user/System/Info/Public") {
+          respondJson(response, {
+            Id: SERVER_ID,
+            ServerName: "Living Room",
+            Version: "10.11.0",
+          });
+          return;
+        }
+        if (
+          request.url === `/hostile-user/Users/${USER_ID}` &&
+          request.headers.authorization === `MediaBrowser Token="${API_KEY}"`
+        ) {
+          respondRaw(response, 503, `${HOSTILE_RESPONSE_SENTINEL}:MediaBrowser Token="${API_KEY}"`);
           return;
         }
         if (
@@ -238,5 +292,59 @@ it.live(
         expect(deadlineFailure).toMatchObject({ _tag: "PluginDeadlineExceeded" });
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
+  10_000,
+);
+
+it.live(
+  "bounds hostile Jellyfin responses and keeps their contents out of process results and output",
+  () => {
+    const lines: string[] = [];
+    return Effect.scoped(
+      Effect.gen(function* hostileJellyfinResponseTest() {
+        const jellyfin = yield* acquireControlledJellyfin;
+        const supervisor = yield* PluginSupervisor;
+        const malformed = yield* candidateConnection(supervisor, {
+          baseUrl: `${jellyfin.origin}/malformed`,
+        });
+        const oversized = yield* candidateConnection(supervisor, {
+          baseUrl: `${jellyfin.origin}/oversized`,
+        });
+        const hostile = yield* candidateConnection(supervisor, {
+          baseUrl: `${jellyfin.origin}/hostile`,
+        });
+        const hostileUser = yield* candidateConnection(supervisor, {
+          baseUrl: `${jellyfin.origin}/hostile-user`,
+        });
+
+        expect(malformed.connection?.status).toBe(PluginConnectionStatus.INCOMPATIBLE);
+        expect(oversized.connection?.status).toBe(PluginConnectionStatus.INCOMPATIBLE);
+        expect(hostile.connection?.status).toBe(PluginConnectionStatus.UNREACHABLE);
+        expect(hostileUser.connection?.status).toBe(PluginConnectionStatus.UNREACHABLE);
+        expect(jellyfin.requests.at(-1)).toEqual({
+          authorization: `MediaBrowser Token="${API_KEY}"`,
+          url: `/hostile-user/Users/${USER_ID}`,
+        });
+
+        const returned = JSON.stringify([malformed, oversized, hostile, hostileUser]);
+        const output = lines.join("");
+        for (const privateValue of [
+          API_KEY,
+          MALFORMED_RESPONSE_SENTINEL,
+          OVERSIZED_RESPONSE_SENTINEL,
+          HOSTILE_RESPONSE_SENTINEL,
+        ]) {
+          expect(returned).not.toContain(privateValue);
+          expect(output).not.toContain(privateValue);
+        }
+      }).pipe(
+        Effect.provide(PluginSupervisor.layer()),
+        Effect.provide(
+          configuredLoggingLayer(loggingConfig, (line) => {
+            lines.push(line);
+          }),
+        ),
+      ),
+    );
+  },
   10_000,
 );

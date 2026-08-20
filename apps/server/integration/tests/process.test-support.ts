@@ -43,6 +43,11 @@ interface StatusTarget {
   readonly path: string;
   readonly status: number;
 }
+interface ProcessLaunchOptions {
+  readonly environment?: NodeJS.ProcessEnv;
+  readonly masterKey?: string;
+  readonly preloads?: readonly string[];
+}
 
 const childOutputClosed = (child: ChildProcess): boolean =>
   (child.stderr?.readableEnded ?? true) && (child.stdout?.readableEnded ?? true);
@@ -90,7 +95,7 @@ const eventFromLine = (line: string): string => {
   return event;
 };
 
-const configuration = (databaseUrl: string, port: number): string => `[server]
+const configuration = (databaseUrl: string, port: number, masterKey: string): string => `[server]
 bind = "${HOST}:${port}"
 public_url = "http://${HOST}:${port}"
 
@@ -99,11 +104,21 @@ url = "${databaseUrl}"
 max_connections = 2
 
 [security]
-master_key = "${MASTER_KEY}"
+master_key = "${masterKey}"
 
 [logging]
 level = "info"
 `;
+const preloadExecutionArguments = (preloads: readonly string[] | undefined): string[] => {
+  const executionArguments: string[] = [];
+  if (preloads === undefined) {
+    return executionArguments;
+  }
+  for (const preload of preloads) {
+    executionArguments.push("--import", preload);
+  }
+  return executionArguments;
+};
 
 const outputCapture = (): OutputCapture => {
   let output = "";
@@ -128,7 +143,7 @@ const killChildIfRunning = (child: ChildProcess): void => {
   }
 };
 
-const startProcess = (databaseUrl: string, port?: number) =>
+const startProcess = (databaseUrl: string, port?: number, options: ProcessLaunchOptions = {}) =>
   Effect.gen(function* runningServerProcess() {
     const selectedPort = port ?? (yield* reservePort);
     const fileSystem = yield* FileSystem.FileSystem;
@@ -136,14 +151,18 @@ const startProcess = (databaseUrl: string, port?: number) =>
       prefix: "nama-server-process-",
     });
     const configPath = join(directory, "nama.toml");
-    yield* fileSystem.writeFileString(configPath, configuration(databaseUrl, selectedPort));
+    yield* fileSystem.writeFileString(
+      configPath,
+      configuration(databaseUrl, selectedPort, options.masterKey ?? MASTER_KEY),
+    );
     const stdout = outputCapture();
     const stderr = outputCapture();
     const child = yield* Effect.acquireRelease(
       Effect.sync(() =>
         fork(MAIN_MODULE, [], {
           cwd: SERVER_ROOT,
-          env: { ...process.env, NAMA_CONFIG: configPath },
+          env: { ...process.env, ...options.environment, NAMA_CONFIG: configPath },
+          execArgv: [...process.execArgv, ...preloadExecutionArguments(options.preloads)],
           stdio: ["ignore", "pipe", "pipe", "ipc"],
         }),
       ),
@@ -269,4 +288,4 @@ export {
   waitForStatus,
   waitForStdout,
 };
-export type { RunningProcess };
+export type { ProcessLaunchOptions, RunningProcess };

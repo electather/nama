@@ -22,6 +22,7 @@ const EXPECTED_CONFIGURATION_KEY = "base_url";
 const EXPECTED_CONFIGURATION_VALUE = "fixture-configuration";
 const EXPECTED_CREDENTIAL_KEY = "api_key";
 const EXPECTED_CREDENTIAL_VALUE = "fixture-credential";
+const ABSENT_ENVIRONMENT_PROBE_VALUE = "<absent>";
 
 if (controlDirectory === undefined) {
   process.exitCode = 64;
@@ -31,6 +32,7 @@ if (controlDirectory === undefined) {
 process.umask(0o177);
 
 await mkdir(controlDirectory, { recursive: true, mode: 0o700 });
+await chmod(controlDirectory, 0o700);
 
 /**
  * @param {Readonly<Record<string, unknown>>} value
@@ -136,6 +138,10 @@ const seededNames = [
   "NAMA_PROVIDER_CREDENTIAL",
   "NAMA_PLUGIN_LAUNCH_SECRET",
 ];
+const environmentProbe = Object.fromEntries(
+  seededNames.map((name) => [name, process.env[name] ?? ABSENT_ENVIRONMENT_PROBE_VALUE]),
+);
+
 const environmentEmpty = Object.keys(process.env).every(
   (name) => process.platform === "darwin" && name === "__CF_USER_TEXT_ENCODING",
 );
@@ -151,14 +157,17 @@ const excludedLaunchMaterial = [
 const argumentsExcludeLaunchMaterial = process.argv.every((argument) =>
   excludedLaunchMaterial.every((material) => !String(argument).includes(material)),
 );
+const argv = [...process.argv];
 await appendFile(
   launchesPath,
   `${JSON.stringify({
     argumentsExcludeLaunchMaterial,
     bearer: launchDocument.bearer,
+    argv,
     environmentEmpty,
     launchKind: launchDocument.kind,
     launchNumber,
+    environmentProbe,
     pid: process.pid,
     providerContextAbsent,
     providerContextMatchesFixture,
@@ -249,6 +258,7 @@ const observeCancellation = (context) => {
 };
 
 let connectionRequestCount = 0;
+let infoRequestCount = 0;
 
 const handler = connectNodeAdapter({
   routes: (router) => {
@@ -326,8 +336,25 @@ const handler = connectNodeAdapter({
       },
       getInfo: (_request, context) => {
         requireAuthorization(context);
+        infoRequestCount += 1;
+        if (infoRequestCount > 1 && mode === "discovery-failure") {
+          throw new ConnectError("fixture discovery failure", Code.Unavailable);
+        }
+        if (infoRequestCount > 1 && mode === "malformed-discovery") {
+          return {};
+        }
+        const newerIncompatible = mode === "newer-incompatible";
+        const jellyfinDiscoveryFixture =
+          mode === "discovery-failure" || mode === "malformed-discovery" || newerIncompatible;
+        let providerTypeId = "fixture";
+        if (jellyfinDiscoveryFixture) {
+          providerTypeId = "jellyfin";
+        } else if (mode === "provider-mismatch") {
+          providerTypeId = "other";
+        }
+
         const pluginInfo = {
-          buildVersion: "fixture",
+          buildVersion: newerIncompatible ? "fixture-2" : "fixture",
           capabilities: [],
           configurationSchema: {
             additionalProperties: false,
@@ -337,9 +364,9 @@ const handler = connectNodeAdapter({
           contractMajor: mode === "contract-major" ? 2 : 1,
           description: "Disposable supervisor fixture",
           displayName: "Fixture",
-          providerTypeId: mode === "provider-mismatch" ? "other" : "fixture",
+          providerTypeId,
           schemaProfileVersion: 1,
-          schemaRevision: "fixture-1",
+          schemaRevision: newerIncompatible ? "2" : "fixture-1",
         };
         if (
           (mode === "exit-after-ready-during-recovery" ||

@@ -15,3 +15,6 @@ but does not provision TLS, domains, tunnels, or a reverse proxy—users choose
 direct LAN, VPN, or their own proxy—and local development on macOS follows the
 same process boundaries. Clustering, Kubernetes, embedded ingress, automatic
 certificates, and Windows production support are not release requirements.
+
+The disposable Jellyfin container in the server integration gate is a test
+fixture only. It does not prove or change the deferred Nama application image.

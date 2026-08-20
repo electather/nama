@@ -57,4 +57,12 @@ redirect handling, so the API key never crosses the configured origin or path.
 Responses are size-bounded and raw provider response bodies or
 credential-bearing request details never enter responses or logs.
 
+The provider-management tracer separately provisions a pinned disposable
+Jellyfin server and reaches it through candidate and exact persisted-instance
+launches of this production plugin. The controlled HTTP Jellyfin subprocess
+test drives the same production entrypoint and retains deterministic coverage
+of redirect refusal, cancellation, malformed and oversized responses, hostile
+remote failures, and raw-response redaction.
+
 Windows transport and persistent or background native-media plugins remain deferred until a real plugin requires them. Production library, playback, and watch-state behavior belongs to issue #30; explicit connection-test commands belong to issue #31; and container packaging belongs to issue #32.
+

@@ -48,8 +48,10 @@ const CALL_DEADLINE_MILLISECONDS = 1000;
 
 interface LaunchRecord {
   readonly argumentsExcludeLaunchMaterial: boolean;
+  readonly argv: readonly string[];
   readonly bearer: string;
   readonly environmentEmpty: boolean;
+  readonly environmentProbe: Readonly<Record<string, string>>;
   readonly launchKind: "candidate" | "discovery" | "instance";
   readonly launchNumber: number;
   readonly pid: number;
@@ -87,6 +89,12 @@ const acquireSeededParentEnvironment = Effect.acquireRelease(
       }
     }),
 );
+const expectValuesAbsent = (contents: readonly string[], values: readonly string[]): void => {
+  for (const value of values) {
+    const exposed = contents.some((content) => content.includes(value));
+    expect(exposed).toBe(false);
+  }
+};
 
 const withControlDirectory = <Success, Failure, Requirements>(
   use: (controlDirectory: string) => Effect.Effect<Success, Failure, Requirements>,
@@ -1010,15 +1018,27 @@ it.live("launches the authenticated fixture without ambient authority", () =>
           CALL_DEADLINE_MILLISECONDS,
         );
         const launches = yield* readLaunchRecords(controlDirectory);
-
+        const [launch] = launches;
+        if (launch === undefined) {
+          return yield* Effect.die("fixture launch record missing");
+        }
         expect(response.connection?.status).toBe(1);
-        expect(launches).toHaveLength(1);
-        expect(launches[0]).toMatchObject({
+        expect(launches.length).toBe(1);
+        expect({
+          argumentsExcludeLaunchMaterial: launch.argumentsExcludeLaunchMaterial,
+          environmentEmpty: launch.environmentEmpty,
+          seededEnvironmentAbsent: launch.seededEnvironmentAbsent,
+        }).toEqual({
           argumentsExcludeLaunchMaterial: true,
           environmentEmpty: true,
           seededEnvironmentAbsent: true,
         });
-        expect(launches[0]?.bearer).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+        expect(/^[A-Za-z0-9_-]{43}$/u.test(launch.bearer)).toBe(true);
+        expectValuesAbsent([JSON.stringify(launch.argv)], [launch.bearer, launch.socketPath]);
+        expectValuesAbsent(
+          [JSON.stringify(launch.environmentProbe)],
+          Object.values(SEEDED_PARENT_ENVIRONMENT),
+        );
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
   ),
@@ -1053,23 +1073,29 @@ it.live("confines provider context to the stdin launch document", () =>
         const output = lines.join("");
 
         expect(response.connection?.status).toBe(1);
-        expect(launch).toMatchObject({
+        expect({
+          argumentsExcludeLaunchMaterial: launch.argumentsExcludeLaunchMaterial,
+          environmentEmpty: launch.environmentEmpty,
+          providerContextMatchesFixture: launch.providerContextMatchesFixture,
+          seededEnvironmentAbsent: launch.seededEnvironmentAbsent,
+        }).toEqual({
           argumentsExcludeLaunchMaterial: true,
           environmentEmpty: true,
           providerContextMatchesFixture: true,
           seededEnvironmentAbsent: true,
         });
         expect(requestBoundary).toEqual(["true"]);
-        for (const privateValue of [
-          "api_key",
-          "base_url",
-          "fixture-configuration",
-          "fixture-credential",
-          launch.bearer,
-          launch.socketPath,
-        ]) {
-          expect(output).not.toContain(privateValue);
-        }
+        expectValuesAbsent(
+          [output],
+          [
+            "api_key",
+            "base_url",
+            "fixture-configuration",
+            "fixture-credential",
+            launch.bearer,
+            launch.socketPath,
+          ],
+        );
       }).pipe(
         Effect.provide(PluginSupervisor.layer()),
         Effect.provide(
