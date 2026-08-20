@@ -13,6 +13,8 @@ const TIGHT_RESPONSE_LIMIT_BYTES = 64;
 const LARGER_RESPONSE_LIMIT_BYTES = 512;
 const RESPONSE_PADDING_LENGTH = 128;
 const EPHEMERAL_PORT = 0;
+const HTTP_SERVICE_UNAVAILABLE = 503;
+const EXPECTED_CANCELLATIONS = 1;
 
 interface ObservedRequest {
   readonly authorization: string | undefined;
@@ -76,6 +78,35 @@ const rejectsEscapingPath = async (): Promise<void> => {
   assert.deepEqual(result, { kind: "incompatible" });
   assert.deepEqual(observedRequests, []);
 };
+const cancelsNonSuccessResponseBody = async (): Promise<void> => {
+  const originalFetch = globalThis.fetch;
+  let cancellations = 0;
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          cancel: () => {
+            cancellations += EXPECTED_CANCELLATIONS;
+          },
+        }),
+        { status: HTTP_SERVICE_UNAVAILABLE },
+      ),
+    );
+  try {
+    const request = createJellyfinRequest({ apiKey: API_KEY, baseUrl: `${origin}/unavailable` });
+    assert.ok(request);
+    const result = await request.requestJson(["Data"], {
+      authentication: "api_key",
+      maximumResponseBytes: LARGER_RESPONSE_LIMIT_BYTES,
+      signal: new AbortController().signal,
+    });
+
+    assert.deepEqual(result, { kind: "unreachable" });
+    assert.equal(cancellations, EXPECTED_CANCELLATIONS);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+};
 
 void describe("Jellyfin request", () => {
   before(async () => {
@@ -98,4 +129,5 @@ void describe("Jellyfin request", () => {
 
   void it("applies the response limit selected by each request", appliesSelectedResponseLimit);
   void it("rejects a path that escapes the configured prefix", rejectsEscapingPath);
+  void it("cancels a non-success provider response body", cancelsNonSuccessResponseBody);
 });

@@ -2,6 +2,8 @@
 
 import { Code, ConnectError } from "@connectrpc/connect";
 
+import { readJellyfinFailureResponse } from "./request-failure.ts";
+import type { JellyfinFailureResponse, JellyfinRequestAuthentication } from "./request-failure.ts";
 import { confinedEndpoint, INVALID_REQUEST_TARGET, normalizedBaseUrl } from "./request-target.ts";
 import { isUnknownRecord } from "./value.ts";
 
@@ -13,7 +15,7 @@ const FAILURE_SENTINEL = Symbol("failure");
 type JellyfinRequestContext = Readonly<{ apiKey: string; baseUrl: string }>;
 
 interface JellyfinRequestOptions {
-  readonly authentication: "api_key" | "none";
+  readonly authentication: JellyfinRequestAuthentication;
   readonly maximumResponseBytes: number;
   readonly query?: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
@@ -26,14 +28,7 @@ type JellyfinJsonResponse =
       readonly body: Readonly<Record<string, unknown>>;
       readonly kind: "success";
     }
-  | {
-      readonly kind:
-        | "authentication_failed"
-        | "forbidden"
-        | "incompatible"
-        | "not_found"
-        | "unreachable";
-    };
+  | JellyfinFailureResponse;
 
 const parseJsonRecord = (bytes: Uint8Array[], length: number) => {
   try {
@@ -95,16 +90,6 @@ const readBoundedJson = async (
   return body === FAILURE_SENTINEL ? { kind: "incompatible" } : { body, kind: "success" };
 };
 
-const requestHeaders = (
-  authentication: JellyfinRequestOptions["authentication"],
-  authorization: string,
-): Readonly<Record<string, string>> => {
-  if (authentication === "api_key") {
-    return { accept: "application/json", authorization };
-  }
-  return { accept: "application/json" };
-};
-
 const fetchResponse = async (
   endpoint: URL,
   headers: Readonly<Record<string, string>>,
@@ -132,36 +117,24 @@ const sendJsonRequest = async (
   if (endpoint === INVALID_REQUEST_TARGET) {
     return { kind: "incompatible" };
   }
-  const response = await fetchResponse(
-    endpoint,
-    requestHeaders(options.authentication, target.authorization),
-    options.signal,
-  );
+  const headers =
+    options.authentication === "api_key"
+      ? { accept: "application/json", authorization: target.authorization }
+      : { accept: "application/json" };
+  const response = await fetchResponse(endpoint, headers, options.signal);
   if (response === FAILURE_SENTINEL) {
     if (options.signal.aborted) {
       throw new ConnectError("request cancelled", Code.Canceled);
     }
     return { kind: "unreachable" };
   }
-  if (response.status >= 300 && response.status < 400) {
-    return { kind: "incompatible" };
-  }
-  if (response.status === 401) {
-    return {
-      kind: options.authentication === "api_key" ? "authentication_failed" : "incompatible",
-    };
-  }
-  if (response.status === 403) {
-    return { kind: options.authentication === "api_key" ? "forbidden" : "incompatible" };
-  }
-  if (response.status === 404) {
-    return { kind: options.authentication === "api_key" ? "not_found" : "incompatible" };
-  }
-  if (!response.ok) {
-    if (response.status >= 500) {
-      return { kind: "unreachable" };
-    }
-    return { kind: "incompatible" };
+  const failureResponse = await readJellyfinFailureResponse(
+    response,
+    options.authentication,
+    options.signal,
+  );
+  if (failureResponse !== undefined) {
+    return failureResponse;
   }
   return readBoundedJson(response, options.maximumResponseBytes, options.signal);
 };

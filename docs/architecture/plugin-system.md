@@ -10,9 +10,7 @@ Acquiring a scoped handle validates its code-owned descriptor without creating a
 Each valid call holds demand from lifecycle selection through RPC completion. When demand returns to zero, the handle starts a fixed 30-second Effect-clock grace period; intervening demand cancels that timer, while expiry stops the complete process group, removes its launch artifacts, and resets the recovery episode before later demand may create a fresh incarnation. Demand arriving after retirement commits joins the shared teardown within its own existing deadline and cannot call or rescue the retiring process.
 Candidate handles admit one verification call and then synchronously retire their child and artifacts on success, failure, deadline, or cancellation. Instance supervision shares one lifecycle only for an exact provider-instance ID and revision. Admitting a different revision closes the stale lifecycle to new demand, drains already admitted calls under their existing finite deadlines, requires complete child cleanup, and only then installs the replacement; stale handles remain closed.
 
-
 Idle cleanup failure is contained as handle lifecycle state. The handle retains its owned process or launch-artifact cleanup target, maps later calls to the existing plugin-unavailable result, emits no automatic retry, and cannot launch a duplicate incarnation. Its scope finalizer bypasses idle grace, joins retirement already in progress, and retries retained cleanup once; persistent failure remains a server-shutdown failure.
-
 
 Effect scope owns shutdown: signal the complete process group, wait two seconds, escalate to `SIGKILL`, reap it, and remove launch artifacts before the runtime root and database finalize. Stdout is discarded. Stderr accepts only declared newline-delimited JSON records up to 4 KiB with numeric or enumerated fields, levels `debug` through `error`, and a 20-record/second token bucket with burst 40; malformed, undeclared, oversized, and excess records produce at most one safe drop event per launch. Successful idle retirement emits one debug `plugin.process_idle_stopped` record; failed idle cleanup emits one error `plugin.process_idle_stop_failed` record. Lifecycle logs expose only provider identity, attempt, exit, signal, and declared fields—never bearers, socket paths, arguments, environment, configuration, or raw stderr.
 
@@ -37,15 +35,17 @@ cancellation and deadlines into `GetConnection`; only a completed
 stored-instance result can conditionally update that same revision's
 observation.
 
-## Jellyfin discovery, connection, and targeted library profile
+## Jellyfin discovery, connection, and targeted read profile
 
 The production Jellyfin executable implements authenticated health, `GetInfo`
 for context-free discovery, `GetConnection` for candidate and instance
-launches, and targeted `LibraryService.GetItem` for configured instance
-launches. It declares provider type `jellyfin`, contract major `1`, and a
-restricted schema requiring `base_url`, `user_id`, and write-only `api_key`.
-It still declares no media capability: `LIBRARY_READ` remains unadvertised
-until the complete supported catalog can be scanned. Startup validates and
+launches, targeted `LibraryService.GetItem`, and targeted
+`WatchStateService.GetWatchStates` for configured instance launches. It
+declares provider type `jellyfin`, contract major `1`, and a restricted schema
+requiring `base_url`, `user_id`, and write-only `api_key`. It still declares no
+media capabilities: `LIBRARY_READ` remains unadvertised until the complete
+supported catalog can be scanned, and `WATCH_STATE_READ` remains unadvertised
+until complete best-effort scans are implemented. Startup validates and
 persists discovery information before the public provider-type list becomes
 available.
 
@@ -68,10 +68,13 @@ One concrete Jellyfin request module builds endpoints from encoded path
 segments and code-owned query names, confines them to the configured origin
 and prefix, applies the API key only to authenticated calls, rejects redirects,
 and receives RPC cancellation. It streams each JSON body under the
-caller-selected positive byte limit: connection inspection selects 64 KiB and
-the targeted movie read selects 1 MiB. Callers receive only normalized response
-categories and parsed records, so raw provider bodies and credential-bearing
-request details never enter responses or logs.
+caller-selected positive byte limit: connection inspection selects 64 KiB, the
+targeted movie read selects 1 MiB, and targeted watch-state reads select 16
+MiB. Targeted watch-state reads admit at most four provider responses
+concurrently so the per-response bound cannot multiply across the complete
+100-member request. Callers receive only normalized response categories and
+parsed records, so raw provider bodies and credential-bearing request details
+never enter responses or logs.
 
 `GetItem` reads one explicitly referenced Jellyfin movie for the configured
 user. It normalizes required and optional metadata, movie details, supported
@@ -92,9 +95,17 @@ Controlled HTTP subprocess coverage also exercises the targeted movie RPC,
 source and track normalization, bounded response handling, cancellation,
 safe failure codes, and raw-body redaction.
 
+Targeted watch-state reads return one result per requested private item
+reference in order. Existing movies and episodes normalize watched state,
+positive resume position, known duration, one receipt time, and only heuristic
+unknown-semantics Jellyfin activity. Missing, forbidden, retryable, and
+permanent member failures remain distinct; no provider revision is invented.
+The generated RPC remains callable for targeted repair while
+`WATCH_STATE_READ` stays unadvertised until complete best-effort scans exist.
+
 Windows transport and persistent or background native-media plugins remain
 deferred until a real plugin requires them. Complete catalog scans, public
-artwork resolution, watch-state reads, and watched/unwatched writes belong to
-issue #30. Production playback belongs to issue #96, coherent exact progress
-export belongs to issue #97, explicit connection-test commands belong to issue
-#31, and container packaging belongs to issue #32.
+artwork resolution, complete watch-state scans, and watched/unwatched writes
+belong to issue #30. Production playback belongs to issue #96, coherent exact
+progress export belongs to issue #97, explicit connection-test commands belong
+to issue #31, and container packaging belongs to issue #32.

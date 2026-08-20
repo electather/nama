@@ -1,18 +1,12 @@
 // oxlint-disable eslint/max-statements -- The stdin boundary keeps byte accounting and exact launch-document rejection explicit.
-import { timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
 import { chmod } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 
-import { Code, ConnectError } from "@connectrpc/connect";
-import { connectNodeAdapter } from "@connectrpc/connect-node";
-import { HealthService, ServingStatus } from "@nama/api/nama/plugin/v1/health_pb.js";
-
+import { makeJellyfinHandler } from "./handler.ts";
 import { LAUNCH_DOCUMENT_VERSION } from "./launch-document.ts";
 import type { LaunchDocument } from "./launch-document.ts";
-import { registerJellyfinLibraryService } from "./library-service.ts";
-import { registerJellyfinPluginService } from "./plugin-service.ts";
 
 const MAXIMUM_LAUNCH_DOCUMENT_BYTES = 65_536;
 const MAXIMUM_BASE_URL_BYTES = 2048;
@@ -173,40 +167,8 @@ const readLaunchDocument = async (): Promise<LaunchDocument> => {
   return value;
 };
 
-const bearerMatches = (authorization: string | null, bearer: string): boolean => {
-  if (authorization === null) {
-    return false;
-  }
-  const expected = Buffer.from(`Bearer ${bearer}`, "utf8");
-  const actual = Buffer.from(authorization, "utf8");
-  return actual.byteLength === expected.byteLength && timingSafeEqual(actual, expected);
-};
-
-const requireAuthorization = (authorization: string | null, bearer: string): void => {
-  if (!bearerMatches(authorization, bearer)) {
-    throw new ConnectError("authentication failed", Code.Unauthenticated);
-  }
-};
-
-const makeHandler = (launch: LaunchDocument) =>
-  connectNodeAdapter({
-    connect: true,
-    grpc: false,
-    grpcWeb: false,
-    routes: (router) => {
-      router.service(HealthService, {
-        check: (_request, context) => {
-          requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
-          return { status: ServingStatus.SERVING };
-        },
-      });
-      registerJellyfinLibraryService(router, launch, requireAuthorization);
-      registerJellyfinPluginService(router, launch, requireAuthorization);
-    },
-  });
-
 const startServer = async (launch: LaunchDocument): Promise<Server> => {
-  const server = createServer(makeHandler(launch));
+  const server = createServer(makeJellyfinHandler(launch));
   const listening = once(server, "listening");
   server.listen(launch.socket_path);
   await listening;

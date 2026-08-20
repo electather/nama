@@ -2,13 +2,13 @@
 
 This document is Nama's canonical architecture entry point and ADR index. Read [philosophy.md](philosophy.md) for product intent and then use each source according to its role:
 
-| Need | Authoritative source |
-| --- | --- |
-| Domain language | [CONTEXT.md](../CONTEXT.md) |
-| Accepted architectural choice and rationale | [ADRs](adr/) |
-| Current and target system shape | This document and the linked [subsystem notes](#subsystem-architecture) |
-| Required behavior | The relevant contract, including [API contracts](architecture/api-contracts.md) |
-| Concrete wire definitions | [Protobuf](../proto/) |
+| Need                                        | Authoritative source                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------------------- |
+| Domain language                             | [CONTEXT.md](../CONTEXT.md)                                                     |
+| Accepted architectural choice and rationale | [ADRs](adr/)                                                                    |
+| Current and target system shape             | This document and the linked [subsystem notes](#subsystem-architecture)         |
+| Required behavior                           | The relevant contract, including [API contracts](architecture/api-contracts.md) |
+| Concrete wire definitions                   | [Protobuf](../proto/)                                                           |
 
 ## System shape
 
@@ -37,6 +37,9 @@ reconciliation, and keeps the provider type available for healthy instances.
 The public candidate and stored-instance connection-test RPCs use the same
 one-shot or exact-revision supervisor paths as mutations and condition stored
 observations on the revision that was tested.
+The production Jellyfin adapter also serves bounded targeted movie and episode
+watch-state reads for exact instance launches. `WATCH_STATE_READ` remains
+unadvertised because complete best-effort scans are not implemented.
 
 The provider-management verification gate drives a compiled `nama` binary
 through the production listener, migrations, PostgreSQL boundary, supervisor,
@@ -48,7 +51,6 @@ and configuration cutover, disable/re-enable/delete, retained operation replay,
 and safe boundary output. One targeted normalized Jellyfin movie observation
 is implemented; catalog scanning, core media ingestion, user-facing
 connection-test commands, and application-image packaging remain unimplemented.
-
 
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.
 
