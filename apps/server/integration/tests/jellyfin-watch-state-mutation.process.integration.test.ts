@@ -1,7 +1,4 @@
-import { once } from "node:events";
-import { createServer } from "node:http";
-import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import { join } from "node:path";
+import type { ServerResponse } from "node:http";
 
 import type { MessageInitShape } from "@bufbuild/protobuf";
 import { expect, it } from "@effect/vitest";
@@ -15,15 +12,23 @@ import { Effect } from "effect";
 
 import type { SupervisedPlugin } from "../../src/plugin/model.ts";
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
+import {
+  API_KEY,
+  USER_ID,
+  controlledJellyfin,
+  respondJson,
+  respondRaw,
+  superviseJellyfin,
+} from "./jellyfin-process.test-support.ts";
+import type {
+  ControlledHandler,
+  ControlledJellyfin,
+  ObservedRequest,
+} from "./jellyfin-process.test-support.ts";
 
-const JELLYFIN_PLUGIN_PATH = join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts");
 const CALL_DEADLINE_MILLISECONDS = 2000;
-const CANCELLATION_DEADLINE_MILLISECONDS = 50;
 const TIMED_OUT_CALL_DEADLINE_MILLISECONDS = 1000;
 const TEST_TIMEOUT_MILLISECONDS = 10_000;
-const API_KEY = "jellyfin-api-key-sentinel";
-const USER_ID = "user-identity";
-const EPHEMERAL_PORT = 0;
 const HTTP_OK = 200;
 const HTTP_BAD_REQUEST = 400;
 const HTTP_FORBIDDEN = 403;
@@ -110,16 +115,6 @@ const FAILURE_RESULT_SUMMARIES = [
   { status: WatchStateMutationStatus.APPLIED, watched: true },
 ];
 
-interface ObservedRequest {
-  readonly authorization: string | undefined;
-  readonly method: string | undefined;
-  readonly url: string;
-}
-interface ControlledJellyfin {
-  readonly baseUrl: string;
-  readonly requests: ObservedRequest[];
-  readonly server: Server;
-}
 interface MutationCallResponse {
   readonly results: readonly {
     readonly mutationId: string;
@@ -147,22 +142,6 @@ interface BoundedMutationState {
   readonly writeObservation: ConcurrencyObservation;
 }
 type MutationInput = MessageInitShape<typeof WatchStateMutationSchema>;
-type ControlledHandler = (
-  request: IncomingMessage,
-  response: ServerResponse,
-  observation: ObservedRequest,
-) => void;
-
-const respondJson = (response: ServerResponse, value: unknown): void => {
-  response.statusCode = HTTP_OK;
-  response.setHeader("content-type", "application/json");
-  response.end(JSON.stringify(value));
-};
-const respondRaw = (response: ServerResponse, statusCode: number, body: string): void => {
-  response.statusCode = statusCode;
-  response.setHeader("content-type", "application/json");
-  response.end(body);
-};
 const respondWatchState = (response: ServerResponse, itemId: string, watched: boolean): void => {
   let itemType = "Movie";
   if (itemId.includes("episode")) {
@@ -182,54 +161,6 @@ const respondMutationState = (response: ServerResponse, itemId: string, watched:
     Played: watched,
   });
 };
-
-const controlledJellyfin = (handler: ControlledHandler) =>
-  Effect.acquireRelease(
-    Effect.tryPromise({
-      catch: (error) => error,
-      try: async (): Promise<ControlledJellyfin> => {
-        const requests: ObservedRequest[] = [];
-        const server = createServer((request, response) => {
-          const observation = {
-            authorization: request.headers.authorization,
-            method: request.method,
-            url: request.url ?? "",
-          };
-          requests.push(observation);
-          handler(request, response, observation);
-        });
-        server.listen(EPHEMERAL_PORT, "127.0.0.1");
-        await once(server, "listening");
-        const address = server.address();
-        if (address === null || typeof address === "string") {
-          throw new Error("Controlled Jellyfin server did not bind to a TCP address");
-        }
-        return {
-          baseUrl: `http://127.0.0.1:${address.port}/jellyfin`,
-          requests,
-          server,
-        };
-      },
-    }),
-    ({ server }) => Effect.promise(() => server[Symbol.asyncDispose]()),
-  );
-
-const superviseJellyfin = (supervisor: PluginSupervisor["Service"], jellyfin: ControlledJellyfin) =>
-  supervisor.supervise(
-    {
-      arguments: [JELLYFIN_PLUGIN_PATH],
-      executable: process.execPath,
-      expectedProviderType: "jellyfin",
-      stderrEvents: [],
-    },
-    {
-      configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-      credentials: { api_key: API_KEY },
-      kind: "instance",
-      providerInstanceId: "provider-instance",
-      revision: "revision-1",
-    },
-  );
 
 const watchedMutation = (mutationId: string, itemId: string, watched: boolean): MutationInput => ({
   itemReference: { itemId },
@@ -770,12 +701,17 @@ const cancelledMutationTest = () => {
     const supervisor = yield* PluginSupervisor;
     const plugin = yield* superviseJellyfin(supervisor, jellyfin);
     yield* plugin.call(PluginService.method.getInfo, {}, CALL_DEADLINE_MILLISECONDS);
-    const failure = yield* pushWatchStates(
+    const response = yield* pushWatchStates(
       plugin,
       [watchedMutation("hanging-mutation", "hanging-mutation", true)],
-      CANCELLATION_DEADLINE_MILLISECONDS,
-    ).pipe(Effect.flip);
-    expect(failure).toMatchObject({ _tag: "PluginDeadlineExceeded" });
+      TIMED_OUT_CALL_DEADLINE_MILLISECONDS,
+    );
+    expect(response.results.map(({ mutationId, status }) => ({ mutationId, status }))).toEqual([
+      {
+        mutationId: "hanging-mutation",
+        status: WatchStateMutationStatus.RETRYABLE_FAILURE,
+      },
+    ]);
     expect(jellyfin.requests).toEqual([
       expect.objectContaining({
         method: "GET",
@@ -812,7 +748,7 @@ it.live(
   TEST_TIMEOUT_MILLISECONDS,
 );
 it.live(
-  "propagates cancellation through a mutation pre-read",
+  "normalizes a cancelled mutation pre-read per member",
   cancelledMutationTest,
   TEST_TIMEOUT_MILLISECONDS,
 );

@@ -6,7 +6,7 @@ import type { WatchStateMutation } from "@nama/api/nama/plugin/v1/watch_state_pb
 
 import { forEachBounded } from "./bounded-concurrency.ts";
 import { jellyfinFailureCategory } from "./request-failure.ts";
-import type { JellyfinFailureCategory, JellyfinFailureKind } from "./request-failure.ts";
+import type { JellyfinFailureKind } from "./request-failure.ts";
 import { createJellyfinRequest } from "./request.ts";
 import type { JellyfinMutationResponse, JellyfinRequest } from "./request.ts";
 import { classifyMutations, mutationResult } from "./watch-state-mutation-validation.ts";
@@ -19,7 +19,7 @@ import {
   normalizeJellyfinMutationWatchState,
   timestampFromMilliseconds,
 } from "./watch-state-value.ts";
-import { getJellyfinWatchStates } from "./watch-state.ts";
+import { WATCH_STATE_STATUSES_BY_FAILURE_CATEGORY, getJellyfinWatchStates } from "./watch-state.ts";
 import type { JellyfinWatchStateContext, NormalizedReadResult } from "./watch-state.ts";
 
 const MAXIMUM_MEDIA_RESPONSE_BYTES = 16_777_216;
@@ -58,30 +58,14 @@ const mutationStatusForRead = (result: NormalizedReadResult): WatchStateMutation
   return WatchStateMutationStatus.PERMANENT_FAILURE;
 };
 
-const mutationStatusForProviderFailure = (
-  category: JellyfinFailureCategory,
-): WatchStateMutationStatus => {
-  if (category === "forbidden") {
-    return WatchStateMutationStatus.FORBIDDEN;
-  }
-  if (category === "missing") {
-    return WatchStateMutationStatus.NOT_FOUND;
-  }
-  if (category === "retryable") {
-    return WatchStateMutationStatus.RETRYABLE_FAILURE;
-  }
-  return WatchStateMutationStatus.PERMANENT_FAILURE;
-};
-
 const readBackAmbiguousMutation = async (
   execution: MutationExecution,
   pending: PendingWatchedMutation,
 ): Promise<NormalizedMutationResult> => {
-  const readback = await getJellyfinWatchStates(
-    execution.context,
-    [pending.itemReference],
-    execution.signal,
-  );
+  const readback = await getJellyfinWatchStates(execution.context, [pending.itemReference], {
+    cancellation: execution.signal,
+    request: execution.signal,
+  });
   const [result] = readback.results;
   if (result?.status !== WatchStateReadStatus.FOUND || result.state === undefined) {
     return mutationResult(pending.mutation, WatchStateMutationStatus.RETRYABLE_AMBIGUOUS);
@@ -100,8 +84,7 @@ const failedMutationResponseResult = (
   pending: PendingWatchedMutation,
   kind: JellyfinFailureKind,
 ): Promise<NormalizedMutationResult> => {
-  const category = jellyfinFailureCategory(kind);
-  const status = mutationStatusForProviderFailure(category);
+  const status = WATCH_STATE_STATUSES_BY_FAILURE_CATEGORY[jellyfinFailureCategory(kind)].mutation;
   return Promise.resolve(mutationResult(pending.mutation, status));
 };
 
@@ -134,7 +117,7 @@ const mutationResponseResult = (
   );
 };
 
-const mutationResponseSignal = (execution: MutationExecution): AbortSignal => {
+const boundedProviderResponseSignal = (execution: MutationExecution): AbortSignal => {
   const remainingMilliseconds = execution.timeoutMs();
   if (remainingMilliseconds === undefined || !Number.isFinite(remainingMilliseconds)) {
     return execution.signal;
@@ -157,7 +140,7 @@ const applyWatchedMutation = async (
   if (pending.watched) {
     method = "POST";
   }
-  const signal = mutationResponseSignal(execution);
+  const signal = boundedProviderResponseSignal(execution);
   const response = await execution.request.requestMutationJson(
     ["UserPlayedItems", pending.itemReference.itemId],
     {
@@ -176,14 +159,17 @@ const executeWatchedMutations = async (
   execution: MutationExecution,
   pendingMutations: readonly PendingWatchedMutation[],
 ): Promise<void> => {
-  await forEachBounded(
+  const completed = await forEachBounded(
     pendingMutations,
     MAXIMUM_CONCURRENT_MUTATIONS,
-    async (pending): Promise<void> => {
-      const result = await applyWatchedMutation(execution, pending);
-      execution.resultsByIndex.set(pending.index, result);
-    },
+    async (pending) => ({
+      index: pending.index,
+      result: await applyWatchedMutation(execution, pending),
+    }),
   );
+  for (const { index, result } of completed) {
+    execution.resultsByIndex.set(index, result);
+  }
 };
 
 const classifyCurrentState = (
@@ -216,10 +202,11 @@ const pendingWatchedMutations = async (
   execution: MutationExecution,
   watchedMutations: readonly PendingWatchedMutation[],
 ): Promise<PendingWatchedMutation[]> => {
+  const signal = boundedProviderResponseSignal(execution);
   const current = await getJellyfinWatchStates(
     execution.context,
     watchedMutations.map(({ itemReference }) => itemReference),
-    execution.signal,
+    { cancellation: execution.signal, request: signal },
   );
   const classification: CurrentStateClassification = {
     pendingMutations: [],

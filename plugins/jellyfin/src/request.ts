@@ -16,6 +16,7 @@ type JellyfinRequestContext = Readonly<{ apiKey: string; baseUrl: string }>;
 
 interface JellyfinRequestOptions {
   readonly authentication: JellyfinRequestAuthentication;
+  readonly cancellationSignal?: AbortSignal;
   readonly maximumResponseBytes: number;
   readonly query?: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
@@ -77,7 +78,7 @@ const readResponseChunk = async (
 const readBoundedJson = async (
   response: Response,
   maximumResponseBytes: number,
-  signal: AbortSignal,
+  cancellationSignal: AbortSignal,
 ): Promise<JellyfinJsonResponse> => {
   const reader = response.body?.getReader();
   if (reader === undefined) {
@@ -89,7 +90,7 @@ const readBoundedJson = async (
     // oxlint-disable-next-line eslint/no-await-in-loop -- Stream reads are sequential by contract.
     const chunk = await readResponseChunk(reader);
     if (chunk === FAILURE_SENTINEL) {
-      if (signal.aborted) {
+      if (cancellationSignal.aborted) {
         throw new ConnectError("request cancelled", Code.Canceled);
       }
       return { kind: "unreachable" };
@@ -104,7 +105,7 @@ const readBoundedJson = async (
         () => true,
         () => false,
       );
-      if (!cancelled && signal.aborted) {
+      if (!cancelled && cancellationSignal.aborted) {
         throw new ConnectError("request cancelled", Code.Canceled);
       }
       return { kind: cancelled ? "incompatible" : "unreachable" };
@@ -158,6 +159,7 @@ const sendJsonRequest = async (
   if (prepared === FAILURE_SENTINEL) {
     return { kind: "incompatible" };
   }
+  const cancellationSignal = options.cancellationSignal ?? options.signal;
   const response = await fetchResponse({
     endpoint: prepared.endpoint,
     headers: prepared.headers,
@@ -165,7 +167,7 @@ const sendJsonRequest = async (
     signal: options.signal,
   });
   if (response === FAILURE_SENTINEL) {
-    if (options.signal.aborted) {
+    if (cancellationSignal.aborted) {
       throw new ConnectError("request cancelled", Code.Canceled);
     }
     return { kind: "unreachable" };
@@ -173,12 +175,12 @@ const sendJsonRequest = async (
   const failureResponse = await readJellyfinFailureResponse(
     response,
     options.authentication,
-    options.signal,
+    cancellationSignal,
   );
   if (failureResponse !== undefined) {
     return failureResponse;
   }
-  return readBoundedJson(response, options.maximumResponseBytes, options.signal);
+  return readBoundedJson(response, options.maximumResponseBytes, cancellationSignal);
 };
 const sendMutationRequest = async (
   target: JellyfinRequestTarget,
@@ -205,12 +207,16 @@ const sendMutationRequest = async (
     const failureResponse = await readJellyfinFailureResponse(
       response,
       options.authentication,
-      options.signal,
+      options.cancellationSignal,
     );
     if (failureResponse !== undefined) {
       return failureResponse;
     }
-    const body = await readBoundedJson(response, options.maximumResponseBytes, options.signal);
+    const body = await readBoundedJson(
+      response,
+      options.maximumResponseBytes,
+      options.cancellationSignal,
+    );
     return body.kind === "success" ? body : { kind: "ambiguous" };
   } catch (error) {
     if (

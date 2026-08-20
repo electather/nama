@@ -21,6 +21,7 @@ const MINIMUM_ITEM_REFERENCES = 1;
 const MAXIMUM_ITEM_REFERENCES = 100;
 const MINIMUM_MUTATIONS = 1;
 const MAXIMUM_MUTATIONS = 100;
+const MAXIMUM_BATCH_ID_LENGTH = 256;
 const MAXIMUM_ITEM_ID_LENGTH = 256;
 const MAXIMUM_FIELD_VIOLATIONS = 50;
 const NO_FIELD_VIOLATIONS = 0;
@@ -77,7 +78,7 @@ const pushWatchStateRequestViolations = (
   request: PushWatchStatesRequest,
 ): BadRequest_FieldViolation[] => {
   const violations: BadRequest_FieldViolation[] = [];
-  const batchIdReason = identifierViolationReason(request.batchId, MAXIMUM_ITEM_ID_LENGTH);
+  const batchIdReason = identifierViolationReason(request.batchId, MAXIMUM_BATCH_ID_LENGTH);
   if (batchIdReason !== false) {
     violations.push(fieldViolation(BATCH_ID_FIELD, BATCH_ID_DESCRIPTION, batchIdReason));
   }
@@ -132,7 +133,7 @@ const registerJellyfinWatchStateService = (
         userId: launch.configuration.user_id,
       },
       request.itemReferences,
-      context.signal,
+      { cancellation: context.signal, request: context.signal },
     );
   });
   router.rpc(WatchStateService.method.listWatchStates, unavailable);

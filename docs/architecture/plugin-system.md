@@ -110,12 +110,14 @@ write. Unique, independent differing targets use at most four concurrent
 Jellyfin absolute played/unplayed writes while results remain in request order;
 duplicate mutation IDs or item targets are invalid per member. Structurally
 valid exact-progress targets are unsupported without provider traffic, while
-malformed targets are invalid. Each write response receives at most half the
-remaining caller deadline so a timed-out, potentially committed write retains
-readback budget. A lost or timed-out response, or a malformed or oversized
-successful response, causes one targeted readback. An observed target succeeds;
-an unresolved target remains retryable ambiguity, and the plugin never replays
-the possibly committed write.
+malformed targets are invalid. The pre-read batch and each write response
+receive at most half the remaining caller deadline. An internally timed-out
+pre-read normalizes as `RETRYABLE_FAILURE` per member; direct caller
+cancellation remains a generated-RPC cancellation. The write bound preserves
+readback budget after a timed-out, potentially committed mutation. A lost or
+timed-out response, or a malformed or oversized successful response, causes one
+targeted readback. An observed target succeeds; an unresolved target remains
+retryable ambiguity, and the plugin never replays the possibly committed write.
 
 Static plugin information and successful configured connections advertise only
 `WATCHED_WRITE` from this implemented profile. Missing, forbidden, retryable,
