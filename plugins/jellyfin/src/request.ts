@@ -3,6 +3,8 @@ import { isIP } from "node:net";
 
 import { Code, ConnectError } from "@connectrpc/connect";
 
+import { isUnknownRecord } from "./value.ts";
+
 const EMPTY_LENGTH = 0;
 const BITS_PER_IPV4_OCTET = 8;
 const IPV4_OCTET_MASK = 255;
@@ -29,9 +31,6 @@ type JellyfinJsonResponse =
   | {
       readonly kind: "authentication_failed" | "incompatible" | "unreachable";
     };
-
-const isJsonRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isPrivateIpv4 = (hostname: string): boolean => {
   const octets = hostname.split(".").map(Number);
@@ -155,7 +154,7 @@ const confinedEndpoint = (baseUrl: URL, pathSegments: readonly string[]): URL | 
 const parseJsonRecord = (bytes: Uint8Array[], length: number) => {
   try {
     const value: unknown = JSON.parse(Buffer.concat(bytes, length).toString("utf8"));
-    return isJsonRecord(value) ? value : FAILURE_SENTINEL;
+    return isUnknownRecord(value) ? value : FAILURE_SENTINEL;
   } catch {
     return FAILURE_SENTINEL;
   }

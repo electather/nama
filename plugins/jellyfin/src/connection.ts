@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { PluginConnectionStatus } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 
 import { createJellyfinRequest } from "./request.ts";
+import { isUnknownRecord } from "./value.ts";
 
 const EMPTY_LENGTH = 0;
 const MAXIMUM_CONNECTION_RESPONSE_BYTES = 65_536;
@@ -13,9 +14,6 @@ interface JellyfinConnectionContext {
   readonly baseUrl: string;
   readonly userId: string;
 }
-
-const isJsonRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const boundedRemoteText = (value: unknown): string | undefined => {
   if (
@@ -43,9 +41,9 @@ const nonConnected = (status: PluginConnectionStatus, summary: string) => ({
 
 const failedConnection = (
   kind: "authentication_failed" | "incompatible" | "unreachable",
-  authenticated: boolean,
+  requestUsedApiKey: boolean,
 ) => {
-  if (authenticated && kind === "authentication_failed") {
+  if (requestUsedApiKey && kind === "authentication_failed") {
     return nonConnected(
       PluginConnectionStatus.AUTHENTICATION_FAILED,
       "Jellyfin authentication failed",
@@ -71,7 +69,7 @@ const remoteDetails = (system: Readonly<Record<string, unknown>>) => {
 };
 
 // oxlint-disable-next-line eslint/max-params -- Identity verification requires the configured context plus both provider response identities.
-const connected = (
+const verifyConnectionIdentity = (
   context: JellyfinConnectionContext,
   serverId: string,
   system: Readonly<Record<string, unknown>>,
@@ -83,7 +81,7 @@ const connected = (
   if (
     returnedUserId?.toLowerCase() !== context.userId.toLowerCase() ||
     returnedServerId?.toLowerCase() !== serverId.toLowerCase() ||
-    !isJsonRecord(policy) ||
+    !isUnknownRecord(policy) ||
     policy["IsDisabled"] !== false
   ) {
     return nonConnected(
@@ -129,7 +127,7 @@ const getJellyfinConnection = async (context: JellyfinConnectionContext, signal:
   if (user.kind !== "success") {
     return failedConnection(user.kind, true);
   }
-  return connected(context, serverId, system.body, user.body);
+  return verifyConnectionIdentity(context, serverId, system.body, user.body);
 };
 
 export { getJellyfinConnection };
