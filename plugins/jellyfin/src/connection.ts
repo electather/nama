@@ -40,10 +40,13 @@ const nonConnected = (status: PluginConnectionStatus, summary: string) => ({
 });
 
 const failedConnection = (
-  kind: "authentication_failed" | "incompatible" | "unreachable",
+  kind: "authentication_failed" | "forbidden" | "incompatible" | "not_found" | "unreachable",
   requestUsedApiKey: boolean,
 ) => {
-  if (requestUsedApiKey && kind === "authentication_failed") {
+  if (
+    requestUsedApiKey &&
+    (kind === "authentication_failed" || kind === "forbidden" || kind === "not_found")
+  ) {
     return nonConnected(
       PluginConnectionStatus.AUTHENTICATION_FAILED,
       "Jellyfin authentication failed",

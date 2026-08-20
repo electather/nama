@@ -1,16 +1,13 @@
 // oxlint-disable eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary -- Private-network and HTTP-status policy stays literal and sequential so the request trust boundary is auditable.
-import { isIP } from "node:net";
 
 import { Code, ConnectError } from "@connectrpc/connect";
 
+import { confinedEndpoint, INVALID_REQUEST_TARGET, normalizedBaseUrl } from "./request-target.ts";
 import { isUnknownRecord } from "./value.ts";
 
 const EMPTY_LENGTH = 0;
-const BITS_PER_IPV4_OCTET = 8;
-const IPV4_OCTET_MASK = 255;
 const BACKSLASH = "\\";
 const ESCAPED_BACKSLASH = BACKSLASH.repeat(2);
-const AUTHENTICATION_FAILURE_STATUSES = new Set([401, 403, 404]);
 const FAILURE_SENTINEL = Symbol("failure");
 
 type JellyfinRequestContext = Readonly<{ apiKey: string; baseUrl: string }>;
@@ -18,6 +15,7 @@ type JellyfinRequestContext = Readonly<{ apiKey: string; baseUrl: string }>;
 interface JellyfinRequestOptions {
   readonly authentication: "api_key" | "none";
   readonly maximumResponseBytes: number;
+  readonly query?: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
 }
 
@@ -29,127 +27,13 @@ type JellyfinJsonResponse =
       readonly kind: "success";
     }
   | {
-      readonly kind: "authentication_failed" | "incompatible" | "unreachable";
+      readonly kind:
+        | "authentication_failed"
+        | "forbidden"
+        | "incompatible"
+        | "not_found"
+        | "unreachable";
     };
-
-const isPrivateIpv4 = (hostname: string): boolean => {
-  const octets = hostname.split(".").map(Number);
-  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet))) {
-    return false;
-  }
-  const [first = -1, second = -1] = octets;
-  return (
-    first === 10 ||
-    first === 127 ||
-    (first === 169 && second === 254) ||
-    (first === 172 && second >= 16 && second <= 31) ||
-    (first === 192 && second === 168)
-  );
-};
-
-const mappedIpv4Address = (hostname: string): string | undefined => {
-  const prefix = "::ffff:";
-  if (!hostname.startsWith(prefix)) {
-    return undefined;
-  }
-  const suffix = hostname.slice(prefix.length);
-  if (isIP(suffix) === 4) {
-    return suffix;
-  }
-  const [highText, lowText, ...extra] = suffix.split(":");
-  if (
-    highText === undefined ||
-    lowText === undefined ||
-    extra.length > EMPTY_LENGTH ||
-    !/^[\da-f]{1,4}$/u.test(highText) ||
-    !/^[\da-f]{1,4}$/u.test(lowText)
-  ) {
-    return undefined;
-  }
-  const high = Number.parseInt(highText, 16);
-  const low = Number.parseInt(lowText, 16);
-  return `${high >>> BITS_PER_IPV4_OCTET}.${high & IPV4_OCTET_MASK}.${low >>> BITS_PER_IPV4_OCTET}.${low & IPV4_OCTET_MASK}`;
-};
-
-const isPrivateIpv6 = (hostname: string): boolean => {
-  const normalized = hostname.toLowerCase();
-  const mappedIpv4 = mappedIpv4Address(normalized);
-  if (mappedIpv4 !== undefined) {
-    return isPrivateIpv4(mappedIpv4);
-  }
-  return (
-    normalized === "::1" ||
-    normalized.startsWith("fc") ||
-    normalized.startsWith("fd") ||
-    normalized.startsWith("fe8") ||
-    normalized.startsWith("fe9") ||
-    normalized.startsWith("fea") ||
-    normalized.startsWith("feb")
-  );
-};
-
-const isPrivateHostname = (hostname: string): boolean => {
-  const normalized = hostname.replaceAll(/^\[|\]$/gu, "").toLowerCase();
-  const addressFamily = isIP(normalized);
-  if (addressFamily === 4) {
-    return isPrivateIpv4(normalized);
-  }
-  if (addressFamily === 6) {
-    return isPrivateIpv6(normalized);
-  }
-  return (
-    normalized === "localhost" ||
-    normalized.endsWith(".localhost") ||
-    normalized.endsWith(".local") ||
-    !normalized.includes(".")
-  );
-};
-
-const normalizedBaseUrl = (value: string): URL | undefined => {
-  const parsed = (() => {
-    try {
-      return new URL(value);
-    } catch {
-      return FAILURE_SENTINEL;
-    }
-  })();
-  if (parsed === FAILURE_SENTINEL) {
-    return undefined;
-  }
-  const pathSegments = parsed.pathname
-    .split("/")
-    .filter((segment) => segment.length > EMPTY_LENGTH);
-  if (
-    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
-    parsed.username.length > EMPTY_LENGTH ||
-    parsed.password.length > EMPTY_LENGTH ||
-    parsed.search.length > EMPTY_LENGTH ||
-    parsed.hash.length > EMPTY_LENGTH ||
-    pathSegments.length > 1 ||
-    !isPrivateHostname(parsed.hostname)
-  ) {
-    return undefined;
-  }
-  parsed.pathname = pathSegments.length === EMPTY_LENGTH ? "/" : `/${pathSegments[0]}/`;
-  return parsed;
-};
-
-const confinedEndpoint = (baseUrl: URL, pathSegments: readonly string[]): URL | undefined => {
-  if (
-    pathSegments.length === EMPTY_LENGTH ||
-    pathSegments.some((segment) => segment.length === EMPTY_LENGTH)
-  ) {
-    return undefined;
-  }
-  const endpoint = new URL(
-    pathSegments.map((segment) => encodeURIComponent(segment)).join("/"),
-    baseUrl,
-  );
-  if (endpoint.origin !== baseUrl.origin || !endpoint.pathname.startsWith(baseUrl.pathname)) {
-    return undefined;
-  }
-  return endpoint;
-};
 
 const parseJsonRecord = (bytes: Uint8Array[], length: number) => {
   try {
@@ -244,8 +128,8 @@ const sendJsonRequest = async (
   ) {
     return { kind: "incompatible" };
   }
-  const endpoint = confinedEndpoint(target.baseUrl, pathSegments);
-  if (endpoint === undefined) {
+  const endpoint = confinedEndpoint(target.baseUrl, pathSegments, options.query);
+  if (endpoint === INVALID_REQUEST_TARGET) {
     return { kind: "incompatible" };
   }
   const response = await fetchResponse(
@@ -262,11 +146,16 @@ const sendJsonRequest = async (
   if (response.status >= 300 && response.status < 400) {
     return { kind: "incompatible" };
   }
-  if (AUTHENTICATION_FAILURE_STATUSES.has(response.status)) {
-    if (options.authentication === "api_key") {
-      return { kind: "authentication_failed" };
-    }
-    return { kind: "incompatible" };
+  if (response.status === 401) {
+    return {
+      kind: options.authentication === "api_key" ? "authentication_failed" : "incompatible",
+    };
+  }
+  if (response.status === 403) {
+    return { kind: options.authentication === "api_key" ? "forbidden" : "incompatible" };
+  }
+  if (response.status === 404) {
+    return { kind: options.authentication === "api_key" ? "not_found" : "incompatible" };
   }
   if (!response.ok) {
     if (response.status >= 500) {
@@ -279,7 +168,7 @@ const sendJsonRequest = async (
 
 const createJellyfinRequest = (context: JellyfinRequestContext) => {
   const baseUrl = normalizedBaseUrl(context.baseUrl);
-  if (baseUrl === undefined) {
+  if (baseUrl === INVALID_REQUEST_TARGET) {
     // oxlint-disable-next-line unicorn/no-useless-undefined -- Invalid base URLs make this optional factory unavailable.
     return undefined;
   }
@@ -296,3 +185,4 @@ const createJellyfinRequest = (context: JellyfinRequestContext) => {
 };
 
 export { createJellyfinRequest };
+export type { JellyfinJsonResponse };
