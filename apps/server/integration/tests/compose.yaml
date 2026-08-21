@@ -15,11 +15,44 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
 
-  jellyfin:
+  jellyfin-fixture-media:
     image: jellyfin/jellyfin:10.11.11@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db
+    platform: linux/amd64
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        movie_directory="/media/movies/Nama Proof Movie (2026)"
+        episode_directory="/media/shows/Nama Proof Show/Season 01"
+        mkdir -p "$${movie_directory}" "$${episode_directory}"
+        /usr/lib/jellyfin-ffmpeg/ffmpeg \
+          -hide_banner -loglevel error \
+          -f lavfi -i color=c=blue:s=160x90:r=24 \
+          -f lavfi -i sine=frequency=440:sample_rate=48000 \
+          -t 1 -c:v libx264 -pix_fmt yuv420p -c:a aac \
+          "$${movie_directory}/Nama Proof Movie (2026).mp4"
+        cp \
+          "$${movie_directory}/Nama Proof Movie (2026).mp4" \
+          "$${episode_directory}/Nama Proof Show S01E02.mp4"
+        /usr/lib/jellyfin-ffmpeg/ffmpeg \
+          -hide_banner -loglevel error \
+          -f lavfi -i color=c=red:s=64x96 \
+          -frames:v 1 "$${movie_directory}/poster.jpg"
+    volumes:
+      - jellyfin-media:/media
+
+  jellyfin:
+    depends_on:
+      jellyfin-fixture-media:
+        condition: service_completed_successfully
+    image: jellyfin/jellyfin:10.11.11@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db
+    platform: linux/amd64
     healthcheck:
       test:
-        ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8096/System/Info/Public >/dev/null"]
+        - CMD-SHELL
+        - >-
+          curl --fail --silent http://127.0.0.1:8096/System/Info/Public |
+          grep --quiet '"StartupWizardCompleted":'
       interval: 1s
       timeout: 5s
       retries: 60
@@ -29,8 +62,10 @@ services:
     volumes:
       - jellyfin-cache:/cache
       - jellyfin-config:/config
+      - jellyfin-media:/media:ro
 
 volumes:
   jellyfin-cache:
+  jellyfin-media:
   jellyfin-config:
   postgres-data:

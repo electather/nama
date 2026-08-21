@@ -1,5 +1,13 @@
 import { Effect } from "effect";
 
+import {
+  expectJellyfinResponseStatus as expectResponseStatus,
+  jellyfinJsonObject as jsonObject,
+  jellyfinJsonObjectArrayResponse as jsonArrayResponse,
+  jellyfinJsonObjectResponse as jsonResponse,
+} from "./jellyfin-http.test-support.ts";
+import { ensureRepresentativeMedia } from "./jellyfin-real-provider.test-support.ts";
+
 const EMPTY_LENGTH = 0;
 const HTTP_OK = 200;
 const HTTP_NO_CONTENT = 204;
@@ -34,25 +42,11 @@ const requiredString = (record: Readonly<Record<string, unknown>>, key: string):
   return value;
 };
 
-const jsonResponse = async (
-  response: Response,
-  expectedStatus: number,
-): Promise<Record<string, unknown>> => {
-  if (response.status !== expectedStatus) {
-    throw new Error(`Jellyfin fixture request failed with status ${String(response.status)}`);
-  }
-  const value: unknown = await response.json();
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new TypeError("expected a Jellyfin JSON object");
-  }
-  return Object.fromEntries(Object.entries(value));
-};
-
-const expectResponseStatus = (response: Response, expectedStatus: number): void => {
-  if (response.status !== expectedStatus) {
-    throw new Error(`Jellyfin fixture request failed with status ${String(response.status)}`);
-  }
-};
+const requiredObject = (
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+  description: string,
+): Record<string, unknown> => jsonObject(record[key], `expected ${description}`);
 
 const jellyfinPost = (baseUrl: string, input: JellyfinPostInput): Promise<Response> => {
   const headers: Record<string, string> = { "content-type": "application/json" };
@@ -101,7 +95,23 @@ const createJellyfinUser = async (
     HTTP_OK,
   );
 
+const jellyfinStartupCompleted = async (baseUrl: string): Promise<boolean> => {
+  const publicInfo = await jsonResponse(
+    await fetch(new URL("System/Info/Public", baseUrl)),
+    HTTP_OK,
+  );
+  const startupWizardCompleted = publicInfo["StartupWizardCompleted"];
+  if (typeof startupWizardCompleted !== "boolean") {
+    throw new TypeError("expected the Jellyfin startup-wizard state");
+  }
+  return startupWizardCompleted;
+};
+
 const completeJellyfinStartup = async (baseUrl: string): Promise<void> => {
+  if (await jellyfinStartupCompleted(baseUrl)) {
+    return;
+  }
+
   await jsonResponse(await fetch(new URL("Startup/FirstUser", baseUrl)), HTTP_OK);
   expectResponseStatus(
     await jellyfinPost(baseUrl, {
@@ -133,11 +143,7 @@ const completeJellyfinStartup = async (baseUrl: string): Promise<void> => {
 };
 
 const jellyfinIdentity = (authenticated: Readonly<Record<string, unknown>>): JellyfinIdentity => {
-  const primaryUser = authenticated["User"];
-  if (typeof primaryUser !== "object" || primaryUser === null || Array.isArray(primaryUser)) {
-    throw new TypeError("expected the authenticated Jellyfin user");
-  }
-  const user = Object.fromEntries(Object.entries(primaryUser));
+  const user = requiredObject(authenticated, "User", "the authenticated Jellyfin user");
   return {
     primaryApiKey: requiredString(authenticated, "AccessToken"),
     primaryUserId: requiredString(user, "Id"),
@@ -149,18 +155,18 @@ const provisionSecondaryUsers = async (
   baseUrl: string,
   authorization: string,
 ): Promise<Readonly<{ disabledUserId: string; otherUserId: string }>> => {
-  const otherUser = await createJellyfinUser(baseUrl, "nama-other-user", authorization);
-  const disabledUser = await createJellyfinUser(baseUrl, "nama-disabled-user", authorization);
+  const existingUsers = await jsonArrayResponse(
+    await fetch(new URL("Users", baseUrl), { headers: { authorization } }),
+    HTTP_OK,
+  );
+  const otherUser =
+    existingUsers.find((user) => user["Name"] === "nama-other-user") ??
+    (await createJellyfinUser(baseUrl, "nama-other-user", authorization));
+  const disabledUser =
+    existingUsers.find((user) => user["Name"] === "nama-disabled-user") ??
+    (await createJellyfinUser(baseUrl, "nama-disabled-user", authorization));
   const disabledUserId = requiredString(disabledUser, "Id");
-  const disabledPolicy = disabledUser["Policy"];
-  if (
-    typeof disabledPolicy !== "object" ||
-    disabledPolicy === null ||
-    Array.isArray(disabledPolicy)
-  ) {
-    throw new TypeError("expected the disabled-user policy");
-  }
-  const disabledPolicyInput = Object.fromEntries(Object.entries(disabledPolicy));
+  const disabledPolicyInput = requiredObject(disabledUser, "Policy", "the disabled-user policy");
   expectResponseStatus(
     await jellyfinPost(baseUrl, {
       authorization,
@@ -178,6 +184,7 @@ const configuredJellyfinFixture = async (baseUrl: string): Promise<JellyfinFixtu
   const identity = jellyfinIdentity(authenticated);
   const administration = jellyfinAuthorization("nama-primary", identity.primaryApiKey);
   const secondaryUsers = await provisionSecondaryUsers(baseUrl, administration);
+  await ensureRepresentativeMedia(baseUrl, administration, identity.primaryUserId);
   return {
     baseUrl,
     ...identity,
