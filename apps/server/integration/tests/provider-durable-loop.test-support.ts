@@ -2,6 +2,7 @@ import { Effect } from "effect";
 
 import {
   expectJellyfinResponseStatus as expectResponseStatus,
+  jellyfinJsonObject as jsonObject,
   jellyfinJsonObjectArrayResponse as jsonArrayResponse,
   jellyfinJsonObjectResponse as jsonResponse,
 } from "./jellyfin-http.test-support.ts";
@@ -45,13 +46,7 @@ const requiredObject = (
   record: Readonly<Record<string, unknown>>,
   key: string,
   description: string,
-): Record<string, unknown> => {
-  const value = record[key];
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new TypeError(`expected ${description}`);
-  }
-  return Object.fromEntries(Object.entries(value));
-};
+): Record<string, unknown> => jsonObject(record[key], `expected ${description}`);
 
 const jellyfinPost = (baseUrl: string, input: JellyfinPostInput): Promise<Response> => {
   const headers: Record<string, string> = { "content-type": "application/json" };

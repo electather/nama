@@ -273,7 +273,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           episodeItemId,
         );
 
-        const watched = yield* plugin.call(
+        const markWatchedResponse = yield* plugin.call(
           WatchStateService.method.pushWatchStates,
           {
             batchId: "batch-mark-watched",
@@ -287,7 +287,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           },
           CALL_DEADLINE_MILLISECONDS,
         );
-        expectAppliedMutation(required(watched.results[0], "watched mutation result"), {
+        expectAppliedMutation(required(markWatchedResponse.results[0], "watched mutation result"), {
           itemId: movieItemId,
           mutationId: "mark-watched",
           watched: true,
@@ -302,7 +302,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           status: WatchStateReadStatus.FOUND,
         });
 
-        const unwatched = yield* plugin.call(
+        const markUnwatchedResponse = yield* plugin.call(
           WatchStateService.method.pushWatchStates,
           {
             batchId: "batch-mark-unwatched",
@@ -316,11 +316,14 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           },
           CALL_DEADLINE_MILLISECONDS,
         );
-        expectAppliedMutation(required(unwatched.results[0], "unwatched mutation result"), {
-          itemId: movieItemId,
-          mutationId: "mark-unwatched",
-          watched: false,
-        });
+        expectAppliedMutation(
+          required(markUnwatchedResponse.results[0], "unwatched mutation result"),
+          {
+            itemId: movieItemId,
+            mutationId: "mark-unwatched",
+            watched: false,
+          },
+        );
         const finalReadback = yield* plugin.call(
           WatchStateService.method.getWatchStates,
           { itemReferences: [{ itemId: movieItemId }] },

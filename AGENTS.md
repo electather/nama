@@ -39,6 +39,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Do not use TypeScript parameter properties in Node 24 strip-only executable paths.
 - Keep the committed Drizzle compatibility patch declaration-only; never change its runtime JavaScript or weaken strict TypeScript, including through `skipLibCheck`.
 - Do not claim a server, plugin runtime, authentication, or Jellyfin integration exists because generated clients and contract tests compile. Verify an executable entrypoint, handlers, persistence, and startup behavior.
+- Force the pinned Jellyfin 10.11.11 integration services to `linux/amd64` on Apple Silicon, and require `StartupWizardCompleted` in their healthcheck; its arm64 image exits 132 and its public endpoint becomes reachable before startup data is complete.
 - Do not treat generated Protobuf or Connect round trips as Nama behavior tests. Verify schema format/lint/build, generation drift, consumer compilation, and handwritten Nama policy or adapter behavior.
 - For `google.protobuf.Struct` field-level Protovalidate CEL, use `this.size()`, not `this.fields.size()`; Protovalidate-ES exposes the WKT as a JSON object and the latter fails at runtime.
 - Do not build product playback on AetherEngine `6.21.0`: source review rejected it because it leaks locator headers across origins and logs locator URLs in Release.
