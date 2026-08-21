@@ -109,7 +109,7 @@ const validationError = (violations: BadRequest_FieldViolation[]): ConnectError 
   ]);
 };
 
-const registerGetWatchStates = (
+const registerJellyfinWatchStateService = (
   router: ConnectRouter,
   launch: LaunchDocument,
   requireAuthorization: RequireAuthorization,
@@ -123,23 +123,14 @@ const registerGetWatchStates = (
     if (violations.length > NO_FIELD_VIOLATIONS) {
       throw validationError(violations);
     }
+    const { configuration: config, credentials } = launch;
     return getJellyfinWatchStates(
-      {
-        apiKey: launch.credentials.api_key,
-        baseUrl: launch.configuration.base_url,
-        userId: launch.configuration.user_id,
-      },
+      { apiKey: credentials.api_key, baseUrl: config.base_url, userId: config.user_id },
       request.itemReferences,
       { cancellation: context.signal, request: context.signal },
     );
   });
-};
 
-const registerListWatchStates = (
-  router: ConnectRouter,
-  launch: LaunchDocument,
-  requireAuthorization: RequireAuthorization,
-): void => {
   router.rpc(WatchStateService.method.listWatchStates, (request, context) => {
     requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
     if (launch.kind !== "instance") {
@@ -147,13 +138,7 @@ const registerListWatchStates = (
     }
     return listJellyfinWatchStates(launch, request, context.signal);
   });
-};
 
-const registerPushWatchStates = (
-  router: ConnectRouter,
-  launch: LaunchDocument,
-  requireAuthorization: RequireAuthorization,
-): void => {
   router.rpc(WatchStateService.method.pushWatchStates, (request, context) => {
     requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
     if (launch.kind !== "instance") {
@@ -163,27 +148,14 @@ const registerPushWatchStates = (
     if (violations.length > NO_FIELD_VIOLATIONS) {
       throw validationError(violations);
     }
+    const { configuration: config, credentials } = launch;
     return pushJellyfinWatchStates({
-      context: {
-        apiKey: launch.credentials.api_key,
-        baseUrl: launch.configuration.base_url,
-        userId: launch.configuration.user_id,
-      },
+      context: { apiKey: credentials.api_key, baseUrl: config.base_url, userId: config.user_id },
       mutations: request.mutations,
       signal: context.signal,
       timeoutMs: context.timeoutMs,
     });
   });
-};
-
-const registerJellyfinWatchStateService = (
-  router: ConnectRouter,
-  launch: LaunchDocument,
-  requireAuthorization: RequireAuthorization,
-): void => {
-  registerGetWatchStates(router, launch, requireAuthorization);
-  registerListWatchStates(router, launch, requireAuthorization);
-  registerPushWatchStates(router, launch, requireAuthorization);
 };
 
 export { registerJellyfinWatchStateService };

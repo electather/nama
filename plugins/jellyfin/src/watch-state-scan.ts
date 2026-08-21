@@ -1,6 +1,4 @@
-import { Code, ConnectError } from "@connectrpc/connect";
-import { ErrorInfoSchema, RetryInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
-import type { ErrorInfo, RetryInfo } from "@nama/api/google/rpc/error_details_pb.js";
+import { Code } from "@connectrpc/connect";
 import { WatchStateConsistency } from "@nama/api/nama/plugin/v1/watch_state_pb.js";
 import type { ListWatchStatesRequest } from "@nama/api/nama/plugin/v1/watch_state_pb.js";
 
@@ -9,6 +7,7 @@ import { createJellyfinRequest } from "./request.ts";
 import type { JellyfinJsonResponse } from "./request.ts";
 import type { ScanContinuationPosition } from "./scan-continuation.ts";
 import { watchStatePositionForRequest } from "./scan-request.ts";
+import { jellyfinScanBodyFromResponse, jellyfinScanError } from "./scan-response.ts";
 import { encodeWatchStateContinuation } from "./watch-state-continuation.ts";
 import {
   ABSENT_VALUE,
@@ -19,71 +18,16 @@ import type { ProtobufTimestamp } from "./watch-state-value.ts";
 
 const MAXIMUM_WATCH_STATE_RESPONSE_BYTES = 16_777_216;
 const MILLISECONDS_PER_SECOND = 1000;
-const PLUGIN_ERROR_DOMAIN = "nama.plugin.v1";
-const PROVIDER_RETRY_DELAY_SECONDS = 5n;
-
-type WatchStateScanErrorReason = "INTERNAL" | "PERMISSION_DENIED" | "PROVIDER_UNAVAILABLE";
-
-const watchStateScanError = (
-  message: string,
-  code: Code,
-  reason: WatchStateScanErrorReason,
-): ConnectError => {
-  const errorInfo: ErrorInfo = {
-    $typeName: "google.rpc.ErrorInfo",
-    domain: PLUGIN_ERROR_DOMAIN,
-    metadata: {},
-    reason,
-  };
-  const errorInfoDetail = { desc: ErrorInfoSchema, value: errorInfo };
-  if (reason !== "PROVIDER_UNAVAILABLE") {
-    return new ConnectError(message, code, undefined, [errorInfoDetail]);
-  }
-  const retryInfo: RetryInfo = {
-    $typeName: "google.rpc.RetryInfo",
-    retryDelay: {
-      $typeName: "google.protobuf.Duration",
-      nanos: 0,
-      seconds: PROVIDER_RETRY_DELAY_SECONDS,
-    },
-  };
-  return new ConnectError(message, code, undefined, [
-    errorInfoDetail,
-    { desc: RetryInfoSchema, value: retryInfo },
-  ]);
-};
-
-const watchStateBodyFromResponse = (
-  response: JellyfinJsonResponse,
-): Readonly<Record<string, unknown>> => {
-  if (response.kind === "authentication_failed" || response.kind === "forbidden") {
-    throw watchStateScanError(
-      "Jellyfin watch-state scan is forbidden",
-      Code.PermissionDenied,
-      "PERMISSION_DENIED",
-    );
-  }
-  if (response.kind === "not_found" || response.kind === "unreachable") {
-    throw watchStateScanError(
-      "Jellyfin watch-state scan is unavailable",
-      Code.Unavailable,
-      "PROVIDER_UNAVAILABLE",
-    );
-  }
-  if (response.kind !== "success") {
-    throw watchStateScanError(
-      "Jellyfin watch-state scan response is invalid",
-      Code.Internal,
-      "INTERNAL",
-    );
-  }
-  return response.body;
-};
+const WATCH_STATE_SCAN_RESPONSE_MESSAGES = Object.freeze({
+  forbidden: "Jellyfin watch-state scan is forbidden",
+  invalid: "Jellyfin watch-state scan response is invalid",
+  unavailable: "Jellyfin watch-state scan is unavailable",
+});
 
 const normalizeWatchStateObservation = (providerItem: unknown, observedAt: ProtobufTimestamp) => {
   const state = normalizeJellyfinScannedWatchState(providerItem, observedAt);
   if (state === ABSENT_VALUE) {
-    throw watchStateScanError(
+    throw jellyfinScanError(
       "Jellyfin watch-state scan response is invalid",
       Code.Internal,
       "INTERNAL",
@@ -97,9 +41,11 @@ const watchStatePageFromResponse = (
   pageSize: number,
   observedAt: ProtobufTimestamp,
 ) => {
-  const providerItems = watchStateBodyFromResponse(response)["Items"];
+  const providerItems = jellyfinScanBodyFromResponse(response, WATCH_STATE_SCAN_RESPONSE_MESSAGES)[
+    "Items"
+  ];
   if (!Array.isArray(providerItems) || providerItems.length > pageSize) {
-    throw watchStateScanError(
+    throw jellyfinScanError(
       "Jellyfin watch-state scan response is invalid",
       Code.Internal,
       "INTERNAL",
@@ -137,7 +83,7 @@ const requestJellyfinWatchStatePage = (
     baseUrl: launch.configuration.base_url,
   });
   if (request === undefined) {
-    throw watchStateScanError("Jellyfin adapter is unavailable", Code.Internal, "INTERNAL");
+    throw jellyfinScanError("Jellyfin adapter is unavailable", Code.Internal, "INTERNAL");
   }
   return request.requestJson(["Items"], {
     authentication: "api_key",
@@ -155,7 +101,7 @@ const continuationForPage = (
   const providerInstanceId = launch.provider_instance_id;
   const providerRevision = launch.revision;
   if (providerInstanceId === undefined || providerRevision === undefined) {
-    throw watchStateScanError("Jellyfin adapter is unavailable", Code.Internal, "INTERNAL");
+    throw jellyfinScanError("Jellyfin adapter is unavailable", Code.Internal, "INTERNAL");
   }
   return encodeWatchStateContinuation({
     apiKey: launch.credentials.api_key,
