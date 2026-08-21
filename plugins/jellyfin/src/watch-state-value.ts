@@ -4,6 +4,7 @@ import {
   ProviderActivitySemantics,
 } from "@nama/api/nama/plugin/v1/watch_state_pb.js";
 
+import { identifierViolationReason } from "./identifier.ts";
 import { isUnknownRecord } from "./value.ts";
 
 const JELLYFIN_TICKS_PER_SECOND = 10_000_000;
@@ -16,6 +17,7 @@ const MINIMUM_PROTOBUF_TIMESTAMP_MILLISECONDS = Date.parse("0001-01-01T00:00:00.
 const MAXIMUM_PROTOBUF_TIMESTAMP_MILLISECONDS = Date.parse("9999-12-31T23:59:59.999Z");
 const PROVIDER_ACTIVITY_TIMESTAMP_PATTERN =
   /^(?<year>(?!0000)[0-9]{4})-(?<month>0[1-9]|1[0-2])-(?<day>0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]{1,9})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$/u;
+const MAXIMUM_ITEM_ID_LENGTH = 256;
 const ZERO_TICKS = 0;
 const INVALID_TICKS = Symbol("invalid_ticks");
 const ABSENT_VALUE = Symbol("absent_value");
@@ -193,6 +195,26 @@ const normalizeJellyfinWatchState = (
   }
   return state;
 };
+const normalizeJellyfinScannedWatchState = (
+  body: unknown,
+  observedAt: ProtobufTimestamp,
+): NormalizedWatchState | typeof ABSENT_VALUE => {
+  if (!isUnknownRecord(body)) {
+    return ABSENT_VALUE;
+  }
+  const itemId = body["Id"];
+  if (
+    typeof itemId !== "string" ||
+    identifierViolationReason(itemId, MAXIMUM_ITEM_ID_LENGTH) !== false
+  ) {
+    return ABSENT_VALUE;
+  }
+  return normalizeJellyfinWatchState(
+    { $typeName: "nama.plugin.v1.ProviderItemReference", itemId },
+    body,
+    observedAt,
+  );
+};
 
 const normalizeJellyfinMutationWatchState = (
   itemReference: ProviderItemReference,
@@ -218,6 +240,7 @@ const normalizeJellyfinMutationWatchState = (
 export {
   ABSENT_VALUE,
   normalizeJellyfinMutationWatchState,
+  normalizeJellyfinScannedWatchState,
   normalizeJellyfinWatchState,
   timestampFromMilliseconds,
 };

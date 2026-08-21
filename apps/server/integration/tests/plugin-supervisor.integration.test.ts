@@ -371,6 +371,7 @@ it.live("runs the production Jellyfin discovery contract without provider contex
         capabilities: [
           ProviderCapability.LIBRARY_READ,
           ProviderCapability.ARTWORK_RESOLVE,
+          ProviderCapability.WATCH_STATE_READ,
           ProviderCapability.WATCHED_WRITE,
         ],
         contractMajor: 1,

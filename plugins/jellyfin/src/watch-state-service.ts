@@ -1,4 +1,4 @@
-import type { ConnectRouter, HandlerContext } from "@connectrpc/connect";
+import type { ConnectRouter } from "@connectrpc/connect";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { BadRequestSchema, ErrorInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
 import type {
@@ -15,6 +15,7 @@ import type {
 import { identifierViolationReason } from "./identifier.ts";
 import type { LaunchDocument } from "./launch-document.ts";
 import { pushJellyfinWatchStates } from "./watch-state-mutation.ts";
+import { listJellyfinWatchStates } from "./watch-state-scan.ts";
 import { getJellyfinWatchStates } from "./watch-state.ts";
 
 const MINIMUM_ITEM_REFERENCES = 1;
@@ -113,10 +114,6 @@ const registerJellyfinWatchStateService = (
   launch: LaunchDocument,
   requireAuthorization: RequireAuthorization,
 ): void => {
-  const unavailable = (_request: unknown, context: HandlerContext): never => {
-    requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
-    throw new ConnectError("watch state unavailable", Code.Unimplemented);
-  };
   router.rpc(WatchStateService.method.getWatchStates, (request, context) => {
     requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
     if (launch.kind !== "instance") {
@@ -126,17 +123,22 @@ const registerJellyfinWatchStateService = (
     if (violations.length > NO_FIELD_VIOLATIONS) {
       throw validationError(violations);
     }
+    const { configuration: config, credentials } = launch;
     return getJellyfinWatchStates(
-      {
-        apiKey: launch.credentials.api_key,
-        baseUrl: launch.configuration.base_url,
-        userId: launch.configuration.user_id,
-      },
+      { apiKey: credentials.api_key, baseUrl: config.base_url, userId: config.user_id },
       request.itemReferences,
       { cancellation: context.signal, request: context.signal },
     );
   });
-  router.rpc(WatchStateService.method.listWatchStates, unavailable);
+
+  router.rpc(WatchStateService.method.listWatchStates, (request, context) => {
+    requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
+    if (launch.kind !== "instance") {
+      throw new ConnectError("watch state unavailable", Code.Unimplemented);
+    }
+    return listJellyfinWatchStates(launch, request, context.signal);
+  });
+
   router.rpc(WatchStateService.method.pushWatchStates, (request, context) => {
     requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
     if (launch.kind !== "instance") {
@@ -146,12 +148,9 @@ const registerJellyfinWatchStateService = (
     if (violations.length > NO_FIELD_VIOLATIONS) {
       throw validationError(violations);
     }
+    const { configuration: config, credentials } = launch;
     return pushJellyfinWatchStates({
-      context: {
-        apiKey: launch.credentials.api_key,
-        baseUrl: launch.configuration.base_url,
-        userId: launch.configuration.user_id,
-      },
+      context: { apiKey: credentials.api_key, baseUrl: config.base_url, userId: config.user_id },
       mutations: request.mutations,
       signal: context.signal,
       timeoutMs: context.timeoutMs,
