@@ -7,9 +7,11 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
   private let clientVersion: String
   private let platform: String
 
+  private static let requestTimeout: TimeInterval = 10
+
   init(
-    sessionConfiguration: URLSessionConfiguration = .default,
     clientVersion: String,
+    sessionConfiguration: URLSessionConfiguration = .default,
     platform: String = Self.currentPlatform
   ) {
     self.sessionConfiguration = sessionConfiguration
@@ -24,10 +26,11 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
       config: ProtocolClientConfig(
         host: endpoint.absoluteString,
         networkProtocol: .connect,
-        timeout: 10,
+        timeout: Self.requestTimeout,
         interceptors: [
           InterceptorFactory { _ in
             ClientMetadataInterceptor(clientVersion: clientVersion, platform: platform)
+            // swiftlint:disable:next trailing_comma
           }
         ]
       )
@@ -41,6 +44,7 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
     switch response.result {
     case .success(let status):
       return status.initialized ? .ready : .setupRequired
+
     case .failure(let error):
       return Self.map(error)
     }
@@ -68,6 +72,7 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
     switch error.code {
     case .unavailable, .resourceExhausted:
       return .failure(.namaUnavailable)
+
     case .ok, .canceled, .unknown, .invalidArgument, .deadlineExceeded, .notFound,
       .alreadyExists, .permissionDenied, .failedPrecondition, .aborted, .outOfRange,
       .unimplemented, .internalError, .dataLoss, .unauthenticated:
@@ -86,7 +91,7 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
   }
 }
 
-private nonisolated final class ClientMetadataInterceptor: UnaryInterceptor, Sendable {
+nonisolated private final class ClientMetadataInterceptor: UnaryInterceptor, Sendable {
   private let metadata: Connect.Headers
 
   init(clientVersion: String, platform: String) {
@@ -100,7 +105,7 @@ private nonisolated final class ClientMetadataInterceptor: UnaryInterceptor, Sen
   @Sendable
   func handleUnaryRequest<Message: ProtobufMessage>(
     _ request: HTTPRequest<Message>,
-    proceed: @escaping @Sendable (Result<HTTPRequest<Message>, ConnectError>) -> Void
+    proceed: @Sendable (Result<HTTPRequest<Message>, ConnectError>) -> Void
   ) {
     var headers = request.headers
     for (name, values) in metadata {

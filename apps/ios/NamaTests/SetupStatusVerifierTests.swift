@@ -100,14 +100,14 @@ struct SetupStatusVerifierTests {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [StubURLProtocol.self]
     return NamaSetupStatusVerifier(
-      sessionConfiguration: configuration,
       clientVersion: "1.2.3",
+      sessionConfiguration: configuration,
       platform: "macos"
     )
   }
 }
 
-private nonisolated final class StubURLProtocol: URLProtocol, @unchecked Sendable {
+nonisolated private final class StubURLProtocol: URLProtocol, @unchecked Sendable {
   enum Outcome: Sendable {
     case response(status: Int, body: String)
     case failure(URLError.Code)
@@ -115,9 +115,9 @@ private nonisolated final class StubURLProtocol: URLProtocol, @unchecked Sendabl
   }
 
   private static let lock = NSLock()
-  private nonisolated(unsafe) static var outcome: Outcome = .hold
-  private nonisolated(unsafe) static var requests: [URLRequest] = []
-  private nonisolated(unsafe) static var stopped = 0
+  nonisolated(unsafe) private static var outcome: Outcome = .hold
+  nonisolated(unsafe) private static var requests: [URLRequest] = []
+  nonisolated(unsafe) private static var stopped = 0
 
   static var recordedRequests: [URLRequest] {
     lock.withLock { requests }
@@ -135,10 +135,13 @@ private nonisolated final class StubURLProtocol: URLProtocol, @unchecked Sendabl
     }
   }
 
-  override class func canInit(with request: URLRequest) -> Bool {
+  // URLProtocol requires these overrides to remain class methods.
+  // swiftlint:disable:next static_over_final_class non_overridable_class_declaration
+  override class func canInit(with _: URLRequest) -> Bool {
     true
   }
 
+  // swiftlint:disable:next static_over_final_class non_overridable_class_declaration
   override class func canonicalRequest(for request: URLRequest) -> URLRequest {
     request
   }
@@ -165,8 +168,10 @@ private nonisolated final class StubURLProtocol: URLProtocol, @unchecked Sendabl
       client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
       client?.urlProtocol(self, didLoad: Data(body.utf8))
       client?.urlProtocolDidFinishLoading(self)
+
     case .failure(let code):
       client?.urlProtocol(self, didFailWithError: URLError(code))
+
     case .hold:
       break
     }

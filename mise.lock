@@ -163,9 +163,9 @@ version = "0.4.13"
 backend = "aqua:j178/prek"
 
 [tools.prek."platforms.linux-arm64"]
-checksum = "sha256:ecbddcf4aad45eca7073f62dcea717f1e523901ada5c2fd668e6dce812f7790e"
-url = "https://github.com/j178/prek/releases/download/v0.4.13/prek-aarch64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/j178/prek/releases/assets/508529763"
+checksum = "sha256:08ee04c20f3738356a5c2631a09d1d370c94093f28b3ad0857d0757e34d51860"
+url = "https://github.com/j178/prek/releases/download/v0.4.13/prek-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/j178/prek/releases/assets/508529757"
 provenance = "github-attestations"
 
 [tools.prek."platforms.linux-arm64-musl"]
@@ -175,9 +175,9 @@ url_api = "https://api.github.com/repos/j178/prek/releases/assets/508529763"
 provenance = "github-attestations"
 
 [tools.prek."platforms.linux-x64"]
-checksum = "sha256:15dbf93535fc956a09e0e13e0529f364aff94c9d048f36a41571bb802e096ec0"
-url = "https://github.com/j178/prek/releases/download/v0.4.13/prek-x86_64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/j178/prek/releases/assets/508529829"
+checksum = "sha256:db31d0c5be937602002ab21e70ebf07c6566cc4428c9095f04fa546e12e7ccb0"
+url = "https://github.com/j178/prek/releases/download/v0.4.13/prek-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/j178/prek/releases/assets/508529827"
 provenance = "github-attestations"
 
 [tools.prek."platforms.linux-x64-musl"]
@@ -203,3 +203,37 @@ checksum = "sha256:bf7adf70705a6ba0d2e1fd8a4016397e2609bc1765474eddec466db460a9f
 url = "https://github.com/j178/prek/releases/download/v0.4.13/prek-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/j178/prek/releases/assets/508529822"
 provenance = "github-attestations"
+
+[[tools.swiftlint]]
+version = "0.65.1"
+backend = "aqua:realm/SwiftLint"
+
+[tools.swiftlint."platforms.linux-arm64"]
+checksum = "sha256:9ffa52f478e6d8eb485d37d14715ffac90abc81c58f3370d598bf75be05605f8"
+url = "https://github.com/realm/SwiftLint/releases/download/0.65.1/swiftlint_linux_arm64.zip"
+url_api = "https://api.github.com/repos/realm/SwiftLint/releases/assets/524187588"
+
+[tools.swiftlint."platforms.linux-arm64-musl"]
+checksum = "sha256:9ffa52f478e6d8eb485d37d14715ffac90abc81c58f3370d598bf75be05605f8"
+url = "https://github.com/realm/SwiftLint/releases/download/0.65.1/swiftlint_linux_arm64.zip"
+url_api = "https://api.github.com/repos/realm/SwiftLint/releases/assets/524187588"
+
+[tools.swiftlint."platforms.linux-x64"]
+checksum = "sha256:caeed6f4a679c35539ffaf124f6c4ab4a8416917f7d8796279dc52b74026059d"
+url = "https://github.com/realm/SwiftLint/releases/download/0.65.1/swiftlint_linux_amd64.zip"
+url_api = "https://api.github.com/repos/realm/SwiftLint/releases/assets/524187586"
+
+[tools.swiftlint."platforms.linux-x64-musl"]
+checksum = "sha256:caeed6f4a679c35539ffaf124f6c4ab4a8416917f7d8796279dc52b74026059d"
+url = "https://github.com/realm/SwiftLint/releases/download/0.65.1/swiftlint_linux_amd64.zip"
+url_api = "https://api.github.com/repos/realm/SwiftLint/releases/assets/524187586"
+
+[tools.swiftlint."platforms.macos-arm64"]
+checksum = "sha256:c1e429b0599cf1b516f369a2d9ec04eaf0e436f3c12b637df8851fa52ff694d0"
+url = "https://github.com/realm/SwiftLint/releases/download/0.65.1/portable_swiftlint.zip"
+url_api = "https://api.github.com/repos/realm/SwiftLint/releases/assets/524187565"
+
+[tools.swiftlint."platforms.macos-x64"]
+checksum = "sha256:c1e429b0599cf1b516f369a2d9ec04eaf0e436f3c12b637df8851fa52ff694d0"
+url = "https://github.com/realm/SwiftLint/releases/download/0.65.1/portable_swiftlint.zip"
+url_api = "https://api.github.com/repos/realm/SwiftLint/releases/assets/524187565"

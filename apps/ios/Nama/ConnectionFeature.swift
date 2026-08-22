@@ -1,4 +1,3 @@
-import Foundation
 import Observation
 
 nonisolated enum VerificationFailure: Equatable, Sendable {
@@ -57,6 +56,7 @@ final class ConnectionFeature {
     switch state {
     case .setupRequired(let value), .failed(let value, _):
       endpoint = value
+
     case .editing, .verifying, .ready:
       return
     }
@@ -92,23 +92,26 @@ final class ConnectionFeature {
     state = .verifying(endpoint)
     attempt &+= 1
     let currentAttempt = attempt
-    let verifier = verifier
+    let connectionVerifier = verifier
 
     activeTask = Task { [weak self] in
-      let result = await verifier.verify(endpoint)
-      guard let self, currentAttempt == self.attempt, !Task.isCancelled else {
+      let result = await connectionVerifier.verify(endpoint)
+      guard let self, currentAttempt == attempt, !Task.isCancelled else {
         return
       }
-      self.activeTask = nil
+      activeTask = nil
       switch result {
       case .ready:
-        self.state = .ready(endpoint)
+        state = .ready(endpoint)
+
       case .setupRequired:
-        self.state = .setupRequired(endpoint)
+        state = .setupRequired(endpoint)
+
       case .failure(let failure):
-        self.state = .failed(endpoint, failure)
+        state = .failed(endpoint, failure)
+
       case .cancelled:
-        self.state = .editing(showsValidationError: false)
+        state = .editing(showsValidationError: false)
       }
     }
   }

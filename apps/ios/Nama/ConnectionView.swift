@@ -41,6 +41,7 @@ struct ConnectionRootView: View {
       switch feature.state {
       case .editing, .verifying:
         "Connect to Nama"
+
       case .ready, .setupRequired, .failed:
         "Nama Endpoint"
       }
@@ -51,12 +52,16 @@ struct ConnectionRootView: View {
       switch feature.state {
       case .editing(let showsValidationError):
         EntryForm(feature: feature, showsValidationError: showsValidationError)
+
       case .verifying(let endpoint):
         VerifyingForm(feature: feature, endpoint: endpoint)
+
       case .ready(let endpoint):
         ReadyForm(feature: feature, endpoint: endpoint)
+
       case .setupRequired(let endpoint):
         SetupRequiredForm(feature: feature, endpoint: endpoint)
+
       case .failed(let endpoint, let failure):
         FailureForm(feature: feature, endpoint: endpoint, failure: failure)
       }
@@ -209,15 +214,18 @@ struct ConnectionRootView: View {
           feature.submit()
         }
         .buttonStyle(.borderedProminent)
+
       case .cancel:
         Button("Cancel", role: .cancel) {
           feature.cancel()
         }
+
       case .retry:
         Button("Retry") {
           feature.retry()
         }
         .buttonStyle(.borderedProminent)
+
       case .changeEndpoint:
         Button("Change Endpoint") {
           feature.changeEndpoint()
@@ -239,18 +247,30 @@ struct ConnectionRootView: View {
     }
   }
 
+  private enum ConnectionFormLayoutMetrics {
+    static let maximumContentWidth: CGFloat = 640
+    static let minimumWindowWidth: CGFloat = 520
+    static let minimumWindowHeight: CGFloat = 420
+  }
+
   private struct ConnectionFormLayout: ViewModifier {
     func body(content: Content) -> some View {
       content
-        .frame(maxWidth: 640)
+        .frame(maxWidth: ConnectionFormLayoutMetrics.maximumContentWidth)
         .frame(maxWidth: .infinity)
         #if os(macOS)
-          .frame(minWidth: 520, minHeight: 420)
+          .frame(
+            minWidth: ConnectionFormLayoutMetrics.minimumWindowWidth,
+            minHeight: ConnectionFormLayoutMetrics.minimumWindowHeight
+          )
         #endif
     }
   }
 
+  // Sibling views in this file share this modifier; `private` would hide it.
+  // swiftlint:disable:next extension_access_modifier
   extension View {
+    // swiftlint:disable:next strict_fileprivate
     fileprivate func connectionFormLayout() -> some View {
       modifier(ConnectionFormLayout())
     }

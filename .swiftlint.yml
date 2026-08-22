@@ -1,0 +1,44 @@
+strict: true
+allow_zero_lintable_files: true
+check_for_updates: false
+
+disabled_rules:
+  # These impose boilerplate or fragmentation without improving correctness.
+  - attributes
+  - contrasted_opening_brace
+  - discouraged_default_parameter
+  - explicit_acl
+  - explicit_top_level_acl
+  - explicit_type_interface
+  - file_name
+  - file_types_order
+  - one_declaration_per_file
+  - required_deinit
+  - sorted_enum_cases
+  - type_contents_order
+  - pattern_matching_keywords
+
+opt_in_rules:
+  - all
+
+# `explicit_self` creates broad SwiftUI ceremony. `unused_declaration` and
+# `unused_import` emit false circular-reference diagnostics for SwiftUI bindings.
+analyzer_rules:
+  - capture_variable
+  - typesafe_array_init
+
+included:
+  - apps/ios
+
+excluded:
+  - gen
+
+indentation_width:
+  indentation_width: 2
+
+trailing_comma:
+  mandatory_comma: true
+
+opening_brace:
+  ignore_multiline_function_signatures: true
+  ignore_multiline_statement_conditions: true

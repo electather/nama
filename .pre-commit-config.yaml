@@ -1,6 +1,13 @@
 repos:
   - repo: local
     hooks:
+      - id: swiftlint-ios
+        name: SwiftLint handwritten Swift
+        entry: mise run check:swift
+        language: system
+        pass_filenames: false
+        files: ^(\.pre-commit-config\.yaml|\.swiftlint(-analyze)?\.yml|apps/ios/.*\.swift)$
+        stages: [pre-commit]
       - id: fallow-server
         name: Fallow server changed-file audit
         entry: pnpm --filter @nama/server run audit:fallow

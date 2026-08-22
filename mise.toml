@@ -8,6 +8,7 @@ go = "1.26.5"
 node = "24.19.0"
 pnpm = "11.20.0"
 prek = "0.4.13"
+swiftlint = "0.65.1"
 
 [tasks.setup]
 description = "Resolve dependencies and install Git hooks"
@@ -46,6 +47,9 @@ run = "scripts/check-go.sh"
 [tasks."check:ios"]
 description = "Test and build the universal Apple application"
 run = "scripts/check-ios.sh"
+[tasks."check:swift"]
+description = "Lint and type-analyze handwritten Swift with all compatible rules as errors"
+run = "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/check-swift.sh"
 
 [tasks."check:docker"]
 description = "Verify the packaged application through Docker Compose"
@@ -58,5 +62,6 @@ run = [
   { task = "check:ts" },
   { task = "check:go" },
   { task = "check:ios" },
+  { task = "check:swift" },
   { task = "check:docker" },
 ]

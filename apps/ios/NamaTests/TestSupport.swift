@@ -1,10 +1,11 @@
 import Testing
 
 func eventually(
-  _ condition: @escaping @MainActor @Sendable () async -> Bool,
+  _ condition: @MainActor @Sendable () async -> Bool,
   sourceLocation: SourceLocation = #_sourceLocation
 ) async {
-  for _ in 0..<1_000 {
+  let maximumTaskYields = 1_000
+  for _ in 0..<maximumTaskYields {
     if await condition() {
       return
     }

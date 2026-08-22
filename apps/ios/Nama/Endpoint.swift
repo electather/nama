@@ -7,6 +7,10 @@ nonisolated enum EndpointValidationError: Error, Equatable {
 nonisolated struct NamaEndpoint: Hashable, Sendable {
   let url: URL
 
+  private static let validPortRange = 1...65_535
+  private static let defaultHTTPPort = 80
+  private static let defaultHTTPSPort = 443
+
   var absoluteString: String {
     url.absoluteString
   }
@@ -27,10 +31,12 @@ nonisolated struct NamaEndpoint: Hashable, Sendable {
     }
 
     if let port = components.port {
-      guard (1...65_535).contains(port) else {
+      guard Self.validPortRange.contains(port) else {
         throw EndpointValidationError.invalid
       }
-      if (scheme == "http" && port == 80) || (scheme == "https" && port == 443) {
+      if (scheme == "http" && port == Self.defaultHTTPPort)
+        || (scheme == "https" && port == Self.defaultHTTPSPort)
+      {
         components.port = nil
       }
     }
@@ -39,10 +45,10 @@ nonisolated struct NamaEndpoint: Hashable, Sendable {
     components.host = host.lowercased()
     components.percentEncodedPath = Self.normalizedPath(components.percentEncodedPath)
 
-    guard let url = components.url else {
+    guard let endpointURL = components.url else {
       throw EndpointValidationError.invalid
     }
-    self.url = url
+    self.url = endpointURL
   }
 
   private static func normalizedPath(_ path: String) -> String {
