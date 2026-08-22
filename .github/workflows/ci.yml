@@ -31,8 +31,17 @@ jobs:
         run: mise run check:ts
       - name: Check Go
         run: mise run check:go
-      - name: Check Compose
-        run: mise run check:docker
+      - name: Install the CLI credential-store service
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends gnome-keyring
+      - name: Check packaged application
+        run: |
+          dbus-run-session -- bash -euo pipefail -c '
+            keyring_password="$(openssl rand -base64 24)"
+            eval "$(printf "%s\n" "${keyring_password}" | gnome-keyring-daemon --unlock --components=secrets)"
+            mise run check:docker
+          '
 
 
   buf-breaking:

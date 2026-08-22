@@ -56,6 +56,38 @@
   },
   "overrides": [
     {
+      "files": ["apps/server/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@nama/jellyfin", "@nama/jellyfin/**", "**/plugins/jellyfin/**"],
+                "message": "The core must call Jellyfin only through generated plugin contracts."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["plugins/jellyfin/**/*.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@nama/server", "@nama/server/**", "**/apps/server/**"],
+                "message": "Jellyfin must call the core only through generated plugin contracts."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["apps/server/src/config/overlay.ts", "apps/server/src/config/schema.ts"],
       "rules": {
         "eslint/new-cap": [

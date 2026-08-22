@@ -1,0 +1,13 @@
+[server]
+bind = "0.0.0.0:8080"
+public_url = "http://localhost:8080/"
+
+[database]
+url = "postgresql://nama:REPLACE_WITH_URL_SAFE_DATABASE_PASSWORD@postgres:5432/nama"
+max_connections = 10
+
+[security]
+master_key = "base64:REPLACE_WITH_32_BYTE_BASE64_MASTER_KEY"
+
+[logging]
+level = "info"

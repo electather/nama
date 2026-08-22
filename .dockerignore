@@ -1,0 +1,7 @@
+.git
+.env
+.env.*
+.nama-docker-check.*
+**/node_modules
+nama.toml
+secrets
