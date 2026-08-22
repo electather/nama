@@ -9,7 +9,8 @@ universal Apple application is currently checked in.
 one universal application target. Its boundary is:
 
 - The first client is one universal native Swift/SwiftUI application rooted in
-  `apps/ios`, targeting iOS 17+, tvOS 17+, and macOS 14+. Use Observation and
+  `apps/ios`, targeting iOS 26+, tvOS 26+, and macOS 26+ under
+  [ADR-0029](../adr/0029-apple-platform-26-minimum.md). Use Observation and
   structured concurrency before adding a state or dependency framework.
 - Keep one multiplatform application target and a small composition root.
   Construct concrete dependencies at the root and pass them to feature owners;
@@ -25,6 +26,61 @@ one universal application target. Its boundary is:
 - Create a feature or abstraction only when its behavior exists. Do not reserve
   empty packages or add a multi-engine factory before a second engine proves
   the shared interface.
+
+## Connection boundary
+
+The initial connection feature treats a Nama endpoint as a transport address,
+not deployment identity. A canonical endpoint is an absolute HTTP or HTTPS URL
+with an explicit scheme and non-empty host, no credentials, query, or fragment,
+and an optional reverse-proxy path prefix. Changing endpoints requires fresh
+verification and, once pairing exists, fresh pairing; a credential is never
+replayed to another endpoint based on a name or similar response.
+
+LAN discovery uses Network framework `NWBrowser` for `_nama._tcp`. A browse
+result is usable only when its TXT record contains one structurally valid `url`
+value. The service instance name is untrusted secondary display text, unknown
+TXT keys are ignored, and results sharing one normalized URL are one candidate.
+Browsing starts only after an explicit user action. Discovery never contacts a
+candidate or automatically selects a sole result; selecting a result and
+submitting a manual URL enter the same verification path.
+
+Verification makes one cancellable, ten-second
+`SetupService.GetStatus` call with platform TLS trust and no certificate
+bypass. `initialized=true` means the endpoint is ready for pairing;
+`initialized=false` is a verified endpoint that requires Administrator setup.
+Nama availability failures, transport failures, and incompatible responses
+remain distinct safe states without raw URLSession, TLS, or response detail.
+Issue #34 owns every plain-HTTP exception and warning.
+
+Only a verified canonical endpoint is stored in `UserDefaults`. Service names,
+TXT data, transient status, failed input, and errors are not persisted. Launch
+re-verifies the stored endpoint once without deleting it on an offline failure.
+Device credentials remain future Keychain state owned by pairing.
+
+The application declares `_nama._tcp` in `NSBonjourServices` and explains
+local-network access through `NSLocalNetworkUsageDescription`; browsing this
+one declared service does not add the multicast entitlement. iOS, iPadOS, and
+macOS expose local-network permission while tvOS does not. The connection
+surface keeps manual entry available, stops browsing outside the foreground,
+and uses a focus-specific tvOS presentation over the shared feature state. It
+ends in an honest ready, setup-required, or retryable status rather than a
+placeholder pairing or Home flow.
+
+## Connection acceptance
+
+One Swift Testing target owns endpoint normalization, TXT parsing, candidate
+reconciliation, cancellation, safe failure mapping, state transitions, and
+persistence behavior. The native check builds the shared scheme for iOS, tvOS,
+and macOS.
+
+Runtime acceptance remains explicit:
+
+- LAN discovery runs on a physical iPhone, physical iPad, Apple TV, and Mac;
+- manual LAN, VPN, and reverse-proxy entry runs on all four surfaces;
+- local-network allow, deny, and later-settings-change behavior runs on
+  physical iPhone, physical iPad, and Mac; and
+- an unrun physical-device row remains unverified. Simulator behavior is not
+  local-network privacy proof.
 
 ## Playback boundary
 
