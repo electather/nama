@@ -5,14 +5,15 @@ catalog state, and watch state in one core while provider plugins talk to
 external media servers.
 
 This repository is in its foundation milestones. The current baseline proves
-the TypeScript, Go, Protobuf, and Docker boundaries. The disposable Apple TV
-playback spike was retired after its decisions were recorded; no universal
-iOS application is currently checked in.
+the TypeScript, Go, Protobuf, Docker, and universal Apple application
+boundaries. The Apple application currently implements manual Nama endpoint
+verification; discovery, pairing, and media behavior remain unimplemented.
 
 ## Prerequisites
 
 - mise 2026.8.3 or newer
 - Docker with Docker Compose
+- Xcode 26.6 on macOS for universal application checks
 
 ## Bootstrap
 
@@ -24,9 +25,9 @@ iOS application is currently checked in.
 pre-commit hook. The hook gates changed server quality; `mise run check` remains
 the complete repository verification command.
 
-GitHub Actions runs the Linux checks and Protobuf compatibility gate. Generated
-Swift bindings remain committed for the future universal app targeting iOS,
-tvOS, and macOS, but are not a compiled application boundary.
+GitHub Actions runs the Linux checks and Protobuf compatibility gate. The
+committed universal Xcode project consumes the generated Swift bindings, and
+the native repository check tests and builds it for iOS, tvOS, and macOS.
 
 ## Container quick start
 

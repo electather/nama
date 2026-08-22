@@ -58,7 +58,7 @@ Create the smallest buildable monorepo skeleton and establish the two contracts 
 
 ### Exit criteria
 
-- TypeScript and Go consumers compile from the same committed schemas; Swift bindings are generated deterministically, and the future iOS application restores their native compilation check across iOS, tvOS, and macOS.
+- TypeScript, Go, and universal Swift consumers compile from the same committed schemas; the native application check covers iOS, tvOS, and macOS.
 - Buf rejects a deliberate breaking `v1` contract change.
 - Of provider identifiers, public messages may expose only Nama-managed provider type and instance IDs; remote provider resource references exist only in `plugin.v1`.
 

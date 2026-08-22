@@ -1,7 +1,8 @@
 # iOS application
 
-Status: the universal Apple application is accepted target architecture; no
-universal Apple application is currently checked in.
+Status: the universal Apple application and its first manual-connection tracer
+are implemented; LAN discovery, verified-endpoint persistence, pairing, and
+media behavior remain target work.
 
 ## Target application boundary
 
@@ -26,6 +27,16 @@ one universal application target. Its boundary is:
 - Create a feature or abstraction only when its behavior exists. Do not reserve
   empty packages or add a multi-engine factory before a second engine proves
   the shared interface.
+
+The checked-in baseline normalizes manual HTTP(S) endpoints, verifies them
+through one cancellable ten-second `SetupService.GetStatus` request at the
+generated-client networking edge, and presents ready, setup-required,
+Nama-unavailable, transport/TLS/timeout, and incompatible states without raw
+failure detail. iOS, iPadOS, and macOS use the shared native form presentation;
+tvOS uses a focus-specific scrolling presentation over the same feature state.
+The macOS target enables App Sandbox with outgoing network-client access only,
+and `check:ios` runs Swift Testing plus signing-disabled iOS, tvOS, and macOS
+builds.
 
 ## Connection boundary
 
@@ -169,6 +180,6 @@ Before product playback work depends on an engine:
    corresponding source, and relinking obligations before distribution.
 
 Simulator builds and source comments are evidence, not physical-device proof.
-Generated Swift bindings remain committed for the future client, but they do
-not prove that an iOS, tvOS, or macOS application compiles or runs while no
-universal app exists.
+Generated Swift bindings are consumed by the universal application, but
+generated code and generic builds do not prove physical-device runtime
+behavior.
