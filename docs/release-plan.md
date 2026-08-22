@@ -13,7 +13,7 @@ This roadmap turns Nama's architecture into the smallest sequence of releasable 
 - The production server target is Linux in Docker. Deployment is one Nama image containing the core and bundled plugin executables, plus PostgreSQL. macOS is both a server development target and a supported client platform.
 - Provider plugins are stateless, supervised subprocesses. They use ConnectRPC over Unix domain sockets and never access the database. The core owns configuration, secrets, cursors, retries, reconciliation, and all durable state.
 - Jellyfin is the first provider. Media bytes normally travel from Jellyfin directly to the Apple client; Nama remains the control plane.
-- The first client is one universal Swift/SwiftUI app rooted in `apps/ios`, targeting iOS 17+, tvOS 17+, and macOS 14+. One exact-pinned, security-reviewed playback engine is contained by a thin Nama-owned adapter with no engine types outside it.
+- The first client is one universal Swift/SwiftUI app rooted in `apps/ios`, targeting iOS 26+, tvOS 26+, and macOS 26+. One exact-pinned, security-reviewed playback engine is contained by a thin Nama-owned adapter with no engine types outside it.
 - Nama is not an ingress product. LAN/VPN and user-managed reverse proxies are supported; certificate issuance, tunnels, and port forwarding are not.
 - The core is canonical for user state. Synchronization is two-way, newest reliable activity wins, configured provider priority breaks ties or substitutes for missing timestamps, and a Nama-originated action wins before being propagated outward.
 

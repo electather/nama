@@ -74,6 +74,10 @@ _Avoid_: Client ID
 A client-created opaque identifier for one logical telemetry event across transport attempts.
 _Avoid_: Operation ID
 
+**Nama endpoint**:
+A canonical HTTP(S) base address through which an application reaches Nama. It is a transport address, not a deployment identity.
+_Avoid_: Server connection, server identity
+
 **Administrator**:
 The sole MVP person authorized to set up, configure, diagnose, and manage Nama.
 _Avoid_: Admin user, owner

@@ -118,6 +118,30 @@ Validation rejects unknown keys at every object level. It also enforces:
 
 TOML dates, arrays, tables, and other values fail where the schema expects a different type. `database.url` and `security.master_key` decode directly to Effect `Redacted` values. Never attach parser input, raw schema output, selected paths, or secret values to errors or log annotations. Restart remains the only way to apply configuration changes.
 
+## Target LAN advertisement
+
+The LAN advertiser is accepted target behavior and remains unimplemented. Its
+own prerequisite issue adds file-only `server.lan_discovery`, defaulting to
+`true`, without another environment override. Once the listener is accepting
+requests, an enabled server advertises `_nama._tcp` as instance `Nama`, with
+TXT key `url` equal to canonical `server.public_url` and an SRV port equal to
+that URL's effective port. Shutdown withdraws the service before closing the
+listener.
+
+The publisher uses one exact-pinned `@homebridge/ciao` dependency behind one
+concrete LAN-advertiser module. It advertises only on eligible non-loopback
+interfaces whose address family the configured listener accepts: the default
+IPv4 wildcard publishes only IPv4, while IPv6 or dual-stack records require a
+corresponding exercised listener. No per-interface or VPN-specific
+configuration enters this milestone.
+
+Advertisement failure is non-fatal because manual entry remains available and
+does not change HTTP readiness. Ciao's internal retry and direct dependency
+output are accepted MVP limitations. Nama adds no parallel publisher
+interface, alternate implementation, or speculative replacement path; a
+Nama-owned publisher replaces the concrete module only if production evidence
+justifies the maintenance.
+
 ## Startup and database ownership
 
 Startup is strictly ordered:
