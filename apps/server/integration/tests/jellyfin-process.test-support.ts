@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
+import type { SupervisedPlugin } from "../../src/plugin/model.ts";
 import type { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 
 const JELLYFIN_PLUGIN_PATH = join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts");
@@ -22,6 +23,12 @@ interface ControlledJellyfin {
   readonly baseUrl: string;
   readonly requests: ObservedRequest[];
   readonly server: Server;
+}
+interface JellyfinSupervisionOptions {
+  readonly apiKey?: string;
+  readonly preload?: string;
+  readonly providerInstanceId?: string;
+  readonly revision?: string;
 }
 type ControlledHandler = (
   request: IncomingMessage,
@@ -71,22 +78,37 @@ const controlledJellyfin = (handler: ControlledHandler) =>
     ({ server }) => Effect.promise(() => server[Symbol.asyncDispose]()),
   );
 
-const superviseJellyfin = (supervisor: PluginSupervisor["Service"], jellyfin: ControlledJellyfin) =>
-  supervisor.supervise(
+const superviseJellyfin = (
+  supervisor: PluginSupervisor["Service"],
+  jellyfin: ControlledJellyfin,
+  options: JellyfinSupervisionOptions = {},
+) => {
+  const pluginArguments = [JELLYFIN_PLUGIN_PATH];
+  if (options.preload !== undefined) {
+    pluginArguments.unshift("--import", options.preload);
+  }
+  return supervisor.supervise(
     {
-      arguments: [JELLYFIN_PLUGIN_PATH],
+      arguments: pluginArguments,
       executable: process.execPath,
       expectedProviderType: "jellyfin",
       stderrEvents: [],
     },
     {
       configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-      credentials: { api_key: API_KEY },
+      credentials: { api_key: options.apiKey ?? API_KEY },
       kind: "instance",
-      providerInstanceId: "provider-instance",
-      revision: "revision-1",
+      providerInstanceId: options.providerInstanceId ?? "provider-instance",
+      revision: options.revision ?? "revision-1",
     },
   );
+};
 
 export { API_KEY, USER_ID, controlledJellyfin, respondJson, respondRaw, superviseJellyfin };
-export type { ControlledHandler, ControlledJellyfin, ObservedRequest };
+export type {
+  ControlledHandler,
+  ControlledJellyfin,
+  JellyfinSupervisionOptions,
+  ObservedRequest,
+  SupervisedPlugin,
+};

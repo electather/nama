@@ -1,6 +1,7 @@
 import type { ServerResponse } from "node:http";
 
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
+import { Code } from "@connectrpc/connect";
 import { expect, it } from "@effect/vitest";
 import { PluginService, ProviderCapability } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 import {
@@ -15,8 +16,12 @@ import type {
 } from "@nama/api/nama/plugin/v1/watch_state_pb.js";
 import { Effect } from "effect";
 
-import type { SupervisedPlugin } from "../../src/plugin/model.ts";
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
+import {
+  acquireTemporaryPluginDirectory,
+  findPluginSocket,
+  unauthenticatedWatchStateCodes,
+} from "./jellyfin-authentication.test-support.ts";
 import {
   API_KEY,
   USER_ID,
@@ -25,7 +30,11 @@ import {
   respondRaw,
   superviseJellyfin,
 } from "./jellyfin-process.test-support.ts";
-import type { ControlledHandler, ControlledJellyfin } from "./jellyfin-process.test-support.ts";
+import type {
+  ControlledHandler,
+  ControlledJellyfin,
+  SupervisedPlugin,
+} from "./jellyfin-process.test-support.ts";
 
 const CALL_DEADLINE_MILLISECONDS = 2000;
 const CANCELLATION_DEADLINE_MILLISECONDS = 50;
@@ -34,6 +43,7 @@ const MILLISECONDS_PER_SECOND = 1000;
 const MOVIE_ID = "movie-identity";
 const EPISODE_ID = "episode-identity";
 const LAST_PLAYED_DATE = "2026-08-19T21:14:15.123Z";
+const OUT_OF_RANGE_PROVIDER_ACTIVITY = "+010000-01-01T00:00:00.000Z";
 const NOT_FOUND_ID = "missing-identity";
 const FORBIDDEN_ID = "forbidden-identity";
 const RETRYABLE_ID = "retryable-identity";
@@ -56,6 +66,15 @@ const DURATION_TICKS = 72_000_000_000;
 const MAXIMUM_MEDIA_RESPONSE_BYTES = 16_777_216;
 const SINGLE_RESULT_COUNT = 1;
 const REPEATED_REFERENCE_COUNT = 3;
+const CONCURRENCY_MEMBER_COUNT = 8;
+const MAXIMUM_CONCURRENT_READS = 4;
+const LAST_PATH_SEGMENT = -1;
+const INDEX_INCREMENT = 1;
+const MAXIMUM_ITEM_REFERENCES = 100;
+const MAXIMUM_ITEM_ID_LENGTH = 256;
+const EXCESS_INCREMENT = 1;
+const PROVIDER_DEFAULT_POSITION_TICKS = 0;
+const NO_PROVIDER_REQUESTS = 0;
 
 interface ProviderItemReferenceInput {
   readonly itemId: string;
@@ -64,6 +83,10 @@ interface ProviderItemReferenceInput {
 interface CallTimeBounds {
   readonly afterSeconds: bigint;
   readonly beforeSeconds: bigint;
+}
+interface ConcurrencyObservation {
+  active: number;
+  maximum: number;
 }
 
 const respondKnownWatchState = (url: string, response: ServerResponse): boolean => {
@@ -85,7 +108,7 @@ const respondKnownWatchState = (url: string, response: ServerResponse): boolean 
       Id: EPISODE_ID,
       Type: "Episode",
       UserData: {
-        LastPlayedDate: "not-a-date",
+        LastPlayedDate: OUT_OF_RANGE_PROVIDER_ACTIVITY,
         PlaybackPositionTicks: 0,
         Played: false,
       },
@@ -324,6 +347,90 @@ const repeatedTargetedWatchStateTest = () => {
   return Effect.scoped(program);
 };
 
+const targetedWatchStateBoundsTest = () => {
+  const program = Effect.gen(function* targetedWatchStateBoundsScenario() {
+    const jellyfin = yield* acquireControlledJellyfin;
+    const supervisor = yield* PluginSupervisor;
+    const plugin = yield* superviseJellyfin(supervisor, jellyfin);
+    const excessiveReferences = Array.from(
+      { length: MAXIMUM_ITEM_REFERENCES + EXCESS_INCREMENT },
+      (_unused, index) => ({ itemId: `excess-${index}` }),
+    );
+    for (const itemReferences of [
+      excessiveReferences,
+      [{ itemId: "x".repeat(MAXIMUM_ITEM_ID_LENGTH + EXCESS_INCREMENT) }],
+    ]) {
+      const failure = yield* callWatchStates(plugin, itemReferences).pipe(Effect.flip);
+      expect(failure).toMatchObject({
+        _tag: "PluginRpcError",
+        code: Code.InvalidArgument,
+      });
+    }
+    expect(jellyfin.requests).toHaveLength(NO_PROVIDER_REQUESTS);
+  }).pipe(Effect.provide(PluginSupervisor.layer()));
+  return Effect.scoped(program);
+};
+
+const boundedTargetedWatchStateTest = () => {
+  const observation: ConcurrencyObservation = { active: 0, maximum: 0 };
+  const handler: ControlledHandler = (_request, response, { url }) => {
+    const endpoint = new URL(url, "http://jellyfin.invalid");
+    const itemId = decodeURIComponent(endpoint.pathname.split("/").at(LAST_PATH_SEGMENT) ?? "");
+    observation.active += INDEX_INCREMENT;
+    observation.maximum = Math.max(observation.maximum, observation.active);
+    setImmediate(() => {
+      observation.active -= INDEX_INCREMENT;
+      respondJson(response, {
+        Id: itemId,
+        Type: "Movie",
+        UserData: { PlaybackPositionTicks: PROVIDER_DEFAULT_POSITION_TICKS, Played: false },
+      });
+    });
+  };
+  const program = Effect.gen(function* boundedTargetedWatchStateScenario() {
+    const jellyfin = yield* controlledJellyfin(handler);
+    const supervisor = yield* PluginSupervisor;
+    const plugin = yield* superviseJellyfin(supervisor, jellyfin);
+    const response = yield* callWatchStates(
+      plugin,
+      Array.from({ length: CONCURRENCY_MEMBER_COUNT }, (_unused, index) => ({
+        itemId: `bounded-${index}`,
+      })),
+    );
+    expect(response.results).toHaveLength(CONCURRENCY_MEMBER_COUNT);
+    expect(response.results.every(({ status }) => status === WatchStateReadStatus.FOUND)).toBe(
+      true,
+    );
+    expect(observation.maximum).toBeLessThanOrEqual(MAXIMUM_CONCURRENT_READS);
+    expect(jellyfin.requests).toHaveLength(CONCURRENCY_MEMBER_COUNT);
+    expect(
+      jellyfin.requests.every(
+        ({ authorization }) => authorization === `MediaBrowser Token="${API_KEY}"`,
+      ),
+    ).toBe(true);
+  }).pipe(Effect.provide(PluginSupervisor.layer()));
+  return Effect.scoped(program);
+};
+
+const watchStateAuthenticationTest = () =>
+  Effect.scoped(
+    Effect.gen(function* watchStateAuthenticationScenario() {
+      const temporaryDirectory = yield* acquireTemporaryPluginDirectory;
+      const jellyfin = yield* acquireControlledJellyfin;
+      const supervisedScenario = Effect.gen(function* supervisedAuthenticationScenario() {
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* superviseJellyfin(supervisor, jellyfin);
+        yield* plugin.call(PluginService.method.getInfo, {}, CALL_DEADLINE_MILLISECONDS);
+        const socketPath = yield* findPluginSocket(temporaryDirectory);
+        const codes = yield* unauthenticatedWatchStateCodes(socketPath);
+        expect(codes).toEqual([Code.Unauthenticated, Code.Unauthenticated, Code.Unauthenticated]);
+        expect(jellyfin.requests).toHaveLength(NO_PROVIDER_REQUESTS);
+      });
+      const supervisorLayer = PluginSupervisor.layer({ temporaryDirectory });
+      yield* supervisedScenario.pipe(Effect.provide(supervisorLayer), Effect.scoped);
+    }),
+  );
+
 const cancelledTargetedWatchStateTest = () => {
   const program = Effect.gen(function* cancelledTargetedWatchStateScenario() {
     const jellyfin = yield* acquireControlledJellyfin;
@@ -360,6 +467,21 @@ it.live(
 it.live(
   "returns an ordered normalized result for every repeated reference",
   repeatedTargetedWatchStateTest,
+  TEST_TIMEOUT_MILLISECONDS,
+);
+it.live(
+  "rejects targeted request bounds before provider reads",
+  targetedWatchStateBoundsTest,
+  TEST_TIMEOUT_MILLISECONDS,
+);
+it.live(
+  "bounds concurrent targeted provider reads through the generated RPC",
+  boundedTargetedWatchStateTest,
+  TEST_TIMEOUT_MILLISECONDS,
+);
+it.live(
+  "authenticates every watch-state method before provider dispatch",
+  watchStateAuthenticationTest,
   TEST_TIMEOUT_MILLISECONDS,
 );
 it.live(

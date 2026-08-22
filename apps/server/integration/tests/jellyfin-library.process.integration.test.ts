@@ -24,6 +24,9 @@ import { TestClock } from "effect/testing";
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 
 const JELLYFIN_PLUGIN_PATH = join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts");
+const EXPIRED_CLOCK_PRELOAD_URL = `data:text/javascript,${encodeURIComponent(
+  "Date.now = () => 946684800000;",
+)}`;
 const CALL_DEADLINE_MILLISECONDS = 2000;
 const TEST_TIMEOUT_MILLISECONDS = 10_000;
 const EPHEMERAL_PORT = 0;
@@ -37,6 +40,8 @@ const CATALOG_PAGE_SIZE = 2;
 const IDLE_RETIREMENT_MILLISECONDS = 30_000;
 const SINGLE_ITEM_COUNT = 1;
 const FIRST_CODE_UNIT_LENGTH = 1;
+const CATALOG_CONTINUATION_PROVIDER_REQUEST_COUNT = 2;
+const NO_PROVIDER_REQUESTS = 0;
 const API_KEY = "jellyfin-api-key-sentinel";
 const USER_ID = "user-identity";
 const MOVIE_ID = "movie-identity";
@@ -61,13 +66,20 @@ const AUTHORIZED_URL = `/Videos/${MOVIE_ID}/stream?api_key=${API_KEY}`;
 const MISSING_MOVIE_ID = "missing-movie";
 const FORBIDDEN_MOVIE_ID = "forbidden-movie";
 const UNAVAILABLE_MOVIE_ID = "unavailable-movie";
+const STREAMING_UNAVAILABLE_MOVIE_ID = "streaming-unavailable-movie";
 const OVERSIZED_MOVIE_ID = "oversized-movie";
 const MALFORMED_JSON_MOVIE_ID = "malformed-json-movie";
 const MALFORMED_MOVIE_ID = "malformed-movie";
 const CANCELED_MOVIE_ID = "canceled-movie";
 const SOURCELESS_MOVIE_ID = "sourceless-movie";
+const OFFLINE_MOVIE_ID = "offline-movie";
+const OFFLINE_SOURCE_ID = "offline-source";
+const UNSUPPORTED_SOURCE_MOVIE_ID = "unsupported-source-movie";
+const UNSUPPORTED_SOURCE_ID = "unsupported-source";
 const UNKNOWN_AVAILABILITY_MOVIE_ID = "unknown-availability-movie";
+const MISSING_AVAILABILITY_MOVIE_ID = "missing-availability-movie";
 const MALFORMED_DATE_MOVIE_ID = "malformed-date-movie";
+const PROVIDER_PREFIX_ESCAPE_ID = "..";
 const PROVIDER_ERROR_SENTINEL = "private-provider-error-sentinel";
 const OPAQUE_ARTWORK_REFERENCE = /^jellyfin\/artwork\/v1:[\w-]+$/u;
 const OVERSIZED_RESPONSE_BODY = JSON.stringify({
@@ -95,6 +107,8 @@ interface ControlledJellyfin {
   readonly catalog: { mode: CatalogResponseMode };
   readonly baseUrl: string;
   readonly cancellationObserved: Promise<void>;
+  readonly failureBodyCancellationObserved: Promise<void>;
+  readonly failureBodyObserved: Promise<void>;
   readonly hangingRequestObserved: Promise<void>;
   readonly requests: ObservedRequest[];
   readonly server: Server;
@@ -374,12 +388,55 @@ const SOURCELESS_MOVIE_RESPONSE = {
   PlayAccess: "Full",
   Type: "Movie",
 };
+const OFFLINE_MOVIE_RESPONSE = {
+  Id: OFFLINE_MOVIE_ID,
+  LocationType: "Offline",
+  MediaSources: [
+    {
+      Container: "mkv",
+      Id: OFFLINE_SOURCE_ID,
+      MediaStreams: [],
+      Path: PRIVATE_PATH,
+      RequiredHttpHeaders: { Authorization: `MediaBrowser Token="${API_KEY}"` },
+      TranscodingUrl: AUTHORIZED_URL,
+      Type: "Default",
+    },
+  ],
+  Name: "Offline movie",
+  Path: PRIVATE_PATH,
+  PlayAccess: "Full",
+  Type: "Movie",
+};
+const UNSUPPORTED_SOURCE_MOVIE_RESPONSE = {
+  Id: UNSUPPORTED_SOURCE_MOVIE_ID,
+  LocationType: "Virtual",
+  MediaSources: [
+    {
+      Container: "mkv",
+      Id: UNSUPPORTED_SOURCE_ID,
+      MediaStreams: [],
+      Path: PRIVATE_PATH,
+      RequiredHttpHeaders: { Authorization: `MediaBrowser Token="${API_KEY}"` },
+      TranscodingUrl: AUTHORIZED_URL,
+      Type: "Default",
+    },
+  ],
+  Name: "Unsupported source movie",
+  Path: PRIVATE_PATH,
+  PlayAccess: "Full",
+  Type: "Movie",
+};
 const MALFORMED_MOVIE_RESPONSE = {
   Id: MALFORMED_MOVIE_ID,
   MediaSources: [],
   Path: PRIVATE_PATH,
   PlayAccess: "Full",
   Type: "Movie",
+};
+const MISSING_AVAILABILITY_MOVIE_RESPONSE = {
+  ...MOVIE_RESPONSE,
+  Id: MISSING_AVAILABILITY_MOVIE_ID,
+  LocationType: undefined,
 };
 const UNKNOWN_AVAILABILITY_MOVIE_RESPONSE = {
   ...MOVIE_RESPONSE,
@@ -430,6 +487,11 @@ const TARGETED_ITEM_RESPONSE_BY_URL: Readonly<Record<string, unknown>> = {
   [`/jellyfin/Items/${MALFORMED_EPISODE_ID}?userId=${USER_ID}`]: MALFORMED_EPISODE_RESPONSE,
   [`/jellyfin/Items/${ZERO_EPISODE_ID}?userId=${USER_ID}`]: ZERO_EPISODE_RESPONSE,
   [`/jellyfin/Items/${SOURCELESS_MOVIE_ID}?userId=${USER_ID}`]: SOURCELESS_MOVIE_RESPONSE,
+  [`/jellyfin/Items/${OFFLINE_MOVIE_ID}?userId=${USER_ID}`]: OFFLINE_MOVIE_RESPONSE,
+  [`/jellyfin/Items/${UNSUPPORTED_SOURCE_MOVIE_ID}?userId=${USER_ID}`]:
+    UNSUPPORTED_SOURCE_MOVIE_RESPONSE,
+  [`/jellyfin/Items/${MISSING_AVAILABILITY_MOVIE_ID}?userId=${USER_ID}`]:
+    MISSING_AVAILABILITY_MOVIE_RESPONSE,
   [`/jellyfin/Items/${UNKNOWN_AVAILABILITY_MOVIE_ID}?userId=${USER_ID}`]:
     UNKNOWN_AVAILABILITY_MOVIE_RESPONSE,
   [`/jellyfin/Items/${MALFORMED_DATE_MOVIE_ID}?userId=${USER_ID}`]: MALFORMED_DATE_MOVIE_RESPONSE,
@@ -455,6 +517,8 @@ const acquireControlledJellyfin = Effect.acquireRelease(
       const catalog: { mode: CatalogResponseMode } = { mode: "normal" };
       const hangingRequest = Promise.withResolvers<void>();
       const cancellation = Promise.withResolvers<void>();
+      const failureBodyObserved = Promise.withResolvers<void>();
+      const failureBodyCancellation = Promise.withResolvers<void>();
       const server = createServer((request: IncomingMessage, response: ServerResponse) => {
         requests.push({ authorization: request.headers.authorization, url: request.url ?? "" });
         const endpoint = new URL(request.url ?? "", "http://jellyfin.invalid");
@@ -532,6 +596,14 @@ const acquireControlledJellyfin = Effect.acquireRelease(
           );
           return;
         }
+        if (request.url === `/jellyfin/Items/${STREAMING_UNAVAILABLE_MOVIE_ID}?userId=${USER_ID}`) {
+          response.statusCode = HTTP_UNAVAILABLE;
+          response.setHeader("content-type", "application/json");
+          response.write(PROVIDER_ERROR_SENTINEL);
+          failureBodyObserved.resolve();
+          response.once("close", failureBodyCancellation.resolve);
+          return;
+        }
         if (request.url === `/jellyfin/Items/${UNAVAILABLE_MOVIE_ID}?userId=${USER_ID}`) {
           respondRaw(
             response,
@@ -576,6 +648,8 @@ const acquireControlledJellyfin = Effect.acquireRelease(
         baseUrl: `http://127.0.0.1:${address.port}/jellyfin`,
         cancellationObserved: cancellation.promise,
         catalog,
+        failureBodyCancellationObserved: failureBodyCancellation.promise,
+        failureBodyObserved: failureBodyObserved.promise,
         hangingRequestObserved: hangingRequest.promise,
         requests,
         server,
@@ -605,6 +679,32 @@ const acquireConfiguredJellyfinPlugin = Effect.gen(function* acquireConfiguredJe
   );
   return { jellyfin, plugin, supervisor };
 });
+
+const superviseConfiguredJellyfin = (
+  supervisor: PluginSupervisor["Service"],
+  jellyfin: ControlledJellyfin,
+  options: Readonly<{
+    apiKey?: string;
+    arguments?: readonly string[];
+    providerInstanceId?: string;
+    revision?: string;
+  }> = {},
+) =>
+  supervisor.supervise(
+    {
+      arguments: [...(options.arguments ?? [JELLYFIN_PLUGIN_PATH])],
+      executable: process.execPath,
+      expectedProviderType: "jellyfin",
+      stderrEvents: [],
+    },
+    {
+      configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
+      credentials: { api_key: options.apiKey ?? API_KEY },
+      kind: "instance",
+      providerInstanceId: options.providerInstanceId ?? "provider-instance",
+      revision: options.revision ?? "revision-1",
+    },
+  );
 
 const assertOpaqueArtworkReferences = (item: ProviderMediaItem): void => {
   for (const artwork of item.artwork) {
@@ -1085,7 +1185,7 @@ it.effect("resumes a complete normalized catalog scan after plugin replacement",
 );
 
 it.live(
-  "defaults catalog pages to 50, accepts 100, and rejects larger requests",
+  "applies catalog page bounds and rejects an empty continuation before provider reads",
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinCatalogPageBoundsTest() {
@@ -1120,6 +1220,17 @@ it.live(
           _tag: "PluginRpcError",
           code: Code.InvalidArgument,
         });
+        const emptyContinuationFailure = yield* plugin
+          .call(
+            LibraryService.method.listItems,
+            { scan: { case: "continuation", value: "" } },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(emptyContinuationFailure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.InvalidArgument,
+        });
         expect(
           jellyfin.requests.map(({ url }) =>
             new URL(url, "http://jellyfin.invalid").searchParams.get("limit"),
@@ -1131,11 +1242,50 @@ it.live(
 );
 
 it.live(
-  "rejects tampered and revision-mismatched catalog continuations before provider reads",
+  "rejects every invalid catalog continuation binding before provider reads",
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinCatalogContinuationBindingTest() {
         const { jellyfin, plugin, supervisor } = yield* acquireConfiguredJellyfinPlugin;
+        const expectRejectedLocally = (candidate: typeof plugin, continuation: string) =>
+          Effect.gen(function* rejectedCatalogContinuationScenario() {
+            const requestCount = jellyfin.requests.length;
+            const failure = yield* candidate
+              .call(
+                LibraryService.method.listItems,
+                { scan: { case: "continuation", value: continuation } },
+                CALL_DEADLINE_MILLISECONDS,
+              )
+              .pipe(Effect.flip);
+            expect(failure).toMatchObject({
+              _tag: "PluginRpcError",
+              code: Code.InvalidArgument,
+            });
+            expect(jellyfin.requests).toHaveLength(requestCount);
+          });
+        const expiredToken = yield* Effect.scoped(
+          Effect.gen(function* expiredCatalogTokenScenario() {
+            const expiredClockSupervisor = yield* PluginSupervisor;
+            const expiredClockPlugin = yield* superviseConfiguredJellyfin(
+              expiredClockSupervisor,
+              jellyfin,
+              {
+                arguments: ["--import", EXPIRED_CLOCK_PRELOAD_URL, JELLYFIN_PLUGIN_PATH],
+              },
+            );
+            const first = yield* expiredClockPlugin.call(
+              LibraryService.method.listItems,
+              { scan: { case: "begin", value: { pageSize: CATALOG_PAGE_SIZE } } },
+              CALL_DEADLINE_MILLISECONDS,
+            );
+            if (first.nextPageToken === undefined) {
+              throw new Error("Expired Jellyfin catalog continuation was absent");
+            }
+            return first.nextPageToken;
+          }).pipe(Effect.provide(PluginSupervisor.layer())),
+        );
+        yield* expectRejectedLocally(plugin, expiredToken);
+
         const first = yield* plugin.call(
           LibraryService.method.listItems,
           { scan: { case: "begin", value: { pageSize: CATALOG_PAGE_SIZE } } },
@@ -1149,50 +1299,35 @@ it.live(
         if (token.startsWith(replacementCharacter)) {
           replacementCharacter = "B";
         }
-        const tamperedFailure = yield* plugin
-          .call(
-            LibraryService.method.listItems,
-            {
-              scan: {
-                case: "continuation",
-                value: `${replacementCharacter}${token.slice(FIRST_CODE_UNIT_LENGTH)}`,
-              },
-            },
-            CALL_DEADLINE_MILLISECONDS,
-          )
-          .pipe(Effect.flip);
-        expect(tamperedFailure).toMatchObject({
-          _tag: "PluginRpcError",
-          code: Code.InvalidArgument,
-        });
-
-        const replacement = yield* supervisor.supervise(
-          {
-            arguments: [JELLYFIN_PLUGIN_PATH],
-            executable: process.execPath,
-            expectedProviderType: "jellyfin",
-            stderrEvents: [],
-          },
-          {
-            configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
-            credentials: { api_key: API_KEY },
-            kind: "instance",
-            providerInstanceId: "provider-instance",
-            revision: "revision-2",
-          },
+        yield* expectRejectedLocally(
+          plugin,
+          `${replacementCharacter}${token.slice(FIRST_CODE_UNIT_LENGTH)}`,
         );
-        const revisionFailure = yield* replacement
-          .call(
-            LibraryService.method.listItems,
-            { scan: { case: "continuation", value: token } },
-            CALL_DEADLINE_MILLISECONDS,
-          )
-          .pipe(Effect.flip);
-        expect(revisionFailure).toMatchObject({
-          _tag: "PluginRpcError",
-          code: Code.InvalidArgument,
+
+        const providerInstanceReplacement = yield* superviseConfiguredJellyfin(
+          supervisor,
+          jellyfin,
+          { providerInstanceId: "different-provider-instance" },
+        );
+        yield* expectRejectedLocally(providerInstanceReplacement, token);
+
+        const revisionReplacement = yield* superviseConfiguredJellyfin(supervisor, jellyfin, {
+          revision: "revision-2",
         });
-        expect(jellyfin.requests).toHaveLength(SINGLE_ITEM_COUNT);
+        yield* expectRejectedLocally(revisionReplacement, token);
+
+        yield* Effect.scoped(
+          Effect.gen(function* credentialReplacementScenario() {
+            const credentialReplacementSupervisor = yield* PluginSupervisor;
+            const credentialReplacement = yield* superviseConfiguredJellyfin(
+              credentialReplacementSupervisor,
+              jellyfin,
+              { apiKey: "replacement-api-key" },
+            );
+            yield* expectRejectedLocally(credentialReplacement, token);
+          }).pipe(Effect.provide(PluginSupervisor.layer())),
+        );
+        expect(jellyfin.requests).toHaveLength(CATALOG_CONTINUATION_PROVIDER_REQUEST_COUNT);
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
   TEST_TIMEOUT_MILLISECONDS,
@@ -1295,6 +1430,90 @@ it.live(
         expect(serialized).not.toContain(API_KEY);
         expect(serialized).not.toContain("Trakt");
         expect(serialized).not.toContain("182156");
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+it.live(
+  "maps Jellyfin offline evidence to a provider-unavailable source",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinOfflineSourceTest() {
+        const { plugin } = yield* acquireConfiguredJellyfinPlugin;
+        const response = yield* plugin.call(
+          LibraryService.method.getItem,
+          { itemReference: { itemId: OFFLINE_MOVIE_ID } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(response.item?.sources).toHaveLength(SINGLE_ITEM_COUNT);
+        expect(response.item?.sources).toMatchObject([
+          {
+            availability: SourceAvailability.PROVIDER_UNAVAILABLE,
+            parts: [
+              {
+                partReference: {
+                  partId: OFFLINE_SOURCE_ID,
+                  sourceReference: {
+                    itemReference: { itemId: OFFLINE_MOVIE_ID },
+                    sourceId: OFFLINE_SOURCE_ID,
+                  },
+                },
+                tracks: [],
+              },
+            ],
+            sourceReference: {
+              itemReference: { itemId: OFFLINE_MOVIE_ID },
+              sourceId: OFFLINE_SOURCE_ID,
+            },
+          },
+        ]);
+        const serialized = JSON.stringify(response);
+        expect(serialized).not.toContain(PRIVATE_PATH);
+        expect(serialized).not.toContain(AUTHORIZED_URL);
+        expect(serialized).not.toContain(API_KEY);
+        expect(serialized).not.toContain("Authorization");
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+it.live(
+  "maps a source without a supported delivery mode to unsupported",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinUnsupportedSourceTest() {
+        const { plugin } = yield* acquireConfiguredJellyfinPlugin;
+        const response = yield* plugin.call(
+          LibraryService.method.getItem,
+          { itemReference: { itemId: UNSUPPORTED_SOURCE_MOVIE_ID } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(response.item?.sources).toHaveLength(SINGLE_ITEM_COUNT);
+        expect(response.item?.sources).toMatchObject([
+          {
+            availability: SourceAvailability.UNSUPPORTED,
+            parts: [
+              {
+                partReference: {
+                  partId: UNSUPPORTED_SOURCE_ID,
+                  sourceReference: {
+                    itemReference: { itemId: UNSUPPORTED_SOURCE_MOVIE_ID },
+                    sourceId: UNSUPPORTED_SOURCE_ID,
+                  },
+                },
+                tracks: [],
+              },
+            ],
+            sourceReference: {
+              itemReference: { itemId: UNSUPPORTED_SOURCE_MOVIE_ID },
+              sourceId: UNSUPPORTED_SOURCE_ID,
+            },
+          },
+        ]);
+        const serialized = JSON.stringify(response);
+        expect(serialized).not.toContain(PRIVATE_PATH);
+        expect(serialized).not.toContain(AUTHORIZED_URL);
+        expect(serialized).not.toContain(API_KEY);
+        expect(serialized).not.toContain("Authorization");
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
   TEST_TIMEOUT_MILLISECONDS,
@@ -1444,6 +1663,53 @@ it.live(
 );
 
 it.live(
+  "rejects an opaque reference that would escape the configured provider prefix",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinProviderPrefixConfinementTest() {
+        const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
+        const failure = yield* plugin
+          .call(
+            LibraryService.method.getItem,
+            { itemReference: { itemId: PROVIDER_PREFIX_ESCAPE_ID } },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(failure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.Internal,
+        });
+        expect(jellyfin.requests).toHaveLength(NO_PROVIDER_REQUESTS);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+
+it.live(
+  "cancels a non-success provider response body through the library RPC",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinFailureBodyCancellationTest() {
+        const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
+        const failure = yield* plugin
+          .call(
+            LibraryService.method.getItem,
+            { itemReference: { itemId: STREAMING_UNAVAILABLE_MOVIE_ID } },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(failure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.Unavailable,
+        });
+        yield* Effect.promise(() => jellyfin.failureBodyObserved);
+        yield* Effect.promise(() => jellyfin.failureBodyCancellationObserved);
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
+);
+
+it.live(
   "returns safe outcomes for unsuccessful targeted item reads",
   () =>
     Effect.scoped(
@@ -1456,6 +1722,7 @@ it.live(
           [OVERSIZED_MOVIE_ID, Code.Internal],
           [MALFORMED_JSON_MOVIE_ID, Code.Internal],
           [MALFORMED_MOVIE_ID, Code.Internal],
+          [MISSING_AVAILABILITY_MOVIE_ID, Code.Internal],
           [UNKNOWN_AVAILABILITY_MOVIE_ID, Code.Internal],
           [MALFORMED_DATE_MOVIE_ID, Code.Internal],
           [SPECIALS_SEASON_ID, Code.Unimplemented],
