@@ -180,6 +180,7 @@ if (
   postgres.restart !== "unless-stopped" ||
   postgres.environment?.POSTGRES_PASSWORD !== undefined ||
   postgres.environment?.POSTGRES_PASSWORD_FILE !== "/run/secrets/postgres_password" ||
+  !postgres.healthcheck?.test?.some((entry) => entry.includes("--host 127.0.0.1")) ||
   !postgres.secrets?.some((entry) => entry.source === "postgres_password")
 ) process.exit(1);
 const developmentPostgresPort = development.services?.postgres?.ports?.[0];

@@ -10,7 +10,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches/ ./patches/
 COPY apps/server/package.json apps/server/.npmignore ./apps/server/
 COPY plugins/jellyfin/package.json plugins/jellyfin/.npmignore ./plugins/jellyfin/
-COPY gen/ts/package.json gen/ts/.npmignore ./gen/ts/
+COPY gen/ts/package.json ./gen/ts/
 
 RUN corepack enable && pnpm install --prod --frozen-lockfile --ignore-scripts
 

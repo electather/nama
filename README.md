@@ -68,6 +68,7 @@ Build and start the canonical two-service model:
 ```bash
 docker compose up --build --detach --wait
 curl --fail http://127.0.0.1:8080/health/ready
+mkdir -p bin
 go build -o bin/nama ./apps/cli/cmd/nama
 bin/nama profile set local --server http://127.0.0.1:8080
 bin/nama setup --profile local --display-name "Nama Administrator" --email you@example.com
