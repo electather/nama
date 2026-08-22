@@ -52,6 +52,34 @@ struct ConnectionFeatureTests {
     #expect(feature.state == .editing(showsValidationError: false))
   }
 
+  @Test("leaving the flow cancels an active request")
+  func leavingFlowCancelsRequest() async throws {
+    let verifier = CancellationVerifier()
+    let feature = ConnectionFeature(verifier: verifier)
+    feature.address = "https://nama.example.com"
+    feature.submit()
+    await eventually { await verifier.callCount == 1 }
+
+    feature.flowDidLeave()
+    await eventually { await verifier.cancellationCount == 1 }
+
+    #expect(feature.state == .editing(showsValidationError: false))
+  }
+
+  @Test("leaving the flow preserves a completed status")
+  func leavingFlowPreservesTerminalState() async throws {
+    let verifier = ImmediateVerifier(result: .ready)
+    let feature = ConnectionFeature(verifier: verifier)
+    let endpoint = try NamaEndpoint("https://nama.example.com")
+    feature.address = endpoint.absoluteString
+    feature.submit()
+    await eventually { feature.state == .ready(endpoint) }
+
+    feature.flowDidLeave()
+
+    #expect(feature.state == .ready(endpoint))
+  }
+
   @Test("submitting another endpoint replaces the active request")
   func submittingAgainCancelsRequest() async throws {
     let verifier = CancellationVerifier()

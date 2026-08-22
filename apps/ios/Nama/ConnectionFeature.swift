@@ -64,16 +64,25 @@ final class ConnectionFeature {
   }
 
   func addressDidChange() {
-    cancelActiveAttempt()
-    state = .editing(showsValidationError: false)
+    returnToEditing()
   }
 
   func cancel() {
-    cancelActiveAttempt()
-    state = .editing(showsValidationError: false)
+    returnToEditing()
+  }
+
+  func flowDidLeave() {
+    guard case .verifying = state else {
+      return
+    }
+    returnToEditing()
   }
 
   func changeEndpoint() {
+    returnToEditing()
+  }
+
+  private func returnToEditing() {
     cancelActiveAttempt()
     state = .editing(showsValidationError: false)
   }

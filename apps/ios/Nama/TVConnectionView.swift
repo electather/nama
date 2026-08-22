@@ -14,9 +14,6 @@
         }
       }
       .defaultFocus($focusedControl, preferredFocus)
-      .onDisappear {
-        feature.cancel()
-      }
     }
 
     @ViewBuilder
@@ -112,7 +109,7 @@
         .buttonStyle(.borderedProminent)
         .focused($focusedControl, equals: .retry)
       case .changeEndpoint:
-        Button("Change Server") {
+        Button("Change Endpoint") {
           feature.changeEndpoint()
         }
         .focused($focusedControl, equals: .changeEndpoint)

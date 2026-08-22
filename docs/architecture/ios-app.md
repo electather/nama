@@ -34,6 +34,10 @@ generated-client networking edge, and presents ready, setup-required,
 Nama-unavailable, transport/TLS/timeout, and incompatible states without raw
 failure detail. iOS, iPadOS, and macOS use the shared native form presentation;
 tvOS uses a focus-specific scrolling presentation over the same feature state.
+Each window owns an independent connection feature. Leaving the foreground or
+closing the surface cancels only an active verification and preserves terminal
+state. Only local task cancellation is silent; a remote Connect `canceled`
+response is a safe cannot-connect failure.
 The macOS target enables App Sandbox with outgoing network-client access only,
 and `check:ios` runs Swift Testing plus signing-disabled iOS, tvOS, and macOS
 builds.

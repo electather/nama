@@ -35,7 +35,7 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
     let client = Nama_Api_V1_SetupServiceClient(client: protocolClient)
     let response = await client.getStatus(request: Nama_Api_V1_GetStatusRequest())
 
-    if Task.isCancelled || response.code == .canceled {
+    if Task.isCancelled {
       return .cancelled
     }
     switch response.result {
@@ -48,7 +48,7 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
 
   private static func map(_ error: ConnectError) -> ConnectionVerificationResult {
     if error.code == .canceled {
-      return .cancelled
+      return .failure(.cannotConnect)
     }
     if error.code == .deadlineExceeded {
       return .failure(.cannotConnect)

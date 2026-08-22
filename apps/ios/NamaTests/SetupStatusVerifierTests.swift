@@ -54,6 +54,17 @@ struct SetupStatusVerifierTests {
     #expect(result == expected)
   }
 
+  @Test("maps a remote cancellation to a visible connection failure")
+  func remoteCancellation() async throws {
+    StubURLProtocol.configure(
+      .response(status: 499, body: #"{"code":"canceled","message":"private detail"}"#)
+    )
+
+    let result = await makeVerifier().verify(try NamaEndpoint("https://nama.example.com"))
+
+    #expect(result == .failure(.cannotConnect))
+  }
+
   @Test(
     "maps transport, TLS, and timeout failures without exposing details",
     arguments: [

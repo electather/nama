@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct NamaApp: App {
-  @State private var connection: ConnectionFeature
+  private let clientVersion: String
 
   init() {
     guard
@@ -12,16 +12,28 @@ struct NamaApp: App {
     else {
       preconditionFailure("CFBundleShortVersionString must be configured")
     }
-    _connection = State(
-      initialValue: ConnectionFeature(
-        verifier: NamaSetupStatusVerifier(clientVersion: version)
-      )
-    )
+    clientVersion = version
   }
 
   var body: some Scene {
     WindowGroup {
-      ConnectionRootView(feature: connection)
+      ConnectionWindow(clientVersion: clientVersion)
     }
+  }
+}
+
+private struct ConnectionWindow: View {
+  @State private var connection: ConnectionFeature
+
+  init(clientVersion: String) {
+    _connection = State(
+      initialValue: ConnectionFeature(
+        verifier: NamaSetupStatusVerifier(clientVersion: clientVersion)
+      )
+    )
+  }
+
+  var body: some View {
+    ConnectionRootView(feature: connection)
   }
 }

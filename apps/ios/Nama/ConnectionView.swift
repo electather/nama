@@ -1,9 +1,23 @@
 import SwiftUI
 
 struct ConnectionRootView: View {
+  @Environment(\.scenePhase) private var scenePhase
   let feature: ConnectionFeature
 
   var body: some View {
+    content
+      .onChange(of: scenePhase) { _, phase in
+        if phase != .active {
+          feature.flowDidLeave()
+        }
+      }
+      .onDisappear {
+        feature.flowDidLeave()
+      }
+  }
+
+  @ViewBuilder
+  private var content: some View {
     #if os(tvOS)
       TVConnectionView(feature: feature)
     #else
@@ -21,9 +35,6 @@ struct ConnectionRootView: View {
         content
           .navigationTitle(navigationTitle)
       }
-      .onDisappear {
-        feature.cancel()
-      }
     }
 
     private var navigationTitle: LocalizedStringResource {
@@ -31,7 +42,7 @@ struct ConnectionRootView: View {
       case .editing, .verifying:
         "Connect to Nama"
       case .ready, .setupRequired, .failed:
-        "Nama Server"
+        "Nama Endpoint"
       }
     }
 
@@ -208,7 +219,7 @@ struct ConnectionRootView: View {
         }
         .buttonStyle(.borderedProminent)
       case .changeEndpoint:
-        Button("Change Server") {
+        Button("Change Endpoint") {
           feature.changeEndpoint()
         }
       }

@@ -5,7 +5,7 @@
       "comment" : "Button that cancels the active endpoint verification request.",
       "extractionState" : "manual"
     },
-    "Change Server" : {
+    "Change Endpoint" : {
       "comment" : "Button that returns to manual Nama endpoint entry.",
       "extractionState" : "manual"
     },
@@ -45,7 +45,7 @@
       "comment" : "Safe message for an availability failure returned by Nama.",
       "extractionState" : "manual"
     },
-    "Nama Server" : {
+    "Nama Endpoint" : {
       "comment" : "Navigation title for the connection and terminal status surfaces.",
       "extractionState" : "manual"
     },

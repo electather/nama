@@ -8,6 +8,17 @@ indent_style = space
 indent_size = 2
 trim_trailing_whitespace = true
 
+[*.entitlements]
+indent_style = tab
+indent_size = tab
+
+[*.pbxproj]
+indent_style = tab
+indent_size = tab
+
+[*.xcscheme]
+indent_size = 3
+
 [*.go]
 indent_style = tab
 
