@@ -69,7 +69,7 @@ const configuration = Object.freeze({
   security: Object.freeze({
     masterKey: Redacted.make(`base64:${MASTER_KEY_BASE64}`),
   }),
-  server: Object.freeze({ bind: "127.0.0.1:8080", publicUrl: PUBLIC_URL }),
+  server: Object.freeze({ bind: "127.0.0.1:8080", lanDiscovery: false, publicUrl: PUBLIC_URL }),
 }) satisfies ConfigService;
 type FailureTag =
   | "AuthenticationStoreUnavailable"

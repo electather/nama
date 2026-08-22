@@ -197,7 +197,11 @@ const makeProductionSetupLayers = ({
     database: Object.freeze({ maxConnections: 3, url: Redacted.make(databaseUrl) }),
     logging: Object.freeze({ level: "info" as const }),
     security: Object.freeze({ masterKey: Redacted.make(masterKey) }),
-    server: Object.freeze({ bind: SERVER_BIND_ADDRESS, publicUrl: SERVER_PUBLIC_URL }),
+    server: Object.freeze({
+      bind: SERVER_BIND_ADDRESS,
+      lanDiscovery: false,
+      publicUrl: SERVER_PUBLIC_URL,
+    }),
   });
   const configurationLayer = Layer.succeed(Config, configuration);
   const databaseLayer = Database.layer(migrationsFolder).pipe(Layer.provide(configurationLayer));

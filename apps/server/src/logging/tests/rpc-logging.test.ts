@@ -18,13 +18,21 @@ const infoConfig = Config.of({
   database: Object.freeze({ maxConnections: 1, url: Redacted.make("postgres://secret") }),
   logging: Object.freeze({ level: "info" as const }),
   security: Object.freeze({ masterKey: Redacted.make("master-secret") }),
-  server: Object.freeze({ bind: "127.0.0.1:8080", publicUrl: "http://127.0.0.1:8080/" }),
+  server: Object.freeze({
+    bind: "127.0.0.1:8080",
+    lanDiscovery: false,
+    publicUrl: "http://127.0.0.1:8080/",
+  }),
 });
 const warnConfig = Config.of({
   database: Object.freeze({ maxConnections: 1, url: Redacted.make("postgres://secret") }),
   logging: Object.freeze({ level: "warn" as const }),
   security: Object.freeze({ masterKey: Redacted.make("master-secret") }),
-  server: Object.freeze({ bind: "127.0.0.1:8080", publicUrl: "http://127.0.0.1:8080/" }),
+  server: Object.freeze({
+    bind: "127.0.0.1:8080",
+    lanDiscovery: false,
+    publicUrl: "http://127.0.0.1:8080/",
+  }),
 });
 
 const SUCCESSFUL_COMPLETION: RpcCompletionRecord = Object.freeze({

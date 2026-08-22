@@ -8,6 +8,7 @@ import { RuntimeControl } from "../lifecycle/runtime-control.ts";
 import { makeConnectRequestListener } from "./connect-listener.ts";
 import { makeHealthStatus } from "./health.ts";
 import type { HealthStatusEffect } from "./health.ts";
+import { runLanAdvertisement } from "./lan-advertiser.ts";
 import { closeListener, openListener, sendEmpty } from "./listener.ts";
 import type { ListenerShutdown } from "./listener.ts";
 import { makeRequestRuntime } from "./request-runtime.ts";
@@ -18,6 +19,7 @@ interface AcceptingState {
 }
 
 interface HttpServerService {
+  readonly advertiseLan: Effect.Effect<void>;
   readonly listening: true;
 }
 
@@ -66,6 +68,7 @@ const makeServer = (
     const config = yield* Config;
     const database = yield* Database;
     const runtimeControl = yield* RuntimeControl;
+    const scope = yield* Effect.scope;
     const requestRuntime = yield* makeRequestRuntime(database);
     const accepting: AcceptingState = { value: true };
     const healthStatus = makeHealthStatus(database.checkReadiness, runtimeControl.isReady);
@@ -87,8 +90,13 @@ const makeServer = (
           },
         } satisfies ListenerShutdown).pipe(Effect.orDie),
     );
-    void server;
-    return HttpServer.of({ listening: true });
+    return HttpServer.of({
+      advertiseLan: runLanAdvertisement(config.server, server.address()).pipe(
+        Effect.forkIn(scope),
+        Effect.asVoid,
+      ),
+      listening: true,
+    });
   });
 
 class HttpServer extends contextService<HttpServer, HttpServerService>()(

@@ -98,6 +98,7 @@ const startDelegatedRequestServer = (
       security: Object.freeze({ masterKey: Redacted.make("unused") }),
       server: Object.freeze({
         bind: `${HOST}:${port}`,
+        lanDiscovery: false,
         publicUrl: `http://${HOST}:${port}/`,
       }),
     });

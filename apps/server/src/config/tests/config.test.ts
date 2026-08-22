@@ -33,9 +33,26 @@ it.effect("loads required values and applies every default", () =>
   Effect.gen(function* defaultConfigurationTest() {
     const config = yield* loadToml(validToml());
 
-    expect(config.server).toEqual({ bind: "0.0.0.0:8080", publicUrl: "https://nama.example/" });
+    expect(config.server).toEqual({
+      bind: "0.0.0.0:8080",
+      lanDiscovery: true,
+      publicUrl: "https://nama.example/",
+    });
     expect(config.database.maxConnections).toBe(DEFAULT_MAX_CONNECTIONS);
     expect(config.logging.level).toBe("info");
+  }),
+);
+
+it.effect("loads file-only LAN discovery without an environment override", () =>
+  Effect.gen(function* fileOnlyLanDiscoveryTest() {
+    const server = 'public_url = "https://nama.example"\nlan_discovery = false';
+    const disabled = yield* loadToml(validToml({ server }));
+    const ignoredEnvironment = yield* loadToml(validToml(), {
+      NAMA_LAN_DISCOVERY: "false",
+    });
+
+    expect(disabled.server.lanDiscovery).toBe(false);
+    expect(ignoredEnvironment.server.lanDiscovery).toBe(true);
   }),
 );
 

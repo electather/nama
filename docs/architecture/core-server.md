@@ -15,6 +15,7 @@ This note is the canonical record for durable core-server boundaries. The implem
 - the process-local bootstrap-token state machine and transactional administrator completion;
 - exact liveness and readiness routes before Connect delegation;
 - one native Node listener and one Effect managed request runtime for health and RPC callbacks;
+- one readiness-gated LAN advertiser scoped ahead of listener shutdown;
 - runtime-controlled readiness and fatal post-bind failure;
 - one Effect-scoped authenticated, on-demand plugin-subprocess supervisor with context-free discovery, one-shot candidate, exact-revision instance launches, and bounded idle retirement;
 - one code-owned bundled-provider registry with bounded startup discovery, instance-local credential containment, compatible installation reconciliation, safe availability status, authenticated provider-type and connection-test reads, and provider-instance create/list/get/update/delete; and
@@ -104,6 +105,7 @@ Do not derive environment names or scan a prefix. In particular, no environment 
 Required values are `server.public_url`, `database.url`, and `security.master_key`. Defaults are:
 
 - `server.bind`: `0.0.0.0:8080`;
+- `server.lan_discovery`: `true`;
 - `database.max_connections`: `10`; and
 - `logging.level`: `info`.
 
@@ -118,29 +120,27 @@ Validation rejects unknown keys at every object level. It also enforces:
 
 TOML dates, arrays, tables, and other values fail where the schema expects a different type. `database.url` and `security.master_key` decode directly to Effect `Redacted` values. Never attach parser input, raw schema output, selected paths, or secret values to errors or log annotations. Restart remains the only way to apply configuration changes.
 
-## Target LAN advertisement
+## LAN advertisement
 
-The LAN advertiser is accepted target behavior and remains unimplemented. Its
-own prerequisite issue adds file-only `server.lan_discovery`, defaulting to
-`true`, without another environment override. Once the listener is accepting
-requests, an enabled server advertises `_nama._tcp` as instance `Nama`, with
-TXT key `url` equal to canonical `server.public_url` and an SRV port equal to
-that URL's effective port. Shutdown withdraws the service before closing the
-listener.
+File-only `server.lan_discovery` defaults to `true` and has no environment
+override. After the listener accepts requests and runtime readiness is marked,
+an enabled server advertises `_nama._tcp` as instance `Nama`, with TXT key
+`url` equal to canonical `server.public_url` and an SRV port equal to that
+URL's effective port. Ciao resolves service-name collisions. Shutdown
+withdraws the service before closing the listener.
 
-The publisher uses one exact-pinned `@homebridge/ciao` dependency behind one
-concrete LAN-advertiser module. It advertises only on eligible non-loopback
-interfaces whose address family the configured listener accepts: the default
-IPv4 wildcard publishes only IPv4, while IPv6 or dual-stack records require a
-corresponding exercised listener. No per-interface or VPN-specific
-configuration enters this milestone.
+The publisher uses exact-pinned `@homebridge/ciao@1.3.12` inside one concrete
+LAN-advertiser module. It supplies eligible non-loopback interface names to
+Ciao's responder and restricts service records to accepted-family addresses on
+those interfaces. The default IPv4 wildcard publishes only IPv4; an IPv6
+listener publishes IPv6; the IPv6 wildcard is the configured dual-stack case.
+No per-interface or VPN-specific configuration enters this milestone.
 
-Advertisement failure is non-fatal because manual entry remains available and
-does not change HTTP readiness. Ciao's internal retry and direct dependency
-output are accepted MVP limitations. Nama adds no parallel publisher
-interface, alternate implementation, or speculative replacement path; a
-Nama-owned publisher replaces the concrete module only if production evidence
-justifies the maintenance.
+Advertisement runs independently after readiness. Publisher startup, socket,
+and shutdown failures emit only safe `lan.advertisement_failed` warnings and
+never change HTTP readiness. Ciao's internal retry and direct dependency output
+are accepted MVP limitations. Nama has no parallel publisher interface,
+alternate implementation, or speculative replacement path.
 
 ## Startup and database ownership
 
@@ -157,7 +157,9 @@ read and decode configuration
   -> construct bootstrap, private authentication, setup, runtime-control, and request-runtime services
   -> bind the native HTTP listener with health-first Connect dispatch
   -> synchronously activate bootstrap output
-  -> mark runtime ready, emit server.ready, and wait for interruption or fatal runtime failure
+  -> mark runtime ready
+  -> start enabled LAN advertisement
+  -> emit server.ready and wait for interruption or fatal runtime failure
 ```
 
 The production migration directory is resolved relative to the server module, never the current working directory. Tests inject independent migration fixture directories through layer construction; migration location is not operator configuration.
@@ -240,6 +242,10 @@ Normal logs are newline-delimited JSON on stdout. The configured threshold appli
 - `server.shutdown_failed`; and
 - `database.readiness_changed`.
 
+The LAN advertiser emits `lan.advertisement_failed` at warning severity with no
+fields. It never adds the public URL, TXT data, host addresses, interface
+names, or raw publisher failures.
+
 Plugin supervision additionally emits `plugin.recovery_attempt`, `plugin.process_exited`, `plugin.rpc_deadline_exceeded`, `plugin.recovery_exhausted`, `plugin.process_idle_stopped`, `plugin.process_idle_stop_failed`, `plugin.stderr_dropped`, and code-declared plugin events. Successful idle retirement uses debug severity; failed idle cleanup uses error severity. Plugin lifecycle fields are restricted to `provider_type`, `provider_instance_id`, `recovery_attempt`, `exit_code`, and `signal`; code-declared plugin fields are finite numbers or allowlisted enum values. Bearers, socket paths, executable arguments, environment, configuration, raw stderr, and arbitrary process errors never enter records.
 
 Bundled-provider reconciliation emits one `provider.discovery_completed` event
@@ -269,7 +275,8 @@ Do not add OpenTelemetry, OTLP, trace-header propagation, sampling, exporters, a
 Shutdown order is fixed:
 
 ```text
-mark accepting false
+withdraw LAN advertisement
+  -> mark accepting false
   -> emit server.stopping
   -> stop accepting new connections and close idle connections
   -> drain in-flight requests for at most 10 seconds
@@ -368,6 +375,7 @@ and PostgreSQL are healthy.
 The server test gate must continue to exercise behavior, not only generated contracts or compilation:
 
 - pure and Effect-scoped configuration, logging, routing, drain, deadline interruption, and finalization behavior;
+- concrete LAN-advertiser options and lifecycle, publisher-failure containment beside real health and Connect traffic, an exercised IPv6 listener, and a native core discovered with its exact canonical TXT URL by Apple `NWBrowser`;
 - a real disposable plugin subprocess covering descriptor-only supervision, all three bounded stdin launch documents, provider-context confinement, shared exact-revision instance admission, one-shot candidate cleanup, revision fencing and drain, shared first-demand launch, protected launch material, bearer authentication, handshake rejection, bounded recovery, per-call demand, controlled idle timing, retirement races, cleanup-failure containment, scope-finalization retry, cancellation, independent deadlines, no replay, structured stderr, process-group escalation, safe lifecycle events, and artifact cleanup;
 - serial integration against disposable PostgreSQL with production migrations, prior-journal upgrade, constraints, the complete initialization state matrix, conditional repair failure, pool closure, and readiness loss/recovery;
 - the actual package entrypoint, both termination signals, migration-and-reconciliation-before-bind ordering, released listener ports, normalized startup and integrity failures, valid JSON output, and secret absence;

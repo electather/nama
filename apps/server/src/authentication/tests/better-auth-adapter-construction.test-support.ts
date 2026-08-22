@@ -81,7 +81,7 @@ const makeConfiguration = (masterKey: Buffer = MASTER_KEY) => {
     }),
     logging: Object.freeze({ level: "error" }),
     security,
-    server: Object.freeze({ bind: "127.0.0.1:8080", publicUrl: PUBLIC_URL }),
+    server: Object.freeze({ bind: "127.0.0.1:8080", lanDiscovery: false, publicUrl: PUBLIC_URL }),
   }) satisfies ConfigService;
 };
 const makeInput = (loadModule: BetterAuthModuleLoader, masterKey: Buffer = MASTER_KEY) => ({

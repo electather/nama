@@ -45,6 +45,7 @@ interface StatusTarget {
 }
 interface ProcessLaunchOptions {
   readonly environment?: NodeJS.ProcessEnv;
+  readonly lanDiscovery?: boolean;
   readonly masterKey?: string;
   readonly preloads?: readonly string[];
 }
@@ -95,16 +96,21 @@ const eventFromLine = (line: string): string => {
   return event;
 };
 
-const configuration = (databaseUrl: string, port: number, masterKey: string): string => `[server]
+const configuration = (
+  databaseUrl: string,
+  port: number,
+  options: ProcessLaunchOptions,
+): string => `[server]
 bind = "${HOST}:${port}"
 public_url = "http://${HOST}:${port}"
+lan_discovery = ${String(options.lanDiscovery ?? false)}
 
 [database]
 url = "${databaseUrl}"
 max_connections = 2
 
 [security]
-master_key = "${masterKey}"
+master_key = "${options.masterKey ?? MASTER_KEY}"
 
 [logging]
 level = "info"
@@ -153,7 +159,7 @@ const startProcess = (databaseUrl: string, port?: number, options: ProcessLaunch
     const configPath = join(directory, "nama.toml");
     yield* fileSystem.writeFileString(
       configPath,
-      configuration(databaseUrl, selectedPort, options.masterKey ?? MASTER_KEY),
+      configuration(databaseUrl, selectedPort, options),
     );
     const stdout = outputCapture();
     const stderr = outputCapture();
