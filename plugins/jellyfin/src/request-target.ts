@@ -114,6 +114,19 @@ const normalizedBaseUrl = (value: string) => {
   return parsed;
 };
 
+const applyConfinedQuery = (
+  endpoint: URL,
+  query: Readonly<Record<string, string>> | undefined,
+): boolean => {
+  for (const [name, value] of Object.entries(query ?? {})) {
+    if (name.length === EMPTY_LENGTH || value.length === EMPTY_LENGTH) {
+      return false;
+    }
+    endpoint.searchParams.set(name, value);
+  }
+  return true;
+};
+
 const confinedEndpoint = (
   baseUrl: URL,
   pathSegments: readonly string[],
@@ -125,18 +138,18 @@ const confinedEndpoint = (
   ) {
     return INVALID_REQUEST_TARGET;
   }
-  const endpoint = new URL(
-    pathSegments.map((segment) => encodeURIComponent(segment)).join("/"),
-    baseUrl,
-  );
-  if (endpoint.origin !== baseUrl.origin || !endpoint.pathname.startsWith(baseUrl.pathname)) {
+  const encodedPath = pathSegments.map((segment) => encodeURIComponent(segment)).join("/");
+  const expectedPathname = `${baseUrl.pathname}${encodedPath}`;
+  const endpoint = new URL(encodedPath, baseUrl);
+  if (
+    endpoint.origin !== baseUrl.origin ||
+    endpoint.pathname !== expectedPathname ||
+    !endpoint.pathname.startsWith(baseUrl.pathname)
+  ) {
     return INVALID_REQUEST_TARGET;
   }
-  for (const [name, value] of Object.entries(query ?? {})) {
-    if (name.length === EMPTY_LENGTH || value.length === EMPTY_LENGTH) {
-      return INVALID_REQUEST_TARGET;
-    }
-    endpoint.searchParams.set(name, value);
+  if (!applyConfinedQuery(endpoint, query)) {
+    return INVALID_REQUEST_TARGET;
   }
   return endpoint;
 };

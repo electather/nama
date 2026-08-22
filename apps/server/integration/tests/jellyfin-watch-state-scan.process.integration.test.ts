@@ -28,6 +28,10 @@ import {
 } from "./jellyfin-process.test-support.ts";
 import type { ControlledHandler, ControlledJellyfin } from "./jellyfin-process.test-support.ts";
 
+const EXPIRED_CLOCK_PRELOAD_URL = `data:text/javascript,${encodeURIComponent(
+  "Date.now = () => 946684800000;",
+)}`;
+
 const CALL_DEADLINE_MILLISECONDS = 2000;
 const CANCELLATION_DEADLINE_MILLISECONDS = 50;
 const TEST_TIMEOUT_MILLISECONDS = 10_000;
@@ -36,6 +40,7 @@ const MILLISECONDS_PER_SECOND = 1000;
 const WATCHED_MOVIE_ID = "watched-movie";
 const UNWATCHED_EPISODE_ID = "unwatched-episode";
 const LAST_PLAYED_DATE = "2026-08-19T21:14:15.123Z";
+const INVALID_LAST_PLAYED_DATE = "not-a-date";
 const LAST_PLAYED_SECONDS = BigInt(
   Math.floor(Date.parse(LAST_PLAYED_DATE) / MILLISECONDS_PER_SECOND),
 );
@@ -63,7 +68,7 @@ const OVERSIZED_PAGE_SIZE = 8;
 const CANCELED_PAGE_SIZE = 9;
 const MALFORMED_ITEM_PAGE_SIZE = 10;
 const PROVIDER_TOTAL_SENTINEL = 999;
-const CROSS_SCOPE_PROVIDER_REQUEST_COUNT = 2;
+const CONTINUATION_TOKEN_PROVIDER_REQUEST_COUNT = 3;
 const SINGLE_CANCELED_REQUEST_COUNT = 1;
 const PROVIDER_ERROR_SENTINEL = "private-watch-scan-provider-error";
 const OVERSIZED_RESPONSE_SENTINEL = "private-watch-scan-oversized-response";
@@ -84,6 +89,7 @@ const WATCH_STATE_RESPONSES = [
     Id: UNWATCHED_EPISODE_ID,
     Type: "Episode",
     UserData: {
+      LastPlayedDate: INVALID_LAST_PLAYED_DATE,
       PlaybackPositionTicks: ZERO_TICKS,
       Played: false,
     },
@@ -222,7 +228,9 @@ const expectWatchedMovie = (movie: ProviderWatchState | undefined): void => {
   expect(movie?.revision).toBeUndefined();
 };
 
-const expectDefaultUnwatchedEpisode = (episode: ProviderWatchState | undefined): void => {
+const expectUnwatchedEpisodeWithInvalidActivity = (
+  episode: ProviderWatchState | undefined,
+): void => {
   expect(episode).toMatchObject({
     itemReference: { itemId: UNWATCHED_EPISODE_ID },
     watched: false,
@@ -250,7 +258,7 @@ const expectNormalizedStates = (
   expect(response.states).toHaveLength(WATCH_PAGE_SIZE);
   const [movie, episode] = response.states;
   expectWatchedMovie(movie);
-  expectDefaultUnwatchedEpisode(episode);
+  expectUnwatchedEpisodeWithInvalidActivity(episode);
   expectObservationTime(movie, episode, bounds);
 };
 
@@ -326,14 +334,25 @@ const tamperedToken = (token: string): string => {
   return `${replacementCharacter}${token.slice(FIRST_CODE_UNIT_LENGTH)}`;
 };
 
-const expectInvalidWatchContinuation = (plugin: SupervisedPlugin, token: string) =>
+const expectInvalidWatchContinuation = (
+  plugin: SupervisedPlugin,
+  token: string,
+  jellyfin: ControlledJellyfin,
+) =>
   Effect.gen(function* invalidWatchContinuationScenario() {
+    const requestCount = jellyfin.requests.length;
     const failure = yield* continueWatchStateScan(plugin, token).pipe(Effect.flip);
     expect(failure).toMatchObject({ _tag: "PluginRpcError", code: Code.InvalidArgument });
+    expect(jellyfin.requests).toHaveLength(requestCount);
   });
 
-const expectInvalidCatalogContinuation = (plugin: SupervisedPlugin, token: string) =>
+const expectInvalidCatalogContinuation = (
+  plugin: SupervisedPlugin,
+  token: string,
+  jellyfin: ControlledJellyfin,
+) =>
   Effect.gen(function* invalidCatalogContinuationScenario() {
+    const requestCount = jellyfin.requests.length;
     const failure = yield* plugin
       .call(
         LibraryService.method.listItems,
@@ -342,6 +361,7 @@ const expectInvalidCatalogContinuation = (plugin: SupervisedPlugin, token: strin
       )
       .pipe(Effect.flip);
     expect(failure).toMatchObject({ _tag: "PluginRpcError", code: Code.InvalidArgument });
+    expect(jellyfin.requests).toHaveLength(requestCount);
   });
 
 const catalogContinuationFrom = (plugin: SupervisedPlugin) =>
@@ -355,6 +375,58 @@ const catalogContinuationFrom = (plugin: SupervisedPlugin) =>
       throw new Error("Jellyfin catalog continuation was absent");
     }
     return page.nextPageToken;
+  });
+
+const expiredWatchStateContinuationFrom = (jellyfin: ControlledJellyfin) => {
+  const program = Effect.gen(function* expiredWatchStateTokenScenario() {
+    const supervisor = yield* PluginSupervisor;
+    const plugin = yield* superviseJellyfin(supervisor, jellyfin, {
+      preload: EXPIRED_CLOCK_PRELOAD_URL,
+    });
+    const first = yield* beginWatchStateScan(plugin, CATALOG_PAGE_SIZE);
+    return continuationFrom(first);
+  }).pipe(Effect.provide(PluginSupervisor.layer()));
+  return Effect.scoped(program);
+};
+
+const expectCredentialReplacementRejected = (token: string, jellyfin: ControlledJellyfin) => {
+  const program = Effect.gen(function* credentialReplacementScenario() {
+    const supervisor = yield* PluginSupervisor;
+    const plugin = yield* superviseJellyfin(supervisor, jellyfin, {
+      apiKey: "replacement-api-key",
+    });
+    yield* expectInvalidWatchContinuation(plugin, token, jellyfin);
+  }).pipe(Effect.provide(PluginSupervisor.layer()));
+  return Effect.scoped(program);
+};
+
+const expectWatchTokenScopeRejections = (
+  plugin: SupervisedPlugin,
+  watchToken: string,
+  jellyfin: ControlledJellyfin,
+) =>
+  Effect.gen(function* watchTokenScopeRejectionScenario() {
+    yield* expectInvalidWatchContinuation(plugin, tamperedToken(watchToken), jellyfin);
+    const catalogToken = yield* catalogContinuationFrom(plugin);
+    yield* expectInvalidWatchContinuation(plugin, catalogToken, jellyfin);
+    yield* expectInvalidCatalogContinuation(plugin, watchToken, jellyfin);
+  });
+
+const expectWatchTokenLaunchRejections = (
+  supervisor: PluginSupervisor["Service"],
+  watchToken: string,
+  jellyfin: ControlledJellyfin,
+) =>
+  Effect.gen(function* watchTokenLaunchRejectionScenario() {
+    const instanceReplacement = yield* superviseJellyfin(supervisor, jellyfin, {
+      providerInstanceId: "different-provider-instance",
+    });
+    yield* expectInvalidWatchContinuation(instanceReplacement, watchToken, jellyfin);
+    yield* expectCredentialReplacementRejected(watchToken, jellyfin);
+    const revisionReplacement = yield* superviseJellyfin(supervisor, jellyfin, {
+      revision: "revision-2",
+    });
+    yield* expectInvalidWatchContinuation(revisionReplacement, watchToken, jellyfin);
   });
 
 const FAILURE_CASES = [
@@ -395,20 +467,22 @@ const firstScanPageWithBounds = (plugin: SupervisedPlugin) =>
     return { bounds: { afterSeconds, beforeSeconds }, response };
   });
 
-it.effect("resumes a normalized full watch-state scan after plugin replacement", () =>
-  Effect.scoped(
-    Effect.gen(function* jellyfinWatchStateScanScenario() {
-      const jellyfin = yield* acquireControlledJellyfin;
-      const supervisor = yield* PluginSupervisor;
-      const plugin = yield* superviseJellyfin(supervisor, jellyfin);
-      const { bounds, response: first } = yield* firstScanPageWithBounds(plugin);
-      expectFirstScanPage(first, bounds);
-      yield* TestClock.adjust(IDLE_RETIREMENT_MILLISECONDS);
-      const complete = yield* continueWatchStateScan(plugin, continuationFrom(first));
-      expectCompleteScanPage(complete);
-      expectWatchScanRequests(jellyfin);
-    }).pipe(Effect.provide(PLUGIN_SUPERVISOR_LAYER)),
-  ),
+it.effect(
+  "emits unwatched state without invalid activity and resumes after plugin replacement",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinWatchStateScanScenario() {
+        const jellyfin = yield* acquireControlledJellyfin;
+        const supervisor = yield* PluginSupervisor;
+        const plugin = yield* superviseJellyfin(supervisor, jellyfin);
+        const { bounds, response: first } = yield* firstScanPageWithBounds(plugin);
+        expectFirstScanPage(first, bounds);
+        yield* TestClock.adjust(IDLE_RETIREMENT_MILLISECONDS);
+        const complete = yield* continueWatchStateScan(plugin, continuationFrom(first));
+        expectCompleteScanPage(complete);
+        expectWatchScanRequests(jellyfin);
+      }).pipe(Effect.provide(PLUGIN_SUPERVISOR_LAYER)),
+    ),
 );
 
 it.live(
@@ -437,20 +511,20 @@ it.live(
 );
 
 it.live(
-  "rejects tampered and cross-scope watch-state continuations",
+  "rejects every invalid watch-state continuation binding before provider reads",
   () =>
     Effect.scoped(
       Effect.gen(function* jellyfinWatchStateContinuationBindingScenario() {
         const jellyfin = yield* acquireControlledJellyfin;
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* superviseJellyfin(supervisor, jellyfin);
+        const expiredToken = yield* expiredWatchStateContinuationFrom(jellyfin);
+        yield* expectInvalidWatchContinuation(plugin, expiredToken, jellyfin);
         const first = yield* beginWatchStateScan(plugin, CATALOG_PAGE_SIZE);
         const watchToken = continuationFrom(first);
-        yield* expectInvalidWatchContinuation(plugin, tamperedToken(watchToken));
-        const catalogToken = yield* catalogContinuationFrom(plugin);
-        yield* expectInvalidWatchContinuation(plugin, catalogToken);
-        yield* expectInvalidCatalogContinuation(plugin, watchToken);
-        expect(jellyfin.requests).toHaveLength(CROSS_SCOPE_PROVIDER_REQUEST_COUNT);
+        yield* expectWatchTokenScopeRejections(plugin, watchToken, jellyfin);
+        yield* expectWatchTokenLaunchRejections(supervisor, watchToken, jellyfin);
+        expect(jellyfin.requests).toHaveLength(CONTINUATION_TOKEN_PROVIDER_REQUEST_COUNT);
       }).pipe(Effect.provide(PLUGIN_SUPERVISOR_LAYER)),
     ),
   TEST_TIMEOUT_MILLISECONDS,
