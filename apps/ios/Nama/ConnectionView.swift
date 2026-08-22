@@ -1,0 +1,258 @@
+import SwiftUI
+
+struct ConnectionRootView: View {
+  @Environment(\.scenePhase) private var scenePhase
+  let feature: ConnectionFeature
+
+  var body: some View {
+    content
+      .onChange(of: scenePhase) { _, phase in
+        if phase != .active {
+          feature.flowDidLeave()
+        }
+      }
+      .onDisappear {
+        feature.flowDidLeave()
+      }
+  }
+
+  @ViewBuilder
+  private var content: some View {
+    #if os(tvOS)
+      TVConnectionView(feature: feature)
+    #else
+      ConnectionFormView(feature: feature)
+    #endif
+  }
+}
+
+#if !os(tvOS)
+  private struct ConnectionFormView: View {
+    @Bindable var feature: ConnectionFeature
+
+    var body: some View {
+      NavigationStack {
+        content
+          .navigationTitle(navigationTitle)
+      }
+    }
+
+    private var navigationTitle: LocalizedStringResource {
+      switch feature.state {
+      case .editing, .verifying:
+        "Connect to Nama"
+      case .ready, .setupRequired, .failed:
+        "Nama Endpoint"
+      }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+      switch feature.state {
+      case .editing(let showsValidationError):
+        EntryForm(feature: feature, showsValidationError: showsValidationError)
+      case .verifying(let endpoint):
+        VerifyingForm(feature: feature, endpoint: endpoint)
+      case .ready(let endpoint):
+        ReadyForm(feature: feature, endpoint: endpoint)
+      case .setupRequired(let endpoint):
+        SetupRequiredForm(feature: feature, endpoint: endpoint)
+      case .failed(let endpoint, let failure):
+        FailureForm(feature: feature, endpoint: endpoint, failure: failure)
+      }
+    }
+  }
+
+  private struct EntryForm: View {
+    @Bindable var feature: ConnectionFeature
+    let showsValidationError: Bool
+
+    var body: some View {
+      Form {
+        AddressFields(feature: feature, showsValidationError: showsValidationError)
+        Section {
+          ConnectionActionButtons(feature: feature, actions: feature.state.actions)
+        }
+      }
+      .connectionFormLayout()
+    }
+  }
+
+  private struct VerifyingForm: View {
+    @Bindable var feature: ConnectionFeature
+    let endpoint: NamaEndpoint
+
+    var body: some View {
+      Form {
+        AddressFields(feature: feature, showsValidationError: false)
+        Section {
+          ProgressView()
+            .frame(maxWidth: .infinity)
+          EndpointValue(endpoint: endpoint)
+        }
+        Section {
+          ConnectionActionButtons(feature: feature, actions: feature.state.actions)
+        }
+      }
+      .connectionFormLayout()
+    }
+  }
+
+  private struct ReadyForm: View {
+    let feature: ConnectionFeature
+    let endpoint: NamaEndpoint
+
+    var body: some View {
+      Form {
+        Section {
+          Text("Nama is ready")
+            .font(.headline)
+          EndpointValue(endpoint: endpoint)
+        }
+        Section {
+          ConnectionActionButtons(feature: feature, actions: feature.state.actions)
+        }
+      }
+      .connectionFormLayout()
+    }
+  }
+
+  private struct SetupRequiredForm: View {
+    let feature: ConnectionFeature
+    let endpoint: NamaEndpoint
+
+    var body: some View {
+      Form {
+        Section {
+          Text("Finish setting up Nama")
+            .font(.headline)
+          EndpointValue(endpoint: endpoint)
+          Text("Run `nama setup` from a trusted computer, then try again.")
+            .foregroundStyle(.secondary)
+        }
+        Section {
+          ConnectionActionButtons(feature: feature, actions: feature.state.actions)
+        }
+      }
+      .connectionFormLayout()
+    }
+  }
+
+  private struct FailureForm: View {
+    let feature: ConnectionFeature
+    let endpoint: NamaEndpoint
+    let failure: VerificationFailure
+
+    var body: some View {
+      Form {
+        Section {
+          Text(failure.message)
+            .foregroundStyle(.red)
+          EndpointValue(endpoint: endpoint)
+        }
+        Section {
+          ConnectionActionButtons(feature: feature, actions: feature.state.actions)
+        }
+      }
+      .connectionFormLayout()
+    }
+  }
+
+  private struct AddressFields: View {
+    @Bindable var feature: ConnectionFeature
+    let showsValidationError: Bool
+
+    var body: some View {
+      Section("Nama endpoint") {
+        TextField("Nama endpoint", text: $feature.address, prompt: Text("https://nama.example.com"))
+          .textContentType(.URL)
+          .autocorrectionDisabled()
+          #if os(iOS)
+            .keyboardType(.URL)
+            .textInputAutocapitalization(.never)
+            .submitLabel(.go)
+          #endif
+          .onSubmit {
+            feature.submit()
+          }
+          .onChange(of: feature.address) {
+            feature.addressDidChange()
+          }
+        if showsValidationError {
+          Text(EndpointValidationError.invalid.message)
+            .foregroundStyle(.red)
+        }
+      }
+    }
+  }
+
+  private struct ConnectionActionButtons: View {
+    let feature: ConnectionFeature
+    let actions: [ConnectionAction]
+
+    var body: some View {
+      ForEach(actions, id: \.self) { action in
+        ConnectionActionButton(feature: feature, action: action)
+      }
+    }
+  }
+
+  private struct ConnectionActionButton: View {
+    let feature: ConnectionFeature
+    let action: ConnectionAction
+
+    @ViewBuilder
+    var body: some View {
+      switch action {
+      case .connect:
+        Button("Connect") {
+          feature.submit()
+        }
+        .buttonStyle(.borderedProminent)
+      case .cancel:
+        Button("Cancel", role: .cancel) {
+          feature.cancel()
+        }
+      case .retry:
+        Button("Retry") {
+          feature.retry()
+        }
+        .buttonStyle(.borderedProminent)
+      case .changeEndpoint:
+        Button("Change Endpoint") {
+          feature.changeEndpoint()
+        }
+      }
+    }
+  }
+
+  private struct EndpointValue: View {
+    let endpoint: NamaEndpoint
+
+    var body: some View {
+      LabeledContent("Endpoint") {
+        Text(endpoint.absoluteString)
+          .font(.body.monospaced())
+          .multilineTextAlignment(.trailing)
+          .textSelection(.enabled)
+      }
+    }
+  }
+
+  private struct ConnectionFormLayout: ViewModifier {
+    func body(content: Content) -> some View {
+      content
+        .frame(maxWidth: 640)
+        .frame(maxWidth: .infinity)
+        #if os(macOS)
+          .frame(minWidth: 520, minHeight: 420)
+        #endif
+    }
+  }
+
+  extension View {
+    fileprivate func connectionFormLayout() -> some View {
+      modifier(ConnectionFormLayout())
+    }
+  }
+#endif

@@ -1,9 +1,10 @@
 # Nama agent guidance
 
-Nama is a self-hosted, iOS-first Jellyfin control plane. It has a TypeScript/Node core, a Go CLI, generated Swift bindings for a future universal app targeting iOS, tvOS, and macOS, and a first-party Jellyfin plugin; no Apple client application is currently checked in. The core is not a media relay: media travels directly from a provider to the client through safe, short-lived locators.
+Nama is a self-hosted, iOS-first Jellyfin control plane. It has a TypeScript/Node core, a Go CLI, one universal SwiftUI application targeting iOS, tvOS, and macOS through the generated Swift bindings, and a first-party Jellyfin plugin. The core is not a media relay: media travels directly from a provider to the client through safe, short-lived locators.
 
-- `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements Administrator setup and authentication, bundled-provider discovery and reconciliation, provider-type listing, candidate and exact-revision stored-instance connection tests, and verified provider-instance create/list/get/update/delete including disable and re-enable. Device pairing and client behavior remain unimplemented.
+- `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements Administrator setup and authentication, bundled-provider discovery and reconciliation, provider-type listing, candidate and exact-revision stored-instance connection tests, and verified provider-instance create/list/get/update/delete including disable and re-enable. Device pairing and consumer behavior beyond manual endpoint verification remain unimplemented.
 - `apps/cli/` — Go public-API client surface; named server profiles, Administrator setup and sign-in, authentication status, provider-type listing, and provider-instance create/list/get/update/delete are implemented. The remaining management command families are unimplemented.
+- `apps/ios/` — universal SwiftUI application and Swift Testing target; manual Nama endpoint normalization, cancellable public setup-status verification, safe connection states, native form/tvOS presentation, and the macOS outgoing-network sandbox are implemented. Discovery, persistence, pairing, and media behavior remain unimplemented.
 - `plugins/jellyfin/` — first-party TypeScript provider adapter; its production executable implements private health, provider information, connection inspection, targeted normalized library reads, resumable best-effort catalog and movie/episode watch-state scans with bounded safe failures, exact-instance targeted movie/episode watch-state reads, anonymous public artwork resolution, and bounded explicit watched/unwatched writes with ambiguity readback. It advertises `LIBRARY_READ`, `ARTWORK_RESOLVE`, `WATCH_STATE_READ`, and `WATCHED_WRITE`; the remaining media capabilities are unimplemented.
 - `proto/` — authoritative Protobuf schemas and generation configuration.
 - `gen/` — committed, Buf-owned generated bindings.
@@ -44,7 +45,8 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Do not treat generated Protobuf or Connect round trips as Nama behavior tests. Verify schema format/lint/build, generation drift, consumer compilation, and handwritten Nama policy or adapter behavior.
 - For `google.protobuf.Struct` field-level Protovalidate CEL, use `this.size()`, not `this.fields.size()`; Protovalidate-ES exposes the WKT as a JSON object and the latter fails at runtime.
 - Do not build product playback on AetherEngine `6.21.0`: source review rejected it because it leaks locator headers across origins and logs locator URLs in Release.
-- Do not claim the generated Swift bindings prove iOS, tvOS, or macOS compilation or runtime behavior while no universal client application is checked in.
+- Do not claim generic Apple-platform builds prove runtime behavior; inspect the actual universal application on every affected platform and keep unrun physical-device rows explicit.
+- Scope each universal-app connection feature to one window; when its scene leaves the foreground, cancel only the active verification, and treat a remote Connect `canceled` response as a safe visible failure rather than local cancellation.
 - Do not expose provider resource IDs, SDK types, raw provider errors, configuration secrets, reusable credentials, locator URLs, or locator headers across the public boundary or in logs.
 - Hold each provider-instance supervisor admission fence through durable update resolution; release it only after pinning the committed or recovered revision, and leave it closed while durable truth remains ambiguous.
 - Route every provider-instance core activity through the provider-management scoped activity gate; never replace the production deletion fence with a no-op or test-only hook.
@@ -82,6 +84,7 @@ mise run check             # all current repository checks
 apps/
   server/                 # Node 24, strict TypeScript, Effect, ConnectRPC
   cli/                    # Go 1.26 Cobra client of nama.api.v1
+  ios/                    # universal SwiftUI app using generated nama.api.v1
 plugins/
   jellyfin/               # stateless nama.plugin.v1 adapter
 proto/
@@ -99,7 +102,7 @@ scripts/                  # multi-step implementations of Mise tasks
 
 - Put new behavior in the owner that already has responsibility for it. Do not add root-level application code or create empty future packages.
 - The core owns identity, configuration, durable state, authorization, schedules, retries, and reconciliation. Plugins are stateless adapters and do not own a database.
-- Public `nama.api.v1` is for the core, CLI, and future universal app rooted in `apps/ios`. Private `nama.plugin.v1` is only for the core and plugins. The packages do not import each other.
+- Public `nama.api.v1` is for the core, CLI, and universal app rooted in `apps/ios`. Private `nama.plugin.v1` is only for the core and plugins. The packages do not import each other.
 - Keep selected playback-engine types inside the universal Apple app's single Nama-owned playback adapter. Do not add an interface until a second engine proves one is needed.
 
 ## Dependencies

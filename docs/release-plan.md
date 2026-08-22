@@ -58,7 +58,7 @@ Create the smallest buildable monorepo skeleton and establish the two contracts 
 
 ### Exit criteria
 
-- TypeScript and Go consumers compile from the same committed schemas; Swift bindings are generated deterministically, and the future iOS application restores their native compilation check across iOS, tvOS, and macOS.
+- TypeScript, Go, and universal Swift consumers compile from the same committed schemas; the native application check covers iOS, tvOS, and macOS.
 - Buf rejects a deliberate breaking `v1` contract change.
 - Of provider identifiers, public messages may expose only Nama-managed provider type and instance IDs; remote provider resource references exist only in `plugin.v1`.
 
@@ -151,7 +151,7 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
 
 ### Included
 
-- LAN discovery using mDNS/DNS-SD service `_nama._tcp`, plus manual server URL entry for LAN, VPN, and reverse-proxy deployments on every supported Apple platform.
+- LAN discovery using mDNS/DNS-SD service `_nama._tcp`, plus manual Nama endpoint entry for LAN, VPN, and reverse-proxy deployments on every supported Apple platform.
 - Plain HTTP only for loopback, private/link-local addresses, or `.local` discovery names, with a clear warning. Public hostnames and addresses require HTTPS.
 - Netflix-style device flow: the app requests and displays a short-lived code; an authenticated administrator approves it with `nama devices approve`; the app receives a revocable device session. Codes are rate-limited, single-use, and contain no reusable secret.
 - Persistence for pairing requests, device credentials, minimal canonical media, library membership, and provider-to-canonical mappings begins in this milestone.

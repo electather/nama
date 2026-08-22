@@ -1,7 +1,8 @@
 # Playback
 
-Status: playback is target architecture; no universal Apple application or
-production playback engine is implemented.
+Status: the universal Apple application has a manual-connection tracer;
+playback remains target architecture and no production playback engine is
+implemented.
 
 The target Apple application reports a Nama-defined capability profile for the
 current device, and the Jellyfin plugin translates it into provider playback

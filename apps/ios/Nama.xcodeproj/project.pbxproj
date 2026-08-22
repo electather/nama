@@ -1,0 +1,468 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000001 /* NamaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* NamaApp.swift */; };
+		100000000000000000000002 /* EndpointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* EndpointTests.swift */; };
+		100000000000000000000003 /* NamaAPI in Frameworks */ = {isa = PBXBuildFile; productRef = 900000000000000000000002 /* NamaAPI */; };
+		100000000000000000000004 /* Endpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* Endpoint.swift */; };
+		100000000000000000000005 /* ConnectionFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* ConnectionFeatureTests.swift */; };
+		100000000000000000000006 /* ConnectionFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* ConnectionFeature.swift */; };
+		100000000000000000000007 /* SetupStatusVerifierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* SetupStatusVerifierTests.swift */; };
+		100000000000000000000008 /* SetupStatusVerifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* SetupStatusVerifier.swift */; };
+		100000000000000000000009 /* ConnectionPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000010 /* ConnectionPresentationTests.swift */; };
+		100000000000000000000010 /* ConnectionPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* ConnectionPresentation.swift */; };
+		100000000000000000000011 /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000012 /* ConnectionView.swift */; };
+		100000000000000000000012 /* TVConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* TVConnectionView.swift */; };
+		100000000000000000000013 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000014 /* Localizable.xcstrings */; };
+		100000000000000000000014 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* TestSupport.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		300000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 700000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 800000000000000000000001;
+			remoteInfo = Nama;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		200000000000000000000001 /* NamaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaApp.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* EndpointTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointTests.swift; sourceTree = "<group>"; };
+		200000000000000000000003 /* Nama.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nama.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000004 /* NamaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NamaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000005 /* Endpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Endpoint.swift; sourceTree = "<group>"; };
+		200000000000000000000006 /* ConnectionFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionFeatureTests.swift; sourceTree = "<group>"; };
+		200000000000000000000007 /* ConnectionFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionFeature.swift; sourceTree = "<group>"; };
+		200000000000000000000008 /* SetupStatusVerifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupStatusVerifierTests.swift; sourceTree = "<group>"; };
+		200000000000000000000009 /* SetupStatusVerifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupStatusVerifier.swift; sourceTree = "<group>"; };
+		200000000000000000000010 /* ConnectionPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionPresentationTests.swift; sourceTree = "<group>"; };
+		200000000000000000000011 /* ConnectionPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionPresentation.swift; sourceTree = "<group>"; };
+		200000000000000000000012 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
+		200000000000000000000013 /* TVConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVConnectionView.swift; sourceTree = "<group>"; };
+		200000000000000000000014 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		200000000000000000000015 /* Nama.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nama.entitlements; sourceTree = "<group>"; };
+		200000000000000000000016 /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		400000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000003 /* NamaAPI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		400000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		500000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				500000000000000000000002 /* Nama */,
+				500000000000000000000003 /* NamaTests */,
+				500000000000000000000004 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		500000000000000000000002 /* Nama */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* NamaApp.swift */,
+				200000000000000000000005 /* Endpoint.swift */,
+				200000000000000000000007 /* ConnectionFeature.swift */,
+				200000000000000000000009 /* SetupStatusVerifier.swift */,
+				200000000000000000000011 /* ConnectionPresentation.swift */,
+				200000000000000000000012 /* ConnectionView.swift */,
+				200000000000000000000013 /* TVConnectionView.swift */,
+				500000000000000000000005 /* Resources */,
+			);
+			path = Nama;
+			sourceTree = "<group>";
+		};
+		500000000000000000000003 /* NamaTests */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000002 /* EndpointTests.swift */,
+				200000000000000000000006 /* ConnectionFeatureTests.swift */,
+				200000000000000000000008 /* SetupStatusVerifierTests.swift */,
+				200000000000000000000010 /* ConnectionPresentationTests.swift */,
+				200000000000000000000016 /* TestSupport.swift */,
+			);
+			path = NamaTests;
+			sourceTree = "<group>";
+		};
+		500000000000000000000004 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000003 /* Nama.app */,
+				200000000000000000000004 /* NamaTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		500000000000000000000005 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000014 /* Localizable.xcstrings */,
+				200000000000000000000015 /* Nama.entitlements */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		800000000000000000000001 /* Nama */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000001 /* Build configuration list for PBXNativeTarget "Nama" */;
+			buildPhases = (
+				600000000000000000000001 /* Sources */,
+				400000000000000000000001 /* Frameworks */,
+				600000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Nama;
+			packageProductDependencies = (
+				900000000000000000000002 /* NamaAPI */,
+			);
+			productName = Nama;
+			productReference = 200000000000000000000003 /* Nama.app */;
+			productType = "com.apple.product-type.application";
+		};
+		800000000000000000000002 /* NamaTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000002 /* Build configuration list for PBXNativeTarget "NamaTests" */;
+			buildPhases = (
+				600000000000000000000002 /* Sources */,
+				400000000000000000000002 /* Frameworks */,
+				600000000000000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B00000000000000000000001 /* PBXTargetDependency */,
+			);
+			name = NamaTests;
+			productName = NamaTests;
+			productReference = 200000000000000000000004 /* NamaTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		700000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					800000000000000000000001 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					800000000000000000000002 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 800000000000000000000001;
+					};
+				};
+			};
+			buildConfigurationList = A00000000000000000000000 /* Build configuration list for PBXProject "Nama" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 500000000000000000000001;
+			packageReferences = (
+				900000000000000000000001 /* XCLocalSwiftPackageReference "../../gen/swift" */,
+			);
+			productRefGroup = 500000000000000000000004 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				800000000000000000000001 /* Nama */,
+				800000000000000000000002 /* NamaTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		600000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000013 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		600000000000000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		600000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000001 /* NamaApp.swift in Sources */,
+				100000000000000000000004 /* Endpoint.swift in Sources */,
+				100000000000000000000006 /* ConnectionFeature.swift in Sources */,
+				100000000000000000000008 /* SetupStatusVerifier.swift in Sources */,
+				100000000000000000000010 /* ConnectionPresentation.swift in Sources */,
+				100000000000000000000011 /* ConnectionView.swift in Sources */,
+				100000000000000000000012 /* TVConnectionView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		600000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000002 /* EndpointTests.swift in Sources */,
+				100000000000000000000005 /* ConnectionFeatureTests.swift in Sources */,
+				100000000000000000000007 /* SetupStatusVerifierTests.swift in Sources */,
+				100000000000000000000009 /* ConnectionPresentationTests.swift in Sources */,
+				100000000000000000000014 /* TestSupport.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B00000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 800000000000000000000001 /* Nama */;
+			targetProxy = 300000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		C00000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		C00000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		C00000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Nama/Resources/Nama.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Nama;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				"INFOPLIST_KEY_UISupportedInterfaceOrientations[sdk=iphoneos*]" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				"INFOPLIST_KEY_UISupportedInterfaceOrientations[sdk=iphonesimulator*]" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.electather.nama;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2,3";
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		C00000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Nama/Resources/Nama.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Nama;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				"INFOPLIST_KEY_UISupportedInterfaceOrientations[sdk=iphoneos*]" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				"INFOPLIST_KEY_UISupportedInterfaceOrientations[sdk=iphonesimulator*]" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.electather.nama;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2,3";
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		C00000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.electather.nama.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2,3";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Nama.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Nama";
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		C00000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.electather.nama.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx";
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2,3";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Nama.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Nama";
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000000 /* Build configuration list for PBXProject "Nama" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C00000000000000000000001 /* Debug */,
+				C00000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000001 /* Build configuration list for PBXNativeTarget "Nama" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C00000000000000000000003 /* Debug */,
+				C00000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000002 /* Build configuration list for PBXNativeTarget "NamaTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C00000000000000000000005 /* Debug */,
+				C00000000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		900000000000000000000001 /* XCLocalSwiftPackageReference "../../gen/swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../gen/swift;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		900000000000000000000002 /* NamaAPI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 900000000000000000000001 /* XCLocalSwiftPackageReference "../../gen/swift" */;
+			productName = NamaAPI;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 700000000000000000000001 /* Project object */;
+}

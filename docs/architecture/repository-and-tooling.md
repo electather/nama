@@ -27,9 +27,9 @@ Native configuration is the source of truth:
   Mise-pinned prek binary. Path-scoped hooks do not replace aggregate repository
   verification.
 - The Go module owns Go dependencies; native Go tools own its checks.
-- The committed Swift package manifest owns generated Swift binding
-  dependencies. No universal iOS application manifest or Xcode project is
-  currently present.
+- The committed universal Xcode project owns the Apple application and test
+  targets, its Swift package resolution, and native platform builds. The
+  committed Swift package manifest owns generated Swift binding dependencies.
 - Buf module and generation configuration own Protobuf validation and
   generation.
 - Compose owns the local database service model.
@@ -63,10 +63,10 @@ Run the narrow native check first, then the aggregate repository check on a
 fully provisioned Mac. Root tasks coordinate this sequence but do not alter
 its ownership.
 
-Docker is a current native prerequisite. A future iOS implementation must add
-an owning multiplatform Xcode project and restore authoritative iOS, tvOS, and
-macOS checks; generated Swift bindings alone are not a client compilation
-boundary.
+Docker and Xcode are current native prerequisites. The universal Xcode project
+imports the generated public package, and `check:ios` runs focused Swift tests
+plus signing-disabled generic iOS, tvOS, and macOS builds. Generated bindings
+and compile-only builds do not prove application runtime behavior.
 
 CI runs the native checks and the contract-compatibility gate appropriate to
 the change. Compile-only boundaries prove compilation, not product or runtime

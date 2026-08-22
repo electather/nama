@@ -37,7 +37,7 @@ The MVP remains single-administrator and single-user. User administration, invit
 
 ## Boundary invariants
 
-1. `nama.api.v1` is the public contract consumed by the TypeScript core, Go CLI, and future universal Swift app rooted in `apps/ios`.
+1. `nama.api.v1` is the public contract consumed by the TypeScript core, Go CLI, and universal Swift app rooted in `apps/ios`.
 2. `nama.plugin.v1` is a private subprocess contract consumed only by the TypeScript core and TypeScript plugins.
 3. The packages do not import each other and do not share a third Protobuf package. Similar public and plugin messages remain separately declared ([ADR-0004](../adr/0004-independent-public-plugin-protobuf-packages.md)).
 4. Public consumer messages never expose provider item IDs, stream indexes, SDK objects, raw provider errors, configuration, or reusable provider credentials.
@@ -1079,9 +1079,9 @@ generation for imported files produces no extra clients because the selected
 inputs define messages/options, not services. The googleapis input is pinned to
 the same resolved module commit as `buf.lock`. Selected, committed bindings
 follow [ADR-0018](../adr/0018-commit-present-consumer-bindings.md): present
-consumers compile as an ownership check, while generated Swift remains
-drift-checked but is not a client compilation boundary while no universal iOS
-application exists.
+consumers compile as an ownership check. The universal Apple application
+imports the generated Swift package, and its native check builds that consumer
+for iOS, tvOS, and macOS.
 
 Generated code stays committed. Repository checks run:
 
@@ -1089,11 +1089,19 @@ Generated code stays committed. Repository checks run:
 2. module build;
 3. pinned deterministic generation into disposable staging;
 4. direct comparison of the three staged generated leaves with their committed counterparts;
-5. TypeScript and Go compile probes against generated clients; the Swift client probe returns with the future universal iOS application;
+5. TypeScript, Go, and universal Swift consumers compile against their generated clients;
 6. Buf breaking comparison against the pull request base; and
 7. a one-time automated proof that a deliberate field removal is rejected.
 
-Nama does not test generated Protobuf or Connect behavior. Buf and the pinned language generators/runtimes own serialization, descriptor construction, unknown-value preservation, and generated API shape. Current generated-contract acceptance consists of schema format/lint/build, deterministic generated-leaf comparison, pull-request-base breaking checks, and compilation by the real TypeScript server/plugin and Go CLI. The future iOS application must restore native Swift consumer compilation for iOS, tvOS, and macOS before its contract boundary is accepted.
+Nama does not test generated Protobuf or Connect behavior. Buf and the pinned
+language generators/runtimes own serialization, descriptor construction,
+unknown-value preservation, and generated API shape. Current generated-contract
+acceptance consists of schema format/lint/build, deterministic generated-leaf
+comparison, pull-request-base breaking checks, and compilation by the real
+TypeScript server/plugin, Go CLI, and universal Apple application for iOS,
+tvOS, and macOS. Focused application tests defend handwritten endpoint,
+cancellation, failure-mapping, and generated-client-edge policy rather than
+treating a generated round trip as Nama behavior.
 
 Focused contract tests cover handwritten Nama behavior only:
 

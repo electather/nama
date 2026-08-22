@@ -28,6 +28,7 @@ run = [
   "pnpm exec oxfmt .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server/.fallowrc.json apps/server plugins/jellyfin gen/ts/package.json",
   "gofmt -w apps/cli gen/go",
   "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift format format --in-place gen/swift/Package.swift",
+  "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift format format --in-place --recursive apps/ios/Nama apps/ios/NamaTests",
 ]
 
 [tasks."check:contracts"]
@@ -42,6 +43,9 @@ run = "pnpm run check:ts"
 description = "Check Go formatting, vet, tests, and Staticcheck"
 run = "scripts/check-go.sh"
 
+[tasks."check:ios"]
+description = "Test and build the universal Apple application"
+run = "scripts/check-ios.sh"
 
 [tasks."check:docker"]
 description = "Verify the packaged application through Docker Compose"
@@ -53,5 +57,6 @@ run = [
   { task = "check:contracts" },
   { task = "check:ts" },
   { task = "check:go" },
+  { task = "check:ios" },
   { task = "check:docker" },
 ]
