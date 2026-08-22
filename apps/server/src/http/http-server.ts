@@ -1,6 +1,6 @@
 import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
 
-import { Context, Effect, Exit, Layer } from "effect";
+import { Cause, Context, Effect, Exit, Fiber, Layer, Scope } from "effect";
 
 import { Config } from "../config/config.ts";
 import { Database } from "../database/database.ts";
@@ -60,6 +60,18 @@ const makeRequestListener =
     });
   };
 
+const stopLanAdvertisement = <Error>(fiber: Fiber.Fiber<void, Error>) =>
+  Fiber.interrupt(fiber).pipe(
+    Effect.andThen(Fiber.await(fiber)),
+    Effect.flatMap((exit) => {
+      if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
+        return Effect.failCause(exit.cause);
+      }
+      return Effect.void;
+    }),
+    Effect.orDie,
+  );
+
 const makeServer = (
   unmatchedRequest: RequestListener | undefined,
   emitStopping: () => Effect.Effect<void>,
@@ -91,10 +103,11 @@ const makeServer = (
         } satisfies ListenerShutdown).pipe(Effect.orDie),
     );
     return HttpServer.of({
-      advertiseLan: runLanAdvertisement(config.server, server.address()).pipe(
-        Effect.forkIn(scope),
-        Effect.asVoid,
-      ),
+      advertiseLan: Effect.gen(function* startLanAdvertisement() {
+        const advertisement = runLanAdvertisement(config.server, server.address());
+        const fiber = yield* Effect.forkIn(advertisement, scope);
+        yield* Scope.addFinalizer(scope, stopLanAdvertisement(fiber));
+      }),
       listening: true,
     });
   });

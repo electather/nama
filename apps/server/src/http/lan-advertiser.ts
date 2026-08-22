@@ -8,11 +8,13 @@ import { Cause, Effect } from "effect";
 
 import type { Config } from "../config/config.ts";
 import type { EventMessage } from "../logging/record.ts";
+import { ShutdownError } from "./listener.ts";
 
 const LAN_ADVERTISEMENT_FAILED = "lan.advertisement_failed";
 const HTTP_PORT = 80;
 const HTTPS_PORT = 443;
 const NO_ADDRESSES = 0;
+const ADVERTISEMENT_UNAVAILABLE = Symbol("ADVERTISEMENT_UNAVAILABLE");
 
 interface AdvertisementOptions {
   readonly responder: ResponderOptions;
@@ -140,24 +142,11 @@ const logAdvertisementFailure = Effect.logWarning({
   event: LAN_ADVERTISEMENT_FAILED,
 } satisfies EventMessage);
 
-const shutdownResponder = (responder: Responder) =>
-  Effect.tryPromise({
-    catch: (cause) => cause,
-    try: () => responder.shutdown(),
-  }).pipe(Effect.catchCause(() => logAdvertisementFailure));
-
-const publish = (options: AdvertisementOptions) =>
-  Effect.gen(function* publishLanAdvertisement() {
-    const responder = yield* Effect.acquireRelease(
-      Effect.try({
-        catch: (cause) => cause,
-        try: () => getResponder(options.responder),
-      }),
-      shutdownResponder,
-    );
+const runPublisher = (responder: Responder, options: ServiceOptions) =>
+  Effect.gen(function* runLanPublisher() {
     const service = yield* Effect.try({
       catch: (cause) => cause,
-      try: () => responder.createService(options.service),
+      try: () => responder.createService(options),
     });
     service.on("name-change", (name) => {
       void name;
@@ -167,7 +156,36 @@ const publish = (options: AdvertisementOptions) =>
       try: () => service.advertise(),
     });
     return yield* Effect.never;
-  });
+  }).pipe(
+    Effect.catchCause((cause) => {
+      if (Cause.hasInterruptsOnly(cause)) {
+        return Effect.failCause(cause);
+      }
+      return logAdvertisementFailure;
+    }),
+  );
+
+const publish = (options: AdvertisementOptions) =>
+  Effect.try({
+    catch: (cause) => cause,
+    try: () => getResponder(options.responder),
+  }).pipe(
+    Effect.catchCause(() => logAdvertisementFailure.pipe(Effect.as(ADVERTISEMENT_UNAVAILABLE))),
+    Effect.flatMap((responder) => {
+      if (responder === ADVERTISEMENT_UNAVAILABLE) {
+        return Effect.void;
+      }
+      return Effect.acquireUseRelease(
+        Effect.succeed(responder),
+        (acquired) => runPublisher(acquired, options.service),
+        (acquired) =>
+          Effect.tryPromise({
+            catch: () => new ShutdownError(undefined),
+            try: () => acquired.shutdown(),
+          }).pipe(Effect.tapError(() => logAdvertisementFailure)),
+      );
+    }),
+  );
 
 const runLanAdvertisement = (
   server: Readonly<Config["Service"]["server"]>,
@@ -177,18 +195,17 @@ const runLanAdvertisement = (
     if (!server.lanDiscovery) {
       return Effect.void;
     }
-    const options = makeAdvertisementOptions(server, listenerAddress, networkInterfaces());
-    if (options === undefined) {
-      return logAdvertisementFailure;
-    }
-    return Effect.scoped(publish(options));
-  }).pipe(
-    Effect.catchCause((cause) => {
-      if (Cause.hasInterruptsOnly(cause)) {
-        return Effect.failCause(cause);
-      }
-      return logAdvertisementFailure;
-    }),
-  );
+    return Effect.sync(() =>
+      makeAdvertisementOptions(server, listenerAddress, networkInterfaces()),
+    ).pipe(
+      Effect.catchCause(() => Effect.succeed(ADVERTISEMENT_UNAVAILABLE)),
+      Effect.flatMap((options) => {
+        if (options === ADVERTISEMENT_UNAVAILABLE || options === undefined) {
+          return logAdvertisementFailure;
+        }
+        return publish(options);
+      }),
+    );
+  });
 
 export { runLanAdvertisement };

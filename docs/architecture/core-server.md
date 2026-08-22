@@ -136,11 +136,14 @@ those interfaces. The default IPv4 wildcard publishes only IPv4; an IPv6
 listener publishes IPv6; the IPv6 wildcard is the configured dual-stack case.
 No per-interface or VPN-specific configuration enters this milestone.
 
-Advertisement runs independently after readiness. Publisher startup, socket,
-and shutdown failures emit only safe `lan.advertisement_failed` warnings and
-never change HTTP readiness. Ciao's internal retry and direct dependency output
-are accepted MVP limitations. Nama has no parallel publisher interface,
-alternate implementation, or speculative replacement path.
+Advertisement runs independently after readiness. Publisher startup and socket
+failures emit only safe `lan.advertisement_failed` warnings and never change
+HTTP readiness. A responder shutdown failure emits the same safe warning but
+remains a failed finalizer, so shutdown emits `server.shutdown_failed` and exits
+non-zero after the remaining resources finalize. Ciao's internal retry and
+direct dependency output are accepted MVP limitations. Nama has no parallel
+publisher interface, alternate implementation, or speculative replacement
+path.
 
 ## Startup and database ownership
 

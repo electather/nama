@@ -119,5 +119,5 @@ const closeListener = (server: Server, shutdown: ListenerShutdown) =>
     yield* shutdown.awaitRequests;
   });
 
-export { closeListener, openListener, sendEmpty };
+export { ShutdownError, closeListener, openListener, sendEmpty };
 export type { ListenerShutdown };

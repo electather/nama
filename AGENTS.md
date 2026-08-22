@@ -55,6 +55,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - While a Nama bootstrap attempt is active, return `SETUP_IN_PROGRESS` only for its matching token; every other candidate fails `AUTHENTICATION_FAILED`.
 - Emit Nama `server.runtime_failed` at `fatal` severity so configured `warn`, `error`, and `fatal` thresholds retain it.
 - Pass eligible non-loopback interface names to Ciao's responder as well as restricted addresses; on Darwin, an empty ARP table can leave autodetection with loopback only while `advertise()` still reports success.
+- Join the LAN-advertisement fiber from its owning scope finalizer; Effect's built-in scoped-fiber finalizer ignores the child exit, which would otherwise turn responder-shutdown failure into successful process shutdown.
 
 ## The loop
 

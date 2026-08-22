@@ -2,7 +2,7 @@ import type { AddressInfo } from "node:net";
 import type { NetworkInterfaceInfo, NetworkInterfaceInfoIPv6 } from "node:os";
 
 import { expect, it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Logger } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Logger } from "effect";
 import { beforeEach, vi } from "vitest";
 
 import type { Config } from "../../config/config.ts";
@@ -99,6 +99,7 @@ interface FakeResponderOptions {
   readonly onCreate?: (options: unknown) => void;
   readonly onNameChange?: (name: string) => void;
   readonly onShutdown?: () => void;
+  readonly shutdownFailure?: Error;
 }
 
 const makeFakeResponder = ({
@@ -108,6 +109,7 @@ const makeFakeResponder = ({
   onCreate = () => {},
   onNameChange = () => {},
   onShutdown = () => {},
+  shutdownFailure,
 }: FakeResponderOptions): FakeResponder => {
   let nameChangeListener: ((name: string) => void) | undefined = undefined;
   const service: FakeService = {
@@ -137,6 +139,9 @@ const makeFakeResponder = ({
     },
     shutdown: () => {
       onShutdown();
+      if (shutdownFailure !== undefined) {
+        return Promise.reject(shutdownFailure);
+      }
       return Promise.resolve();
     },
   };
@@ -187,6 +192,15 @@ const expectIpv6Publication = (health: Response, publication: CapturedPublicatio
     interface: ["en0"],
   });
   expect(publication.serviceOptions).toMatchObject({ restrictedAddresses: [IPV6_ADDRESS] });
+};
+
+const expectFailedGoodbye = (exit: Exit.Exit<void>, messages: readonly unknown[]): void => {
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) {
+    expect(Cause.hasInterruptsOnly(exit.cause)).toBe(false);
+  }
+  expect(messages).toContainEqual({ event: "lan.advertisement_failed" });
+  expect(JSON.stringify([exit, messages])).not.toContain(RAW_FAILURE);
 };
 
 const captureAdvertisement = (
@@ -461,6 +475,31 @@ it.effect("withdraws the advertisement before listener shutdown", () =>
     yield* server.close;
 
     expect(events).toEqual(["lan.withdrawn", "listener.stopping"]);
+  }),
+);
+
+it.effect("fails listener scope when the responder cannot send its goodbye", () =>
+  Effect.gen(function* advertisementShutdownFailureTest() {
+    const advertised = yield* Deferred.make<void>();
+    const messages: unknown[] = [];
+    dependency.getResponder.mockReturnValue(
+      makeFakeResponder({
+        advertise: () => {
+          Deferred.doneUnsafe(advertised, Effect.void);
+          return Promise.resolve();
+        },
+        shutdownFailure: new Error(RAW_FAILURE),
+      }),
+    );
+    const server = yield* startServer(makeDatabase(Effect.succeed(true)), {
+      lanDiscovery: true,
+    });
+
+    yield* server.advertiseLan.pipe(Effect.provide(capturedLogger(messages)));
+    yield* Deferred.await(advertised);
+    const exit = yield* Effect.exit(server.close);
+
+    expectFailedGoodbye(exit, messages);
   }),
 );
 
