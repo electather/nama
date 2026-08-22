@@ -18,8 +18,10 @@ nonisolated extension VerificationFailure {
     switch self {
     case .namaUnavailable:
       "Nama is temporarily unavailable. Try again."
+
     case .cannotConnect:
       "Couldn’t connect to this address. Check the address and network connection, then try again."
+
     case .incompatible:
       "This address did not respond as a compatible Nama server."
     }
@@ -31,10 +33,13 @@ nonisolated extension ConnectionState {
     switch self {
     case .editing:
       [.connect]
+
     case .verifying:
       [.connect, .cancel]
+
     case .ready:
       [.changeEndpoint]
+
     case .setupRequired, .failed:
       [.retry, .changeEndpoint]
     }

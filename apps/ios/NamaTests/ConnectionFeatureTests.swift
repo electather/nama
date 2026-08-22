@@ -38,7 +38,7 @@ struct ConnectionFeatureTests {
   }
 
   @Test("editing the address cancels an active request")
-  func editingCancelsRequest() async throws {
+  func editingCancelsRequest() async {
     let verifier = CancellationVerifier()
     let feature = ConnectionFeature(verifier: verifier)
     feature.address = "https://nama.example.com"
@@ -53,7 +53,7 @@ struct ConnectionFeatureTests {
   }
 
   @Test("leaving the flow cancels an active request")
-  func leavingFlowCancelsRequest() async throws {
+  func leavingFlowCancelsRequest() async {
     let verifier = CancellationVerifier()
     let feature = ConnectionFeature(verifier: verifier)
     feature.address = "https://nama.example.com"
@@ -160,7 +160,7 @@ private actor ImmediateVerifier: ConnectionVerifying {
     self.result = result
   }
 
-  func verify(_ endpoint: NamaEndpoint) async -> ConnectionVerificationResult {
+  func verify(_: NamaEndpoint) -> ConnectionVerificationResult {
     callCount += 1
     return result
   }
@@ -170,10 +170,13 @@ private actor CancellationVerifier: ConnectionVerifying {
   private(set) var callCount = 0
   private(set) var cancellationCount = 0
 
-  func verify(_ endpoint: NamaEndpoint) async -> ConnectionVerificationResult {
+  private static let cancellationDelaySeconds = 60
+  private static let cancellationDelay = Duration.seconds(cancellationDelaySeconds)
+
+  func verify(_: NamaEndpoint) async -> ConnectionVerificationResult {
     callCount += 1
     do {
-      try await Task.sleep(for: .seconds(60))
+      try await Task.sleep(for: Self.cancellationDelay)
       return .ready
     } catch {
       cancellationCount += 1
@@ -189,7 +192,7 @@ private actor ManualVerifier: ConnectionVerifying {
     continuations.count
   }
 
-  func verify(_ endpoint: NamaEndpoint) async -> ConnectionVerificationResult {
+  func verify(_: NamaEndpoint) async -> ConnectionVerificationResult {
     await withCheckedContinuation { continuation in
       continuations.append(continuation)
     }

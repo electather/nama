@@ -31,6 +31,8 @@ jobs:
         run: mise run check:ts
       - name: Check Go
         run: mise run check:go
+      - name: Check Swift
+        run: mise run check:swift
       - name: Install the CLI credential-store service
         run: |
           sudo apt-get update

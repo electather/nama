@@ -1,0 +1,6 @@
+# SwiftLint's analyzer invokes the compiler and currently crashes on Swift Testing
+# macro expansion under Xcode 26. Lint still checks every handwritten test file.
+parent_config: .swiftlint.yml
+
+excluded:
+  - apps/ios/NamaTests
