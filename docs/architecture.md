@@ -54,9 +54,12 @@ testing through candidate and exact stored-revision subprocesses, credential
 and configuration cutover, disable/re-enable/delete, retained operation replay,
 and safe boundary output. Targeted normalized Jellyfin movie, show, season,
 episode, and watch-state observations, resumable catalog and watch-state scans,
-explicit watched/unwatched writes, anonymous artwork resolution, and
-user-facing provider connection tests are implemented; core media ingestion
-and application-image packaging remain unimplemented.
+explicit watched/unwatched writes, anonymous artwork resolution, user-facing
+provider connection tests, and the local Linux application image are
+implemented. The Docker gate drives the real image through canonical Compose,
+the compiled Go CLI, the pinned Jellyfin fixture, plugin-child recovery,
+application replacement, and graceful shutdown. Core media ingestion remains
+unimplemented.
 
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.
 

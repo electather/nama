@@ -1,0 +1,8 @@
+.fallowrc.json
+AGENTS.md
+better-auth.config.ts
+integration/
+src/*/tests/
+src/tests/
+tsconfig.json
+vitest.config.ts

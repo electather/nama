@@ -1,0 +1,15 @@
+services:
+  jellyfin-fixture-media:
+    extends:
+      file: apps/server/integration/tests/compose.yaml
+      service: jellyfin-fixture-media
+
+  jellyfin:
+    extends:
+      file: apps/server/integration/tests/compose.yaml
+      service: jellyfin
+
+volumes:
+  jellyfin-cache:
+  jellyfin-config:
+  jellyfin-media:

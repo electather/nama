@@ -20,3 +20,6 @@ xcuserdata/
 .env.*
 !.env.example
 /gen/swift/Package.resolved
+/.nama-docker-check.*
+/nama.toml
+/secrets/

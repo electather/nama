@@ -44,8 +44,8 @@ run = "scripts/check-go.sh"
 
 
 [tasks."check:docker"]
-description = "Validate the Docker Compose model"
-run = "docker compose config --quiet"
+description = "Verify the packaged application through Docker Compose"
+run = "scripts/check-docker.sh"
 
 [tasks.check]
 description = "Run every repository check sequentially"
