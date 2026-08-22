@@ -1,6 +1,6 @@
 import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
 
-import { Context, Effect, Exit, Layer } from "effect";
+import { Cause, Context, Effect, Exit, Fiber, Layer, Scope } from "effect";
 
 import { Config } from "../config/config.ts";
 import { Database } from "../database/database.ts";
@@ -8,6 +8,7 @@ import { RuntimeControl } from "../lifecycle/runtime-control.ts";
 import { makeConnectRequestListener } from "./connect-listener.ts";
 import { makeHealthStatus } from "./health.ts";
 import type { HealthStatusEffect } from "./health.ts";
+import { runLanAdvertisement } from "./lan-advertiser.ts";
 import { closeListener, openListener, sendEmpty } from "./listener.ts";
 import type { ListenerShutdown } from "./listener.ts";
 import { makeRequestRuntime } from "./request-runtime.ts";
@@ -18,6 +19,7 @@ interface AcceptingState {
 }
 
 interface HttpServerService {
+  readonly advertiseLan: Effect.Effect<void>;
   readonly listening: true;
 }
 
@@ -58,6 +60,18 @@ const makeRequestListener =
     });
   };
 
+const stopLanAdvertisement = <Error>(fiber: Fiber.Fiber<void, Error>) =>
+  Fiber.interrupt(fiber).pipe(
+    Effect.andThen(Fiber.await(fiber)),
+    Effect.flatMap((exit) => {
+      if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
+        return Effect.failCause(exit.cause);
+      }
+      return Effect.void;
+    }),
+    Effect.orDie,
+  );
+
 const makeServer = (
   unmatchedRequest: RequestListener | undefined,
   emitStopping: () => Effect.Effect<void>,
@@ -66,6 +80,7 @@ const makeServer = (
     const config = yield* Config;
     const database = yield* Database;
     const runtimeControl = yield* RuntimeControl;
+    const scope = yield* Effect.scope;
     const requestRuntime = yield* makeRequestRuntime(database);
     const accepting: AcceptingState = { value: true };
     const healthStatus = makeHealthStatus(database.checkReadiness, runtimeControl.isReady);
@@ -87,8 +102,14 @@ const makeServer = (
           },
         } satisfies ListenerShutdown).pipe(Effect.orDie),
     );
-    void server;
-    return HttpServer.of({ listening: true });
+    return HttpServer.of({
+      advertiseLan: Effect.gen(function* startLanAdvertisement() {
+        const advertisement = runLanAdvertisement(config.server, server.address());
+        const fiber = yield* Effect.forkIn(advertisement, scope);
+        yield* Scope.addFinalizer(scope, stopLanAdvertisement(fiber));
+      }),
+      listening: true,
+    });
   });
 
 class HttpServer extends contextService<HttpServer, HttpServerService>()(

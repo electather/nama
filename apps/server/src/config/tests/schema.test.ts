@@ -94,6 +94,11 @@ it.effect("rejects a non-string public URL", () => {
   return expectValidationError(rejectToml(validToml({ server })));
 });
 
+it.effect("rejects a non-boolean LAN discovery value", () => {
+  const server = 'public_url = "https://nama.example"\nlan_discovery = "false"';
+  return expectValidationError(rejectToml(validToml({ server })));
+});
+
 it.effect("does not let an override hide a malformed section", () =>
   expectValidationError(
     rejectToml(

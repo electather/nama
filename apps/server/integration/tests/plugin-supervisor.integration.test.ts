@@ -37,6 +37,7 @@ const loggingConfig = Config.of({
   security: Object.freeze({ masterKey: Redacted.make("unused") }),
   server: Object.freeze({
     bind: "127.0.0.1:8080",
+    lanDiscovery: false,
     publicUrl: "http://127.0.0.1:8080/",
   }),
 });

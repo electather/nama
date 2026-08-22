@@ -23,7 +23,11 @@ const config = Config.of({
   database: Object.freeze({ maxConnections: 1, url: Redacted.make("postgres://secret") }),
   logging: Object.freeze({ level: "info" as const }),
   security: Object.freeze({ masterKey: Redacted.make("master-secret") }),
-  server: Object.freeze({ bind: "127.0.0.1:8080", publicUrl: "http://127.0.0.1:8080/" }),
+  server: Object.freeze({
+    bind: "127.0.0.1:8080",
+    lanDiscovery: false,
+    publicUrl: "http://127.0.0.1:8080/",
+  }),
 });
 
 const fatalLoggingConfig = Config.of({
@@ -41,10 +45,18 @@ const makeSuccessfulBootstrapToken = () =>
     writeLine: (line) => Buffer.byteLength(line),
   });
 
-const makeHttpServerLayer = (onAcquire: LifecycleCallback, onRelease: LifecycleCallback) => {
+const makeHttpServerLayer = (
+  onAcquire: LifecycleCallback,
+  onRelease: LifecycleCallback,
+  onAdvertise: LifecycleCallback = () => {},
+) => {
   const acquire = Effect.sync(() => {
     onAcquire();
-    return HttpServer.of({ listening: true });
+    const service = {
+      advertiseLan: Effect.sync(onAdvertise),
+      listening: true as const,
+    };
+    return HttpServer.of(service);
   });
   const release = Effect.sync(onRelease);
   return Layer.effect(
@@ -110,6 +122,9 @@ const makeLifecycleOrderFixture = () =>
       },
       () => {
         events.push("listener.released");
+      },
+      () => {
+        events.push("lan.started");
       },
     );
     const activatedBootstrapToken = makeRecordedBootstrapToken(bootstrapToken, () => {
@@ -197,7 +212,7 @@ it.effect("emits only one tagged startup failure after bootstrap activation fail
 );
 
 it.effect(
-  "binds before bootstrap activation and marks runtime ready before waiting for fatal lifecycle completion",
+  "starts LAN advertisement after runtime readiness before waiting for fatal lifecycle completion",
   () =>
     Effect.gen(function* lifecycleOrderTest() {
       const fixture = yield* makeLifecycleOrderFixture();
@@ -205,7 +220,13 @@ it.effect(
 
       return yield* Effect.gen(function* observeLifecycleOrder() {
         yield* fixture.awaitReady;
-        expect(fixture.events).toEqual(["listener.bound", "bootstrap.activated", "runtime.ready"]);
+        yield* Effect.yieldNow;
+        expect(fixture.events).toEqual([
+          "listener.bound",
+          "bootstrap.activated",
+          "runtime.ready",
+          "lan.started",
+        ]);
         yield* fixture.completeFatal;
         expectLifecycleOrder(yield* Fiber.await(root), fixture.events);
       }).pipe(Effect.ensuring(Fiber.interrupt(root)));

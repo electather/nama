@@ -60,10 +60,11 @@ interface LifecycleState {
 const runLifecycle = (state: LifecycleState, startedAt: number) =>
   Effect.gen(function* runLifecycleProgram() {
     const runtimeControl = yield* RuntimeControl;
-    yield* HttpServer;
+    const httpServer = yield* HttpServer;
     const bootstrapToken = yield* BootstrapToken;
     yield* bootstrapToken.activate;
     yield* runtimeControl.markReady;
+    yield* httpServer.advertiseLan;
     const readyAt = yield* Clock.currentTimeMillis;
     yield* logEvent("server.ready", { durationMs: readyAt - startedAt });
     state.ready = true;

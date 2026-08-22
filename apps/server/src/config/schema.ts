@@ -6,6 +6,7 @@ import type { Redacted as RedactedValue } from "effect/Redacted";
 import { ConfigValidationError } from "./errors.ts";
 
 const DEFAULT_BIND = "0.0.0.0:8080";
+const DEFAULT_LAN_DISCOVERY = true;
 const DEFAULT_MAX_CONNECTIONS = 10;
 const DEFAULT_LOG_LEVEL = "info";
 const MINIMUM_PORT = 1;
@@ -25,6 +26,7 @@ type LogLevel = (typeof LOG_LEVELS)[number];
 interface ConfigService {
   readonly server: Readonly<{
     readonly bind: string;
+    readonly lanDiscovery: boolean;
     readonly publicUrl: string;
   }>;
   readonly database: Readonly<{
@@ -136,6 +138,9 @@ const LogLevelSchema = Schema.Literals(LOG_LEVELS);
 const bindWithDefault = BindSchema.pipe(
   Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_BIND)),
 );
+const lanDiscoveryWithDefault = Schema.Boolean.pipe(
+  Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_LAN_DISCOVERY)),
+);
 const connectionsWithDefault = MaxConnectionsSchema.pipe(
   Schema.withDecodingDefaultKey(Effect.succeed(DEFAULT_MAX_CONNECTIONS)),
 );
@@ -157,6 +162,7 @@ const ConfigurationSchema = Schema.Struct({
   }),
   server: Schema.Struct({
     bind: bindWithDefault,
+    lan_discovery: lanDiscoveryWithDefault,
     public_url: PublicUrlSchema,
   }),
 });
@@ -172,6 +178,7 @@ const freezeConfiguration = (decoded: Readonly<DecodedConfiguration>): ConfigSer
   const security = Object.freeze({ masterKey: decoded.security.master_key });
   const server = Object.freeze({
     bind: decoded.server.bind,
+    lanDiscovery: decoded.server.lan_discovery,
     publicUrl: new URL(decoded.server.public_url).toString(),
   });
   return Object.freeze({ database, logging, security, server });

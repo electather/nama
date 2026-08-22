@@ -1,6 +1,6 @@
 // oxlint-disable import/max-dependencies -- The complete Database test double includes the provider persistence seam.
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Effect, Exit, Layer, Logger, Option, Redacted, Scope } from "effect";
+import { Context, Effect, Exit, Layer, Logger, Option, Redacted, Scope } from "effect";
 
 import { Authentication } from "../../authentication/authentication-service.ts";
 import type { AuthenticationService } from "../../authentication/authentication-service.ts";
@@ -13,7 +13,7 @@ import { unusedProviderPersistence } from "../../database/tests/provider-persist
 import { RuntimeControl } from "../../lifecycle/runtime-control.ts";
 import { ProviderManagement } from "../../provider/provider-management.ts";
 import { HttpServer } from "../http-server.ts";
-import { HOST, reservePort } from "./network.test-support.ts";
+import { HOST, reservePortOn } from "./network.test-support.ts";
 
 const SERVER_MAX_CONNECTIONS = 1;
 const FIRST_LOG_MESSAGE_PART = 0;
@@ -23,8 +23,16 @@ const noSignInLimit: Effect.Effect<number | undefined> = Effect.succeed(
   Option.getOrUndefined(Option.none<number>()),
 );
 
-const serverConfig = (port: number) =>
-  Config.of({
+const formattedHost = (host: string): string => {
+  if (host.includes(":")) {
+    return `[${host}]`;
+  }
+  return host;
+};
+
+const serverConfig = (port: number, options: ServerLayerOptions) => {
+  const host = formattedHost(options.host ?? HOST);
+  return Config.of({
     database: Object.freeze({
       maxConnections: SERVER_MAX_CONNECTIONS,
       url: Redacted.make("postgres://unused"),
@@ -32,10 +40,12 @@ const serverConfig = (port: number) =>
     logging: Object.freeze({ level: "info" as const }),
     security: Object.freeze({ masterKey: Redacted.make("unused") }),
     server: Object.freeze({
-      bind: `${HOST}:${port}`,
-      publicUrl: `http://${HOST}:${port}/`,
+      bind: `${host}:${port}`,
+      lanDiscovery: options.lanDiscovery ?? false,
+      publicUrl: `http://${host}:${port}/`,
     }),
   });
+};
 
 const messageText = (message: unknown): string => {
   if (Array.isArray(message)) {
@@ -48,6 +58,8 @@ const messageText = (message: unknown): string => {
 interface ServerLayerOptions {
   readonly authentication?: AuthenticationService;
   readonly emitStopping?: () => Effect.Effect<void>;
+  readonly host?: string;
+  readonly lanDiscovery?: boolean;
   readonly messages?: string[];
   readonly records?: unknown[];
   readonly runtimeControl?: RuntimeControl["Service"];
@@ -147,7 +159,7 @@ const serverLayerWithDatabase = (
   });
   const dependencies = Layer.mergeAll(
     Layer.succeed(Authentication, options.authentication ?? defaultAuthentication),
-    Layer.succeed(Config, serverConfig(port)),
+    Layer.succeed(Config, serverConfig(port, options)),
     databaseLayer,
     Logger.layer([capture]),
     Layer.succeed(RuntimeControl, options.runtimeControl ?? defaultRuntimeControl),
@@ -165,13 +177,16 @@ const serverLayer = (
 
 const startServer = (database: Database["Service"], options: ServerLayerOptions = {}) =>
   Effect.gen(function* startedServer() {
-    const port = yield* reservePort;
+    const host = options.host ?? HOST;
+    const port = yield* reservePortOn(host);
     const scope = yield* Scope.make();
     yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
-    yield* Layer.buildWithScope(serverLayer(port, database, options), scope);
+    const context = yield* Layer.buildWithScope(serverLayer(port, database, options), scope);
+    const httpServer = Context.get(context, HttpServer);
     return {
+      advertiseLan: httpServer.advertiseLan,
       close: Scope.close(scope, Exit.void),
-      origin: `http://${HOST}:${port}`,
+      origin: `http://${formattedHost(host)}:${port}`,
     };
   });
 

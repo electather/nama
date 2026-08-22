@@ -26,8 +26,9 @@ const expectEmptyResponse = (response: Response, status: number) =>
     expect(response.headers.get("content-length")).toBe("0");
     expect(yield* Effect.promise(() => response.text())).toBe("");
   });
-const withPortReservation = <Result, Error, Requirements>(
+const withHostPortReservation = <Result, Error, Requirements>(
   port: number,
+  host: string,
   use: (port: number) => Effect.Effect<Result, Error, Requirements>,
 ) =>
   Effect.acquireUseRelease(
@@ -35,7 +36,7 @@ const withPortReservation = <Result, Error, Requirements>(
     (reservation) =>
       Effect.gen(function* reservedPort() {
         yield* Effect.promise(async () => {
-          reservation.listen(port, HOST);
+          reservation.listen(port, host);
           await once(reservation, "listening");
         });
         const address = reservation.address();
@@ -46,12 +47,18 @@ const withPortReservation = <Result, Error, Requirements>(
       }),
     (reservation) => Effect.promise(() => reservation[Symbol.asyncDispose]()),
   );
+const withPortReservation = <Result, Error, Requirements>(
+  port: number,
+  use: (port: number) => Effect.Effect<Result, Error, Requirements>,
+) => withHostPortReservation(port, HOST, use);
 
 const withReservedPort = <Result, Error, Requirements>(
   use: (port: number) => Effect.Effect<Result, Error, Requirements>,
 ) => withPortReservation(EPHEMERAL_PORT, use);
 
 const reservePort = withReservedPort(Effect.succeed);
+const reservePortOn = (host: string) =>
+  withHostPortReservation(EPHEMERAL_PORT, host, Effect.succeed);
 const reserveSpecificPort = (port: number) => withPortReservation(port, () => Effect.void);
 
 const openCapturedSocket = (origin: string) =>
@@ -98,6 +105,7 @@ export {
   expectEmptyResponse,
   openCapturedSocket,
   reservePort,
+  reservePortOn,
   reserveSpecificPort,
   sendReadyRequest,
   statusesFrom,

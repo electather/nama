@@ -46,12 +46,12 @@ TLS, ingress, image publication, signing, provenance, release versioning,
 backup/restore, Kubernetes, and hostile-plugin sandboxing remain outside this
 implemented deployment boundary.
 
-The target core advertises `_nama._tcp` for LAN discovery, but publication from
-a container on an ordinary Docker bridge does not make multicast DNS visible
-on the physical LAN. The native publisher prerequisite proves the service and
-Apple-browser contract without choosing host networking, macvlan, an Avahi
-sidecar, or a PostgreSQL exposure. Issue #49 owns and must exercise the
-production Compose network path while preserving the one application image
-plus PostgreSQL boundary. Until then, native-host or controlled-fixture
-advertisement is discovery evidence; manual LAN, VPN, and reverse-proxy entry
-remains available independently.
+The native core advertises `_nama._tcp` for LAN discovery. Publication from a
+container on an ordinary Docker bridge does not make multicast DNS visible on
+the physical LAN. The native publisher and Apple-browser integration prove the
+service contract without choosing host networking, macvlan, an Avahi sidecar,
+or a PostgreSQL exposure. Issue #49 owns and must exercise the production
+Compose network path while preserving the one application image plus
+PostgreSQL boundary. Until then, native-host advertisement is discovery
+evidence; manual LAN, VPN, and reverse-proxy entry remains available
+independently.

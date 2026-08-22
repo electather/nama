@@ -82,7 +82,11 @@ const configForDatabase = (databaseUrl: string, masterKey = MASTER_KEY) =>
     security: Object.freeze({
       masterKey: Redacted.make(masterKey),
     }),
-    server: Object.freeze({ bind: "127.0.0.1:8080", publicUrl: "http://localhost:8080/" }),
+    server: Object.freeze({
+      bind: "127.0.0.1:8080",
+      lanDiscovery: false,
+      publicUrl: "http://localhost:8080/",
+    }),
   });
 
 interface DatabaseUseOptions<Result, Error, Requirements> {
