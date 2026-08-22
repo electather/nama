@@ -84,12 +84,7 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000001 /* NamaApp.swift */,
-				200000000000000000000005 /* Endpoint.swift */,
-				200000000000000000000007 /* ConnectionFeature.swift */,
-				200000000000000000000009 /* SetupStatusVerifier.swift */,
-				200000000000000000000011 /* ConnectionPresentation.swift */,
-				200000000000000000000012 /* ConnectionView.swift */,
-				200000000000000000000013 /* TVConnectionView.swift */,
+				500000000000000000000006 /* Connection */,
 				500000000000000000000005 /* Resources */,
 			);
 			path = Nama;
@@ -98,11 +93,7 @@
 		500000000000000000000003 /* NamaTests */ = {
 			isa = PBXGroup;
 			children = (
-				200000000000000000000002 /* EndpointTests.swift */,
-				200000000000000000000006 /* ConnectionFeatureTests.swift */,
-				200000000000000000000008 /* SetupStatusVerifierTests.swift */,
-				200000000000000000000010 /* ConnectionPresentationTests.swift */,
-				200000000000000000000016 /* TestSupport.swift */,
+				500000000000000000000007 /* Connection */,
 			);
 			path = NamaTests;
 			sourceTree = "<group>";
@@ -114,6 +105,31 @@
 				200000000000000000000004 /* NamaTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		500000000000000000000006 /* Connection */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000005 /* Endpoint.swift */,
+				200000000000000000000007 /* ConnectionFeature.swift */,
+				200000000000000000000009 /* SetupStatusVerifier.swift */,
+				200000000000000000000011 /* ConnectionPresentation.swift */,
+				200000000000000000000012 /* ConnectionView.swift */,
+				200000000000000000000013 /* TVConnectionView.swift */,
+			);
+			path = Connection;
+			sourceTree = "<group>";
+		};
+		500000000000000000000007 /* Connection */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000002 /* EndpointTests.swift */,
+				200000000000000000000006 /* ConnectionFeatureTests.swift */,
+				200000000000000000000008 /* SetupStatusVerifierTests.swift */,
+				200000000000000000000010 /* ConnectionPresentationTests.swift */,
+				200000000000000000000016 /* TestSupport.swift */,
+			);
+			path = Connection;
 			sourceTree = "<group>";
 		};
 		500000000000000000000005 /* Resources */ = {

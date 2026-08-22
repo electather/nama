@@ -25,7 +25,7 @@ Go CLI ── Connect api.v1├──> Node core ───> Drizzle ORM ──�
 Apple player <──────────┴──────── playable URL ──┘
 ```
 
-The target installation is one private deployment with one administrator, Jellyfin as its first provider type, and one universal SwiftUI client targeting iOS, tvOS, and macOS. Multiple Jellyfin provider instances may supply watch-state input. The public and plugin contracts are real from the first vertical slice, while a marketplace, web console, generic workflow engine, distributed queue, and native media server are not part of the target architecture.
+The target installation is one private deployment with one administrator, Jellyfin as its first provider type, and one universal SwiftUI client for iPhone, iPad, Apple TV, and Mac on Apple platform version 26 or later. Multiple Jellyfin provider instances may supply watch-state input. The public and plugin contracts are real from the first vertical slice, while a marketplace, web console, generic workflow engine, distributed queue, and native media server are not part of the target architecture.
 
 The implemented baseline is narrower than that topology. `@nama/server` currently runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, readiness probing, exact health routes, Setup and administrator Auth RPCs through a private Better Auth adapter, the durable provider persistence/protection boundary, and an authenticated Effect-scoped plugin supervisor. Before binding, a code-owned bundled registry discovers the production Jellyfin plugin, validates its identity and restricted configuration schema, and reconciles the last accepted installation metadata. Authenticated provider-neutral RPCs and compiled CLI commands list provider types, then create, list, inspect, patch, disable, re-enable, and permanently delete disabled provider instances. Create verifies one isolated Jellyfin candidate and atomically commits encrypted credentials plus a principal digest. Update keeps metadata-only changes local, verifies candidate configuration or credential changes against the immutable principal, fences revisions, retires old runtime admission, and atomically commits the replacement snapshot. Delete rejects enabled or busy instances, closes core activity and plugin admission, proves supervised cleanup, and atomically removes instance-owned state while retaining its durable retry result. Better Auth routes remain unmounted; setup closes its durable marker transactionally; and sign-out confirms durable session revocation. Device pairing, provider-instance testing, Apple-client behavior, media capabilities, and playback remain target contracts rather than implemented capabilities.
 
@@ -103,6 +103,8 @@ Accepted ADRs record only the choices and rationale below; their linked living a
 26. [ADR-0026 — Normalize failures with Connect codes and standard Google RPC details](adr/0026-standard-google-rpc-error-details.md)
 27. [ADR-0027 — Separate request correlation from durable logical-operation idempotency](adr/0027-logical-operation-idempotency.md)
 28. [ADR-0028 — Domain-separate provider credential and principal protection](adr/0028-domain-separated-provider-protection.md)
+29. [ADR-0029 — Require Apple platform version 26](adr/0029-apple-platform-26-minimum.md)
+30. [ADR-0030 — Keep one active pairing per Apple app installation](adr/0030-one-active-apple-pairing.md)
 
 ## Invariants
 
@@ -119,6 +121,7 @@ Accepted ADRs record only the choices and rationale below; their linked living a
 11. Clients branch on Connect code and stable reason; application failures use standard Google RPC details. See [ADR-0026](adr/0026-standard-google-rpc-error-details.md).
 12. Request correlation is distinct from durable logical-operation idempotency. See [ADR-0027](adr/0027-logical-operation-idempotency.md).
 13. Recoverable provider credentials use versioned authenticated encryption under a provider-specific derived key, while immutable provider-principal bindings retain only keyed, instance-bound digests. See [ADR-0028](adr/0028-domain-separated-provider-protection.md).
+14. One universal Apple app installation has one active endpoint-bound Device credential. Windows share that pairing while retaining independent transient state, and a replacement becomes active only after fresh Pairing commits durably. See [ADR-0030](adr/0030-one-active-apple-pairing.md).
 
 ## Subsystem architecture
 
@@ -129,7 +132,7 @@ Accepted ADRs record only the choices and rationale below; their linked living a
 - [Watch-state synchronization](architecture/state-sync.md)
 - [Authentication, setup, and pairing](architecture/authentication-and-setup.md)
 - [Management CLI](architecture/cli.md)
-- [iOS application](architecture/ios-app.md)
+- [Universal Apple application](architecture/ios-app.md)
 - [Playback](architecture/playback.md)
 - [Deployment and exposure](architecture/deployment.md)
 - [Repository and tooling](architecture/repository-and-tooling.md)
