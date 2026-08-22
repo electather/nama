@@ -240,6 +240,266 @@ func TestProviderDeleteRequiresExplicitAutomationConsentAndInteractiveConfirmati
 	}
 }
 
+func TestProviderTypeTestReturnsCompletedOutcomeWithoutLeakingConfiguration(t *testing.T) {
+	const (
+		profileName = "local"
+		server      = "http://127.0.0.1:8080"
+		secret      = "candidate-provider-secret"
+	)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	credentials := cliProviderCredential(server)
+	providerClient := &cliProviderServiceFake{
+		testConfigurationResult: &apiv1.ProviderConnectionTest{
+			Status:  apiv1.ProviderConnectionStatus_PROVIDER_CONNECTION_STATUS_AUTHENTICATION_FAILED,
+			Summary: "The provider rejected the configured credentials.",
+		},
+	}
+	dependencies := testCLIDependencies(configPath, nil, false, credentials, nil, nil)
+	dependencies.ProviderClient = providerClient
+	setProfile(t, dependencies, profileName, server)
+
+	configuration := `{"api_key":"` + secret + `","base_url":"http://127.0.0.1:8096","user_id":"provider-user"}`
+	stdout, stderr, err := executeCLI(
+		t,
+		dependencies,
+		configuration,
+		"provider",
+		"type",
+		"test",
+		"jellyfin",
+		"--configuration",
+		"-",
+		"--profile",
+		profileName,
+		"--output",
+		"json",
+	)
+	if err != nil {
+		t.Fatalf("provider type test error = %v", err)
+	}
+	if providerClient.testConfigurationRequest == nil {
+		t.Fatal("provider type test did not call the server")
+	}
+	if got, want := providerClient.testConfigurationRequest.Msg.GetConfiguration().AsMap(), map[string]any{
+		"api_key":  secret,
+		"base_url": "http://127.0.0.1:8096",
+		"user_id":  "provider-user",
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("candidate configuration = %#v, want %#v", got, want)
+	}
+	if got, want := providerClient.testConfigurationRequest.Msg.GetProviderTypeId(), "jellyfin"; got != want {
+		t.Errorf("candidate provider type ID = %q, want %q", got, want)
+	}
+	if got, want := providerClient.testConfigurationRequest.Header().Get("Authorization"), "Bearer administrator-bearer"; got != want {
+		t.Errorf("candidate authorization = %q, want %q", got, want)
+	}
+	data := decodeCLIData(t, stdout)
+	connectionTest, ok := data["connection_test"].(map[string]any)
+	if !ok {
+		t.Fatalf("connection_test = %#v, want object", data["connection_test"])
+	}
+	if got, want := connectionTest, map[string]any{
+		"capabilities": []any{},
+		"status":       "authentication_failed",
+		"summary":      "The provider rejected the configured credentials.",
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("connection_test = %#v, want %#v", got, want)
+	}
+	if len(stderr) != 0 {
+		t.Errorf("provider type test stderr = %q, want empty", stderr)
+	}
+	requireNoCLILeak(t, stdout, secret)
+	requireNoCLILeak(t, stderr, secret)
+}
+func TestProviderTypeTestReturnsEveryCompletedRemoteOutcomeAsSuccess(t *testing.T) {
+	tests := []struct {
+		name   string
+		status apiv1.ProviderConnectionStatus
+		want   string
+	}{
+		{
+			name:   "unreachable",
+			status: apiv1.ProviderConnectionStatus_PROVIDER_CONNECTION_STATUS_UNREACHABLE,
+			want:   "unreachable",
+		},
+		{
+			name:   "incompatible",
+			status: apiv1.ProviderConnectionStatus_PROVIDER_CONNECTION_STATUS_INCOMPATIBLE,
+			want:   "incompatible",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			const (
+				profileName = "local"
+				server      = "http://127.0.0.1:8080"
+			)
+			configPath := filepath.Join(t.TempDir(), "config.json")
+			credentials := cliProviderCredential(server)
+			providerClient := &cliProviderServiceFake{
+				testConfigurationResult: &apiv1.ProviderConnectionTest{
+					Status:  test.status,
+					Summary: "Completed remote outcome.",
+				},
+			}
+			dependencies := testCLIDependencies(configPath, nil, false, credentials, nil, nil)
+			dependencies.ProviderClient = providerClient
+			setProfile(t, dependencies, profileName, server)
+
+			stdout, stderr, err := executeCLI(
+				t,
+				dependencies,
+				"{}",
+				"provider",
+				"type",
+				"test",
+				"jellyfin",
+				"--configuration",
+				"-",
+				"--profile",
+				profileName,
+				"--output",
+				"json",
+			)
+			if err != nil {
+				t.Fatalf("provider type test error = %v", err)
+			}
+			if len(stderr) != 0 {
+				t.Errorf("provider type test stderr = %q, want empty", stderr)
+			}
+			connectionTest := decodeCLIData(t, stdout)["connection_test"].(map[string]any)
+			if got := connectionTest["status"]; got != test.want {
+				t.Errorf("connection status = %#v, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestInteractiveProviderTypeTestUsesTheAcceptedConfigurationSchema(t *testing.T) {
+	const (
+		profileName = "local"
+		server      = "http://127.0.0.1:8080"
+		secret      = "interactive-candidate-secret"
+	)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	credentials := cliProviderCredential(server)
+	providerClient := &cliProviderServiceFake{
+		providerType: cliProviderType(t),
+		testConfigurationResult: &apiv1.ProviderConnectionTest{
+			Status:  apiv1.ProviderConnectionStatus_PROVIDER_CONNECTION_STATUS_CONNECTED,
+			Summary: "Connected.",
+		},
+	}
+	dependencies := testCLIDependencies(configPath, nil, true, credentials, nil, nil)
+	secretReader := &cliPasswordReaderSpy{values: [][]byte{[]byte(secret)}}
+	dependencies.SecretInput.TerminalReader = secretReader
+	dependencies.ProviderClient = providerClient
+	setProfile(t, dependencies, profileName, server)
+
+	stdout, stderr, err := executeCLI(
+		t,
+		dependencies,
+		"\nprovider-user\n\n",
+		"provider",
+		"type",
+		"test",
+		"jellyfin",
+		"--profile",
+		profileName,
+	)
+	if err != nil {
+		t.Fatalf("interactive provider type test error = %v", err)
+	}
+	if providerClient.testConfigurationRequest == nil {
+		t.Fatal("interactive provider type test did not call the server")
+	}
+	if got, want := providerClient.testConfigurationRequest.Msg.GetConfiguration().AsMap(), map[string]any{
+		"api_key":  secret,
+		"base_url": "http://127.0.0.1:8096",
+		"user_id":  "provider-user",
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("interactive candidate configuration = %#v, want %#v", got, want)
+	}
+	if secretReader.calls != 1 {
+		t.Errorf("interactive candidate secret reads = %d, want 1", secretReader.calls)
+	}
+	prompt := string(stderr)
+	for _, label := range []string{"Base URL", "User ID", "API key"} {
+		if !strings.Contains(prompt, label) {
+			t.Errorf("interactive candidate prompt omitted %q: %q", label, prompt)
+		}
+	}
+	requireNoCLILeak(t, stdout, secret)
+	requireNoCLILeak(t, stderr, secret)
+}
+func TestProviderInstanceTestReturnsSafeConnectionDetails(t *testing.T) {
+	const (
+		profileName = "local"
+		server      = "http://127.0.0.1:8080"
+	)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	credentials := cliProviderCredential(server)
+	providerClient := &cliProviderServiceFake{
+		testInstanceResult: &apiv1.ProviderConnectionTest{
+			Status:        apiv1.ProviderConnectionStatus_PROVIDER_CONNECTION_STATUS_CONNECTED,
+			Summary:       "Connected.",
+			RemoteName:    new("Living Room Jellyfin"),
+			RemoteVersion: new("10.11.11"),
+			Capabilities: []apiv1.ProviderCapability{
+				apiv1.ProviderCapability_PROVIDER_CAPABILITY_LIBRARY_READ,
+				apiv1.ProviderCapability(99),
+				apiv1.ProviderCapability_PROVIDER_CAPABILITY_WATCHED_WRITE,
+			},
+		},
+	}
+	dependencies := testCLIDependencies(configPath, nil, false, credentials, nil, nil)
+	dependencies.ProviderClient = providerClient
+	setProfile(t, dependencies, profileName, server)
+
+	stdout, stderr, err := executeCLI(
+		t,
+		dependencies,
+		"",
+		"provider",
+		"instance",
+		"test",
+		"provider-instance-1",
+		"--profile",
+		profileName,
+		"--output",
+		"json",
+	)
+	if err != nil {
+		t.Fatalf("provider instance test error = %v", err)
+	}
+	if providerClient.testInstanceRequest == nil {
+		t.Fatal("provider instance test did not call the server")
+	}
+	if got, want := providerClient.testInstanceRequest.Msg.GetProviderInstanceId(), "provider-instance-1"; got != want {
+		t.Errorf("tested provider instance ID = %q, want %q", got, want)
+	}
+	if got, want := providerClient.testInstanceRequest.Header().Get("Authorization"), "Bearer administrator-bearer"; got != want {
+		t.Errorf("instance-test authorization = %q, want %q", got, want)
+	}
+	data := decodeCLIData(t, stdout)
+	connectionTest, ok := data["connection_test"].(map[string]any)
+	if !ok {
+		t.Fatalf("connection_test = %#v, want object", data["connection_test"])
+	}
+	if got, want := connectionTest, map[string]any{
+		"capabilities":   []any{"library_read", "watched_write"},
+		"remote_name":    "Living Room Jellyfin",
+		"remote_version": "10.11.11",
+		"status":         "connected",
+		"summary":        "Connected.",
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("connection_test = %#v, want %#v", got, want)
+	}
+	if len(stderr) != 0 {
+		t.Errorf("provider instance test stderr = %q, want empty", stderr)
+	}
+}
+
 func TestInteractiveProviderCreateRendersOrderedSchemaAndHidesSecrets(t *testing.T) {
 	const (
 		profileName = "local"
@@ -1081,7 +1341,7 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 	if len(stderr) != 0 {
 		t.Errorf("human schema stderr = %q, want empty", stderr)
 	}
-	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama provider instance create", "nama provider instance delete", "nama provider instance update", "nama provider type list", "nama schema"} {
+	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama provider instance create", "nama provider instance delete", "nama provider instance test", "nama provider instance update", "nama provider type list", "nama provider type test", "nama schema"} {
 		if !bytes.Contains(human, []byte(command)) {
 			t.Errorf("human schema inventory omits %q:\n%s", command, human)
 		}
@@ -1124,9 +1384,11 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 		"nama provider instance delete",
 		"nama provider instance get",
 		"nama provider instance list",
+		"nama provider instance test",
 		"nama provider instance update",
 		"nama provider type",
 		"nama provider type list",
+		"nama provider type test",
 		"nama schema",
 		"nama setup",
 	}
@@ -1223,6 +1485,18 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 	}
 	if got, want := providerListInputs["bearer"]["required"], true; got != want {
 		t.Errorf("provider bearer required = %#v, want %t", got, want)
+	}
+	providerTypeTestFlags := schemaObjectsByName(t, byPath["nama provider type test"]["flags"], "provider type test flags")
+	if got, want := providerTypeTestFlags["configuration"]["required"], false; got != want {
+		t.Errorf("provider type test configuration required = %#v, want %t", got, want)
+	}
+	providerTypeTestArguments := schemaObjectList(t, byPath["nama provider type test"]["arguments"], "provider type test arguments")
+	if got, want := providerTypeTestArguments[0]["name"], "provider-type-id"; got != want {
+		t.Errorf("provider type test argument name = %#v, want %q", got, want)
+	}
+	providerInstanceTestArguments := schemaObjectList(t, byPath["nama provider instance test"]["arguments"], "provider instance test arguments")
+	if got, want := providerInstanceTestArguments[0]["name"], "provider-instance-id"; got != want {
+		t.Errorf("provider instance test argument name = %#v, want %q", got, want)
 	}
 
 	providerCreateFlags := schemaObjectsByName(t, byPath["nama provider instance create"]["flags"], "provider instance create flags")
@@ -2157,11 +2431,15 @@ func (w *cliFailOnceWriter) Bytes() []byte {
 
 type cliProviderServiceFake struct {
 	apiv1.ProviderServiceClient
-	createRequest    *connect.Request[apiv1.CreateProviderInstanceRequest]
-	deleteRequest    *connect.Request[apiv1.DeleteProviderInstanceRequest]
-	providerInstance *apiv1.ProviderInstance
-	providerType     *apiv1.ProviderType
-	updateRequest    *connect.Request[apiv1.UpdateProviderInstanceRequest]
+	createRequest            *connect.Request[apiv1.CreateProviderInstanceRequest]
+	deleteRequest            *connect.Request[apiv1.DeleteProviderInstanceRequest]
+	providerInstance         *apiv1.ProviderInstance
+	providerType             *apiv1.ProviderType
+	testConfigurationRequest *connect.Request[apiv1.TestProviderConfigurationRequest]
+	testConfigurationResult  *apiv1.ProviderConnectionTest
+	testInstanceRequest      *connect.Request[apiv1.TestProviderInstanceRequest]
+	testInstanceResult       *apiv1.ProviderConnectionTest
+	updateRequest            *connect.Request[apiv1.UpdateProviderInstanceRequest]
 }
 
 func (f *cliProviderServiceFake) DeleteProviderInstance(
@@ -2223,6 +2501,25 @@ func (f *cliProviderServiceFake) CreateProviderInstance(
 			CreatedAt:         now,
 			UpdatedAt:         now,
 		},
+	}), nil
+}
+
+func (f *cliProviderServiceFake) TestProviderConfiguration(
+	_ context.Context,
+	request *connect.Request[apiv1.TestProviderConfigurationRequest],
+) (*connect.Response[apiv1.TestProviderConfigurationResponse], error) {
+	f.testConfigurationRequest = request
+	return connect.NewResponse(&apiv1.TestProviderConfigurationResponse{
+		Result: f.testConfigurationResult,
+	}), nil
+}
+func (f *cliProviderServiceFake) TestProviderInstance(
+	_ context.Context,
+	request *connect.Request[apiv1.TestProviderInstanceRequest],
+) (*connect.Response[apiv1.TestProviderInstanceResponse], error) {
+	f.testInstanceRequest = request
+	return connect.NewResponse(&apiv1.TestProviderInstanceResponse{
+		Result: f.testInstanceResult,
 	}), nil
 }
 

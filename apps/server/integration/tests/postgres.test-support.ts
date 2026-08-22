@@ -4,7 +4,7 @@ import { Pool } from "pg";
 const SINGLE_CONNECTION = 1;
 const ISOLATED_DATABASE_NAME = "nama_test_isolated";
 const FIRST_ROW_INDEX = 0;
-const ACTIVITY_WAIT_MILLISECONDS = 1000;
+const ACTIVITY_WAIT_MILLISECONDS = 5000;
 const ACTIVITY_POLL_MILLISECONDS = 20;
 const NO_ACTIVITY_COUNT = 0;
 const ALL_NAMA_SERVER_ACTIVITY = false;

@@ -109,6 +109,22 @@ const providerInstanceFromNamaResult = (result: NamaResult): Readonly<Record<str
   }
   return responsePayload.data.provider_instance as Readonly<Record<string, unknown>>;
 };
+const connectionTestFromNamaResult = (result: NamaResult): Readonly<Record<string, unknown>> => {
+  const responsePayload: unknown = JSON.parse(result.stdout);
+  if (
+    typeof responsePayload !== "object" ||
+    responsePayload === null ||
+    !("data" in responsePayload) ||
+    typeof responsePayload.data !== "object" ||
+    responsePayload.data === null ||
+    !("connection_test" in responsePayload.data) ||
+    typeof responsePayload.data.connection_test !== "object" ||
+    responsePayload.data.connection_test === null
+  ) {
+    throw new TypeError("expected a provider connection-test response");
+  }
+  return responsePayload.data.connection_test as Readonly<Record<string, unknown>>;
+};
 
 const withNamaBinary = <Success, Failure, Requirements>(
   use: (
@@ -571,6 +587,38 @@ it.live(
               yield* Effect.promise(() =>
                 writeFile(configurationPath, configurationDocument, { mode: 0o600 }),
               );
+              const candidateTest = yield* runNamaWithInput({
+                binary,
+                environment,
+                arguments_: [
+                  "provider",
+                  "type",
+                  "test",
+                  "jellyfin",
+                  "--configuration",
+                  "-",
+                  "--profile",
+                  "local",
+                  "--output",
+                  "json",
+                ],
+                input: configurationDocument,
+              });
+              expect(candidateTest.stderr).toBe("");
+              expect(candidateTest.stdout).not.toContain("provider-api-key-sentinel");
+              expect(connectionTestFromNamaResult(candidateTest)).toEqual({
+                capabilities: [
+                  "library_read",
+                  "artwork_resolve",
+                  "watch_state_read",
+                  "watched_write",
+                ],
+                remote_name: "Provider Test Jellyfin",
+                remote_version: "10.11.0",
+                status: "connected",
+                summary: "Connected",
+              });
+
               const created = yield* runNamaWithInput({
                 binary,
                 environment,
@@ -710,27 +758,30 @@ it.live(
                 await storedCancellation.cancelled;
               });
 
-              const storedTest = yield* expectRpcSuccess({
-                invoke: () =>
-                  providerClient.testProviderInstance(
-                    { providerInstanceId },
-                    callOptions(authorization),
-                  ),
-                phase: "TestProviderInstance",
-              });
-              expect(storedTest.result).toMatchObject({
+              const storedTest = yield* runNama(binary, environment, [
+                "provider",
+                "instance",
+                "test",
+                providerInstanceId,
+                "--profile",
+                "local",
+                "--output",
+                "json",
+              ]);
+              expect(storedTest.stderr).toBe("");
+              expect(storedTest.stdout).not.toContain("provider-api-key-sentinel");
+              expect(connectionTestFromNamaResult(storedTest)).toEqual({
                 capabilities: [
-                  ProviderCapability.LIBRARY_READ,
-                  ProviderCapability.ARTWORK_RESOLVE,
-                  ProviderCapability.WATCH_STATE_READ,
-                  ProviderCapability.WATCHED_WRITE,
+                  "library_read",
+                  "artwork_resolve",
+                  "watch_state_read",
+                  "watched_write",
                 ],
-                remoteName: "Provider Test Jellyfin",
-                remoteVersion: "10.11.0",
-                status: ProviderConnectionStatus.CONNECTED,
+                remote_name: "Provider Test Jellyfin",
+                remote_version: "10.11.0",
+                status: "connected",
                 summary: "Connected",
               });
-              expect(JSON.stringify(storedTest)).not.toContain("provider-api-key-sentinel");
               const storedObservation = yield* Effect.promise(async () => {
                 const observer = new Pool({ connectionString: databaseUrl });
                 try {
