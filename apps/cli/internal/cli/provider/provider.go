@@ -38,15 +38,23 @@ type DeleteInstanceInput struct {
 	Yes                bool
 }
 
+// TestConfigurationInput is one candidate provider connection-test invocation.
+type TestConfigurationInput struct {
+	ProviderTypeID    string
+	ConfigurationPath string
+}
+
 // Handlers bind provider command inputs to the CLI composition root.
 type Handlers struct {
-	CreateInstance   func(*cobra.Command, CreateInstanceInput) error
-	DeleteInstance   func(*cobra.Command, DeleteInstanceInput) error
-	GetInstance      func(*cobra.Command, string) error
-	ListInstances    func(*cobra.Command, uint32, string) error
-	ListTypes        func(*cobra.Command, uint32, string) error
-	UpdateInstance   func(*cobra.Command, UpdateInstanceInput) error
-	InvalidArguments func(*cobra.Command, error) error
+	CreateInstance    func(*cobra.Command, CreateInstanceInput) error
+	DeleteInstance    func(*cobra.Command, DeleteInstanceInput) error
+	GetInstance       func(*cobra.Command, string) error
+	ListInstances     func(*cobra.Command, uint32, string) error
+	ListTypes         func(*cobra.Command, uint32, string) error
+	TestConfiguration func(*cobra.Command, TestConfigurationInput) error
+	TestInstance      func(*cobra.Command, string) error
+	UpdateInstance    func(*cobra.Command, UpdateInstanceInput) error
+	InvalidArguments  func(*cobra.Command, error) error
 }
 
 // NewCommand constructs the implemented provider management command family.
@@ -78,7 +86,7 @@ func newTypeCommand(handlers Handlers) *cobra.Command {
 	list := &cobra.Command{
 		Use:     "list",
 		Short:   "List installed provider types",
-		Long:    "List the provider-neutral types and accepted configuration schemas recognized by the selected authenticated Nama server.",
+		Long:    "List the provider-neutral types, capabilities, and accepted configuration schemas recognized by the selected authenticated Nama server.",
 		Example: "  nama provider type list --profile local\n  nama provider type list --profile local --output json",
 		Args:    noArgs(handlers),
 		RunE: func(command *cobra.Command, _ []string) error {
@@ -90,7 +98,36 @@ func newTypeCommand(handlers Handlers) *cobra.Command {
 	surface.SetFlag(list, "page-size", surface.FlagMetadata{Default: "0"})
 	surface.SetFlag(list, "page-token", surface.FlagMetadata{})
 	setBearerInput(list)
-	command.AddCommand(list)
+	command.AddCommand(list, newTestConfigurationCommand(handlers))
+	return command
+}
+func newTestConfigurationCommand(handlers Handlers) *cobra.Command {
+	var configuration string
+	command := &cobra.Command{
+		Use:     "test <provider-type-id>",
+		Short:   "Test a candidate provider connection",
+		Long:    "Test one complete provider configuration without creating or changing a provider instance. Interactive human use may render the accepted provider schema; JSON and non-interactive use read a JSON document from --configuration. Secret values belong only in prompts or that document.",
+		Example: "  nama provider type test jellyfin --profile local\n  nama provider type test jellyfin --configuration provider.json --profile local\n  cat provider.json | nama provider type test jellyfin --configuration - --profile local --output json",
+		Args: func(command *cobra.Command, arguments []string) error {
+			if len(arguments) != 1 {
+				return handlers.InvalidArguments(command, errors.New("exactly one provider type ID is required"))
+			}
+			return nil
+		},
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return handlers.TestConfiguration(command, TestConfigurationInput{
+				ProviderTypeID:    arguments[0],
+				ConfigurationPath: configuration,
+			})
+		},
+	}
+	command.Flags().StringVar(&configuration, "configuration", "", "Read the complete JSON configuration from this file path or - for standard input (required for JSON or non-interactive use)")
+	surface.SetArguments(command, surface.Argument{
+		Name: "provider-type-id", Type: "string", Required: true,
+		Description: "Opaque installed provider type ID",
+	})
+	surface.SetFlag(command, "configuration", surface.FlagMetadata{})
+	setBearerInput(command)
 	return command
 }
 
@@ -108,8 +145,32 @@ func newInstanceCommand(handlers Handlers) *cobra.Command {
 		newDeleteInstanceCommand(handlers),
 		newGetInstanceCommand(handlers),
 		newListInstancesCommand(handlers),
+		newTestInstanceCommand(handlers),
 		newUpdateInstanceCommand(handlers),
 	)
+	return command
+}
+func newTestInstanceCommand(handlers Handlers) *cobra.Command {
+	command := &cobra.Command{
+		Use:     "test <provider-instance-id>",
+		Short:   "Test a stored provider connection",
+		Long:    "Test the enabled provider instance's current stored configuration and return one safe connection observation.",
+		Example: "  nama provider instance test <provider-instance-id> --profile local\n  nama provider instance test <provider-instance-id> --profile local --output json",
+		Args: func(command *cobra.Command, arguments []string) error {
+			if len(arguments) != 1 {
+				return handlers.InvalidArguments(command, errors.New("exactly one provider instance ID is required"))
+			}
+			return nil
+		},
+		RunE: func(command *cobra.Command, arguments []string) error {
+			return handlers.TestInstance(command, arguments[0])
+		},
+	}
+	surface.SetArguments(command, surface.Argument{
+		Name: "provider-instance-id", Type: "string", Required: true,
+		Description: "Opaque provider instance ID",
+	})
+	setBearerInput(command)
 	return command
 }
 

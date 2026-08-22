@@ -139,6 +139,40 @@ type DeleteProviderInstanceResult struct {
 	OperationID string `json:"operation_id"`
 }
 
+// ProviderConnectionTest is one safe provider connection observation.
+type ProviderConnectionTest struct {
+	Status        string   `json:"status"`
+	Summary       string   `json:"summary"`
+	RemoteName    string   `json:"remote_name,omitempty"`
+	RemoteVersion string   `json:"remote_version,omitempty"`
+	Capabilities  []string `json:"capabilities"`
+}
+
+// TestProviderConfigurationInput contains one complete candidate provider configuration.
+type TestProviderConfigurationInput struct {
+	Profile        string
+	Server         string
+	ProviderTypeID string
+	Configuration  map[string]any
+}
+
+// TestProviderConfigurationResult contains one completed candidate connection test.
+type TestProviderConfigurationResult struct {
+	ConnectionTest ProviderConnectionTest `json:"connection_test"`
+}
+
+// TestProviderInstanceInput selects one stored provider connection through an authenticated profile.
+type TestProviderInstanceInput struct {
+	Profile            string
+	Server             string
+	ProviderInstanceID string
+}
+
+// TestProviderInstanceResult contains one completed stored-instance connection test.
+type TestProviderInstanceResult struct {
+	ConnectionTest ProviderConnectionTest `json:"connection_test"`
+}
+
 func providerCredential(
 	ctx context.Context,
 	profile string,
@@ -278,6 +312,69 @@ func GetProviderInstance(
 	return GetProviderInstanceResult{ProviderInstance: instance}, nil
 }
 
+// TestProviderConfiguration checks one complete candidate configuration without persisting it.
+func TestProviderConfiguration(
+	ctx context.Context,
+	input TestProviderConfigurationInput,
+	client apiv1.ProviderServiceClient,
+	credentials auth.CredentialStore,
+) (TestProviderConfigurationResult, error) {
+	credential, err := providerCredential(ctx, input.Profile, input.Server, credentials)
+	if err != nil {
+		return TestProviderConfigurationResult{}, err
+	}
+	configuration, err := structpb.NewStruct(input.Configuration)
+	if err != nil {
+		return TestProviderConfigurationResult{}, clierror.InvalidArgument(errors.New("configuration must be a JSON object"))
+	}
+	request := connect.NewRequest(&apiv1.TestProviderConfigurationRequest{
+		ProviderTypeId: input.ProviderTypeID,
+		Configuration:  configuration,
+	})
+	attachProviderCredential(request, credential)
+	response, err := client.TestProviderConfiguration(ctx, request)
+	if err != nil {
+		return TestProviderConfigurationResult{}, clierror.Translate(err)
+	}
+	if response == nil || response.Msg == nil {
+		return TestProviderConfigurationResult{}, clierror.Unexpected(errors.New("invalid provider connection-test response"))
+	}
+	connectionTest, err := mapProviderConnectionTest(response.Msg.GetResult())
+	if err != nil {
+		return TestProviderConfigurationResult{}, err
+	}
+	return TestProviderConfigurationResult{ConnectionTest: connectionTest}, nil
+}
+
+// TestProviderInstance checks one stored provider instance's current durable revision.
+func TestProviderInstance(
+	ctx context.Context,
+	input TestProviderInstanceInput,
+	client apiv1.ProviderServiceClient,
+	credentials auth.CredentialStore,
+) (TestProviderInstanceResult, error) {
+	credential, err := providerCredential(ctx, input.Profile, input.Server, credentials)
+	if err != nil {
+		return TestProviderInstanceResult{}, err
+	}
+	request := connect.NewRequest(&apiv1.TestProviderInstanceRequest{
+		ProviderInstanceId: input.ProviderInstanceID,
+	})
+	attachProviderCredential(request, credential)
+	response, err := client.TestProviderInstance(ctx, request)
+	if err != nil {
+		return TestProviderInstanceResult{}, clierror.Translate(err)
+	}
+	if response == nil || response.Msg == nil {
+		return TestProviderInstanceResult{}, clierror.Unexpected(errors.New("invalid provider connection-test response"))
+	}
+	connectionTest, err := mapProviderConnectionTest(response.Msg.GetResult())
+	if err != nil {
+		return TestProviderInstanceResult{}, err
+	}
+	return TestProviderInstanceResult{ConnectionTest: connectionTest}, nil
+}
+
 // CreateProviderInstance verifies and persists one provider instance.
 func CreateProviderInstance(
 	ctx context.Context,
@@ -414,6 +511,45 @@ func newOperationID() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(entropy[:]), nil
+}
+
+func mapProviderConnectionTest(value *apiv1.ProviderConnectionTest) (ProviderConnectionTest, error) {
+	if value == nil {
+		return ProviderConnectionTest{}, clierror.Unexpected(errors.New("invalid provider connection test"))
+	}
+	status, known := providerConnectionStatusName(value.GetStatus())
+	if !known {
+		return ProviderConnectionTest{}, clierror.Unexpected(errors.New("invalid provider connection status"))
+	}
+	capabilities := make([]string, 0, len(value.GetCapabilities()))
+	for _, capability := range value.GetCapabilities() {
+		name, known := providerCapabilityName(capability)
+		if known {
+			capabilities = append(capabilities, name)
+		}
+	}
+	return ProviderConnectionTest{
+		Status:        status,
+		Summary:       value.GetSummary(),
+		RemoteName:    value.GetRemoteName(),
+		RemoteVersion: value.GetRemoteVersion(),
+		Capabilities:  capabilities,
+	}, nil
+}
+
+func providerConnectionStatusName(status apiv1.ProviderConnectionStatus) (string, bool) {
+	switch status {
+	case apiv1.ProviderConnectionStatus_PROVIDER_CONNECTION_STATUS_CONNECTED:
+		return "connected", true
+	case apiv1.ProviderConnectionStatus_PROVIDER_CONNECTION_STATUS_AUTHENTICATION_FAILED:
+		return "authentication_failed", true
+	case apiv1.ProviderConnectionStatus_PROVIDER_CONNECTION_STATUS_UNREACHABLE:
+		return "unreachable", true
+	case apiv1.ProviderConnectionStatus_PROVIDER_CONNECTION_STATUS_INCOMPATIBLE:
+		return "incompatible", true
+	default:
+		return "", false
+	}
 }
 
 func mapProviderInstance(value *apiv1.ProviderInstance) (ProviderInstance, error) {

@@ -1,6 +1,6 @@
 # Management CLI
 
-Status: issue #24 profiles, Administrator setup/sign-in, and authentication status; issue #25's complete public process contract; issues #76–#80's provider type and provider-instance CRUD surface plus durable tracer; and issue #107's restricted-schema interactive create/update workflow are implemented and verified. The remaining MVP command families are unfinished.
+Status: issue #24 profiles, Administrator setup/sign-in, and authentication status; issue #25's complete public process contract; issues #76–#80's provider type and provider-instance CRUD surface plus durable tracer; issue #107's restricted-schema interactive create/update workflow; and issue #31's candidate and stored-instance connection tests are implemented and verified. The remaining MVP command families are unfinished.
 
 ## Purpose
 
@@ -21,6 +21,7 @@ The complete MVP management surface covers initial administrator setup, authenti
 - Issue #79 adds revision-checked permanent deletion with interactive confirmation and an explicit non-interactive `--yes` boundary.
 - Issue #80 proves those commands as one restart and upgrade flow against the production server, PostgreSQL, supervisor, Jellyfin plugin, and a disposable Jellyfin server.
 - Issue #107 adds ordered restricted-schema prompts for human create and update while preserving complete file/stdin automation and JSON no-prompt behavior.
+- Issue #31 adds provider-neutral candidate and stored-instance connection tests while retaining provider-type listing as the installed capability-inspection surface.
 
 The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no management web application or CLI plugin framework in the MVP.
 
@@ -79,12 +80,14 @@ nama
 ├── profile
 ├── provider
 │   ├── type
-│   │   └── list
+│   │   ├── list
+│   │   └── test
 │   └── instance
 │       ├── list
 │       ├── get
 │       ├── create
 │       ├── update
+│       ├── test
 │       └── delete
 ├── sync
 │   ├── status
@@ -106,9 +109,16 @@ retry or ambiguity recovery, and mutation JSON output includes the ID used.
 Update and delete require `--expected-revision`; the CLI never fetches a newer
 revision and silently overwrites or removes it. Provider delete prompts only in
 interactive human mode. JSON or non-interactive deletion requires explicit
-`--yes` and never reads configuration or credentials. Issue #31 may add
-provider-type inspection and explicit candidate or stored-instance connection
-tests over their existing RPCs.
+`--yes` and never reads configuration or credentials.
+
+`nama provider type list` is the installed provider capability-inspection
+surface. `nama provider type test` checks one complete candidate configuration,
+and `nama provider instance test` checks one enabled stored instance. Both
+return the safe connection observation under `data.connection_test`. A
+completed `CONNECTED`, `AUTHENTICATION_FAILED`, `UNREACHABLE`, or
+`INCOMPATIBLE` observation exits successfully; automation inspects its status.
+Invocation, authentication, authorization, transport, and unexpected server
+failures retain the central error and exit-code contract.
 
 Human provider create without `--configuration` renders the selected provider
 type's flat restricted schema. A human update with no explicit update flags
@@ -124,7 +134,7 @@ values are never accepted in argv, environment variables, positional
 arguments, or inline JSON flags. `--clear <key>` continues to name optional
 ordinary or secret fields without carrying their values.
 
-The canonical binary name is `nama`. The live Cobra tree now supplies complete human help, a global version flag, four shell-completion formats, machine schema version 1, the generated CLI reference, the compatibility baseline, authenticated provider-type listing, and provider-instance create/list/get/update/delete.
+The canonical binary name is `nama`. The live Cobra tree now supplies complete human help, a global version flag, four shell-completion formats, machine schema version 1, the generated CLI reference, the compatibility baseline, authenticated provider-type listing and candidate testing, and provider-instance create/list/get/update/test/delete.
 
 ## Output contract
 
@@ -267,9 +277,9 @@ The implemented surface is tested in process through the real Cobra tree with in
 - terminal and non-interactive secret input plus native-credential semantics;
 - generated-client metadata, deadlines, and method-specific bearer attachment over test Connect handlers;
 - setup recovery, sign-in replacement, authentication status, revocation, cleanup, and typed errors;
-- provider-type and provider-instance page input, authenticated profile selection, ordered restricted-schema prompts, defaults, hidden write-only input, secret omission and replacement, file/stdin configuration and patch input, JSON no-prompt behavior, explicit clears, operation IDs, expected revisions, delete confirmation and `--yes`, and human/JSON rendering;
+- provider-type and provider-instance page input, authenticated profile selection, candidate and stored-instance connection tests, completed-result status rendering, ordered restricted-schema prompts, defaults, hidden write-only input, secret omission and replacement, file/stdin configuration and patch input, JSON no-prompt behavior, explicit clears, operation IDs, expected revisions, delete confirmation and `--yes`, and human/JSON rendering;
 - exact JSON stream behavior plus human warning and prompt placement, long terminal content, exit codes, update and deletion conflicts, and secret redaction; and
-- compiled-binary production server/PostgreSQL/Jellyfin flows covering discovery, candidate and stored-instance connection tests, verified encrypted create, durable restart recovery, accepted-schema upgrade and damaged-credential containment beside healthy mutation, credential replacement, same-principal enforcement, disable/re-enable, safe deletion and exact replay across restarts, list/get, validation, disabled-user rejection, idempotency, pagination misuse, and security sentinels.
+- compiled-binary production server/PostgreSQL/Jellyfin flows covering discovery, CLI candidate and stored-instance connection tests, verified encrypted create, durable restart recovery, accepted-schema upgrade and damaged-credential containment beside healthy mutation, credential replacement, same-principal enforcement, disable/re-enable, safe deletion and exact replay across restarts, list/get, validation, disabled-user rejection, idempotency, pagination misuse, and security sentinels.
 
 The owning Go check runs formatting, vet, Staticcheck, tests, compilation,
 generated-reference drift, schema-v1 semantic compatibility, and the clean

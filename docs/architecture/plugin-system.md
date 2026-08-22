@@ -171,5 +171,5 @@ identifiers, or authorization.
 Windows transport and persistent or background native-media plugins remain
 deferred until a real plugin requires them. Core-owned synchronization
 execution remains in issue #30. Production playback belongs to issue #96,
-coherent exact progress export belongs to issue #97, explicit connection-test
-commands belong to issue #31, and container packaging belongs to issue #32.
+coherent exact progress export belongs to issue #97, and container packaging
+belongs to issue #32.

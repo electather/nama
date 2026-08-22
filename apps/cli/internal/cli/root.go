@@ -230,13 +230,15 @@ func NewRootCommand(dependencies Dependencies) *cobra.Command {
 			InvalidArguments: runtime.invalidArguments,
 		}),
 		providercommand.NewCommand(providercommand.Handlers{
-			CreateInstance:   runtime.createProviderInstance,
-			DeleteInstance:   runtime.deleteProviderInstance,
-			GetInstance:      runtime.getProviderInstance,
-			ListInstances:    runtime.listProviderInstances,
-			ListTypes:        runtime.listProviderTypes,
-			UpdateInstance:   runtime.updateProviderInstance,
-			InvalidArguments: runtime.invalidArguments,
+			CreateInstance:    runtime.createProviderInstance,
+			DeleteInstance:    runtime.deleteProviderInstance,
+			GetInstance:       runtime.getProviderInstance,
+			ListInstances:     runtime.listProviderInstances,
+			ListTypes:         runtime.listProviderTypes,
+			TestConfiguration: runtime.testProviderConfiguration,
+			TestInstance:      runtime.testProviderInstance,
+			UpdateInstance:    runtime.updateProviderInstance,
+			InvalidArguments:  runtime.invalidArguments,
 		}),
 		setupcommand.NewCommand(setupcommand.Handler{
 			Run:              runtime.setup,
@@ -524,6 +526,90 @@ func (r *runtime) listProviderTypes(command *cobra.Command, pageSize uint32, pag
 		return result, nil
 	})
 }
+func (r *runtime) testProviderConfiguration(
+	command *cobra.Command,
+	input providercommand.TestConfigurationInput,
+) error {
+	return r.execute(command, true, func(state commandState) (any, error) {
+		if err := r.requireProfile(command, state); err != nil {
+			return nil, err
+		}
+		providerClient, err := r.providerClient(state)
+		if err != nil {
+			return nil, err
+		}
+		var configuration map[string]any
+		if input.ConfigurationPath == "" {
+			if state.resolved.Output == config.OutputJSON || !r.dependencies.SecretInput.Terminal {
+				return nil, clierror.InvalidArgument(errors.New("--configuration is required for non-interactive provider connection testing"))
+			}
+			providerType, err := r.interactiveProviderType(
+				command,
+				state,
+				providerClient,
+				input.ProviderTypeID,
+			)
+			if err != nil {
+				return nil, err
+			}
+			configuration, err = promptProviderConfiguration(
+				command,
+				r.secretInput(command, state),
+				providerType.ConfigurationSchema,
+				nil,
+			)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			configuration, err = readProviderConfiguration(command, input.ConfigurationPath)
+			if err != nil {
+				return nil, clierror.InvalidArgument(err)
+			}
+		}
+		result, err := app.TestProviderConfiguration(
+			command.Context(),
+			app.TestProviderConfigurationInput{
+				Profile:        state.resolved.Profile,
+				Server:         state.resolved.Server,
+				ProviderTypeID: input.ProviderTypeID,
+				Configuration:  configuration,
+			},
+			providerClient,
+			r.dependencies.Credentials,
+		)
+		if err != nil {
+			return nil, classifyLocalError(err)
+		}
+		return result, nil
+	})
+}
+func (r *runtime) testProviderInstance(command *cobra.Command, providerInstanceID string) error {
+	return r.execute(command, true, func(state commandState) (any, error) {
+		if err := r.requireProfile(command, state); err != nil {
+			return nil, err
+		}
+		providerClient, err := r.providerClient(state)
+		if err != nil {
+			return nil, err
+		}
+		result, err := app.TestProviderInstance(
+			command.Context(),
+			app.TestProviderInstanceInput{
+				Profile:            state.resolved.Profile,
+				Server:             state.resolved.Server,
+				ProviderInstanceID: providerInstanceID,
+			},
+			providerClient,
+			r.dependencies.Credentials,
+		)
+		if err != nil {
+			return nil, classifyLocalError(err)
+		}
+		return result, nil
+	})
+}
+
 func (r *runtime) listProviderInstances(command *cobra.Command, pageSize uint32, pageToken string) error {
 	return r.execute(command, true, func(state commandState) (any, error) {
 		if err := r.requireProfile(command, state); err != nil {
