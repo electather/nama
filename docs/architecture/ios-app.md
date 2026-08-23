@@ -323,26 +323,76 @@ paired, fresh Pairing.
 LAN discovery uses Network framework `NWBrowser` for `_nama._tcp`. Browsing
 starts only after explicit user action and stops outside the foreground. A
 browse result is usable only when its TXT record contains one structurally
-valid `url` value. The service instance name is untrusted secondary display
-text, unknown TXT keys are ignored, and results sharing one normalized URL form
-one candidate.
+valid, transport-eligible `url` value. Public or otherwise forbidden HTTP
+advertisements are ignored like malformed records. The service instance name
+is untrusted secondary display text, unknown TXT keys are ignored, and results
+sharing one normalized URL form one candidate.
 
 Discovery never contacts a candidate or automatically selects a sole result.
 Selecting a discovery result and submitting a manual URL enter the same
 verification path. Manual entry remains available on every platform.
+
+`NamaEndpoint` classifies the canonical host lexically without DNS resolution.
+HTTPS is always transport-eligible. Plain HTTP is eligible only for:
+
+- IPv4 loopback `127.0.0.0/8`, private `10.0.0.0/8`, `172.16.0.0/12`, and
+  `192.168.0.0/16`, or link-local `169.254.0.0/16` addresses;
+- IPv6 loopback `::1`, unique-local `fc00::/7`, or link-local `fe80::/10`
+  addresses; and
+- `localhost`, proper names ending in `.localhost`, or proper names ending in
+  `.local`.
+
+IPv4-mapped IPv6 literals inherit the embedded IPv4 classification. A zone
+identifier is valid only on an IPv6 link-local literal. Matching is
+case-insensitive and suffix-boundary-aware; trailing-root-dot variants are not
+accepted. Every other plain-HTTP destination is forbidden, including public,
+unspecified, multicast, reserved, documentation, benchmark, and shared
+carrier-grade NAT addresses, unrelated unqualified names, and DNS aliases that
+happen to resolve locally.
+
+`NamaEndpoint` represents only HTTPS or permitted local-HTTP endpoints and
+distinguishes malformed input from an address that requires HTTPS. Manual
+forbidden HTTP remains editable with “This Nama endpoint requires HTTPS.” and
+never starts a request. Discovery suppresses it. A previously verified
+forbidden HTTP endpoint remains visible after upgrade in an “HTTPS required”
+state with only Change Endpoint; the app neither contacts nor silently deletes
+it and never rewrites its scheme.
+
+Before the first request to a permitted local-HTTP endpoint, the app asks
+“Connect without HTTPS?” and explains, “Traffic to this Nama endpoint won’t be
+encrypted. Continue only if you trust this endpoint and network.” Cancel
+returns manual entry to its populated editor, discovery to its candidate list,
+or restoration to a paused Continue-or-Change-Endpoint state without starting
+a request. Continue retains acknowledgement through local failures and retries.
+After successful verification, the app persists acknowledgement for that exact
+canonical endpoint and shares it across windows. Any scheme, host, port, or
+path-prefix change requires fresh acknowledgement. Legacy permitted HTTP
+restoration without acknowledgement asks before contact. Every selected
+local-HTTP state presents the non-color-only warning “HTTP connection —
+traffic is not encrypted.”
+
+Every control-plane adapter derives its transport from a `NamaEndpoint` and
+inherits this policy; provider-issued artwork and media locators retain their
+separate origin and redirect contract. Local HTTP bypasses configured proxies,
+while HTTPS retains normal system proxy behavior. Nama endpoint traffic refuses
+every redirect before contacting its target and reports the response as
+incompatible without exposing or logging the redirect location.
 
 Verification makes one cancellable, ten-second `SetupService.GetStatus` call
 with platform TLS trust and no certificate bypass. `initialized=true` means the
 endpoint is ready for Pairing; `initialized=false` is a verified endpoint that
 requires Administrator setup. Nama availability, transport/TLS/timeout, and
 incompatible responses remain distinct safe states without raw URLSession,
-TLS, or response detail. Issue #34 owns every plain-HTTP exception and warning.
+TLS, or response detail.
 
 Discovery declares `_nama._tcp` in `NSBonjourServices` and explains local
 network access through `NSLocalNetworkUsageDescription` in the application’s
-partial Info property list. Browsing this one declared service does not add the
-multicast entitlement. iPhone, iPad, and Mac expose local-network permission
-behavior; Apple TV does not expose the same prompt.
+partial Info property list. `NSAllowsLocalNetworking` enables eligible local
+HTTP on every supported platform; the app never declares
+`NSAllowsArbitraryLoads` or static per-domain exceptions. Browsing this one
+declared service does not add the multicast entitlement. iPhone, iPad, and Mac
+expose local-network permission behavior; Apple TV does not expose the same
+prompt.
 
 The app does not use a global `NWPathMonitor` to gate requests. A path
 observation cannot prove that one Nama endpoint is reachable, trusted,
@@ -353,9 +403,15 @@ compatible, or healthy; bounded endpoint operations remain authoritative.
 When Connection target behavior lands, runtime acceptance requires:
 
 - LAN discovery on a physical iPhone, physical iPad, Apple TV, and Mac;
-- manual LAN, VPN, and reverse-proxy entry on all four surfaces;
-- local-network allow, deny, and later-settings-change behavior on physical
-  iPhone, physical iPad, and Mac;
+- manual HTTPS and permitted local-HTTP entry for LAN, VPN, and reverse-proxy
+  deployments on all four surfaces;
+- HTTP confirmation, persistent warning, cancellation, legacy restoration, long
+  endpoint, and accessibility behavior on all four actual surfaces;
+- focused coverage of every allowed and forbidden address class, local-name
+  boundary, discovery suppression, proxy selection, and redirect refusal;
+- public HTTP rejection before transport creation on every ingress path;
+- local-network and ATS allow, deny, and later-settings-change behavior on
+  physical iPhone, physical iPad, Apple TV, and Mac;
 - foreground cancellation, candidate deduplication, manual fallback, and
   pairing replacement behavior on their actual surfaces; and
 - every unrun physical-device row remaining explicitly unverified.
