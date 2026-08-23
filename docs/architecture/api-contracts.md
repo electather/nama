@@ -197,7 +197,8 @@ Under [ADR-0009](../adr/0009-confirm-durable-session-revocation.md), `SignOut` s
 
 ### DeviceService
 
-Device pairing separates the short human code from a high-entropy polling secret. Possession of the human code alone can never obtain a device credential.
+Device pairing separates the short human code from a high-entropy polling
+secret. Possession of the human code alone can never obtain a Device credential.
 
 | RPC | Access | Request fields | Response fields |
 | --- | --- | --- | --- |
@@ -207,13 +208,60 @@ Device pairing separates the short human code from a high-entropy polling secret
 | `ListDevices` | Administrator | `page_size`, `page_token` | repeated `devices`, `next_page_token` |
 | `RevokeDevice` | Administrator | `device_id` | `device` |
 
-`BeginPairing` is not idempotent because an unauthenticated global key could disclose another request's polling secret. A lost response leaves only an expiring orphan, and the device begins again. `PairingStatus` is `PENDING`, `APPROVED`, or `EXPIRED`. Denial is not an MVP operation; an administrator may leave an unwanted request to expire. `GetPairingStatus` is safely repeatable until expiry. Once approved, repeated polling returns the same logical device and credential rather than minting additional devices.
+`BeginPairing` trims surrounding Unicode whitespace from `display_name`, rejects
+an empty result, and otherwise preserves it exactly. It is not idempotent
+because an unauthenticated global key could disclose another request's polling
+secret. A lost response leaves only an expiring orphan, and the Device begins
+again.
 
-`Device` contains `id`, `display_name`, `created_at`, optional `last_seen_at`, `revoked`, and optional `revoked_at`. A device bearer authorizes only consumer library, playback, and user-state RPCs. Revocation is naturally idempotent and immediately prevents new authenticated calls.
+The human code is eight uppercase characters from an unambiguous Base32
+alphabet, displayed as `XXXX-XXXX` and normalized case-insensitively after
+removing spaces and hyphens. A Pairing expires after ten minutes. The polling
+token and Device bearer use distinct versioned token classes with independent
+32-byte random unpadded-base64url secrets; authentication dispatches by exact
+class without cross-store fallback.
 
-`ListDevices` follows the common page contract and orders devices by creation time then opaque ID, so every credential remains discoverable and revocable.
+`poll_interval` is five seconds. The first poll is eligible after that interval,
+and every accepted poll advances a PostgreSQL-time `next_poll_at`; an early
+poll returns `RATE_LIMITED` with `RetryInfo` and does not extend the gate.
+`PairingStatus` is `PENDING`, `APPROVED`, or `EXPIRED`. A matching approved poll
+returns the same logical Device and credential until Pairing expiry rather than
+minting another Device. After expiry, a matching retained request returns
+`EXPIRED` without a credential.
 
-Pairing requests expire, user codes are single-use, and polling earlier than `poll_interval` is rate-limited with `RetryInfo`. An authenticated administrator approves the human code shown on the television; the polling-only `pairing_id` is not required at the CLI. User codes are normalized for human entry; polling tokens are compared as secrets and never accepted in place of administrator authentication.
+`ApprovePairing` is single-flight per Pairing and durably idempotent by
+Administrator, method, operation ID, and normalized code. One transaction
+creates the Device and credential, records approval, and stores the safe
+operation result. The winning operation replays for 24 hours; another operation
+against the consumed code fails `PAIRING_ALREADY_APPROVED`. Approval requires
+only the human code shown on the television; the polling-only `pairing_id` is
+not a CLI input.
+
+`Device` contains `id`, `display_name`, `created_at`, optional approximate
+`last_seen_at`, `revoked`, and optional `revoked_at`. Successful
+Device-authenticated consumer work updates `last_seen_at` at most once per 15
+minutes; Pairing polls and Administrator calls do not. A Device bearer
+authorizes only consumer library, playback, and user-state RPCs.
+
+Device credentials have no scheduled MVP expiry and remain valid until
+revocation. `BearerCredential.expires_at` is absent for them; its current
+Protovalidate required annotation must be relaxed when this target behavior is
+implemented without changing the field number. Administrator credentials retain
+their real Better Auth expiry.
+
+Revocation is naturally idempotent. It timestamps and retains the Device,
+removes credential verification and any undelivered credential, and immediately
+prevents new authenticated calls; already admitted bounded work may finish.
+`ListDevices` includes active and revoked Devices, follows the common page
+contract, and orders by creation time then opaque ID so every credential remains
+discoverable.
+
+The process-local global `BeginPairing` limit is 20 requests per ten seconds,
+and at most 100 unexpired Pairings may exist installation-wide. Capacity
+admission is database-serialized. Pairing identity, code, polling tokens,
+Device bearers, and encrypted delivery never appear in logs or safe errors.
+Malformed, unknown, or revoked Device bearers share `CREDENTIAL_INVALID`;
+invalid Pairing identity or polling credentials share `AUTHENTICATION_FAILED`.
 
 ### ProviderService
 
@@ -321,7 +369,17 @@ disabled-to-enabled transition validates the full merged candidate as the
 existing principal before committing; failure preserves configuration,
 credentials, binding, status, and revision.
 
-Deleting an instance is allowed only after it is disabled and has no active playback session or sync run; otherwise it fails with `PROVIDER_INSTANCE_BUSY`. Delete invalidates unopened plans and atomically removes encrypted credentials, configuration, scheduler state, scan continuations, provider sources, and provider-to-canonical mappings for that instance. It never calls a destructive provider API and never cascades into canonical user state. Canonical items backed by another source remain. Items left without any source lose public library membership—browse, search, and `GetMedia` treat them as absent—while their internal Nama-owned state is retained indefinitely in the MVP. Garbage collection requires a separately reviewed lifecycle policy.
+Deleting an instance is allowed only after it is disabled and has no active
+playback session or sync run; otherwise it fails
+`PROVIDER_INSTANCE_BUSY`. Delete invalidates unopened plans and atomically
+removes encrypted credentials, configuration, scheduler state, scan
+continuations, provider sources, and provider-to-canonical mappings for that
+instance. It never calls a destructive provider API and never cascades into
+canonical user state. Canonical items backed by another source remain. Items
+left without any source lose their Library entry—browse, search, and
+`GetMedia` treat them as absent—while their internal Nama-owned state is
+retained indefinitely in the MVP. Garbage collection requires a separately
+reviewed lifecycle policy.
 
 Provider update and delete acquire a per-instance writer gate and recheck
 `expected_revision`. Configuration cutover closes old-revision admission,
@@ -383,6 +441,15 @@ multiple Nama-owned sources when identity reconciliation has enough evidence
 cuts or editions remain distinct items; alternate encodes and resolutions of
 the same edition are sources.
 
+Milestone 4 creates one canonical item for each previously unseen exact
+provider-instance and provider-item-reference mapping. Later observations of
+that mapping replace the stored projection without changing its Nama ID.
+External identifiers are retained only as private future reconciliation
+evidence; cross-instance, cross-provider, external-ID, title, and fuzzy matching
+remain deferred to Milestone 7. The relational model permits several mappings
+to contribute sources to one canonical item once that later reconciliation
+policy exists.
+
 ### MediaSummary
 
 `MediaSummary` is the only item shape used in home, browse, search, and child lists. It contains:
@@ -409,6 +476,12 @@ the same edition are sources.
 - optional `audio_quality` with codec, channel count, and spatial format.
 
 Quality fields describe the source's default video and audio selection. The optional label is user-assigned or core-generated neutral text. The API never synthesizes a provider type or instance identifier into it; user-entered text is returned as entered. These structured fields let clients render familiar badges such as resolution, HDR, and spatial audio without provider-specific display strings. `SourceAvailability` is `AVAILABLE`, `PROVIDER_UNAVAILABLE`, or `UNSUPPORTED`.
+
+Milestone 4 selects the default deterministically from provider observation
+order: first `AVAILABLE`, otherwise first `PROVIDER_UNAVAILABLE`, otherwise
+first `UNSUPPORTED`. It performs no quality scoring or provider-type preference.
+The same private source reference reuses its Nama source ID after temporary
+omission, while an omitted source remains outside the active public projection.
 
 ### MediaDetails
 
@@ -490,9 +563,17 @@ Technical tracks returned by `GetMediaSource` are descriptive and not selectable
 | `GetMediaSource` | Administrator or device | `media_id`, `source_id` | `source` |
 | `ResolveArtwork` | Administrator or device | `artwork_id`, optional `max_width`, optional `max_height` | `locator` |
 
-`GetHome` returns ordered `HomeSection` values with stable `id`, display `title`, `kind`, and ordered `MediaSummary` items. Initial section kinds are `CONTINUE_WATCHING`, `MOVIES`, and `SHOWS`. The default section size is 20 and maximum is 50. Home is intentionally a bounded snapshot with no per-section pagination contract. `RECENTLY_ADDED` remains the conditional release-plan feature and is added only after navigation evidence requires it.
+`GetHome` returns ordered `HomeSection` values with stable `id`, display
+`title`, `kind`, and ordered `MediaSummary` items. Initial section kinds are
+`CONTINUE_WATCHING`, `MOVIES`, and `SHOWS`; Milestone 4 returns only Movies and
+Shows, while Milestone 5 adds Continue Watching after canonical user state
+exists. The default section size is 20 and maximum is 50. Home is intentionally
+a bounded snapshot with no per-section pagination contract.
+`RECENTLY_ADDED` remains conditional and is added only after navigation evidence
+requires it.
 
-`ListLibrary` accepts a small `LibraryFilter` rather than a generic query language:
+`ListLibrary` accepts a small `LibraryFilter` rather than a generic query
+language:
 
 - repeated `kinds`;
 - optional `genre`;
@@ -500,11 +581,43 @@ Technical tracks returned by `GetMediaSource` are descriptive and not selectable
 - `watch_filter` (`ANY`, `WATCHED`, `UNWATCHED`, or `IN_PROGRESS`); and
 - `playable_only`.
 
-Initial `LibrarySort` values are `TITLE_ASC`, `RELEASE_DATE_DESC`, and `DATE_ADDED_DESC`. Search uses server relevance and does not accept arbitrary sort. It matches normalized title, original title, cast names, and genres in the stored canonical index. An empty or whitespace-only query is invalid.
+Milestone 4 supports `ANY`; the other watch filters fail
+`MEDIA_STATE_UNAVAILABLE` until Milestone 5 stores canonical user state. Initial
+`LibrarySort` values are `TITLE_ASC`, `RELEASE_DATE_DESC`, and
+`DATE_ADDED_DESC`.
 
-`ListChildren` is valid for a show or season and returns the next canonical level in display order. A movie or episode parent fails with `FAILED_PRECONDITION` and reason `MEDIA_HAS_NO_CHILDREN`.
+Search matches a stored PostgreSQL `simple` full-text projection over normalized
+title, original title, cast names, and genres. Title has the highest weight,
+original title the next, and cast and genres the lowest. Query tokens use prefix
+matching without typo correction or fuzzy similarity. Results order by rank
+descending, normalized title ascending, then opaque Nama ID; all cursor values
+are bound into the page token. An empty or whitespace-only query is invalid.
 
-All reads use the stored canonical model. `NOT_FOUND` means the canonical resource or artwork reference does not exist or is not visible to the principal. A present item whose retained source is temporarily unusable remains visible with its availability and playability state; intentional deletion of its last source removes library visibility as specified by `ProviderService`.
+`ListChildren` is valid for a show or season and returns the next canonical
+level in display order. A movie or episode parent fails with
+`MEDIA_HAS_NO_CHILDREN`. Seasons and episodes remain invisible until their
+required canonical parent mappings exist; public reads never expose placeholder
+parents.
+
+All reads use Library entries and the stored canonical model. If enabled
+providers exist but none has completed an initial catalog pass,
+`GetHome`, `ListLibrary`, `Search`, `GetMedia`, `ListChildren`, and
+`GetMediaSource` fail `CATALOG_NOT_READY` with bounded `RetryInfo`. With no
+stored entries and no enabled provider, the library is legitimately empty.
+After one enabled provider completes a pass, reads serve committed healthy data
+without waiting for another provider. A present item remains visible through a
+provider outage or disabled instance; intentional removal of its final source
+removes its Library entry while preserving the internal canonical item.
+
+Playability is derived without provider traffic. An item is `PLAYABLE` when at
+least one stored source is `AVAILABLE` through an enabled, currently usable
+provider instance; `TEMPORARILY_UNAVAILABLE` when no source is usable but at
+least one source or provider is temporarily unavailable; and
+`NO_AVAILABLE_SOURCE` when no active source remains or every source is
+permanently unsupported. `NOT_FOUND` means the canonical resource or artwork
+reference does not exist or is not visible. `ResolveArtwork` is the only
+Library read that calls a provider, and only to exchange a stored private
+artwork reference for a validated short-lived locator.
 
 ## PlaybackService
 
@@ -767,6 +880,22 @@ The core durably records the catalog scan run and last accepted continuation
 resumes a valid token or begins the full scan again; an opaque plugin token is
 never treated as an authoritative provider change cursor.
 
+Milestone 4 starts one background initial catalog scan for every enabled
+provider instance without making process readiness depend on provider
+availability. The core stores one current scan state per instance and commits
+each normalized item aggregate plus its next continuation atomically and
+incrementally. A page applies only while its captured provider revision remains
+current and enabled. Disable pauses without deleting stored media; re-enable or
+revision replacement begins a fresh pass.
+
+The initial scan adds or refreshes exact mappings and never treats omission from
+one best-effort pass as deletion. A stale page is discarded. Restart resumes a
+valid continuation or begins again after invalidation. Retryable availability
+failures honor `RetryInfo` and then use persisted exponential backoff from five
+seconds to a five-minute cap with jitter; permission, incompatible capability,
+and invalid-response failures wait for revision change or re-enable. Milestone
+5 extends this checkpoint with recurring catalog refresh and watch-state work.
+
 `GetItem` supports targeted repair and refresh before a write. Missing items return `NOT_FOUND`; provider unavailability returns `UNAVAILABLE`. Provider event subscriptions are not part of the unary MVP contract.
 
 `ProviderArtworkLease` contains provider URL, required headers, repeated proposed `allowed_redirect_origins`, optional provider-enforced `access_expires_at`, MIME type, and artwork authorization scope (`PUBLIC`, `MEDIA_ITEM`, or `PROVIDER_ACCOUNT`). A `PUBLIC` lease carries no credential and may omit access expiry. A `MEDIA_ITEM` lease must be constrained to that item and include an enforced access expiry. `PROVIDER_ACCOUNT` is always rejected.
@@ -954,7 +1083,11 @@ Clients first branch on Connect code, then on `ErrorInfo.reason`. They must fall
 | Canonical resource is absent or invisible | `NOT_FOUND` | `RESOURCE_NOT_FOUND` |
 | Media kind cannot have children | `FAILED_PRECONDITION` | `MEDIA_HAS_NO_CHILDREN` |
 | Media kind has no direct MVP user state | `FAILED_PRECONDITION` | `MEDIA_STATE_UNSUPPORTED` |
+| Canonical user state is not implemented for a requested filter | `FAILED_PRECONDITION` | `MEDIA_STATE_UNAVAILABLE` |
+| Enabled providers have no completed catalog import | `UNAVAILABLE` | `CATALOG_NOT_READY` |
 | Administrator attempts to approve an expired pairing | `FAILED_PRECONDITION` | `PAIRING_EXPIRED` |
+| Pairing code is malformed, unknown, or no longer retained | `INVALID_ARGUMENT` | `PAIRING_CODE_INVALID` |
+| Pairing code was consumed by another approval operation | `FAILED_PRECONDITION` | `PAIRING_ALREADY_APPROVED` |
 | Requested source is unavailable | `UNAVAILABLE` | `SOURCE_UNAVAILABLE` |
 | No safe compatible playback can be built | `FAILED_PRECONDITION` | `PLAYBACK_UNSUPPORTED` |
 | Playback plan expired | `FAILED_PRECONDITION` | `PLAYBACK_PLAN_EXPIRED` |
@@ -968,6 +1101,7 @@ Clients first branch on Connect code, then on `ErrorInfo.reason`. They must fall
 | Remote provider is incompatible | `FAILED_PRECONDITION` | `PROVIDER_INCOMPATIBLE` |
 | Stored provider credential cannot be authenticated | `UNAVAILABLE` | `PROVIDER_CREDENTIALS_UNAVAILABLE` |
 | Configured provider-instance limit is reached | `RESOURCE_EXHAUSTED` | `PROVIDER_INSTANCE_LIMIT_REACHED` |
+| Unexpired Pairing capacity is reached | `RESOURCE_EXHAUSTED` | `PAIRING_LIMIT_REACHED` |
 | Provider deletion is blocked by active work or enabled state | `FAILED_PRECONDITION` | `PROVIDER_INSTANCE_BUSY` |
 | Provider is temporarily unreachable | `UNAVAILABLE` | `PROVIDER_UNAVAILABLE` |
 | Plugin launch or runtime is unavailable | `UNAVAILABLE` | `PLUGIN_UNAVAILABLE` |

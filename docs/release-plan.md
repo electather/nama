@@ -154,8 +154,13 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
 - LAN discovery using mDNS/DNS-SD service `_nama._tcp`, plus manual Nama endpoint entry for LAN, VPN, and reverse-proxy deployments on every supported Apple platform.
 - Plain HTTP only for loopback, private/link-local addresses, reserved `localhost`/`.localhost` names, or `.local` names, with a clear warning. Public hostnames and addresses require HTTPS.
 - Netflix-style device flow: the app requests and displays a short-lived code; an authenticated administrator approves it with `nama devices approve`; the app receives a revocable device session. Codes are rate-limited, single-use, and contain no reusable secret.
-- Persistence for pairing requests, device credentials, minimal canonical media, library membership, and provider-to-canonical mappings begins in this milestone.
-- Provider-neutral Home/library browsing for movies and shows, basic search of available media, media details, artwork, seasons, and episodes.
+- Persistence for pairing requests, Device credentials, minimal canonical
+  media, Library entries, exact provider-to-canonical mappings, and durable
+  initial catalog-scan checkpoints begins in this milestone. Enabled provider
+  instances populate the stored catalog through background best-effort scans;
+  consumer reads never proxy live provider payloads.
+- Provider-neutral Home/library browsing for movies and shows, basic search of
+  available stored media, media details, artwork, seasons, and episodes.
 - A thin `NamaPlayer` adapter around one exact-pinned, security-reviewed engine. Shared UI and networking code consumes only Nama-owned playback and state types; platform-specific presentation or system adapters exist only where the supported Apple platforms differ.
 - The app reports the current device's real playback capabilities. Selection order is direct play, direct stream/remux, selective stream conversion, then full transcode. User-selected quality may request transcoding explicitly.
 - Playback from provider-issued URLs, play/pause, seek, audio/subtitle selection, visible loading/failure states, and recovery to the details screen.
@@ -185,7 +190,9 @@ Make Nama, rather than Jellyfin, own reliable resume and watched state while rem
 - Core-scheduled Jellyfin pull and push operations. Core stores cursors/checkpoints, backoff, pending work, and reconciliation decisions; the plugin only translates provider operations.
 - Latest reliable user activity wins, including legitimate rewind/rewatch movement. Configured provider priority handles missing timestamps and exact ties. A local Nama action wins immediately and is exported.
 - Origin/version tracking prevents a provider echo from becoming a new activity. Failed exports retry safely and surface operator-visible sync health through CLI.
-- Initial full import followed by incremental or bounded polling. Poll frequency and concurrency are conservative configuration values, not an elaborate scheduler.
+- Initial watch-state import plus recurring catalog refresh and incremental or
+  bounded watch-state polling. Poll frequency and concurrency are conservative
+  configuration values, not an elaborate scheduler.
 
 ### Explicit non-goals
 

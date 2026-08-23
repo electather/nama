@@ -111,6 +111,7 @@ Accepted ADRs record only the choices and rationale below; their linked living a
 28. [ADR-0028 — Domain-separate provider credential and principal protection](adr/0028-domain-separated-provider-protection.md)
 29. [ADR-0029 — Require Apple platform version 26](adr/0029-apple-platform-26-minimum.md)
 30. [ADR-0030 — Keep one active pairing per Apple app installation](adr/0030-one-active-apple-pairing.md)
+31. [ADR-0031 — Separate Device credential verification from Pairing delivery](adr/0031-separate-device-verification-from-pairing-delivery.md)
 
 ## Invariants
 
@@ -128,6 +129,10 @@ Accepted ADRs record only the choices and rationale below; their linked living a
 12. Request correlation is distinct from durable logical-operation idempotency. See [ADR-0027](adr/0027-logical-operation-idempotency.md).
 13. Recoverable provider credentials use versioned authenticated encryption under a provider-specific derived key, while immutable provider-principal bindings retain only keyed, instance-bound digests. See [ADR-0028](adr/0028-domain-separated-provider-protection.md).
 14. One universal Apple app installation has one active endpoint-bound Device credential. Windows share that pairing while retaining independent transient state, and a replacement becomes active only after fresh Pairing commits durably. See [ADR-0030](adr/0030-one-active-apple-pairing.md).
+15. Active Device credentials are verified through non-recoverable,
+    domain-separated digests, while only an unexpired approved Pairing may
+    retain an encrypted delivery copy for replay-safe polling. See
+    [ADR-0031](adr/0031-separate-device-verification-from-pairing-delivery.md).
 
 ## Subsystem architecture
 

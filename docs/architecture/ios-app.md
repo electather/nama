@@ -210,6 +210,13 @@ new durable commit leaves the existing pairing intact. Endpoint similarity,
 service name, certificate identity, or a similar response never permits
 credential replay.
 
+The app treats Pairing and Device credentials as opaque contract values. A
+Device credential has no scheduled MVP expiry, so its
+`BearerCredential.expires_at` is absent; the app never invents a refresh
+deadline. Pairing expiry affects only approval polling and temporary credential
+delivery. `CREDENTIAL_INVALID` is the single definitive bearer failure that
+clears or quarantines the paired record and returns to visible Pairing.
+
 ### Persistence and restoration
 
 Connection and Pairing own two intentionally different records:
