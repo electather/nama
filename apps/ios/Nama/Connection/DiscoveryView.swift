@@ -186,7 +186,10 @@ private struct DiscoveryCandidateButton: View {
     private var generation: UInt64 = 0
 
     func snapshot() -> VerifiedEndpointStoreSnapshot {
-      VerifiedEndpointStoreSnapshot(endpoint: endpoint, generation: generation)
+      VerifiedEndpointStoreSnapshot(
+        endpoint: endpoint.map(RestoredNamaEndpoint.eligible),
+        generation: generation
+      )
     }
 
     func save(

@@ -18,18 +18,24 @@ nonisolated protocol ConnectionVerifying: Sendable {
 }
 
 nonisolated enum ConnectionState: Equatable, Sendable {
-  case editing(showsValidationError: Bool)
+  case editing(validationError: EndpointValidationError?)
   case verifying(NamaEndpoint)
   case ready(NamaEndpoint)
   case setupRequired(NamaEndpoint)
   case failed(NamaEndpoint, VerificationFailure)
+  case requiresHTTPS(String)
+}
+
+nonisolated private enum RestoredEndpointResolution: Sendable {
+  case verification(NamaEndpoint, ConnectionVerificationResult)
+  case requiresHTTPS(String)
 }
 
 @MainActor
 @Observable
 final class ConnectionFeature {
   var address = ""
-  private(set) var state: ConnectionState = .editing(showsValidationError: false)
+  private(set) var state: ConnectionState = .editing(validationError: nil)
   var discoveryState: NamaDiscoveryState {
     discoverySession.state
   }
@@ -64,7 +70,9 @@ final class ConnectionFeature {
       endpoint = try NamaEndpoint(address)
     } catch {
       cancelActiveAttempt()
-      state = .editing(showsValidationError: true)
+      state = .editing(
+        validationError: (error as? EndpointValidationError) ?? .invalid
+      )
       return
     }
     startVerification(of: endpoint)
@@ -76,7 +84,7 @@ final class ConnectionFeature {
     case .setupRequired(let value), .failed(let value, _):
       endpoint = value
 
-    case .editing, .verifying, .ready:
+    case .editing, .verifying, .ready, .requiresHTTPS:
       return
     }
     startVerification(of: endpoint)
@@ -117,14 +125,14 @@ final class ConnectionFeature {
   func changeEndpoint() async {
     restorationHandled = true
     cancelActiveAttempt()
-    state = .editing(showsValidationError: false)
+    state = .editing(validationError: nil)
     await endpointStore.clear()
   }
 
   private func returnToEditing() {
     restorationHandled = true
     cancelActiveAttempt()
-    state = .editing(showsValidationError: false)
+    state = .editing(validationError: nil)
   }
 
   func restoreSavedEndpoint() {
@@ -143,15 +151,17 @@ final class ConnectionFeature {
       guard !Task.isCancelled else {
         return
       }
-      guard let endpoint = snapshot.endpoint else {
+      guard let restoredEndpoint = snapshot.endpoint else {
         self?.finishInvalidatedAttempt(currentAttempt)
         return
       }
-      guard self?.beginRestoredVerification(endpoint, attempt: currentAttempt) == true else {
+      if case .eligible(let endpoint) = restoredEndpoint,
+        self?.beginRestoredVerification(endpoint, attempt: currentAttempt) != true
+      {
         return
       }
-      let result = await Self.verify(
-        endpoint,
+      let resolution = await resolveRestoredEndpoint(
+        restoredEndpoint,
         from: snapshot,
         using: connectionVerifier,
         endpointStore: store
@@ -159,12 +169,36 @@ final class ConnectionFeature {
       guard !Task.isCancelled else {
         return
       }
-      guard let result else {
-        self?.finishInvalidatedAttempt(currentAttempt)
-        return
-      }
-      self?.finishVerification(result, endpoint: endpoint, attempt: currentAttempt)
+      self?.finishRestoration(resolution, attempt: currentAttempt)
     }
+  }
+
+  private func finishRestoration(
+    _ resolution: RestoredEndpointResolution?,
+    attempt currentAttempt: Int
+  ) {
+    guard let resolution else {
+      finishInvalidatedAttempt(currentAttempt)
+      return
+    }
+    switch resolution {
+    case .verification(let endpoint, let result):
+      finishVerification(result, endpoint: endpoint, attempt: currentAttempt)
+
+    case .requiresHTTPS(let address):
+      finishHTTPSRequiredRestoration(address, attempt: currentAttempt)
+    }
+  }
+
+  private func finishHTTPSRequiredRestoration(
+    _ savedAddress: String,
+    attempt currentAttempt: Int
+  ) {
+    guard isCurrentAttempt(currentAttempt) else {
+      return
+    }
+    activeTask = nil
+    state = .requiresHTTPS(savedAddress)
   }
 
   private func startVerification(of endpoint: NamaEndpoint) {
@@ -181,7 +215,7 @@ final class ConnectionFeature {
       guard !Task.isCancelled, self?.isCurrentAttempt(currentAttempt) == true else {
         return
       }
-      let result = await Self.verify(
+      let result = await verifyEndpoint(
         endpoint,
         from: snapshot,
         using: connectionVerifier,
@@ -213,35 +247,6 @@ final class ConnectionFeature {
     currentAttempt == attempt
   }
 
-  nonisolated private static func verify(
-    _ endpoint: NamaEndpoint,
-    from snapshot: VerifiedEndpointStoreSnapshot,
-    using verifier: any ConnectionVerifying,
-    endpointStore: any VerifiedEndpointStoring
-  ) async -> ConnectionVerificationResult? {
-    let result = await verifier.verify(endpoint)
-    guard !Task.isCancelled else {
-      return nil
-    }
-
-    switch result {
-    case .ready, .setupRequired:
-      guard await endpointStore.save(endpoint, ifUnchangedSince: snapshot) else {
-        return nil
-      }
-      return result
-
-    case .failure:
-      guard await endpointStore.isCurrent(snapshot) else {
-        return nil
-      }
-      return result
-
-    case .cancelled:
-      return result
-    }
-  }
-
   private func finishVerification(
     _ result: ConnectionVerificationResult,
     endpoint: NamaEndpoint,
@@ -263,7 +268,7 @@ final class ConnectionFeature {
       state = .failed(endpoint, failure)
 
     case .cancelled:
-      state = .editing(showsValidationError: false)
+      state = .editing(validationError: nil)
     }
   }
 
@@ -272,12 +277,69 @@ final class ConnectionFeature {
       return
     }
     activeTask = nil
-    state = .editing(showsValidationError: false)
+    state = .editing(validationError: nil)
   }
 
   private func cancelActiveAttempt() {
     activeTask?.cancel()
     activeTask = nil
     attempt &+= 1
+  }
+}
+
+nonisolated private func resolveRestoredEndpoint(
+  _ restoredEndpoint: RestoredNamaEndpoint,
+  from snapshot: VerifiedEndpointStoreSnapshot,
+  using verifier: any ConnectionVerifying,
+  endpointStore: any VerifiedEndpointStoring
+) async -> RestoredEndpointResolution? {
+  switch restoredEndpoint {
+  case .eligible(let endpoint):
+    guard
+      let result = await verifyEndpoint(
+        endpoint,
+        from: snapshot,
+        using: verifier,
+        endpointStore: endpointStore
+      )
+    else {
+      return nil
+    }
+    return .verification(endpoint, result)
+
+  case .requiresHTTPS(let address):
+    guard await endpointStore.isCurrent(snapshot) else {
+      return nil
+    }
+    return .requiresHTTPS(address)
+  }
+}
+
+nonisolated private func verifyEndpoint(
+  _ endpoint: NamaEndpoint,
+  from snapshot: VerifiedEndpointStoreSnapshot,
+  using verifier: any ConnectionVerifying,
+  endpointStore: any VerifiedEndpointStoring
+) async -> ConnectionVerificationResult? {
+  let result = await verifier.verify(endpoint)
+  guard !Task.isCancelled else {
+    return nil
+  }
+
+  switch result {
+  case .ready, .setupRequired:
+    guard await endpointStore.save(endpoint, ifUnchangedSince: snapshot) else {
+      return nil
+    }
+    return result
+
+  case .failure:
+    guard await endpointStore.isCurrent(snapshot) else {
+      return nil
+    }
+    return result
+
+  case .cancelled:
+    return result
   }
 }

@@ -74,7 +74,10 @@ actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
   }
 
   func snapshot() -> VerifiedEndpointStoreSnapshot {
-    VerifiedEndpointStoreSnapshot(endpoint: endpoint, generation: generation)
+    VerifiedEndpointStoreSnapshot(
+      endpoint: endpoint.map(RestoredNamaEndpoint.eligible),
+      generation: generation
+    )
   }
 
   func save(

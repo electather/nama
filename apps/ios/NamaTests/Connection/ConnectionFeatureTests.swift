@@ -16,13 +16,30 @@ struct ConnectionFeatureTests {
     )
     feature.address = "nama.example.com"
 
-    #expect(feature.state == .editing(showsValidationError: false))
+    #expect(feature.state == .editing(validationError: nil))
     feature.submit()
 
     #expect(feature.address == "nama.example.com")
-    #expect(feature.state == .editing(showsValidationError: true))
+    #expect(feature.state == .editing(validationError: .invalid))
     #expect(await verifier.callCount == 0)
     #expect(await store.endpoint == nil)
+  }
+
+  @Test("forbidden HTTP input stays editable and never reaches verification")
+  func forbiddenHTTPInput() async {
+    let verifier = ImmediateVerifier(result: .ready)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: InMemoryVerifiedEndpointStore()
+    )
+    feature.address = "http://nama.example.com/reverse-proxy"
+
+    feature.submit()
+
+    #expect(feature.address == "http://nama.example.com/reverse-proxy")
+    #expect(feature.state == .editing(validationError: .requiresHTTPS))
+    #expect(await verifier.callCount == 0)
   }
 
   @Test(
@@ -65,7 +82,7 @@ struct ConnectionFeatureTests {
     feature.addressDidChange()
     await eventually { await verifier.cancellationCount == 1 }
 
-    #expect(feature.state == .editing(showsValidationError: false))
+    #expect(feature.state == .editing(validationError: nil))
   }
 
   @Test("leaving the flow cancels restoration without clearing the saved endpoint")
@@ -84,7 +101,7 @@ struct ConnectionFeatureTests {
     feature.flowDidLeave()
     await eventually { await verifier.cancellationCount == 1 }
 
-    #expect(feature.state == .editing(showsValidationError: false))
+    #expect(feature.state == .editing(validationError: nil))
     #expect(await store.endpoint == endpoint)
   }
 
@@ -191,7 +208,7 @@ struct ConnectionFeatureTests {
     feature.cancel()
     await eventually { await verifier.cancellationCount == 1 }
 
-    #expect(feature.state == .editing(showsValidationError: false))
+    #expect(feature.state == .editing(validationError: nil))
   }
 }
 
@@ -240,6 +257,30 @@ struct ConnectionRestorationTests {
     #expect(await verifier.callCount == 1)
   }
 
+  @Test("legacy forbidden HTTP restoration stays visible and never reaches verification")
+  func blocksLegacyForbiddenHTTP() async throws {
+    let suiteName = "NamaTests.ConnectionRestoration.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let savedAddress = "http://nama.example.com/reverse-proxy/"
+    defaults.set(savedAddress, forKey: "verifiedNamaEndpoint")
+    let verifier = ImmediateVerifier(result: .ready)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: UserDefaultsVerifiedEndpointStore(suiteName: suiteName)
+    )
+
+    feature.restoreSavedEndpoint()
+    await eventually { feature.state == .requiresHTTPS(savedAddress) }
+
+    #expect(feature.address.isEmpty)
+    #expect(feature.state.actions == [.changeEndpoint])
+
+    #expect(await verifier.callCount == 0)
+    #expect(defaults.string(forKey: "verifiedNamaEndpoint") == savedAddress)
+  }
+
   @Test(
     "a safe restoration failure retains the saved endpoint",
     arguments: [
@@ -265,8 +306,8 @@ struct ConnectionRestorationTests {
     #expect(await store.endpoint == endpoint)
   }
 
-  @Test("Change Server cancels restoration and clears the saved endpoint")
-  func changeServerClearsEndpoint() async throws {
+  @Test("Change Endpoint cancels restoration and clears the saved endpoint")
+  func changeEndpointClearsEndpoint() async throws {
     let endpoint = try NamaEndpoint("https://nama.example.com")
     let store = InMemoryVerifiedEndpointStore(endpoint: endpoint)
     let verifier = CancellationVerifier()
@@ -281,12 +322,12 @@ struct ConnectionRestorationTests {
     await feature.changeEndpoint()
     await eventually { await verifier.cancellationCount == 1 }
 
-    #expect(feature.state == .editing(showsValidationError: false))
+    #expect(feature.state == .editing(validationError: nil))
     #expect(await store.endpoint == nil)
   }
 
-  @Test("Change Server prevents another window from restoring the cleared endpoint")
-  func changeServerInvalidatesOtherRestorations() async throws {
+  @Test("Change Endpoint prevents another window from restoring the cleared endpoint")
+  func changeEndpointInvalidatesOtherRestorations() async throws {
     let endpoint = try NamaEndpoint("https://nama.example.com")
     let store = InMemoryVerifiedEndpointStore(endpoint: endpoint)
     let clearingVerifier = CancellationVerifier()
@@ -319,7 +360,7 @@ struct ConnectionRestorationTests {
       return true
     }
 
-    #expect(staleFeature.state == .editing(showsValidationError: false))
+    #expect(staleFeature.state == .editing(validationError: nil))
     #expect(await store.endpoint == nil)
   }
 }

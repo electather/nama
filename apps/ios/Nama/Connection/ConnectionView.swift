@@ -37,7 +37,7 @@ struct ConnectionRootView: View {
       case .editing, .verifying:
         "Connect to Nama"
 
-      case .ready, .setupRequired, .failed:
+      case .ready, .setupRequired, .failed, .requiresHTTPS:
         "Nama Endpoint"
       }
     }
@@ -45,8 +45,8 @@ struct ConnectionRootView: View {
     @ViewBuilder
     private var content: some View {
       switch feature.state {
-      case .editing(let showsValidationError):
-        EntryForm(feature: feature, showsValidationError: showsValidationError)
+      case .editing(let validationError):
+        EntryForm(feature: feature, validationError: validationError)
 
       case .verifying(let endpoint):
         VerifyingForm(feature: feature, endpoint: endpoint)
@@ -59,20 +59,23 @@ struct ConnectionRootView: View {
 
       case .failed(let endpoint, let failure):
         FailureForm(feature: feature, endpoint: endpoint, failure: failure)
+
+      case .requiresHTTPS(let savedAddress):
+        HTTPSRequiredForm(feature: feature, savedAddress: savedAddress)
       }
     }
   }
 
   private struct EntryForm: View {
     @Bindable var feature: ConnectionFeature
-    let showsValidationError: Bool
+    let validationError: EndpointValidationError?
 
     var body: some View {
       Form {
         Section {
           NamaDiscoveryContent(feature: feature)
         }
-        AddressFields(feature: feature, showsValidationError: showsValidationError)
+        AddressFields(feature: feature, validationError: validationError)
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
         }
@@ -90,11 +93,11 @@ struct ConnectionRootView: View {
         Section {
           NamaDiscoveryContent(feature: feature)
         }
-        AddressFields(feature: feature, showsValidationError: false)
+        AddressFields(feature: feature, validationError: nil)
         Section {
           ProgressView()
             .frame(maxWidth: .infinity)
-          EndpointValue(endpoint: endpoint)
+          EndpointValue(address: endpoint.absoluteString)
         }
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -113,7 +116,7 @@ struct ConnectionRootView: View {
         Section {
           Text("Nama is ready")
             .font(.headline)
-          EndpointValue(endpoint: endpoint)
+          EndpointValue(address: endpoint.absoluteString)
         }
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -132,7 +135,7 @@ struct ConnectionRootView: View {
         Section {
           Text("Finish setting up Nama")
             .font(.headline)
-          EndpointValue(endpoint: endpoint)
+          EndpointValue(address: endpoint.absoluteString)
           Text("Run `nama setup` from a trusted computer, then try again.")
             .foregroundStyle(.secondary)
         }
@@ -154,7 +157,28 @@ struct ConnectionRootView: View {
         Section {
           Text(failure.message)
             .foregroundStyle(.red)
-          EndpointValue(endpoint: endpoint)
+          EndpointValue(address: endpoint.absoluteString)
+        }
+        Section {
+          ConnectionActionButtons(feature: feature, actions: feature.state.actions)
+        }
+      }
+      .connectionFormLayout()
+    }
+  }
+
+  private struct HTTPSRequiredForm: View {
+    let feature: ConnectionFeature
+    let savedAddress: String
+
+    var body: some View {
+      Form {
+        Section {
+          Text(SavedEndpointHTTPSRequiredCopy.title)
+            .font(.headline)
+          Text(SavedEndpointHTTPSRequiredCopy.message)
+            .foregroundStyle(.red)
+          EndpointValue(address: savedAddress)
         }
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -166,7 +190,7 @@ struct ConnectionRootView: View {
 
   private struct AddressFields: View {
     @Bindable var feature: ConnectionFeature
-    let showsValidationError: Bool
+    let validationError: EndpointValidationError?
 
     var body: some View {
       Section("Nama endpoint") {
@@ -184,8 +208,8 @@ struct ConnectionRootView: View {
           .onChange(of: feature.address) {
             feature.addressDidChange()
           }
-        if showsValidationError {
-          Text(EndpointValidationError.invalid.message)
+        if let validationError {
+          Text(validationError.message)
             .foregroundStyle(.red)
         }
       }
@@ -228,7 +252,7 @@ struct ConnectionRootView: View {
         .buttonStyle(.borderedProminent)
 
       case .changeEndpoint:
-        Button("Change Server") {
+        Button("Change Endpoint") {
           Task {
             await feature.changeEndpoint()
           }
@@ -238,11 +262,11 @@ struct ConnectionRootView: View {
   }
 
   private struct EndpointValue: View {
-    let endpoint: NamaEndpoint
+    let address: String
 
     var body: some View {
       LabeledContent("Endpoint") {
-        Text(endpoint.absoluteString)
+        Text(address)
           .font(.body.monospaced())
           .multilineTextAlignment(.trailing)
           .textSelection(.enabled)

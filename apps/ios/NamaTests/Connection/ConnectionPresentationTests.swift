@@ -9,7 +9,24 @@ struct ConnectionPresentationTests {
   func invalidAddressCopy() {
     #expect(
       String(localized: EndpointValidationError.invalid.message)
-        == "Enter a valid HTTP or HTTPS server address."
+        == "Enter a valid HTTP or HTTPS Nama endpoint."
+    )
+  }
+
+  @Test("shows the HTTPS requirement for forbidden HTTP")
+  func httpsRequiredCopy() {
+    #expect(
+      String(localized: EndpointValidationError.requiresHTTPS.message)
+        == "This Nama endpoint requires HTTPS."
+    )
+  }
+
+  @Test("shows non-destructive recovery for a blocked saved endpoint")
+  func savedEndpointHTTPSRequiredCopy() {
+    #expect(String(localized: SavedEndpointHTTPSRequiredCopy.title) == "HTTPS required")
+    #expect(
+      String(localized: SavedEndpointHTTPSRequiredCopy.message)
+        == "This saved Nama endpoint can no longer be contacted over HTTP. Change the endpoint to use HTTPS."
     )
   }
 
@@ -74,13 +91,16 @@ struct ConnectionPresentationTests {
     #expect(
       ConnectionState.failed(endpoint, .cannotConnect).actions == [.retry, .changeEndpoint]
     )
+    #expect(
+      ConnectionState.requiresHTTPS("http://nama.example.com/").actions == [.changeEndpoint]
+    )
   }
 
   @Test("entry and active requests expose the actions available on their forms")
   func formActions() throws {
     let endpoint = try NamaEndpoint("https://nama.example.com")
 
-    #expect(ConnectionState.editing(showsValidationError: false).actions == [.connect])
+    #expect(ConnectionState.editing(validationError: nil).actions == [.connect])
     #expect(
       ConnectionState.verifying(endpoint).actions == [.connect, .cancel, .changeEndpoint]
     )

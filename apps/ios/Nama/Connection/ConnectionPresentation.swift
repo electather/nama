@@ -9,7 +9,23 @@ nonisolated enum ConnectionAction: Hashable, Sendable {
 
 nonisolated extension EndpointValidationError {
   var message: LocalizedStringResource {
-    "Enter a valid HTTP or HTTPS server address."
+    switch self {
+    case .invalid:
+      "Enter a valid HTTP or HTTPS Nama endpoint."
+
+    case .requiresHTTPS:
+      "This Nama endpoint requires HTTPS."
+    }
+  }
+}
+
+nonisolated enum SavedEndpointHTTPSRequiredCopy {
+  static var title: LocalizedStringResource {
+    "HTTPS required"
+  }
+
+  static var message: LocalizedStringResource {
+    "This saved Nama endpoint can no longer be contacted over HTTP. Change the endpoint to use HTTPS."
   }
 }
 
@@ -74,7 +90,7 @@ nonisolated extension ConnectionState {
     case .verifying:
       [.connect, .cancel, .changeEndpoint]
 
-    case .ready:
+    case .ready, .requiresHTTPS:
       [.changeEndpoint]
 
     case .setupRequired, .failed:

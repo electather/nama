@@ -19,14 +19,14 @@
     @ViewBuilder
     private var content: some View {
       switch feature.state {
-      case .editing(let showsValidationError):
+      case .editing(let validationError):
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text("Connect to Nama")
             .font(.largeTitle)
           NamaDiscoveryContent(feature: feature)
           addressField
-          if showsValidationError {
-            Text(EndpointValidationError.invalid.message)
+          if let validationError {
+            Text(validationError.message)
               .foregroundStyle(.red)
           }
           actionButtons(feature.state.actions)
@@ -38,7 +38,7 @@
           addressField
           HStack(spacing: Layout.actionSpacing) {
             ProgressView()
-            TVEndpointValue(endpoint: endpoint)
+            TVEndpointValue(address: endpoint.absoluteString)
           }
           actionButtons(feature.state.actions)
         }
@@ -47,7 +47,7 @@
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text("Nama is ready")
             .font(.largeTitle)
-          TVEndpointValue(endpoint: endpoint)
+          TVEndpointValue(address: endpoint.absoluteString)
           actionButtons(feature.state.actions)
         }
 
@@ -55,7 +55,7 @@
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text("Finish setting up Nama")
             .font(.largeTitle)
-          TVEndpointValue(endpoint: endpoint)
+          TVEndpointValue(address: endpoint.absoluteString)
           Text("Run `nama setup` from a trusted computer, then try again.")
             .foregroundStyle(.secondary)
           actionButtons(feature.state.actions)
@@ -65,7 +65,17 @@
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text(failure.message)
             .font(.title2)
-          TVEndpointValue(endpoint: endpoint)
+          TVEndpointValue(address: endpoint.absoluteString)
+          actionButtons(feature.state.actions)
+        }
+
+      case .requiresHTTPS(let savedAddress):
+        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+          Text(SavedEndpointHTTPSRequiredCopy.title)
+            .font(.largeTitle)
+          Text(SavedEndpointHTTPSRequiredCopy.message)
+            .foregroundStyle(.red)
+          TVEndpointValue(address: savedAddress)
           actionButtons(feature.state.actions)
         }
       }
@@ -118,7 +128,7 @@
         .focused($focusedControl, equals: .retry)
 
       case .changeEndpoint:
-        Button("Change Server") {
+        Button("Change Endpoint") {
           Task {
             await feature.changeEndpoint()
           }
@@ -132,7 +142,7 @@
       case .editing, .verifying:
         .address
 
-      case .ready:
+      case .ready, .requiresHTTPS:
         .changeEndpoint
 
       case .setupRequired, .failed:
@@ -158,7 +168,7 @@
   }
 
   private struct TVEndpointValue: View {
-    let endpoint: NamaEndpoint
+    let address: String
 
     private static let verticalSpacing: CGFloat = 8
 
@@ -166,7 +176,7 @@
       VStack(alignment: .leading, spacing: Self.verticalSpacing) {
         Text("Endpoint")
           .font(.headline)
-        Text(endpoint.absoluteString)
+        Text(address)
           .font(.body.monospaced())
           .fixedSize(horizontal: false, vertical: true)
       }
