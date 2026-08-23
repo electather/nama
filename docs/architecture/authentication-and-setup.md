@@ -28,6 +28,31 @@ Under [ADR-0009](../adr/0009-confirm-durable-session-revocation.md), `SignOut` i
 
 The Go CLI implements named profile targeting, setup followed by sign-in, later sign-in, and authentication status over these RPCs. It keeps bearer credentials only in the native credential facility, binds each record to its canonical full server target, and never falls back to a plaintext file. Malformed and legacy unbound records never attach; a successful deletion makes them an absent credential that setup or login may replace, while deletion failure is a typed, fail-closed credential-cleanup error. A process-injected bearer is eligible for authentication status without native-store access and is never persisted or deleted; setup and login reject while the injection is active so they cannot orphan a newly issued bearer. Lost non-wire setup responses are recovered by status without replaying administrator creation. Once recovery confirms initialization, sign-in and credential storage use a separate fresh bounded settlement context even if the original caller context expired; known wire application failures still return directly. Malformed sign-in responses with a usable bearer are revoked. Failed local credential storage restores the prior native state and revokes the new session, and an unconfirmed revocation takes precedence over the storage error.
 
+## Target Apple Device credential ownership
+
+Under [ADR-0030](../adr/0030-one-active-apple-pairing.md), one universal Apple
+app installation has one active endpoint-bound Device credential, shared by
+every window. This is client policy over the existing public `DeviceService`
+contract: the Nama endpoint remains a transport address rather than deployment
+identity, and changing it requires fresh verification and Pairing without
+replaying the active credential.
+
+The Apple app stores the last verified canonical endpoint without credentials
+in `UserDefaults`. Pairing stores one versioned Keychain record containing both
+the Device credential and its exact canonical endpoint, protected with
+`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and excluded from iCloud Keychain
+sync. A paired session is restored entirely from that record and is never
+assembled by combining Keychain material with an independent defaults value.
+
+Endpoint replacement verifies and pairs the candidate without the active
+credential, commits the new Keychain record, and only then retires the previous
+pairing. Cancellation or failure before that commit preserves the active
+pairing. An unknown or damaged record fails closed into visible re-pairing; a
+definitive invalid or revoked Device credential clears or quarantines paired
+state, while ordinary offline and transient failures preserve it. These are
+target requirements; Device runtime handlers and Apple Keychain behavior remain
+unimplemented.
+
 ## Correlation, safety, and verification
 
 [ADR-0026](../adr/0026-standard-google-rpc-error-details.md) governs application failure details, and [ADR-0027](../adr/0027-logical-operation-idempotency.md) keeps server-owned request correlation separate from logical-operation identity. The outer Node dispatch assigns server-owned `nama-request-id` to every delegated Connect response before decoding. Application-generated failures carry the same value in `google.rpc.RequestInfo`; malformed Connect input may fail before the application pipeline, so the response header is the correlation fallback. Terminal RPC logs contain only the request ID, method, Connect code, and duration. Public errors and logs never expose credentials, identities, passwords, bootstrap tokens, database detail, or Better Auth data.
