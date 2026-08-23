@@ -373,6 +373,52 @@ returns its original safe response without replaying provider work. Unrelated
 provider instances and authentication remain available whenever their owners
 and PostgreSQL are healthy.
 
+## Target Pairing and canonical-catalog runtime
+
+Issue #36 adds two deep core owners without changing the one-pool database
+boundary. Pairing owns human-code and polling state, Device credential
+protection, approval idempotency, revocation, bounded cleanup, and
+Device-authenticated request context. Canonical catalog owns exact mapping,
+normalized persistence, initial scan state, item-aggregate transactions, and
+stored query behavior. The database module exposes only their narrow
+transactions; Connect handlers remain mappings and no generic repository,
+crypto service, scheduler framework, or second activity gate is introduced.
+
+Pairing approval is a database-only mutation. A possible commit is resolved
+from the Administrator-scoped operation result before any retry; a missing or
+unavailable resolution never mints another Device. `BeginPairing` remains
+non-idempotent, status polling is repeatable through the matching polling
+credential, and revocation is convergent. Distinct master-key-derived contexts
+protect code digests, polling digests, Device verification, encrypted delivery,
+and approval request fingerprints. Key loss, moved ciphertext, unsupported
+versions, and failed authentication remain fail-closed and require fresh
+Pairing rather than fallback or credential recovery.
+
+After runtime readiness, Canonical catalog starts one background initial scan
+for each enabled provider instance lacking a completed pass. Provider
+availability never changes process readiness. One persisted current scan per
+instance resumes a valid continuation after restart, serializes page acceptance
+with continuation advancement, and retries only safe availability failures on
+persisted bounded backoff. Every page uses the provider-management scoped
+activity gate and current-revision condition; a stale page cannot commit after
+configuration cutover, disable, or delete.
+
+Catalog item commits are idempotent by exact provider mapping and replace one
+complete relational aggregate while retaining stable Nama mappings. Ambiguous
+database completion is resolved by reading the scan state and mapping before
+advancing; reprocessing an unconfirmed page cannot create a second canonical
+item. Provider delete removes its catalog mappings and sources inside the
+existing fenced delete transaction. It removes a Library entry only when no
+source remains and never deletes the internal canonical item or Nama-owned user
+state.
+
+Stored catalog reads use PostgreSQL filtering, ordering, pagination, hierarchy,
+and full-text search. They make no provider call except artwork resolution,
+which starts from a stored private reference and retains the existing safe
+locator boundary. A fresh catalog with enabled providers but no completed pass
+fails `CATALOG_NOT_READY`; healthy stored data remains readable beside another
+provider's failed or incomplete import.
+
 ## Verification contract
 
 The server test gate must continue to exercise behavior, not only generated contracts or compilation:
@@ -395,6 +441,16 @@ The server test gate must continue to exercise behavior, not only generated cont
   server/user/API-key connection;
 - real Connect and compiled-CLI provider-management flows with exact redacted
   output;
+- Pairing persistence against production migrations: digest and envelope domain
+  separation, nonce uniqueness, collision retry, expiry, durable polling gates,
+  concurrent approval, operation replay, ambiguous completion, bounded cleanup,
+  revocation, wrong-key and tamper failure, and sentinel redaction;
+- one supervised production Jellyfin catalog scan through revision-fenced
+  incremental commits, restart continuation, duplicate pages, out-of-order
+  hierarchy, provider failure, disable/re-enable, and provider deletion; and
+- real Connect Library reads over stored canonical state proving stable Nama
+  IDs, search and pagination, unavailable-source projection, and absence of
+  provider references or payload sentinels;
 - root TypeScript checks that execute the complete server suite.
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.

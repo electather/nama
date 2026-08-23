@@ -28,6 +28,63 @@ Under [ADR-0009](../adr/0009-confirm-durable-session-revocation.md), `SignOut` i
 
 The Go CLI implements named profile targeting, setup followed by sign-in, later sign-in, and authentication status over these RPCs. It keeps bearer credentials only in the native credential facility, binds each record to its canonical full server target, and never falls back to a plaintext file. Malformed and legacy unbound records never attach; a successful deletion makes them an absent credential that setup or login may replace, while deletion failure is a typed, fail-closed credential-cleanup error. A process-injected bearer is eligible for authentication status without native-store access and is never persisted or deleted; setup and login reject while the injection is active so they cannot orphan a newly issued bearer. Lost non-wire setup responses are recovered by status without replaying administrator creation. Once recovery confirms initialization, sign-in and credential storage use a separate fresh bounded settlement context even if the original caller context expired; known wire application failures still return directly. Malformed sign-in responses with a usable bearer are revoked. Failed local credential storage restores the prior native state and revokes the new session, and an unconfirmed revocation takes precedence over the storage error.
 
+## Target Pairing and Device authentication
+
+Device pairing separates an eight-character uppercase unambiguous Base32 human
+code from independent high-entropy polling and Device secrets. The displayed
+code is grouped `XXXX-XXXX`; approval accepts case-insensitive input after
+removing spaces and hyphens. A Pairing lasts ten minutes and advertises a
+five-second poll interval. The first status poll is eligible after that
+interval; PostgreSQL time and a durable `next_poll_at` enforce later polls
+across restart without extending the gate after an early request.
+
+`BeginPairing` trims surrounding Unicode whitespace from the Device display
+name, rejects an empty result, and otherwise preserves it exactly. A
+process-local global window admits at most 20 begins per ten seconds, while a
+database-serialized installation limit admits at most 100 unexpired Pairings.
+The server trusts neither forwarded addresses nor client metadata as an
+identity for this public limit.
+
+Polling and Device credentials use distinct versioned token prefixes followed
+by independent 32-byte random unpadded-base64url secrets. Authentication
+dispatches by exact prefix and never tries one secret against another credential
+store. Human codes, polling tokens, and active Device bearers are verified only
+through separate domain-derived keyed digests. Under
+[ADR-0031](../adr/0031-separate-device-verification-from-pairing-delivery.md),
+an approved Pairing alone retains a separately encrypted copy of the Device
+bearer until Pairing expiry so repeated matching polls return the same logical
+Device and credential after a lost response.
+
+One approval transaction locks the unexpired Pairing, creates exactly one
+Device and verifier, commits the encrypted delivery, and stores the
+Administrator-scoped operation result. The winning operation ID replays its
+original response for 24 hours. Another operation against the consumed code
+fails `PAIRING_ALREADY_APPROVED`; malformed, unknown, or no-longer-retained
+codes fail `PAIRING_CODE_INVALID`; a retained expired Pairing fails
+`PAIRING_EXPIRED`.
+
+At expiry, pending and approved Pairings project `EXPIRED` and never return a
+credential. Encrypted delivery is cleared through bounded startup and
+once-per-minute cleanup; digest-backed expiry evidence remains for 24 hours.
+Device credentials have no scheduled MVP expiry and remain valid until
+revocation. The public `BearerCredential.expires_at` is therefore absent for a
+Device credential; removing its current validation requirement is target
+contract work, not implemented behavior.
+
+Revocation atomically timestamps and retains the Device, removes its verifier,
+and clears any undelivered credential. It blocks every new authenticated
+request immediately while already admitted bounded work may finish. Every
+malformed, unknown, or revoked Device bearer has the same
+`UNAUTHENTICATED/CREDENTIAL_INVALID` shape. An invalid Pairing identity, token,
+or token class has the single `UNAUTHENTICATED/AUTHENTICATION_FAILED` shape;
+only a matching retained request can observe `EXPIRED`.
+
+Successful Device-authenticated consumer work updates approximate
+`last_seen_at` at most once per 15 minutes. That diagnostic write never grants
+authority and its safe logged failure does not invalidate a request whose
+credential was already verified. Pairing polls and Administrator requests do
+not update it.
+
 ## Target Apple Device credential ownership
 
 Under [ADR-0030](../adr/0030-one-active-apple-pairing.md), one universal Apple

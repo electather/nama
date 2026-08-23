@@ -27,6 +27,10 @@ _Avoid_: Provider user, account
 Nama's provider-neutral identity for one movie, show, season, or episode; matching provider observations may contribute sources to it.
 _Avoid_: Provider item, title
 
+**Library entry**:
+A canonical item's inclusion in Nama's installation-wide catalog; it is not a per-person grant or temporary provider-availability status.
+_Avoid_: Library membership, user grant
+
 **Source**:
 One playable edition or encode of a canonical item supplied through a provider instance. Alternate encodes or resolutions of one edition are sources, while distinct cuts are separate canonical items.
 _Avoid_: Provider item
@@ -81,6 +85,10 @@ _Avoid_: Server connection, server identity
 **Administrator**:
 The sole MVP person authorized to set up, configure, diagnose, and manage Nama.
 _Avoid_: Admin user, owner
+
+**Pairing**:
+A short-lived request through which an Administrator authorizes one Device and that Device privately retrieves its credential.
+_Avoid_: Device session, pairing session
 
 **Device**:
 A paired client installation with a revocable credential limited to consumer library, playback, and user-state behavior.
