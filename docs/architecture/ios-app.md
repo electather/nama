@@ -64,9 +64,12 @@ optional LAN discovery, and verified endpoint restoration:
 - Selecting a candidate invokes the same verifier as manual submission.
   Selection replacement cancels the prior attempt, while later advertisement
   removal does not cancel verification of the selected endpoint.
-- `NamaSetupStatusVerifier` calls generated `SetupService.GetStatus` once with
-  a ten-second timeout, platform TLS trust, and allowlisted client name,
-  version, and platform metadata.
+- `NamaSetupStatusVerifier` calls generated `SetupService.GetStatus` once
+  through a Nama-owned unary URLSession transport with a ten-second timeout and
+  allowlisted client name, version, and platform metadata. The transport uses
+  platform TLS trust, refuses every redirect before target contact, discards its
+  location and response body, reports incompatible, and rejects streaming as
+  unimplemented.
 - The async `UserDefaultsVerifiedEndpointStore` actor retains only the last
   successfully verified canonical endpoint. Each window activates restoration
   once after SwiftUI installs its feature state, avoiding I/O from disposable
@@ -97,8 +100,9 @@ candidate reconciliation, duplicate and removal behavior, discovery lifecycle
 and timing, explicit selection, endpoint preference contents, clearing,
 cross-window invalidation, explicit one-time restoration, successful and failed
 restoration, verification replacement and cancellation, request construction
-and client metadata, safe failure mapping, state transitions, retry, stale
-completions, and presentation actions. `check:ios` lints Swift formatting, runs
+and client metadata, redirect refusal, unary-only transport enforcement, safe
+failure mapping, state transitions, retry, stale completions, and presentation
+actions. `check:ios` lints Swift formatting, runs
 the test target through its macOS host, and performs signing-disabled iOS, tvOS,
 and macOS builds. These checks do not prove physical-device privacy prompts,
 focus, accessibility, or playback behavior.
