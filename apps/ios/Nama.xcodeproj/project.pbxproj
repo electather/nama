@@ -25,6 +25,7 @@
 		100000000000000000000016 /* ConnectionDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000018 /* ConnectionDiscoveryTests.swift */; };
 		100000000000000000000017 /* Discovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000019 /* Discovery.swift */; };
 		100000000000000000000018 /* DiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000021 /* DiscoveryView.swift */; };
+		100000000000000000000019 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000022 /* InfoPlist.xcstrings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +60,7 @@
 		200000000000000000000019 /* Discovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Discovery.swift; sourceTree = "<group>"; };
 		200000000000000000000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		200000000000000000000021 /* DiscoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryView.swift; sourceTree = "<group>"; };
+		200000000000000000000022 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -149,6 +151,7 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000014 /* Localizable.xcstrings */,
+				200000000000000000000022 /* InfoPlist.xcstrings */,
 				200000000000000000000020 /* Info.plist */,
 				200000000000000000000015 /* Nama.entitlements */,
 			);
@@ -243,6 +246,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000013 /* Localizable.xcstrings in Resources */,
+				100000000000000000000019 /* InfoPlist.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

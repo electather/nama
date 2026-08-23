@@ -307,18 +307,23 @@ private actor SuspendingVerifier: ConnectionVerifying {
 private actor CancellationRecordingVerifier: ConnectionVerifying {
   private(set) var endpoints: [NamaEndpoint] = []
   private(set) var cancellationCount = 0
-  private static let cancellationDelaySeconds = 60
-  private static let cancellationDelay = Duration.seconds(cancellationDelaySeconds)
 
   func verify(_ endpoint: NamaEndpoint) async -> ConnectionVerificationResult {
     endpoints.append(endpoint)
-    do {
-      try await Task.sleep(for: Self.cancellationDelay)
-      return .ready
-    } catch {
-      cancellationCount += 1
-      return .cancelled
+    let stream = AsyncStream<Void> { continuation in
+      continuation.onTermination = { [weak self] _ in
+        Task {
+          await self?.recordCancellation()
+        }
+      }
     }
+    var iterator = stream.makeAsyncIterator()
+    _ = await iterator.next()
+    return .cancelled
+  }
+
+  private func recordCancellation() {
+    cancellationCount += 1
   }
 }
 
