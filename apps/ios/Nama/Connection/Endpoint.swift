@@ -30,6 +30,12 @@ nonisolated struct NamaEndpoint: Hashable, Sendable {
   private static let asciiHyphen: UInt8 = 0x2D
   private static let asciiLowercaseLetterRange: ClosedRange<UInt8> = 0x61...0x7A
   private static let asciiDigitRange: ClosedRange<UInt8> = 0x30...0x39
+  private enum LocalName {
+    case unrelated
+    case emptyNamespace
+    case localhost
+    case qualified(Substring)
+  }
 
   var absoluteString: String {
     url.absoluteString
@@ -66,9 +72,10 @@ nonisolated struct NamaEndpoint: Hashable, Sendable {
     components.host = normalizedHost
     components.percentEncodedPath = Self.normalizedPath(components.percentEncodedPath)
 
-    guard let endpointURL = components.url, Self.hasValidZone(normalizedHost),
-      normalizedHost != ".local", normalizedHost != ".localhost"
-    else {
+    if case .emptyNamespace = Self.localName(in: normalizedHost) {
+      throw EndpointValidationError.invalid
+    }
+    guard let endpointURL = components.url, Self.hasValidZone(normalizedHost) else {
       throw EndpointValidationError.invalid
     }
     guard scheme == "https" || Self.allowsHTTP(to: normalizedHost) else {
@@ -175,23 +182,30 @@ nonisolated struct NamaEndpoint: Hashable, Sendable {
     guard host.utf8.count <= Self.maximumDNSNameLength else {
       return false
     }
-    if host == "localhost" {
+    switch localName(in: host) {
+    case .localhost:
       return true
+    case .qualified(let prefix):
+      return prefix.split(separator: ".", omittingEmptySubsequences: false)
+        .allSatisfy(isProperDNSLabel)
+    case .emptyNamespace, .unrelated:
+      return false
     }
+  }
 
+  private static func localName(in host: String) -> LocalName {
+    if host == "localhost" {
+      return .localhost
+    }
     let prefix: Substring
     if host.hasSuffix(".localhost") {
       prefix = host.dropLast(".localhost".count)
     } else if host.hasSuffix(".local") {
       prefix = host.dropLast(".local".count)
     } else {
-      return false
+      return .unrelated
     }
-    guard !prefix.isEmpty else {
-      return false
-    }
-    return prefix.split(separator: ".", omittingEmptySubsequences: false)
-      .allSatisfy(isProperDNSLabel)
+    return prefix.isEmpty ? .emptyNamespace : .qualified(prefix)
   }
 
   private static func isProperDNSLabel(_ label: Substring) -> Bool {
