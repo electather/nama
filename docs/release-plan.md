@@ -152,7 +152,7 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
 ### Included
 
 - LAN discovery using mDNS/DNS-SD service `_nama._tcp`, plus manual Nama endpoint entry for LAN, VPN, and reverse-proxy deployments on every supported Apple platform.
-- Plain HTTP only for loopback, private/link-local addresses, or `.local` discovery names, with a clear warning. Public hostnames and addresses require HTTPS.
+- Plain HTTP only for loopback, private/link-local addresses, reserved `localhost`/`.localhost` names, or `.local` names, with a clear warning. Public hostnames and addresses require HTTPS.
 - Netflix-style device flow: the app requests and displays a short-lived code; an authenticated administrator approves it with `nama devices approve`; the app receives a revocable device session. Codes are rate-limited, single-use, and contain no reusable secret.
 - Persistence for pairing requests, device credentials, minimal canonical media, library membership, and provider-to-canonical mappings begins in this milestone.
 - Provider-neutral Home/library browsing for movies and shows, basic search of available media, media details, artwork, seasons, and episodes.
