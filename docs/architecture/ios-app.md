@@ -588,6 +588,9 @@ privacy, accessibility, playback, and lifecycle flows run on each affected
 surface. No unrun hardware, provider, security, or accessibility row is
 reported as passing.
 
+Physical runtime results and every remaining unverified row are recorded in
+[Apple connection acceptance](../apple-connection-acceptance.md).
+
 ## Deferred behavior
 
 The architecture deliberately does not reserve implementation for:
