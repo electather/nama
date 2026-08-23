@@ -20,7 +20,7 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
   }
 
   func verify(_ endpoint: NamaEndpoint) async -> ConnectionVerificationResult {
-    let transport = URLSessionHTTPClient(configuration: sessionConfiguration)
+    let transport = NamaUnaryURLSessionHTTPClient(configuration: sessionConfiguration)
     let protocolClient = ProtocolClient(
       httpClient: transport,
       config: ProtocolClientConfig(
@@ -88,6 +88,192 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
     #else
       "ios"
     #endif
+  }
+}
+
+nonisolated final class NamaUnaryURLSessionHTTPClient: HTTPClientInterface, @unchecked Sendable {
+  private let session: URLSession
+
+  init(configuration: URLSessionConfiguration) {
+    session = URLSession(configuration: configuration)
+  }
+
+  deinit {
+    session.finishTasksAndInvalidate()
+  }
+
+  @discardableResult
+  func unary(
+    request: HTTPRequest<Data?>,
+    onMetrics: @escaping @Sendable (HTTPMetrics) -> Void,
+    onResponse: @escaping @Sendable (HTTPResponse) -> Void
+  ) -> Cancelable {
+    let delegate = NoRedirect(onMetrics: onMetrics)
+    let task = session.dataTask(with: Self.urlRequest(from: request)) { data, response, error in
+      if let redirectResponse = delegate.refusedResponse {
+        onResponse(Self.refusedRedirectResponse(redirectResponse))
+      } else {
+        onResponse(Self.httpResponse(data: data, response: response, error: error))
+      }
+    }
+    task.delegate = delegate
+    task.resume()
+    return Cancelable { task.cancel() }
+  }
+
+  func stream(
+    request _: HTTPRequest<Data?>,
+    responseCallbacks: ResponseCallbacks
+  ) -> RequestCallbacks<Data> {
+    responseCallbacks.receiveClose(
+      .unimplemented,
+      [:],
+      ConnectError(code: .unimplemented, message: nil)
+    )
+    return RequestCallbacks(
+      cancel: {
+        // The stream is already closed.
+      },
+      sendData: { _ in
+        // The stream is already closed.
+      },
+      sendClose: {
+        // The stream is already closed.
+      }
+    )
+  }
+
+  private static func urlRequest(from request: HTTPRequest<Data?>) -> URLRequest {
+    var urlRequest = URLRequest(url: request.url)
+    urlRequest.httpMethod = request.method.rawValue
+    urlRequest.httpBody = request.message
+    for (name, values) in request.headers {
+      urlRequest.setValue(values.joined(separator: ","), forHTTPHeaderField: name)
+    }
+    return urlRequest
+  }
+
+  private static func httpResponse(
+    data: Data?,
+    response: URLResponse?,
+    error: (any Error)?
+  ) -> HTTPResponse {
+    if let httpResponse = response as? HTTPURLResponse {
+      return HTTPResponse(
+        code: Code.fromHTTPStatus(httpResponse.statusCode),
+        headers: headers(from: httpResponse),
+        message: data,
+        trailers: [:],
+        error: error,
+        tracingInfo: .init(httpStatus: httpResponse.statusCode)
+      )
+    }
+    if let error {
+      let code = code(for: error)
+      return HTTPResponse(
+        code: code,
+        headers: [:],
+        message: data,
+        trailers: [:],
+        error: ConnectError(code: code, message: nil, exception: error),
+        tracingInfo: nil
+      )
+    }
+    return HTTPResponse(
+      code: .unknown,
+      headers: [:],
+      message: data,
+      trailers: [:],
+      error: ConnectError(code: .unknown, message: nil),
+      tracingInfo: nil
+    )
+  }
+
+  private static func refusedRedirectResponse(_ response: HTTPURLResponse) -> HTTPResponse {
+    HTTPResponse(
+      code: .unknown,
+      headers: headers(from: response),
+      message: nil,
+      trailers: [:],
+      error: nil,
+      tracingInfo: .init(httpStatus: response.statusCode)
+    )
+  }
+
+  private static func headers(from response: HTTPURLResponse) -> Connect.Headers {
+    response.allHeaderFields.reduce(into: Connect.Headers()) { headers, field in
+      guard
+        let name = (field.key as? String)?.lowercased(),
+        name != "location"
+      else {
+        return
+      }
+      let values = field.value as? String ?? String(describing: field.value)
+      for value in values.components(separatedBy: ",") {
+        headers[name, default: []].append(value.trimmingCharacters(in: .whitespaces))
+      }
+    }
+  }
+
+  private static func code(for error: any Error) -> Code {
+    guard let urlError = error as? URLError else {
+      return .unknown
+    }
+    switch urlError.code {
+    case .cancelled:
+      return .canceled
+
+    case .badURL:
+      return .invalidArgument
+
+    case .timedOut:
+      return .deadlineExceeded
+
+    case .unsupportedURL:
+      return .unimplemented
+
+    case .cannotConnectToHost, .cannotFindHost, .dataNotAllowed, .internationalRoamingOff,
+      .networkConnectionLost, .notConnectedToInternet, .secureConnectionFailed:
+      return .unavailable
+
+    default:
+      return .unknown
+    }
+  }
+}
+
+nonisolated private final class NoRedirect: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+  private let onMetrics: @Sendable (HTTPMetrics) -> Void
+  private let lock = NSLock()
+  private var redirectResponse: HTTPURLResponse?
+
+  var refusedResponse: HTTPURLResponse? {
+    lock.withLock { redirectResponse }
+  }
+
+  init(onMetrics: @escaping @Sendable (HTTPMetrics) -> Void) {
+    self.onMetrics = onMetrics
+  }
+
+  func urlSession(
+    _: URLSession,
+    task _: URLSessionTask,
+    willPerformHTTPRedirection response: HTTPURLResponse,
+    newRequest _: URLRequest,
+    completionHandler: @Sendable (URLRequest?) -> Void
+  ) {
+    lock.withLock {
+      redirectResponse = response
+    }
+    completionHandler(nil)
+  }
+
+  func urlSession(
+    _: URLSession,
+    task _: URLSessionTask,
+    didFinishCollecting metrics: URLSessionTaskMetrics
+  ) {
+    onMetrics(HTTPMetrics(taskMetrics: metrics))
   }
 }
 
