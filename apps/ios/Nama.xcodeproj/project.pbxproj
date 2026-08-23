@@ -23,6 +23,7 @@
 		100000000000000000000014 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* TestSupport.swift */; };
 		100000000000000000000015 /* VerifiedEndpointStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* VerifiedEndpointStoreTests.swift */; };
 		100000000000000000000016 /* VerifiedEndpointStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000018 /* VerifiedEndpointStore.swift */; };
+		100000000000000000000017 /* ConnectionRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000019 /* ConnectionRecoveryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,6 +55,7 @@
 		200000000000000000000016 /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
 		200000000000000000000017 /* VerifiedEndpointStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifiedEndpointStoreTests.swift; sourceTree = "<group>"; };
 		200000000000000000000018 /* VerifiedEndpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifiedEndpointStore.swift; sourceTree = "<group>"; };
+		200000000000000000000019 /* ConnectionRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionRecoveryTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -131,6 +133,7 @@
 				200000000000000000000002 /* EndpointTests.swift */,
 				200000000000000000000017 /* VerifiedEndpointStoreTests.swift */,
 				200000000000000000000006 /* ConnectionFeatureTests.swift */,
+				200000000000000000000019 /* ConnectionRecoveryTests.swift */,
 				200000000000000000000008 /* SetupStatusVerifierTests.swift */,
 				200000000000000000000010 /* ConnectionPresentationTests.swift */,
 				200000000000000000000016 /* TestSupport.swift */,
@@ -270,6 +273,7 @@
 				100000000000000000000002 /* EndpointTests.swift in Sources */,
 				100000000000000000000015 /* VerifiedEndpointStoreTests.swift in Sources */,
 				100000000000000000000005 /* ConnectionFeatureTests.swift in Sources */,
+				100000000000000000000017 /* ConnectionRecoveryTests.swift in Sources */,
 				100000000000000000000007 /* SetupStatusVerifierTests.swift in Sources */,
 				100000000000000000000009 /* ConnectionPresentationTests.swift in Sources */,
 				100000000000000000000014 /* TestSupport.swift in Sources */,

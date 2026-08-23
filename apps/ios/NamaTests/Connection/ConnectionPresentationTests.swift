@@ -47,6 +47,8 @@ struct ConnectionPresentationTests {
     let endpoint = try NamaEndpoint("https://nama.example.com")
 
     #expect(ConnectionState.editing(showsValidationError: false).actions == [.connect])
-    #expect(ConnectionState.verifying(endpoint).actions == [.connect, .cancel])
+    #expect(
+      ConnectionState.verifying(endpoint).actions == [.connect, .cancel, .changeEndpoint]
+    )
   }
 }

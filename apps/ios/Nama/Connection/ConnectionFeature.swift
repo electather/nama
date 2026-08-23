@@ -91,8 +91,8 @@ final class ConnectionFeature {
   func changeEndpoint() async {
     restorationHandled = true
     cancelActiveAttempt()
-    await endpointStore.clear()
     state = .editing(showsValidationError: false)
+    await endpointStore.clear()
   }
 
   private func returnToEditing() {
@@ -109,21 +109,35 @@ final class ConnectionFeature {
     cancelActiveAttempt()
     attempt &+= 1
     let currentAttempt = attempt
+    let store = endpointStore
+    let connectionVerifier = verifier
 
     activeTask = Task { [weak self] in
-      guard let self else {
-        return
-      }
-      let snapshot = await endpointStore.snapshot()
-      guard currentAttempt == attempt, !Task.isCancelled else {
+      let snapshot = await store.snapshot()
+      guard !Task.isCancelled else {
         return
       }
       guard let endpoint = snapshot.endpoint else {
-        activeTask = nil
+        self?.finishInvalidatedAttempt(currentAttempt)
         return
       }
-      state = .verifying(endpoint)
-      await verify(endpoint, from: snapshot, attempt: currentAttempt)
+      guard self?.beginRestoredVerification(endpoint, attempt: currentAttempt) == true else {
+        return
+      }
+      let result = await Self.verify(
+        endpoint,
+        from: snapshot,
+        using: connectionVerifier,
+        endpointStore: store
+      )
+      guard !Task.isCancelled else {
+        return
+      }
+      guard let result else {
+        self?.finishInvalidatedAttempt(currentAttempt)
+        return
+      }
+      self?.finishVerification(result, endpoint: endpoint, attempt: currentAttempt)
     }
   }
 
@@ -133,59 +147,96 @@ final class ConnectionFeature {
     state = .verifying(endpoint)
     attempt &+= 1
     let currentAttempt = attempt
+    let store = endpointStore
+    let connectionVerifier = verifier
 
     activeTask = Task { [weak self] in
-      guard let self else {
+      let snapshot = await store.snapshot()
+      guard !Task.isCancelled, self?.isCurrentAttempt(currentAttempt) == true else {
         return
       }
-      let snapshot = await endpointStore.snapshot()
-      guard currentAttempt == attempt, !Task.isCancelled else {
+      let result = await Self.verify(
+        endpoint,
+        from: snapshot,
+        using: connectionVerifier,
+        endpointStore: store
+      )
+      guard !Task.isCancelled else {
         return
       }
-      await verify(endpoint, from: snapshot, attempt: currentAttempt)
+      guard let result else {
+        self?.finishInvalidatedAttempt(currentAttempt)
+        return
+      }
+      self?.finishVerification(result, endpoint: endpoint, attempt: currentAttempt)
     }
   }
 
-  private func verify(
+  private func beginRestoredVerification(
+    _ endpoint: NamaEndpoint,
+    attempt currentAttempt: Int
+  ) -> Bool {
+    guard isCurrentAttempt(currentAttempt) else {
+      return false
+    }
+    state = .verifying(endpoint)
+    return true
+  }
+
+  private func isCurrentAttempt(_ currentAttempt: Int) -> Bool {
+    currentAttempt == attempt
+  }
+
+  nonisolated private static func verify(
     _ endpoint: NamaEndpoint,
     from snapshot: VerifiedEndpointStoreSnapshot,
-    attempt currentAttempt: Int
-  ) async {
+    using verifier: any ConnectionVerifying,
+    endpointStore: any VerifiedEndpointStoring
+  ) async -> ConnectionVerificationResult? {
     let result = await verifier.verify(endpoint)
-    guard currentAttempt == attempt, !Task.isCancelled else {
-      return
+    guard !Task.isCancelled else {
+      return nil
     }
 
     switch result {
-    case .ready:
-      let saved = await endpointStore.save(endpoint, ifUnchangedSince: snapshot)
-      guard saved, currentAttempt == attempt, !Task.isCancelled else {
-        finishInvalidatedAttempt(currentAttempt)
-        return
+    case .ready, .setupRequired:
+      guard await endpointStore.save(endpoint, ifUnchangedSince: snapshot) else {
+        return nil
       }
-      activeTask = nil
+      return result
+
+    case .failure:
+      guard await endpointStore.isCurrent(snapshot) else {
+        return nil
+      }
+      return result
+
+    case .cancelled:
+      return result
+    }
+  }
+
+  private func finishVerification(
+    _ result: ConnectionVerificationResult,
+    endpoint: NamaEndpoint,
+    attempt currentAttempt: Int
+  ) {
+    guard isCurrentAttempt(currentAttempt) else {
+      return
+    }
+    activeTask = nil
+
+    switch result {
+    case .ready:
       state = .ready(endpoint)
 
     case .setupRequired:
-      let saved = await endpointStore.save(endpoint, ifUnchangedSince: snapshot)
-      guard saved, currentAttempt == attempt, !Task.isCancelled else {
-        finishInvalidatedAttempt(currentAttempt)
-        return
-      }
-      activeTask = nil
       state = .setupRequired(endpoint)
 
     case .failure(let failure):
-      let isCurrent = await endpointStore.isCurrent(snapshot)
-      guard isCurrent, currentAttempt == attempt, !Task.isCancelled else {
-        finishInvalidatedAttempt(currentAttempt)
-        return
-      }
-      activeTask = nil
       state = .failed(endpoint, failure)
 
     case .cancelled:
-      activeTask = nil
       state = .editing(showsValidationError: false)
     }
   }

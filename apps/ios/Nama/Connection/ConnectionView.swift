@@ -5,6 +5,9 @@ struct ConnectionRootView: View {
 
   var body: some View {
     content
+      .onDisappear {
+        feature.flowDidLeave()
+      }
   }
 
   @ViewBuilder
@@ -218,7 +221,7 @@ struct ConnectionRootView: View {
         .buttonStyle(.borderedProminent)
 
       case .changeEndpoint:
-        Button("Change Endpoint") {
+        Button("Change Server") {
           Task {
             await feature.changeEndpoint()
           }

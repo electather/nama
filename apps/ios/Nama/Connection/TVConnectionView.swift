@@ -116,7 +116,7 @@
         .focused($focusedControl, equals: .retry)
 
       case .changeEndpoint:
-        Button("Change Endpoint") {
+        Button("Change Server") {
           Task {
             await feature.changeEndpoint()
           }
