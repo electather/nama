@@ -258,17 +258,16 @@ struct ConnectionRestorationTests {
   }
 
   @Test("legacy forbidden HTTP restoration stays visible and never reaches verification")
-  func blocksLegacyForbiddenHTTP() async throws {
-    let suiteName = "NamaTests.ConnectionRestoration.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
+  func blocksLegacyForbiddenHTTP() async {
     let savedAddress = "http://nama.example.com/reverse-proxy/"
-    defaults.set(savedAddress, forKey: "verifiedNamaEndpoint")
+    let store = InMemoryVerifiedEndpointStore(
+      restoredEndpoint: .requiresHTTPS(savedAddress)
+    )
     let verifier = ImmediateVerifier(result: .ready)
     let feature = ConnectionFeature(
       verifier: verifier,
       discovery: InactiveDiscovery(),
-      endpointStore: UserDefaultsVerifiedEndpointStore(suiteName: suiteName)
+      endpointStore: store
     )
 
     feature.restoreSavedEndpoint()
@@ -276,9 +275,8 @@ struct ConnectionRestorationTests {
 
     #expect(feature.address.isEmpty)
     #expect(feature.state.actions == [.changeEndpoint])
-
     #expect(await verifier.callCount == 0)
-    #expect(defaults.string(forKey: "verifiedNamaEndpoint") == savedAddress)
+    #expect(await store.snapshot().endpoint == .requiresHTTPS(savedAddress))
   }
 
   @Test(

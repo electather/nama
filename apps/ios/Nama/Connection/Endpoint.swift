@@ -66,7 +66,9 @@ nonisolated struct NamaEndpoint: Hashable, Sendable {
     components.host = normalizedHost
     components.percentEncodedPath = Self.normalizedPath(components.percentEncodedPath)
 
-    guard let endpointURL = components.url, Self.hasValidZone(normalizedHost) else {
+    guard let endpointURL = components.url, Self.hasValidZone(normalizedHost),
+      normalizedHost != ".local", normalizedHost != ".localhost"
+    else {
       throw EndpointValidationError.invalid
     }
     guard scheme == "https" || Self.allowsHTTP(to: normalizedHost) else {
@@ -183,6 +185,9 @@ nonisolated struct NamaEndpoint: Hashable, Sendable {
     } else if host.hasSuffix(".local") {
       prefix = host.dropLast(".local".count)
     } else {
+      return false
+    }
+    guard !prefix.isEmpty else {
       return false
     }
     return prefix.split(separator: ".", omittingEmptySubsequences: false)

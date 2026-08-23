@@ -123,6 +123,21 @@ struct EndpointTests {
   }
 
   @Test(
+    "rejects empty local namespace hosts as malformed",
+    arguments: ["http://.local", "http://.localhost", "https://.local", "https://.localhost"]
+  )
+  func rejectsEmptyLocalNamespace(input: String) {
+    do {
+      _ = try NamaEndpoint(input)
+      Issue.record("Expected \(input) to be malformed")
+    } catch let error as EndpointValidationError {
+      #expect(error == .invalid)
+    } catch {
+      Issue.record("Expected a typed endpoint validation error")
+    }
+  }
+
+  @Test(
     "rejects addresses outside the Nama endpoint shape",
     arguments: [
       "nama.example.com",
