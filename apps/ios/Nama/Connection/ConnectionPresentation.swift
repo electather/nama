@@ -35,7 +35,7 @@ nonisolated extension ConnectionState {
       [.connect]
 
     case .verifying:
-      [.connect, .cancel]
+      [.connect, .cancel, .changeEndpoint]
 
     case .ready:
       [.changeEndpoint]
