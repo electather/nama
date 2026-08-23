@@ -117,7 +117,9 @@
 
       case .changeEndpoint:
         Button("Change Endpoint") {
-          feature.changeEndpoint()
+          Task {
+            await feature.changeEndpoint()
+          }
         }
         .focused($focusedControl, equals: .changeEndpoint)
       }

@@ -21,6 +21,8 @@
 		100000000000000000000012 /* TVConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* TVConnectionView.swift */; };
 		100000000000000000000013 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000014 /* Localizable.xcstrings */; };
 		100000000000000000000014 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000016 /* TestSupport.swift */; };
+		100000000000000000000015 /* VerifiedEndpointStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000017 /* VerifiedEndpointStoreTests.swift */; };
+		100000000000000000000016 /* VerifiedEndpointStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000018 /* VerifiedEndpointStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +52,8 @@
 		200000000000000000000014 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		200000000000000000000015 /* Nama.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nama.entitlements; sourceTree = "<group>"; };
 		200000000000000000000016 /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
+		200000000000000000000017 /* VerifiedEndpointStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifiedEndpointStoreTests.swift; sourceTree = "<group>"; };
+		200000000000000000000018 /* VerifiedEndpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifiedEndpointStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -111,6 +115,7 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000005 /* Endpoint.swift */,
+				200000000000000000000018 /* VerifiedEndpointStore.swift */,
 				200000000000000000000007 /* ConnectionFeature.swift */,
 				200000000000000000000009 /* SetupStatusVerifier.swift */,
 				200000000000000000000011 /* ConnectionPresentation.swift */,
@@ -124,6 +129,7 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000002 /* EndpointTests.swift */,
+				200000000000000000000017 /* VerifiedEndpointStoreTests.swift */,
 				200000000000000000000006 /* ConnectionFeatureTests.swift */,
 				200000000000000000000008 /* SetupStatusVerifierTests.swift */,
 				200000000000000000000010 /* ConnectionPresentationTests.swift */,
@@ -248,6 +254,7 @@
 			files = (
 				100000000000000000000001 /* NamaApp.swift in Sources */,
 				100000000000000000000004 /* Endpoint.swift in Sources */,
+				100000000000000000000016 /* VerifiedEndpointStore.swift in Sources */,
 				100000000000000000000006 /* ConnectionFeature.swift in Sources */,
 				100000000000000000000008 /* SetupStatusVerifier.swift in Sources */,
 				100000000000000000000010 /* ConnectionPresentation.swift in Sources */,
@@ -261,6 +268,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000002 /* EndpointTests.swift in Sources */,
+				100000000000000000000015 /* VerifiedEndpointStoreTests.swift in Sources */,
 				100000000000000000000005 /* ConnectionFeatureTests.swift in Sources */,
 				100000000000000000000007 /* SetupStatusVerifierTests.swift in Sources */,
 				100000000000000000000009 /* ConnectionPresentationTests.swift in Sources */,

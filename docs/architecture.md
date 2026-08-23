@@ -63,13 +63,15 @@ unimplemented.
 
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.
 
-The universal SwiftUI application now consumes the generated public client for
-one manual-connection tracer on iOS, iPadOS, tvOS, and macOS. It normalizes
-HTTP(S) endpoints, makes one cancellable ten-second setup-status request, and
-presents safe ready, setup-required, unavailable, transport, and incompatible
-states through shared feature state and platform-specific native presentation.
-LAN discovery, verified-endpoint persistence, pairing, and all media behavior
-remain unimplemented.
+The universal SwiftUI application consumes the generated public client for one
+connection tracer on iOS, iPadOS, tvOS, and macOS. It normalizes HTTP(S)
+endpoints, makes one cancellable ten-second setup-status request, persists only
+the last successfully verified canonical endpoint in `UserDefaults`, and
+reverifies that endpoint once on launch. Ready, setup-required, unavailable,
+transport, and incompatible states share the same recovery behavior for manual
+and restored connections; safe restoration failures retain the endpoint until
+explicit Change Server. LAN discovery, pairing, and all media behavior remain
+unimplemented.
 
 ## Architectural decision records
 

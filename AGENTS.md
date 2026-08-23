@@ -47,6 +47,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Do not build product playback on AetherEngine `6.21.0`: source review rejected it because it leaks locator headers across origins and logs locator URLs in Release.
 - Do not claim generic Apple-platform builds prove runtime behavior; inspect the actual universal application on every affected platform and keep unrun physical-device rows explicit.
 - Scope each universal-app connection feature to one window; when its scene leaves the foreground, cancel only the active verification, and treat a remote Connect `canceled` response as a safe visible failure rather than local cancellation.
+- Never copy a restored endpoint into the live manual-entry binding; its `onChange` intentionally cancels active verification as a user edit.
 - Do not expose provider resource IDs, SDK types, raw provider errors, configuration secrets, reusable credentials, locator URLs, or locator headers across the public boundary or in logs.
 - Hold each provider-instance supervisor admission fence through durable update resolution; release it only after pinning the committed or recovered revision, and leave it closed while durable truth remains ambiguous.
 - Route every provider-instance core activity through the provider-management scoped activity gate; never replace the production deletion fence with a no-op or test-only hook.

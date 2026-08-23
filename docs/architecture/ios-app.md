@@ -1,8 +1,8 @@
 # Universal Apple application
 
-Status: the universal SwiftUI target and its manual-connection tracer are
-implemented. LAN discovery, verified-endpoint persistence, Device pairing,
-consumer media behavior, and product playback remain target work. This note
+Status: the universal SwiftUI target, manual-connection tracer, and verified
+endpoint restoration are implemented. LAN discovery, Device pairing, consumer
+media behavior, and product playback remain target work. This note
 labels implemented, target, and deferred behavior explicitly; a target
 invariant is required architecture, not a claim that its runtime exists.
 
@@ -41,7 +41,8 @@ The application boundary is:
 
 ## Implemented baseline
 
-The checked-in application implements one manual connection tracer:
+The checked-in application implements manual connection and verified endpoint
+restoration:
 
 - `NamaApp` creates a `ConnectionFeature` for each `WindowGroup` window.
 - `NamaEndpoint` accepts an absolute HTTP or HTTPS URL with an explicit scheme
@@ -51,6 +52,15 @@ The checked-in application implements one manual connection tracer:
 - `NamaSetupStatusVerifier` calls generated
   `SetupService.GetStatus` once with a ten-second timeout, platform TLS trust,
   and allowlisted client name, version, and platform metadata.
+- The async `UserDefaultsVerifiedEndpointStore` actor retains only the last
+  successfully verified canonical endpoint. Each window activates restoration
+  once after SwiftUI installs its feature state, avoiding I/O from disposable
+  view initializers while reusing the manual verification states.
+- Ready and setup-required results conditionally save against the preference
+  generation captured when verification started. Safe failures and local
+  cancellation retain the endpoint; Retry starts one new attempt. Change Server
+  cancels local work, advances the installation-wide generation, and clears the
+  preference so an older completion in another window cannot restore it.
 - The `@MainActor @Observable` feature owns editing, verifying, ready,
   setup-required, and safe failure states. It cancels replaced work and rejects
   stale completions by attempt identity.
@@ -62,16 +72,18 @@ The checked-in application implements one manual connection tracer:
   a focus-specific scrolling presentation over the same feature state.
 - The macOS build uses App Sandbox with outgoing network-client access only.
 
-The Swift Testing target covers endpoint normalization, request construction
-and client metadata, safe failure mapping, state transitions, retry,
-cancellation, stale completions, and presentation actions. `check:ios` lints
+The Swift Testing target covers endpoint normalization, endpoint preference
+contents, clearing, cross-window invalidation, explicit one-time restoration,
+successful and failed restoration, request construction and client metadata,
+safe failure mapping, state transitions, retry, cancellation, stale completions,
+and presentation actions. `check:ios` lints
 Swift formatting, runs the test target through its macOS host, and performs
 signing-disabled iOS, tvOS, and macOS builds. These checks do not prove physical
 device, privacy-prompt, focus, accessibility, or playback behavior.
 
-The implemented source does not yet contain `NWBrowser`, endpoint persistence,
-Keychain Device credentials, Bonjour privacy declarations, Pairing, Home,
-Library, Details, Watch State, or Playback behavior.
+The implemented source does not yet contain `NWBrowser`, Keychain Device
+credentials, Bonjour privacy declarations, Pairing, Home, Library, Details,
+Watch State, or Playback behavior.
 
 ## Target runtime topology
 
@@ -179,14 +191,22 @@ credential replay.
 
 ### Persistence and restoration
 
-Connection and Pairing own two intentionally different target records:
+Connection and Pairing own two intentionally different records:
 
-- `UserDefaults` stores only the last verified canonical Nama endpoint for
-  unpaired reconnection convenience.
-- Keychain stores one versioned record containing both the Device credential
-  and its exact canonical Nama endpoint. It uses
+- The implemented `UserDefaults` record stores only the last verified canonical
+  Nama endpoint for unpaired reconnection convenience.
+- The target Keychain record contains both the Device credential and its exact
+  canonical Nama endpoint. It uses
   `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, does not synchronize through
   iCloud Keychain, and is not reconstructed from independent defaults values.
+
+Successful ready and setup-required status responses write only the canonical
+endpoint when no later explicit clear has invalidated their preference
+generation. On launch, each Connection window reads the preference once and
+reverifies it through the same bounded request as manual entry. Safe failure and
+cancellation retain the preference. Retry creates one new attempt; Change Server
+cancels local work, invalidates every older window attempt, removes the
+preference, and returns to endpoint selection.
 
 A successful pairing writes the Keychain record before updating the convenience
 endpoint. On launch, a paired session comes entirely from the Keychain record.
