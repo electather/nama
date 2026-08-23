@@ -1,23 +1,11 @@
 import SwiftUI
 
 struct ConnectionRootView: View {
-  @Environment(\.scenePhase) private var scenePhase
   let feature: ConnectionFeature
 
   var body: some View {
     content
-      .onAppear {
-        if scenePhase == .active {
-          feature.flowDidEnter()
-        }
-      }
-      .onChange(of: scenePhase) { _, phase in
-        if phase == .active {
-          feature.flowDidEnter()
-        } else {
-          feature.flowDidLeave()
-        }
-      }
+
       .onDisappear {
         feature.flowDidLeave()
       }
@@ -240,8 +228,10 @@ struct ConnectionRootView: View {
         .buttonStyle(.borderedProminent)
 
       case .changeEndpoint:
-        Button("Change Endpoint") {
-          feature.changeEndpoint()
+        Button("Change Server") {
+          Task {
+            await feature.changeEndpoint()
+          }
         }
       }
     }

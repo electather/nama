@@ -28,34 +28,34 @@ nonisolated enum ConnectionState: Equatable, Sendable {
 @MainActor
 @Observable
 final class ConnectionFeature {
-  private static let discoveryEmptyStateDelaySeconds = 2
-  private static let discoveryEmptyStateDelay = Duration.seconds(discoveryEmptyStateDelaySeconds)
-
   var address = ""
   private(set) var state: ConnectionState = .editing(showsValidationError: false)
-  private(set) var discoveryState: NamaDiscoveryState = .inactive
+  var discoveryState: NamaDiscoveryState {
+    discoverySession.state
+  }
 
   @ObservationIgnored private let verifier: any ConnectionVerifying
-  @ObservationIgnored private let discovery: any NamaDiscovering
-  @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
+  @ObservationIgnored private let endpointStore: any VerifiedEndpointStoring
+  private let discoverySession: ConnectionDiscoverySession
   @ObservationIgnored private var activeTask: Task<Void, Never>?
-  @ObservationIgnored private var discoveryTask: Task<Void, Never>?
-  @ObservationIgnored private var emptyStateTask: Task<Void, Never>?
   @ObservationIgnored private var attempt = 0
-  @ObservationIgnored private var discoveryAttempt = 0
-  @ObservationIgnored private var discoveryActivated = false
-  @ObservationIgnored private var isSurfaceActive = false
+  @ObservationIgnored private var restorationHandled = false
 
   init(
     verifier: any ConnectionVerifying,
     discovery: any NamaDiscovering,
+    endpointStore: any VerifiedEndpointStoring,
     sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in
       try await Task.sleep(for: duration)
     }
   ) {
     self.verifier = verifier
-    self.discovery = discovery
-    self.sleep = sleep
+    self.endpointStore = endpointStore
+    discoverySession = ConnectionDiscoverySession(discovery: discovery, sleep: sleep)
+  }
+
+  deinit {
+    activeTask?.cancel()
   }
 
   func submit() {
@@ -83,11 +83,7 @@ final class ConnectionFeature {
   }
 
   func activateDiscovery() {
-    discoveryActivated = true
-    if case .failed = discoveryState {
-      stopDiscovery()
-    }
-    startDiscoveryIfNeeded()
+    discoverySession.activate()
   }
 
   func select(_ candidate: NamaDiscoveryCandidate) {
@@ -107,148 +103,176 @@ final class ConnectionFeature {
   }
 
   func flowDidEnter() {
-    isSurfaceActive = true
-    startDiscoveryIfNeeded()
+    discoverySession.surfaceDidEnter()
   }
 
   func flowDidLeave() {
-    isSurfaceActive = false
-    stopDiscovery()
-    guard case .verifying = state else {
+    discoverySession.surfaceDidLeave()
+    guard activeTask != nil else {
       return
     }
     returnToEditing()
   }
 
-  func changeEndpoint() {
-    returnToEditing()
+  func changeEndpoint() async {
+    restorationHandled = true
+    cancelActiveAttempt()
+    state = .editing(showsValidationError: false)
+    await endpointStore.clear()
   }
 
   private func returnToEditing() {
+    restorationHandled = true
     cancelActiveAttempt()
     state = .editing(showsValidationError: false)
   }
 
+  func restoreSavedEndpoint() {
+    guard !restorationHandled else {
+      return
+    }
+    restorationHandled = true
+    cancelActiveAttempt()
+    attempt &+= 1
+    let currentAttempt = attempt
+    let store = endpointStore
+    let connectionVerifier = verifier
+
+    activeTask = Task { [weak self] in
+      let snapshot = await store.snapshot()
+      guard !Task.isCancelled else {
+        return
+      }
+      guard let endpoint = snapshot.endpoint else {
+        self?.finishInvalidatedAttempt(currentAttempt)
+        return
+      }
+      guard self?.beginRestoredVerification(endpoint, attempt: currentAttempt) == true else {
+        return
+      }
+      let result = await Self.verify(
+        endpoint,
+        from: snapshot,
+        using: connectionVerifier,
+        endpointStore: store
+      )
+      guard !Task.isCancelled else {
+        return
+      }
+      guard let result else {
+        self?.finishInvalidatedAttempt(currentAttempt)
+        return
+      }
+      self?.finishVerification(result, endpoint: endpoint, attempt: currentAttempt)
+    }
+  }
+
   private func startVerification(of endpoint: NamaEndpoint) {
+    restorationHandled = true
     cancelActiveAttempt()
     state = .verifying(endpoint)
     attempt &+= 1
     let currentAttempt = attempt
+    let store = endpointStore
     let connectionVerifier = verifier
 
     activeTask = Task { [weak self] in
-      let result = await connectionVerifier.verify(endpoint)
-      guard let self, currentAttempt == attempt, !Task.isCancelled else {
+      let snapshot = await store.snapshot()
+      guard !Task.isCancelled, self?.isCurrentAttempt(currentAttempt) == true else {
         return
       }
-      activeTask = nil
-      switch result {
-      case .ready:
-        state = .ready(endpoint)
-
-      case .setupRequired:
-        state = .setupRequired(endpoint)
-
-      case .failure(let failure):
-        state = .failed(endpoint, failure)
-
-      case .cancelled:
-        state = .editing(showsValidationError: false)
+      let result = await Self.verify(
+        endpoint,
+        from: snapshot,
+        using: connectionVerifier,
+        endpointStore: store
+      )
+      guard !Task.isCancelled else {
+        return
       }
+      guard let result else {
+        self?.finishInvalidatedAttempt(currentAttempt)
+        return
+      }
+      self?.finishVerification(result, endpoint: endpoint, attempt: currentAttempt)
     }
   }
 
-  private func startDiscoveryIfNeeded() {
-    guard discoveryActivated, isSurfaceActive, discoveryTask == nil else {
+  private func beginRestoredVerification(
+    _ endpoint: NamaEndpoint,
+    attempt currentAttempt: Int
+  ) -> Bool {
+    guard isCurrentAttempt(currentAttempt) else {
+      return false
+    }
+    state = .verifying(endpoint)
+    return true
+  }
+
+  private func isCurrentAttempt(_ currentAttempt: Int) -> Bool {
+    currentAttempt == attempt
+  }
+
+  nonisolated private static func verify(
+    _ endpoint: NamaEndpoint,
+    from snapshot: VerifiedEndpointStoreSnapshot,
+    using verifier: any ConnectionVerifying,
+    endpointStore: any VerifiedEndpointStoring
+  ) async -> ConnectionVerificationResult? {
+    let result = await verifier.verify(endpoint)
+    guard !Task.isCancelled else {
+      return nil
+    }
+
+    switch result {
+    case .ready, .setupRequired:
+      guard await endpointStore.save(endpoint, ifUnchangedSince: snapshot) else {
+        return nil
+      }
+      return result
+
+    case .failure:
+      guard await endpointStore.isCurrent(snapshot) else {
+        return nil
+      }
+      return result
+
+    case .cancelled:
+      return result
+    }
+  }
+
+  private func finishVerification(
+    _ result: ConnectionVerificationResult,
+    endpoint: NamaEndpoint,
+    attempt currentAttempt: Int
+  ) {
+    guard isCurrentAttempt(currentAttempt) else {
       return
     }
+    activeTask = nil
 
-    discoveryAttempt &+= 1
-    let currentAttempt = discoveryAttempt
-    let endpointDiscovery = discovery
-    discoveryState = .scanning
-    scheduleInitialEmptyState(for: currentAttempt)
+    switch result {
+    case .ready:
+      state = .ready(endpoint)
 
-    discoveryTask = Task { [weak self] in
-      let events = await endpointDiscovery.browse()
-      for await event in events {
-        guard let self, currentAttempt == discoveryAttempt, !Task.isCancelled else {
-          return
-        }
-        receiveDiscoveryEvent(event)
-      }
+    case .setupRequired:
+      state = .setupRequired(endpoint)
 
-      guard let self, currentAttempt == discoveryAttempt, !Task.isCancelled else {
-        return
-      }
-      discoveryTask = nil
+    case .failure(let failure):
+      state = .failed(endpoint, failure)
+
+    case .cancelled:
+      state = .editing(showsValidationError: false)
     }
   }
 
-  private func scheduleInitialEmptyState(for currentAttempt: Int) {
-    emptyStateTask?.cancel()
-    let delay = sleep
-    emptyStateTask = Task { [weak self] in
-      do {
-        try await delay(Self.discoveryEmptyStateDelay)
-      } catch {
-        return
-      }
-
-      guard let self, currentAttempt == discoveryAttempt, !Task.isCancelled else {
-        return
-      }
-      emptyStateTask = nil
-      if case .scanning = discoveryState {
-        discoveryState = .empty
-      }
+  private func finishInvalidatedAttempt(_ currentAttempt: Int) {
+    guard currentAttempt == attempt else {
+      return
     }
-  }
-
-  private func receiveDiscoveryEvent(_ event: NamaDiscoveryEvent) {
-    switch event {
-    case .records(let records):
-      let candidates = NamaDiscoveryCandidate.reconcile(records)
-      if !candidates.isEmpty {
-        emptyStateTask?.cancel()
-        emptyStateTask = nil
-        discoveryState = .candidates(candidates)
-      } else {
-        receiveEmptyDiscoveryResults()
-      }
-
-    case .failed(.permissionDenied):
-      emptyStateTask?.cancel()
-      emptyStateTask = nil
-      discoveryState = .permissionDenied
-
-    case .failed(.unavailable):
-      emptyStateTask?.cancel()
-      emptyStateTask = nil
-      discoveryState = .failed
-    }
-  }
-
-  private func receiveEmptyDiscoveryResults() {
-    switch discoveryState {
-    case .candidates:
-      discoveryState = .empty
-
-    case .empty, .scanning:
-      break
-
-    case .inactive, .permissionDenied, .failed:
-      break
-    }
-  }
-
-  private func stopDiscovery() {
-    discoveryAttempt &+= 1
-    discoveryTask?.cancel()
-    discoveryTask = nil
-    emptyStateTask?.cancel()
-    emptyStateTask = nil
-    discoveryState = .inactive
+    activeTask = nil
+    state = .editing(showsValidationError: false)
   }
 
   private func cancelActiveAttempt() {

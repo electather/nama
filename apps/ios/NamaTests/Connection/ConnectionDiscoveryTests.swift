@@ -209,7 +209,8 @@ private func makeFeature(
 ) -> ConnectionFeature {
   ConnectionFeature(
     verifier: verifier,
-    discovery: discovery
+    discovery: discovery,
+    endpointStore: InMemoryVerifiedEndpointStore()
   ) { duration in
     try await sleeper.sleep(for: duration)
   }

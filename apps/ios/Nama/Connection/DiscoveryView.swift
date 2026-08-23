@@ -181,6 +181,35 @@ private struct DiscoveryCandidateButton: View {
     }
   }
 
+  private actor PreviewEndpointStore: VerifiedEndpointStoring {
+    private var endpoint: NamaEndpoint?
+    private var generation: UInt64 = 0
+
+    func snapshot() -> VerifiedEndpointStoreSnapshot {
+      VerifiedEndpointStoreSnapshot(endpoint: endpoint, generation: generation)
+    }
+
+    func save(
+      _ endpoint: NamaEndpoint,
+      ifUnchangedSince snapshot: VerifiedEndpointStoreSnapshot
+    ) -> Bool {
+      guard snapshot.generation == generation else {
+        return false
+      }
+      self.endpoint = endpoint
+      return true
+    }
+
+    func isCurrent(_ snapshot: VerifiedEndpointStoreSnapshot) -> Bool {
+      snapshot.generation == generation
+    }
+
+    func clear() {
+      generation &+= 1
+      endpoint = nil
+    }
+  }
+
   @MainActor
   private func previewFeature(_ preview: DiscoveryPreview) -> ConnectionFeature {
     let event: NamaDiscoveryEvent?
@@ -205,7 +234,8 @@ private struct DiscoveryCandidateButton: View {
 
     let feature = ConnectionFeature(
       verifier: PreviewVerifier(),
-      discovery: PreviewDiscovery(event: event)
+      discovery: PreviewDiscovery(event: event),
+      endpointStore: PreviewEndpointStore()
     ) { _ in
       if preview == .empty {
         return
