@@ -9,7 +9,11 @@ struct ConnectionFeatureTests {
   func invalidInput() async {
     let verifier = ImmediateVerifier(result: .ready)
     let store = InMemoryVerifiedEndpointStore()
-    let feature = ConnectionFeature(verifier: verifier, endpointStore: store)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
     feature.address = "nama.example.com"
 
     #expect(feature.state == .editing(showsValidationError: false))
@@ -29,7 +33,11 @@ struct ConnectionFeatureTests {
     let result: ConnectionVerificationResult = initialized ? .ready : .setupRequired
     let verifier = ImmediateVerifier(result: result)
     let store = InMemoryVerifiedEndpointStore()
-    let feature = ConnectionFeature(verifier: verifier, endpointStore: store)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
     let endpoint = try NamaEndpoint("https://nama.example.com")
     let expected: ConnectionState = initialized ? .ready(endpoint) : .setupRequired(endpoint)
     feature.address = endpoint.absoluteString
@@ -46,6 +54,7 @@ struct ConnectionFeatureTests {
     let verifier = CancellationVerifier()
     let feature = ConnectionFeature(
       verifier: verifier,
+      discovery: InactiveDiscovery(),
       endpointStore: InMemoryVerifiedEndpointStore()
     )
     feature.address = "https://nama.example.com"
@@ -64,7 +73,11 @@ struct ConnectionFeatureTests {
     let endpoint = try NamaEndpoint("https://nama.example.com")
     let store = InMemoryVerifiedEndpointStore(endpoint: endpoint)
     let verifier = CancellationVerifier()
-    let feature = ConnectionFeature(verifier: verifier, endpointStore: store)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
     feature.restoreSavedEndpoint()
     await eventually { await verifier.callCount == 1 }
 
@@ -80,6 +93,7 @@ struct ConnectionFeatureTests {
     let verifier = ImmediateVerifier(result: .ready)
     let feature = ConnectionFeature(
       verifier: verifier,
+      discovery: InactiveDiscovery(),
       endpointStore: InMemoryVerifiedEndpointStore()
     )
     let endpoint = try NamaEndpoint("https://nama.example.com")
@@ -97,6 +111,7 @@ struct ConnectionFeatureTests {
     let verifier = CancellationVerifier()
     let feature = ConnectionFeature(
       verifier: verifier,
+      discovery: InactiveDiscovery(),
       endpointStore: InMemoryVerifiedEndpointStore()
     )
     feature.address = "https://first.example.com"
@@ -117,6 +132,7 @@ struct ConnectionFeatureTests {
     let verifier = ManualVerifier()
     let feature = ConnectionFeature(
       verifier: verifier,
+      discovery: InactiveDiscovery(),
       endpointStore: InMemoryVerifiedEndpointStore()
     )
     feature.address = "https://first.example.com"
@@ -143,7 +159,11 @@ struct ConnectionFeatureTests {
     let endpoint = try NamaEndpoint("https://nama.example.com")
     let store = InMemoryVerifiedEndpointStore(endpoint: endpoint)
     let verifier = ImmediateVerifier(result: .failure(.namaUnavailable))
-    let feature = ConnectionFeature(verifier: verifier, endpointStore: store)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
     feature.restoreSavedEndpoint()
     await eventually { feature.state == .failed(endpoint, .namaUnavailable) }
 
@@ -161,6 +181,7 @@ struct ConnectionFeatureTests {
     let verifier = CancellationVerifier()
     let feature = ConnectionFeature(
       verifier: verifier,
+      discovery: InactiveDiscovery(),
       endpointStore: InMemoryVerifiedEndpointStore()
     )
     feature.address = "https://nama.example.com"
@@ -172,13 +193,20 @@ struct ConnectionFeatureTests {
 
     #expect(feature.state == .editing(showsValidationError: false))
   }
+}
 
+@Suite("Verified endpoint restoration")
+struct ConnectionRestorationTests {
   @Test("the owning window activates restoration only once")
   func restorationActivationIsExplicitAndIdempotent() async throws {
     let endpoint = try NamaEndpoint("https://nama.example.com")
     let store = InMemoryVerifiedEndpointStore(endpoint: endpoint)
     let verifier = ImmediateVerifier(result: .ready)
-    let feature = ConnectionFeature(verifier: verifier, endpointStore: store)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
     await Task.yield()
 
     #expect(await verifier.callCount == 0)
@@ -198,7 +226,11 @@ struct ConnectionFeatureTests {
     let store = InMemoryVerifiedEndpointStore(endpoint: endpoint)
     let result: ConnectionVerificationResult = initialized ? .ready : .setupRequired
     let verifier = ImmediateVerifier(result: result)
-    let feature = ConnectionFeature(verifier: verifier, endpointStore: store)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
     feature.restoreSavedEndpoint()
     let expected: ConnectionState = initialized ? .ready(endpoint) : .setupRequired(endpoint)
 
@@ -220,7 +252,11 @@ struct ConnectionFeatureTests {
     let endpoint = try NamaEndpoint("https://nama.example.com")
     let store = InMemoryVerifiedEndpointStore(endpoint: endpoint)
     let verifier = ImmediateVerifier(result: .failure(failure))
-    let feature = ConnectionFeature(verifier: verifier, endpointStore: store)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
     feature.restoreSavedEndpoint()
 
     await eventually { feature.state == .failed(endpoint, failure) }
@@ -234,7 +270,11 @@ struct ConnectionFeatureTests {
     let endpoint = try NamaEndpoint("https://nama.example.com")
     let store = InMemoryVerifiedEndpointStore(endpoint: endpoint)
     let verifier = CancellationVerifier()
-    let feature = ConnectionFeature(verifier: verifier, endpointStore: store)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
     feature.restoreSavedEndpoint()
     await eventually { await verifier.callCount == 1 }
 
@@ -253,10 +293,12 @@ struct ConnectionFeatureTests {
     let staleVerifier = ManualVerifier()
     let clearingFeature = ConnectionFeature(
       verifier: clearingVerifier,
+      discovery: InactiveDiscovery(),
       endpointStore: store
     )
     let staleFeature = ConnectionFeature(
       verifier: staleVerifier,
+      discovery: InactiveDiscovery(),
       endpointStore: store
     )
     clearingFeature.restoreSavedEndpoint()

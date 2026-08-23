@@ -5,6 +5,7 @@ struct ConnectionRootView: View {
 
   var body: some View {
     content
+
       .onDisappear {
         feature.flowDidLeave()
       }
@@ -68,6 +69,9 @@ struct ConnectionRootView: View {
 
     var body: some View {
       Form {
+        Section {
+          NamaDiscoveryContent(feature: feature)
+        }
         AddressFields(feature: feature, showsValidationError: showsValidationError)
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -83,6 +87,9 @@ struct ConnectionRootView: View {
 
     var body: some View {
       Form {
+        Section {
+          NamaDiscoveryContent(feature: feature)
+        }
         AddressFields(feature: feature, showsValidationError: false)
         Section {
           ProgressView()

@@ -9,6 +9,7 @@ struct ConnectionRecoveryTests {
     let verifier = CancellationVerifier()
     var feature: ConnectionFeature? = ConnectionFeature(
       verifier: verifier,
+      discovery: InactiveDiscovery(),
       endpointStore: InMemoryVerifiedEndpointStore()
     )
     let releasedFeature = WeakReference(feature)
@@ -31,7 +32,11 @@ struct ConnectionRecoveryTests {
     let endpoint = try NamaEndpoint("https://nama.example.com")
     let store = SuspendingClearEndpointStore(endpoint: endpoint)
     let verifier = ManualVerifier()
-    let feature = ConnectionFeature(verifier: verifier, endpointStore: store)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
     feature.restoreSavedEndpoint()
     await eventually { await verifier.callCount == 1 }
     await verifier.resolve(call: 0, with: .failure(.namaUnavailable))

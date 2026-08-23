@@ -1,0 +1,18 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSLocalNetworkUsageDescription" : {
+      "comment" : "Privacy prompt explaining why Nama needs Local Network access.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nama uses your local network to find nearby Nama servers."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}

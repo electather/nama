@@ -16,22 +16,34 @@ func eventually(
   Issue.record("Condition did not become true", sourceLocation: sourceLocation)
 }
 
+nonisolated struct InactiveDiscovery: NamaDiscovering {
+  func browse() -> AsyncStream<NamaDiscoveryEvent> {
+    AsyncStream { continuation in
+      continuation.finish()
+    }
+  }
+}
+
 actor CancellationVerifier: ConnectionVerifying {
   private(set) var callCount = 0
   private(set) var cancellationCount = 0
 
-  private static let cancellationDelaySeconds = 60
-  private static let cancellationDelay = Duration.seconds(cancellationDelaySeconds)
-
   func verify(_: NamaEndpoint) async -> ConnectionVerificationResult {
     callCount += 1
-    do {
-      try await Task.sleep(for: Self.cancellationDelay)
-      return .ready
-    } catch {
-      cancellationCount += 1
-      return .cancelled
+    let stream = AsyncStream<Void> { continuation in
+      continuation.onTermination = { [weak self] _ in
+        Task {
+          await self?.recordCancellation()
+        }
+      }
     }
+    var iterator = stream.makeAsyncIterator()
+    _ = await iterator.next()
+    return .cancelled
+  }
+
+  private func recordCancellation() {
+    cancellationCount += 1
   }
 }
 

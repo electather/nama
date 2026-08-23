@@ -35,6 +35,7 @@ private struct ConnectionWindow: View {
     _connection = State(
       initialValue: ConnectionFeature(
         verifier: NamaSetupStatusVerifier(clientVersion: clientVersion),
+        discovery: NWBrowserNamaDiscovery(),
         endpointStore: endpointStore
       )
     )
@@ -45,11 +46,13 @@ private struct ConnectionWindow: View {
       .onAppear {
         if scenePhase == .active {
           connection.restoreSavedEndpoint()
+          connection.flowDidEnter()
         }
       }
       .onChange(of: scenePhase) { _, phase in
         if phase == .active {
           connection.restoreSavedEndpoint()
+          connection.flowDidEnter()
         } else {
           connection.flowDidLeave()
         }

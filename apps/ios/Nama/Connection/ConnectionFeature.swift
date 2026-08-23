@@ -30,19 +30,28 @@ nonisolated enum ConnectionState: Equatable, Sendable {
 final class ConnectionFeature {
   var address = ""
   private(set) var state: ConnectionState = .editing(showsValidationError: false)
+  var discoveryState: NamaDiscoveryState {
+    discoverySession.state
+  }
 
   @ObservationIgnored private let verifier: any ConnectionVerifying
   @ObservationIgnored private let endpointStore: any VerifiedEndpointStoring
+  private let discoverySession: ConnectionDiscoverySession
   @ObservationIgnored private var activeTask: Task<Void, Never>?
   @ObservationIgnored private var attempt = 0
   @ObservationIgnored private var restorationHandled = false
 
   init(
     verifier: any ConnectionVerifying,
-    endpointStore: any VerifiedEndpointStoring
+    discovery: any NamaDiscovering,
+    endpointStore: any VerifiedEndpointStoring,
+    sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in
+      try await Task.sleep(for: duration)
+    }
   ) {
     self.verifier = verifier
     self.endpointStore = endpointStore
+    discoverySession = ConnectionDiscoverySession(discovery: discovery, sleep: sleep)
   }
 
   deinit {
@@ -73,7 +82,19 @@ final class ConnectionFeature {
     startVerification(of: endpoint)
   }
 
+  func activateDiscovery() {
+    discoverySession.activate()
+  }
+
+  func select(_ candidate: NamaDiscoveryCandidate) {
+    address = candidate.endpoint.absoluteString
+    startVerification(of: candidate.endpoint)
+  }
+
   func addressDidChange() {
+    if case .verifying(let endpoint) = state, address == endpoint.absoluteString {
+      return
+    }
     returnToEditing()
   }
 
@@ -81,7 +102,12 @@ final class ConnectionFeature {
     returnToEditing()
   }
 
+  func flowDidEnter() {
+    discoverySession.surfaceDidEnter()
+  }
+
   func flowDidLeave() {
+    discoverySession.surfaceDidLeave()
     guard activeTask != nil else {
       return
     }

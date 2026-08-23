@@ -1,10 +1,11 @@
 # Universal Apple application
 
-Status: the universal SwiftUI target, manual-connection tracer, and verified
-endpoint restoration are implemented. LAN discovery, Device pairing, consumer
-media behavior, and product playback remain target work. This note
-labels implemented, target, and deferred behavior explicitly; a target
-invariant is required architecture, not a claim that its runtime exists.
+Status: the universal SwiftUI target, manual-connection tracer, explicit
+foreground LAN discovery, and verified endpoint restoration are implemented.
+Device pairing, consumer media behavior, and product playback remain target
+work. This note labels implemented, target, and deferred behavior explicitly;
+a target invariant is required architecture, not a claim that its runtime
+exists.
 
 ## Authority and fixed decisions
 
@@ -41,17 +42,31 @@ The application boundary is:
 
 ## Implemented baseline
 
-The checked-in application implements manual connection and verified endpoint
-restoration:
+The checked-in application implements one connection tracer with manual entry,
+optional LAN discovery, and verified endpoint restoration:
 
-- `NamaApp` creates a `ConnectionFeature` for each `WindowGroup` window.
+- `NamaApp` creates one `ConnectionFeature`, setup-status verifier, and
+  Network-framework discovery adapter for each `WindowGroup` window.
 - `NamaEndpoint` accepts an absolute HTTP or HTTPS URL with an explicit scheme
   and non-empty host, no credentials, query, or fragment, and an optional
   reverse-proxy path prefix. It lowercases the host, removes default ports, and
   normalizes the path.
-- `NamaSetupStatusVerifier` calls generated
-  `SetupService.GetStatus` once with a ten-second timeout, platform TLS trust,
-  and allowlisted client name, version, and platform metadata.
+- `NWBrowser` browses `_nama._tcp` only after explicit activation and only
+  while the window is foregrounded. It accepts a result only when TXT `url`
+  normalizes as a `NamaEndpoint`; unknown keys and malformed records are
+  ignored without contacting the advertiser.
+- Discovery candidates are keyed and sorted by normalized endpoint, merge
+  duplicate records and interfaces, and retain sorted DNS-SD instance names
+  only as untrusted secondary display text.
+- Initial scanning lasts two seconds before an empty state. The browser remains
+  active so later candidates appear immediately, and removal of the final
+  candidate returns directly to empty.
+- Selecting a candidate invokes the same verifier as manual submission.
+  Selection replacement cancels the prior attempt, while later advertisement
+  removal does not cancel verification of the selected endpoint.
+- `NamaSetupStatusVerifier` calls generated `SetupService.GetStatus` once with
+  a ten-second timeout, platform TLS trust, and allowlisted client name,
+  version, and platform metadata.
 - The async `UserDefaultsVerifiedEndpointStore` actor retains only the last
   successfully verified canonical endpoint. Each window activates restoration
   once after SwiftUI installs its feature state, avoiding I/O from disposable
@@ -62,28 +77,34 @@ restoration:
   cancels local work, advances the installation-wide generation, and clears the
   preference so an older completion in another window cannot restore it.
 - The `@MainActor @Observable` feature owns editing, verifying, ready,
-  setup-required, and safe failure states. It cancels replaced work and rejects
-  stale completions by attempt identity.
-- Leaving the foreground or closing the surface cancels only an active
-  verification and preserves terminal state. Local task cancellation is
-  silent; a remote Connect `canceled` response is a visible cannot-connect
-  failure.
+  setup-required, safe verification failure, and discovery presentation
+  states. It rejects stale verification and discovery completion by attempt
+  identity.
+- Leaving the foreground or closing the surface cancels active discovery and
+  only an active verification while preserving terminal verification state.
+  Local task cancellation is silent; a remote Connect `canceled` response is a
+  visible cannot-connect failure.
 - iPhone, iPad, and Mac use the shared native form presentation. Apple TV uses
   a focus-specific scrolling presentation over the same feature state.
-- The macOS build uses App Sandbox with outgoing network-client access only.
+  Platform-specific permission guidance exists only where Apple exposes the
+  Local Network privacy state.
+- The app declares `_nama._tcp` and its Local Network purpose in its partial
+  Info property list without a multicast entitlement. The macOS build uses App
+  Sandbox with outgoing network-client access only.
 
-The Swift Testing target covers endpoint normalization, endpoint preference
-contents, clearing, cross-window invalidation, explicit one-time restoration,
-successful and failed restoration, request construction and client metadata,
-safe failure mapping, state transitions, retry, cancellation, stale completions,
-and presentation actions. `check:ios` lints
-Swift formatting, runs the test target through its macOS host, and performs
-signing-disabled iOS, tvOS, and macOS builds. These checks do not prove physical
-device, privacy-prompt, focus, accessibility, or playback behavior.
+The Swift Testing target covers endpoint normalization, TXT parsing, canonical
+candidate reconciliation, duplicate and removal behavior, discovery lifecycle
+and timing, explicit selection, endpoint preference contents, clearing,
+cross-window invalidation, explicit one-time restoration, successful and failed
+restoration, verification replacement and cancellation, request construction
+and client metadata, safe failure mapping, state transitions, retry, stale
+completions, and presentation actions. `check:ios` lints Swift formatting, runs
+the test target through its macOS host, and performs signing-disabled iOS, tvOS,
+and macOS builds. These checks do not prove physical-device privacy prompts,
+focus, accessibility, or playback behavior.
 
-The implemented source does not yet contain `NWBrowser`, Keychain Device
-credentials, Bonjour privacy declarations, Pairing, Home, Library, Details,
-Watch State, or Playback behavior.
+The implemented source does not yet contain Keychain Device credentials,
+Pairing, Home, Library, Details, Watch State, or Playback behavior.
 
 ## Target runtime topology
 
@@ -318,11 +339,10 @@ incompatible responses remain distinct safe states without raw URLSession,
 TLS, or response detail. Issue #34 owns every plain-HTTP exception and warning.
 
 Discovery declares `_nama._tcp` in `NSBonjourServices` and explains local
-network access through `NSLocalNetworkUsageDescription` when implementation
-lands. Browsing this one declared service does not add the multicast
-entitlement. iPhone, iPad, and Mac expose local-network permission behavior;
-Apple TV does not expose the same prompt. These declarations are target
-requirements and are absent from the implemented baseline.
+network access through `NSLocalNetworkUsageDescription` in the application’s
+partial Info property list. Browsing this one declared service does not add the
+multicast entitlement. iPhone, iPad, and Mac expose local-network permission
+behavior; Apple TV does not expose the same prompt.
 
 The app does not use a global `NWPathMonitor` to gate requests. A path
 observation cannot prove that one Nama endpoint is reachable, trusted,
