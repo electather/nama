@@ -178,6 +178,7 @@ struct ConnectionRootView: View {
             .font(.headline)
           Text(SavedEndpointHTTPSRequiredCopy.message)
             .foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
           EndpointValue(address: savedAddress)
         }
         Section {
