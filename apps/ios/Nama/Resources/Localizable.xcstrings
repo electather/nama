@@ -5,8 +5,8 @@
       "comment" : "Button that cancels the active endpoint verification request.",
       "extractionState" : "manual"
     },
-    "Change Endpoint" : {
-      "comment" : "Button that returns to manual Nama endpoint entry.",
+    "Change Server" : {
+      "comment" : "Button that clears the verified Nama endpoint and returns to endpoint selection.",
       "extractionState" : "manual"
     },
     "Connect" : {
@@ -25,12 +25,12 @@
       "comment" : "Title shown when local-network discovery fails.",
       "extractionState" : "manual"
     },
-    "Endpoint" : {
-      "comment" : "Label for the normalized Nama endpoint being verified or displayed.",
-      "extractionState" : "manual"
-    },
     "Enable Local Network access in Settings to find nearby Nama servers, or enter an address manually." : {
       "comment" : "Guidance shown after local-network access is denied.",
+      "extractionState" : "manual"
+    },
+    "Endpoint" : {
+      "comment" : "Label for the normalized Nama endpoint being verified or displayed.",
       "extractionState" : "manual"
     },
     "Enter a valid HTTP or HTTPS server address." : {
@@ -45,6 +45,14 @@
       "comment" : "Status shown when the verified Nama endpoint has no Administrator yet.",
       "extractionState" : "manual"
     },
+    "https://nama.example.com" : {
+      "comment" : "Example placeholder showing the required endpoint shape.",
+      "extractionState" : "manual"
+    },
+    "Local Network Access Is Off" : {
+      "comment" : "Title shown after local-network access is denied.",
+      "extractionState" : "manual"
+    },
     "Looking for Nama servers…" : {
       "comment" : "Progress shown during the initial local-network scan.",
       "extractionState" : "manual"
@@ -57,8 +65,16 @@
       "comment" : "Label for the manual Nama endpoint text field.",
       "extractionState" : "manual"
     },
+    "Nama Endpoint" : {
+      "comment" : "Navigation title for the connection and terminal status surfaces.",
+      "extractionState" : "manual"
+    },
     "Nama is ready" : {
       "comment" : "Status shown when the verified Nama endpoint is initialized.",
+      "extractionState" : "manual"
+    },
+    "Nama is temporarily unavailable. Try again." : {
+      "comment" : "Safe message for an availability failure returned by Nama.",
       "extractionState" : "manual"
     },
     "No Nama servers found" : {
@@ -67,14 +83,6 @@
     },
     "Open Settings" : {
       "comment" : "Button that opens this application's Settings page after local-network denial on iPhone or iPad.",
-      "extractionState" : "manual"
-    },
-    "Nama is temporarily unavailable. Try again." : {
-      "comment" : "Safe message for an availability failure returned by Nama.",
-      "extractionState" : "manual"
-    },
-    "Nama Endpoint" : {
-      "comment" : "Navigation title for the connection and terminal status surfaces.",
       "extractionState" : "manual"
     },
     "Retry" : {
@@ -95,14 +103,6 @@
     },
     "Try again, or enter the Nama address manually." : {
       "comment" : "Recovery guidance shown after local-network discovery fails.",
-      "extractionState" : "manual"
-    },
-    "Local Network Access Is Off" : {
-      "comment" : "Title shown after local-network access is denied.",
-      "extractionState" : "manual"
-    },
-    "https://nama.example.com" : {
-      "comment" : "Example placeholder showing the required endpoint shape.",
       "extractionState" : "manual"
     }
   },
