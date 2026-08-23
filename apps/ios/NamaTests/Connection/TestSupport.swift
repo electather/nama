@@ -1,5 +1,7 @@
 import Testing
 
+@testable import Nama
+
 func eventually(
   _ condition: @MainActor @Sendable () async -> Bool,
   sourceLocation: SourceLocation = #_sourceLocation
@@ -12,4 +14,12 @@ func eventually(
     await Task.yield()
   }
   Issue.record("Condition did not become true", sourceLocation: sourceLocation)
+}
+
+nonisolated struct InactiveDiscovery: NamaDiscovering {
+  func browse() -> AsyncStream<NamaDiscoveryEvent> {
+    AsyncStream { continuation in
+      continuation.finish()
+    }
+  }
 }

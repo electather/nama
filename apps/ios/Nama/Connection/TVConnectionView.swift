@@ -23,6 +23,7 @@
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text("Connect to Nama")
             .font(.largeTitle)
+          NamaDiscoveryContent(feature: feature)
           addressField
           if showsValidationError {
             Text(EndpointValidationError.invalid.message)
@@ -33,6 +34,7 @@
 
       case .verifying(let endpoint):
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+          NamaDiscoveryContent(feature: feature)
           addressField
           HStack(spacing: Layout.actionSpacing) {
             ProgressView()

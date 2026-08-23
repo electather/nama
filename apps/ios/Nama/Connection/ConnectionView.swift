@@ -6,8 +6,15 @@ struct ConnectionRootView: View {
 
   var body: some View {
     content
+      .onAppear {
+        if scenePhase == .active {
+          feature.flowDidEnter()
+        }
+      }
       .onChange(of: scenePhase) { _, phase in
-        if phase != .active {
+        if phase == .active {
+          feature.flowDidEnter()
+        } else {
           feature.flowDidLeave()
         }
       }
@@ -74,6 +81,9 @@ struct ConnectionRootView: View {
 
     var body: some View {
       Form {
+        Section {
+          NamaDiscoveryContent(feature: feature)
+        }
         AddressFields(feature: feature, showsValidationError: showsValidationError)
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -89,6 +99,9 @@ struct ConnectionRootView: View {
 
     var body: some View {
       Form {
+        Section {
+          NamaDiscoveryContent(feature: feature)
+        }
         AddressFields(feature: feature, showsValidationError: false)
         Section {
           ProgressView()

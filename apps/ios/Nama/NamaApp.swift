@@ -28,7 +28,8 @@ private struct ConnectionWindow: View {
   init(clientVersion: String) {
     _connection = State(
       initialValue: ConnectionFeature(
-        verifier: NamaSetupStatusVerifier(clientVersion: clientVersion)
+        verifier: NamaSetupStatusVerifier(clientVersion: clientVersion),
+        discovery: NWBrowserNamaDiscovery()
       )
     )
   }

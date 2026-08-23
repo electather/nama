@@ -28,6 +28,43 @@ nonisolated extension VerificationFailure {
   }
 }
 
+nonisolated extension NamaDiscoveryState {
+  var title: LocalizedStringResource? {
+    switch self {
+    case .inactive, .candidates:
+      nil
+
+    case .scanning:
+      "Looking for Nama servers…"
+
+    case .empty:
+      "No Nama servers found"
+
+    case .permissionDenied:
+      "Local Network Access Is Off"
+
+    case .failed:
+      "Couldn’t search for Nama servers"
+    }
+  }
+
+  var message: LocalizedStringResource? {
+    switch self {
+    case .inactive, .scanning, .candidates:
+      nil
+
+    case .empty:
+      "Make sure Nama is running on this network, or enter its address."
+
+    case .permissionDenied:
+      "Enable Local Network access in Settings to find nearby Nama servers, or enter an address manually."
+
+    case .failed:
+      "Try again, or enter the Nama address manually."
+    }
+  }
+}
+
 nonisolated extension ConnectionState {
   var actions: [ConnectionAction] {
     switch self {

@@ -8,7 +8,7 @@ struct ConnectionFeatureTests {
   @Test("invalid input is preserved and reported only after submission")
   func invalidInput() async {
     let verifier = ImmediateVerifier(result: .ready)
-    let feature = ConnectionFeature(verifier: verifier)
+    let feature = ConnectionFeature(verifier: verifier, discovery: InactiveDiscovery())
     feature.address = "nama.example.com"
 
     #expect(feature.state == .editing(showsValidationError: false))
@@ -26,7 +26,7 @@ struct ConnectionFeatureTests {
   func terminalState(initialized: Bool) async throws {
     let result: ConnectionVerificationResult = initialized ? .ready : .setupRequired
     let verifier = ImmediateVerifier(result: result)
-    let feature = ConnectionFeature(verifier: verifier)
+    let feature = ConnectionFeature(verifier: verifier, discovery: InactiveDiscovery())
     let endpoint = try NamaEndpoint("https://nama.example.com")
     let expected: ConnectionState = initialized ? .ready(endpoint) : .setupRequired(endpoint)
     feature.address = endpoint.absoluteString
@@ -40,7 +40,7 @@ struct ConnectionFeatureTests {
   @Test("editing the address cancels an active request")
   func editingCancelsRequest() async {
     let verifier = CancellationVerifier()
-    let feature = ConnectionFeature(verifier: verifier)
+    let feature = ConnectionFeature(verifier: verifier, discovery: InactiveDiscovery())
     feature.address = "https://nama.example.com"
     feature.submit()
     await eventually { await verifier.callCount == 1 }
@@ -55,7 +55,7 @@ struct ConnectionFeatureTests {
   @Test("leaving the flow cancels an active request")
   func leavingFlowCancelsRequest() async {
     let verifier = CancellationVerifier()
-    let feature = ConnectionFeature(verifier: verifier)
+    let feature = ConnectionFeature(verifier: verifier, discovery: InactiveDiscovery())
     feature.address = "https://nama.example.com"
     feature.submit()
     await eventually { await verifier.callCount == 1 }
@@ -69,7 +69,7 @@ struct ConnectionFeatureTests {
   @Test("leaving the flow preserves a completed status")
   func leavingFlowPreservesTerminalState() async throws {
     let verifier = ImmediateVerifier(result: .ready)
-    let feature = ConnectionFeature(verifier: verifier)
+    let feature = ConnectionFeature(verifier: verifier, discovery: InactiveDiscovery())
     let endpoint = try NamaEndpoint("https://nama.example.com")
     feature.address = endpoint.absoluteString
     feature.submit()
@@ -83,7 +83,7 @@ struct ConnectionFeatureTests {
   @Test("submitting another endpoint replaces the active request")
   func submittingAgainCancelsRequest() async throws {
     let verifier = CancellationVerifier()
-    let feature = ConnectionFeature(verifier: verifier)
+    let feature = ConnectionFeature(verifier: verifier, discovery: InactiveDiscovery())
     feature.address = "https://first.example.com"
     feature.submit()
     await eventually { await verifier.callCount == 1 }
@@ -100,7 +100,7 @@ struct ConnectionFeatureTests {
   @Test("a canceled stale response cannot replace a newer terminal state")
   func staleResponseIsIgnored() async throws {
     let verifier = ManualVerifier()
-    let feature = ConnectionFeature(verifier: verifier)
+    let feature = ConnectionFeature(verifier: verifier, discovery: InactiveDiscovery())
     feature.address = "https://first.example.com"
     feature.submit()
     await eventually { await verifier.callCount == 1 }
@@ -123,7 +123,7 @@ struct ConnectionFeatureTests {
   @Test("Retry starts one fresh attempt without an automatic loop")
   func retryIsExplicit() async {
     let verifier = ImmediateVerifier(result: .failure(.namaUnavailable))
-    let feature = ConnectionFeature(verifier: verifier)
+    let feature = ConnectionFeature(verifier: verifier, discovery: InactiveDiscovery())
     feature.address = "https://nama.example.com"
     feature.submit()
     await eventually { await verifier.callCount == 1 }
@@ -140,7 +140,7 @@ struct ConnectionFeatureTests {
   @Test("Cancel ends the active attempt without presenting a failure")
   func explicitCancel() async {
     let verifier = CancellationVerifier()
-    let feature = ConnectionFeature(verifier: verifier)
+    let feature = ConnectionFeature(verifier: verifier, discovery: InactiveDiscovery())
     feature.address = "https://nama.example.com"
     feature.submit()
     await eventually { await verifier.callCount == 1 }

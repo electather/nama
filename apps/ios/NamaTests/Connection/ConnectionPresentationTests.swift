@@ -31,6 +31,40 @@ struct ConnectionPresentationTests {
     #expect(String(localized: failure.message) == expected)
   }
 
+  @Test(
+    "maps discovery states to approved copy",
+    arguments: [
+      (
+        NamaDiscoveryState.scanning,
+        "Looking for Nama servers…",
+        Optional<String>.none
+      ),
+      (
+        NamaDiscoveryState.empty,
+        "No Nama servers found",
+        "Make sure Nama is running on this network, or enter its address."
+      ),
+      (
+        NamaDiscoveryState.permissionDenied,
+        "Local Network Access Is Off",
+        "Enable Local Network access in Settings to find nearby Nama servers, or enter an address manually."
+      ),
+      (
+        NamaDiscoveryState.failed,
+        "Couldn’t search for Nama servers",
+        "Try again, or enter the Nama address manually."
+      ),
+    ]
+  )
+  func discoveryCopy(
+    state: NamaDiscoveryState,
+    expectedTitle: String,
+    expectedMessage: String?
+  ) {
+    #expect(state.title.map(String.init(localized:)) == expectedTitle)
+    #expect(state.message.map(String.init(localized:)) == expectedMessage)
+  }
+
   @Test("terminal states expose only their approved actions")
   func terminalActions() throws {
     let endpoint = try NamaEndpoint("https://nama.example.com")

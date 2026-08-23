@@ -6,11 +6,11 @@ product
 
 ## Users
 
-People who operate a private Nama deployment and need to connect an iPhone, iPad, Apple TV, or Mac from the device in front of them. Their immediate job is to enter a Nama endpoint, verify that it is genuinely reachable through Nama's public contract, and understand whether the deployment is ready or still needs Administrator setup.
+People who operate a private Nama deployment and need to connect an iPhone, iPad, Apple TV, or Mac from the device in front of them. Their immediate job is to discover a nearby Nama endpoint or enter one manually, verify it through Nama's public contract, and understand whether the deployment is ready or still needs Administrator setup.
 
 ## Product Purpose
 
-Nama's universal Apple application provides one native, dependable client across Apple platforms. This first connection flow turns a transport address into a verified Nama endpoint without guessing identity, weakening platform security, or promising unimplemented pairing and media behavior. Success means the person always sees an honest, actionable connection state.
+Nama's universal Apple application provides one native, dependable client across Apple platforms. This connection flow turns an explicitly discovered or manually entered transport address into a verified Nama endpoint without guessing identity, weakening platform security, or promising unimplemented pairing and media behavior. Success means the person always sees an honest, actionable connection state.
 
 ## Brand Personality
 

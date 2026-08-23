@@ -21,16 +21,36 @@
       "comment" : "Safe message for transport, TLS, and timeout failures.",
       "extractionState" : "manual"
     },
+    "Couldn’t search for Nama servers" : {
+      "comment" : "Title shown when local-network discovery fails.",
+      "extractionState" : "manual"
+    },
     "Endpoint" : {
       "comment" : "Label for the normalized Nama endpoint being verified or displayed.",
+      "extractionState" : "manual"
+    },
+    "Enable Local Network access in Settings to find nearby Nama servers, or enter an address manually." : {
+      "comment" : "Guidance shown after local-network access is denied.",
       "extractionState" : "manual"
     },
     "Enter a valid HTTP or HTTPS server address." : {
       "comment" : "Inline validation error shown after an invalid manual submission.",
       "extractionState" : "manual"
     },
+    "Find Nama on Local Network" : {
+      "comment" : "Button that explicitly starts local-network discovery.",
+      "extractionState" : "manual"
+    },
     "Finish setting up Nama" : {
       "comment" : "Status shown when the verified Nama endpoint has no Administrator yet.",
+      "extractionState" : "manual"
+    },
+    "Looking for Nama servers…" : {
+      "comment" : "Progress shown during the initial local-network scan.",
+      "extractionState" : "manual"
+    },
+    "Make sure Nama is running on this network, or enter its address." : {
+      "comment" : "Guidance shown when local-network discovery has no candidates.",
       "extractionState" : "manual"
     },
     "Nama endpoint" : {
@@ -39,6 +59,14 @@
     },
     "Nama is ready" : {
       "comment" : "Status shown when the verified Nama endpoint is initialized.",
+      "extractionState" : "manual"
+    },
+    "No Nama servers found" : {
+      "comment" : "Title shown when the initial local-network scan finds no candidates.",
+      "extractionState" : "manual"
+    },
+    "Open Settings" : {
+      "comment" : "Button that opens this application's Settings page after local-network denial on iPhone or iPad.",
       "extractionState" : "manual"
     },
     "Nama is temporarily unavailable. Try again." : {
@@ -57,8 +85,20 @@
       "comment" : "Administrator setup guidance for an uninitialized verified endpoint.",
       "extractionState" : "manual"
     },
+    "System Settings → Privacy & Security → Local Network" : {
+      "comment" : "Documented macOS path for enabling local-network access.",
+      "extractionState" : "manual"
+    },
     "This address did not respond as a compatible Nama server." : {
       "comment" : "Safe message for a response that is not compatible with the public Nama contract.",
+      "extractionState" : "manual"
+    },
+    "Try again, or enter the Nama address manually." : {
+      "comment" : "Recovery guidance shown after local-network discovery fails.",
+      "extractionState" : "manual"
+    },
+    "Local Network Access Is Off" : {
+      "comment" : "Title shown after local-network access is denied.",
       "extractionState" : "manual"
     },
     "https://nama.example.com" : {
