@@ -3,8 +3,14 @@ import Foundation
 nonisolated enum ConnectionAction: Hashable, Sendable {
   case connect
   case cancel
+  case continueWithoutHTTPS
   case retry
   case changeEndpoint
+}
+
+nonisolated enum TelevisionConnectionFocus: Equatable, Sendable {
+  case address
+  case action(ConnectionAction)
 }
 
 nonisolated extension EndpointValidationError {
@@ -26,6 +32,28 @@ nonisolated enum SavedEndpointHTTPSRequiredCopy {
 
   static var message: LocalizedStringResource {
     "This saved Nama endpoint can no longer be contacted over HTTP. Change the endpoint to use HTTPS."
+  }
+}
+
+nonisolated enum LocalHTTPConfirmationCopy {
+  static var title: LocalizedStringResource {
+    "Connect without HTTPS?"
+  }
+
+  static var message: LocalizedStringResource {
+    "Traffic to this Nama endpoint won’t be encrypted. Continue only if you trust this endpoint and network."
+  }
+}
+
+nonisolated enum LocalHTTPWarningCopy {
+  static let systemImage = "exclamationmark.triangle.fill"
+
+  static var message: LocalizedStringResource {
+    "HTTP connection — traffic is not encrypted."
+  }
+
+  static var accessibilityLabel: LocalizedStringResource {
+    message
   }
 }
 
@@ -87,6 +115,9 @@ nonisolated extension ConnectionState {
     case .editing:
       [.connect]
 
+    case .confirmingHTTP:
+      [.cancel, .continueWithoutHTTPS]
+
     case .verifying:
       [.connect, .cancel, .changeEndpoint]
 
@@ -95,6 +126,41 @@ nonisolated extension ConnectionState {
 
     case .setupRequired, .failed:
       [.retry, .changeEndpoint]
+
+    case .pausedHTTPRestoration:
+      [.continueWithoutHTTPS, .changeEndpoint]
     }
+  }
+
+  var televisionFocus: TelevisionConnectionFocus {
+    switch self {
+    case .editing, .verifying:
+      .address
+
+    case .confirmingHTTP:
+      .action(.cancel)
+
+    case .ready, .requiresHTTPS:
+      .action(.changeEndpoint)
+
+    case .setupRequired, .failed:
+      .action(.retry)
+
+    case .pausedHTTPRestoration:
+      .action(.continueWithoutHTTPS)
+    }
+  }
+
+  var showsUnencryptedHTTPWarning: Bool {
+    let endpoint: NamaEndpoint
+    switch self {
+    case .confirmingHTTP(let value, _), .verifying(let value), .ready(let value),
+      .setupRequired(let value), .failed(let value, _), .pausedHTTPRestoration(let value):
+      endpoint = value
+
+    case .editing, .requiresHTTPS:
+      return false
+    }
+    return endpoint.usesUnencryptedHTTP
   }
 }

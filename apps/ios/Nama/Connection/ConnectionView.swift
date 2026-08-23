@@ -21,6 +21,26 @@ struct ConnectionRootView: View {
   }
 }
 
+struct HTTPConnectionWarning: View {
+  let isPresented: Bool
+
+  @ViewBuilder
+  var body: some View {
+    if isPresented {
+      Label {
+        Text(LocalHTTPWarningCopy.message)
+          .fixedSize(horizontal: false, vertical: true)
+      } icon: {
+        Image(systemName: LocalHTTPWarningCopy.systemImage)
+          .accessibilityHidden(true)
+      }
+      .foregroundStyle(.orange)
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel(Text(LocalHTTPWarningCopy.accessibilityLabel))
+    }
+  }
+}
+
 #if !os(tvOS)
   private struct ConnectionFormView: View {
     @Bindable var feature: ConnectionFeature
@@ -37,7 +57,8 @@ struct ConnectionRootView: View {
       case .editing, .verifying:
         "Connect to Nama"
 
-      case .ready, .setupRequired, .failed, .requiresHTTPS:
+      case .confirmingHTTP, .ready, .setupRequired, .failed, .pausedHTTPRestoration,
+        .requiresHTTPS:
         "Nama Endpoint"
       }
     }
@@ -47,6 +68,9 @@ struct ConnectionRootView: View {
       switch feature.state {
       case .editing(let validationError):
         EntryForm(feature: feature, validationError: validationError)
+
+      case .confirmingHTTP(let endpoint, _):
+        HTTPConfirmationForm(feature: feature, endpoint: endpoint)
 
       case .verifying(let endpoint):
         VerifyingForm(feature: feature, endpoint: endpoint)
@@ -59,6 +83,9 @@ struct ConnectionRootView: View {
 
       case .failed(let endpoint, let failure):
         FailureForm(feature: feature, endpoint: endpoint, failure: failure)
+
+      case .pausedHTTPRestoration(let endpoint):
+        HTTPConfirmationForm(feature: feature, endpoint: endpoint)
 
       case .requiresHTTPS(let endpoint):
         HTTPSRequiredForm(feature: feature, endpoint: endpoint)
@@ -84,6 +111,28 @@ struct ConnectionRootView: View {
     }
   }
 
+  private struct HTTPConfirmationForm: View {
+    let feature: ConnectionFeature
+    let endpoint: NamaEndpoint
+
+    var body: some View {
+      Form {
+        Section {
+          Text(LocalHTTPConfirmationCopy.title)
+            .font(.headline)
+          Text(LocalHTTPConfirmationCopy.message)
+            .fixedSize(horizontal: false, vertical: true)
+          EndpointValue(endpoint: endpoint)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
+        }
+        Section {
+          ConnectionActionButtons(feature: feature, actions: feature.state.actions)
+        }
+      }
+      .connectionFormLayout()
+    }
+  }
+
   private struct VerifyingForm: View {
     @Bindable var feature: ConnectionFeature
     let endpoint: NamaEndpoint
@@ -98,6 +147,7 @@ struct ConnectionRootView: View {
           ProgressView()
             .frame(maxWidth: .infinity)
           EndpointValue(endpoint: endpoint)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
         }
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -117,6 +167,7 @@ struct ConnectionRootView: View {
           Text("Nama is ready")
             .font(.headline)
           EndpointValue(endpoint: endpoint)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
         }
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -138,6 +189,7 @@ struct ConnectionRootView: View {
           EndpointValue(endpoint: endpoint)
           Text("Run `nama setup` from a trusted computer, then try again.")
             .foregroundStyle(.secondary)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
         }
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -158,6 +210,7 @@ struct ConnectionRootView: View {
           Text(failure.message)
             .foregroundStyle(.red)
           EndpointValue(endpoint: endpoint)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
         }
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -246,6 +299,12 @@ struct ConnectionRootView: View {
           feature.cancel()
         }
 
+      case .continueWithoutHTTPS:
+        Button("Continue") {
+          feature.continueWithoutHTTPS()
+        }
+        .buttonStyle(.borderedProminent)
+
       case .retry:
         Button("Retry") {
           feature.retry()
@@ -262,7 +321,7 @@ struct ConnectionRootView: View {
     }
   }
 
-  private struct EndpointValue: View {
+  struct EndpointValue: View {
     private let address: String
 
     init(endpoint: NamaEndpoint) {
@@ -279,6 +338,7 @@ struct ConnectionRootView: View {
           .font(.body.monospaced())
           .multilineTextAlignment(.trailing)
           .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }

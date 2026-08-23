@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import Nama
@@ -27,6 +28,72 @@ struct ConnectionPresentationTests {
     #expect(
       String(localized: SavedEndpointHTTPSRequiredCopy.message)
         == "This saved Nama endpoint can no longer be contacted over HTTP. Change the endpoint to use HTTPS."
+    )
+  }
+
+  @Test("shows the approved local HTTP confirmation and warning semantics")
+  func localHTTPCopyAndSemantics() {
+    #expect(String(localized: LocalHTTPConfirmationCopy.title) == "Connect without HTTPS?")
+    #expect(
+      String(localized: LocalHTTPConfirmationCopy.message)
+        == "Traffic to this Nama endpoint won’t be encrypted. Continue only if you trust this endpoint and network."
+    )
+    #expect(
+      String(localized: LocalHTTPWarningCopy.message)
+        == "HTTP connection — traffic is not encrypted."
+    )
+    #expect(LocalHTTPWarningCopy.systemImage == "exclamationmark.triangle.fill")
+    #expect(
+      String(localized: LocalHTTPWarningCopy.accessibilityLabel)
+        == "HTTP connection — traffic is not encrypted."
+    )
+  }
+
+  @MainActor
+  @Test("the warning and a long endpoint render through the shared form presentation")
+  func warningAndLongEndpointRender() throws {
+    let endpoint = try NamaEndpoint(
+      "http://nama.local/a/very/long/reverse/proxy/path/that/must/remain/visible/to/the/person/"
+    )
+    let renderer = ImageRenderer(
+      content: VStack(alignment: .leading) {
+        HTTPConnectionWarning(isPresented: true)
+        EndpointValue(endpoint: endpoint)
+      }
+      .frame(width: 320, alignment: .leading)
+      .padding()
+    )
+
+    #expect(renderer.cgImage != nil)
+  }
+
+  @Test("every selected local HTTP state exposes the unencrypted warning")
+  func selectedLocalHTTPWarningStates() throws {
+    let httpEndpoint = try NamaEndpoint("http://nama.local/very/long/reverse/proxy/path/")
+    let httpsEndpoint = try NamaEndpoint("https://nama.example.com")
+    let localHTTPStates: [ConnectionState] = [
+      .confirmingHTTP(httpEndpoint, .entry),
+      .verifying(httpEndpoint),
+      .ready(httpEndpoint),
+      .setupRequired(httpEndpoint),
+      .failed(httpEndpoint, .cannotConnect),
+      .pausedHTTPRestoration(httpEndpoint),
+    ]
+    let httpsStates: [ConnectionState] = [
+      .confirmingHTTP(httpsEndpoint, .entry),
+      .verifying(httpsEndpoint),
+      .ready(httpsEndpoint),
+      .setupRequired(httpsEndpoint),
+      .failed(httpsEndpoint, .cannotConnect),
+      .pausedHTTPRestoration(httpsEndpoint),
+    ]
+
+    #expect(localHTTPStates.allSatisfy(\.showsUnencryptedHTTPWarning))
+    #expect(httpsStates.allSatisfy { !$0.showsUnencryptedHTTPWarning })
+    #expect(!ConnectionState.editing(validationError: nil).showsUnencryptedHTTPWarning)
+    #expect(
+      !ConnectionState.requiresHTTPS(HTTPSRequiredEndpoint("http://nama.example.com"))
+        .showsUnencryptedHTTPWarning
     )
   }
 
@@ -100,10 +167,33 @@ struct ConnectionPresentationTests {
   @Test("entry and active requests expose the actions available on their forms")
   func formActions() throws {
     let endpoint = try NamaEndpoint("https://nama.example.com")
+    let httpEndpoint = try NamaEndpoint("http://nama.local")
 
     #expect(ConnectionState.editing(validationError: nil).actions == [.connect])
     #expect(
+      ConnectionState.confirmingHTTP(httpEndpoint, .entry).actions
+        == [.cancel, .continueWithoutHTTPS]
+    )
+    #expect(
       ConnectionState.verifying(endpoint).actions == [.connect, .cancel, .changeEndpoint]
+    )
+    #expect(
+      ConnectionState.pausedHTTPRestoration(httpEndpoint).actions
+        == [.continueWithoutHTTPS, .changeEndpoint]
+    )
+  }
+
+  @Test("television confirmation defaults to safe and recoverable actions")
+  func televisionHTTPFocus() throws {
+    let endpoint = try NamaEndpoint("http://nama.local")
+
+    #expect(
+      ConnectionState.confirmingHTTP(endpoint, .entry).televisionFocus
+        == .action(.cancel)
+    )
+    #expect(
+      ConnectionState.pausedHTTPRestoration(endpoint).televisionFocus
+        == .action(.continueWithoutHTTPS)
     )
   }
 }

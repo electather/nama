@@ -50,6 +50,34 @@ struct ConnectionDiscoveryTests {
     feature.flowDidLeave()
   }
 
+  @Test("canceling discovered local HTTP returns to its candidates without a request")
+  func cancelingDiscoveredHTTPReturnsToCandidates() async throws {
+    let discovery = ManualDiscovery()
+    let verifier = RecordingVerifier(result: .ready)
+    let feature = makeFeature(verifier: verifier, discovery: discovery)
+    let record = try discoveryRecord("http://nama.local", serviceName: "Nama")
+    let expectedCandidates = NamaDiscoveryCandidate.reconcile([record])
+
+    feature.flowDidEnter()
+    feature.activateDiscovery()
+    await eventually { await discovery.browseCount == 1 }
+    await discovery.send(.records([record]))
+    await eventually { feature.discoveryState == .candidates(expectedCandidates) }
+
+    feature.select(expectedCandidates[0])
+
+    feature.addressDidChange()
+    #expect(feature.state == .confirmingHTTP(record.endpoint, .entry))
+    #expect(await verifier.endpoints.isEmpty)
+
+    feature.cancel()
+
+    #expect(feature.state == .editing(validationError: nil))
+    #expect(feature.discoveryState == .candidates(expectedCandidates))
+    #expect(await verifier.endpoints.isEmpty)
+    feature.flowDidLeave()
+  }
+
   @Test("requests the approved scanning delay before presenting an initial empty state")
   func scanningDelay() async {
     let discovery = ManualDiscovery()

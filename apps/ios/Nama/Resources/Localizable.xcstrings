@@ -2,7 +2,7 @@
   "sourceLanguage" : "en",
   "strings" : {
     "Cancel" : {
-      "comment" : "Button that cancels the active endpoint verification request.",
+      "comment" : "Button that declines local HTTP confirmation or cancels an active endpoint verification request.",
       "extractionState" : "manual"
     },
     "Change Endpoint" : {
@@ -15,6 +15,14 @@
     },
     "Connect to Nama" : {
       "comment" : "Title for the manual Nama endpoint entry surface on television.",
+      "extractionState" : "manual"
+    },
+    "Connect without HTTPS?" : {
+      "comment" : "Title asking for explicit consent before contacting a permitted local HTTP Nama endpoint.",
+      "extractionState" : "manual"
+    },
+    "Continue" : {
+      "comment" : "Button that acknowledges unencrypted local HTTP and starts endpoint verification.",
       "extractionState" : "manual"
     },
     "Couldn’t connect to this address. Check the address and network connection, then try again." : {
@@ -43,6 +51,10 @@
     },
     "Finish setting up Nama" : {
       "comment" : "Status shown when the verified Nama endpoint has no Administrator yet.",
+      "extractionState" : "manual"
+    },
+    "HTTP connection — traffic is not encrypted." : {
+      "comment" : "Persistent warning shown while a permitted local HTTP Nama endpoint remains selected.",
       "extractionState" : "manual"
     },
     "HTTPS required" : {
@@ -111,6 +123,10 @@
     },
     "This saved Nama endpoint can no longer be contacted over HTTP. Change the endpoint to use HTTPS." : {
       "comment" : "Recovery guidance shown for a saved HTTP endpoint that is no longer eligible.",
+      "extractionState" : "manual"
+    },
+    "Traffic to this Nama endpoint won’t be encrypted. Continue only if you trust this endpoint and network." : {
+      "comment" : "Explanation shown before the first request to a permitted local HTTP Nama endpoint.",
       "extractionState" : "manual"
     },
     "Try again, or enter the Nama address manually." : {

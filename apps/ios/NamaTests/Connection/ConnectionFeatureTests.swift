@@ -42,6 +42,50 @@ struct ConnectionFeatureTests {
     #expect(await verifier.callCount == 0)
   }
 
+  @Test("manual local HTTP asks before the verifier receives a request")
+  func manualLocalHTTPRequiresConfirmation() async throws {
+    let verifier = ImmediateVerifier(result: .ready)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: InMemoryVerifiedEndpointStore()
+    )
+    let endpoint = try NamaEndpoint("http://192.168.1.20/reverse-proxy")
+    feature.address = endpoint.absoluteString
+
+    feature.submit()
+
+    #expect(feature.state == .confirmingHTTP(endpoint, .entry))
+    #expect(feature.state.actions == [.cancel, .continueWithoutHTTPS])
+    #expect(await verifier.callCount == 0)
+
+    feature.continueWithoutHTTPS()
+    await eventually { feature.state == .ready(endpoint) }
+
+    #expect(await verifier.callCount == 1)
+  }
+
+  @Test("canceling manual local HTTP returns to the populated editor without a request")
+  func cancelingManualLocalHTTPReturnsToEditor() async throws {
+    let verifier = ImmediateVerifier(result: .ready)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: InMemoryVerifiedEndpointStore()
+    )
+    let enteredAddress = "http://192.168.1.20/a/very/long/reverse/proxy/path"
+    let endpoint = try NamaEndpoint(enteredAddress)
+    feature.address = enteredAddress
+
+    feature.submit()
+    #expect(feature.state == .confirmingHTTP(endpoint, .entry))
+    feature.cancel()
+
+    #expect(feature.address == enteredAddress)
+    #expect(feature.state == .editing(validationError: nil))
+    #expect(await verifier.callCount == 0)
+  }
+
   @Test(
     "a completed status persists the endpoint and becomes an honest terminal state",
     arguments: [true, false]
@@ -255,6 +299,57 @@ struct ConnectionRestorationTests {
 
     #expect(feature.address.isEmpty)
     #expect(await verifier.callCount == 1)
+  }
+
+  @Test("canceling local HTTP restoration pauses the saved endpoint without a request")
+  func cancelingLocalHTTPRestorationPausesEndpoint() async throws {
+    let endpoint = try NamaEndpoint("http://192.168.1.20/reverse-proxy")
+    let store = InMemoryVerifiedEndpointStore(endpoint: endpoint)
+    let verifier = ImmediateVerifier(result: .ready)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
+
+    feature.restoreSavedEndpoint()
+    await eventually { feature.state == .confirmingHTTP(endpoint, .restoration) }
+
+    #expect(await verifier.callCount == 0)
+    feature.cancel()
+
+    #expect(feature.state == .pausedHTTPRestoration(endpoint))
+    #expect(feature.state.actions == [.continueWithoutHTTPS, .changeEndpoint])
+    #expect(await verifier.callCount == 0)
+    #expect(await store.endpoint == endpoint)
+  }
+
+  @Test("local HTTP acknowledgement survives restoration failure and Retry")
+  func localHTTPAcknowledgementSurvivesRetry() async throws {
+    let endpoint = try NamaEndpoint("http://nama.local")
+    let store = InMemoryVerifiedEndpointStore(endpoint: endpoint)
+    let verifier = ManualVerifier()
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
+
+    feature.restoreSavedEndpoint()
+    await eventually { feature.state == .confirmingHTTP(endpoint, .restoration) }
+    feature.cancel()
+    feature.continueWithoutHTTPS()
+    await eventually { await verifier.callCount == 1 }
+    await verifier.resolve(call: 0, with: .failure(.cannotConnect))
+    await eventually { feature.state == .failed(endpoint, .cannotConnect) }
+
+    feature.retry()
+    await eventually { await verifier.callCount == 2 }
+
+    #expect(feature.state == .verifying(endpoint))
+    await verifier.resolve(call: 1, with: .ready)
+    await eventually { feature.state == .ready(endpoint) }
+    #expect(await store.endpoint == endpoint)
   }
 
   @Test("legacy forbidden HTTP restoration stays visible and never reaches verification")

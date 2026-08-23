@@ -49,6 +49,10 @@ nonisolated struct NamaEndpoint: Hashable, Sendable {
     url.absoluteString
   }
 
+  var usesUnencryptedHTTP: Bool {
+    url.scheme == "http"
+  }
+
   init(_ input: String) throws {
     let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
     guard var components = URLComponents(string: trimmed),
