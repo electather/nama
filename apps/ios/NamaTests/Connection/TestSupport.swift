@@ -68,6 +68,7 @@ actor ManualVerifier: ConnectionVerifying {
 actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
   private var restoredEndpoint: RestoredNamaEndpoint?
   private var generation: UInt64 = 0
+  private var acknowledgedLocalHTTPEndpoint: NamaEndpoint?
 
   var endpoint: NamaEndpoint? {
     guard case .eligible(let endpoint)? = restoredEndpoint else {
@@ -85,7 +86,11 @@ actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
   }
 
   func snapshot() -> VerifiedEndpointStoreSnapshot {
-    VerifiedEndpointStoreSnapshot(endpoint: restoredEndpoint, generation: generation)
+    VerifiedEndpointStoreSnapshot(
+      endpoint: restoredEndpoint,
+      generation: generation,
+      acknowledgedLocalHTTPEndpoint: acknowledgedLocalHTTPEndpoint
+    )
   }
 
   func save(
@@ -96,6 +101,7 @@ actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
       return false
     }
     restoredEndpoint = .eligible(endpoint)
+    acknowledgedLocalHTTPEndpoint = endpoint.usesUnencryptedHTTP ? endpoint : nil
     return true
   }
 
@@ -106,6 +112,7 @@ actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
   func clear() {
     generation &+= 1
     restoredEndpoint = nil
+    acknowledgedLocalHTTPEndpoint = nil
   }
 }
 

@@ -43,7 +43,7 @@
           actionButtons(feature.state.actions)
         }
 
-      case .verifying(let endpoint):
+      case .checkingHTTPAcknowledgement(let endpoint), .verifying(let endpoint):
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           NamaDiscoveryContent(feature: feature)
           addressField

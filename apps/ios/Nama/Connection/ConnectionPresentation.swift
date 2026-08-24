@@ -118,7 +118,7 @@ nonisolated extension ConnectionState {
     case .confirmingHTTP:
       [.cancel, .continueWithoutHTTPS]
 
-    case .verifying:
+    case .checkingHTTPAcknowledgement, .verifying:
       [.connect, .cancel, .changeEndpoint]
 
     case .ready, .requiresHTTPS:
@@ -134,7 +134,7 @@ nonisolated extension ConnectionState {
 
   var televisionFocus: TelevisionConnectionFocus {
     switch self {
-    case .editing, .verifying:
+    case .editing, .checkingHTTPAcknowledgement, .verifying:
       .address
 
     case .confirmingHTTP:
@@ -154,8 +154,9 @@ nonisolated extension ConnectionState {
   var showsUnencryptedHTTPWarning: Bool {
     let endpoint: NamaEndpoint
     switch self {
-    case .confirmingHTTP(let value, _), .verifying(let value), .ready(let value),
-      .setupRequired(let value), .failed(let value, _), .pausedHTTPRestoration(let value):
+    case .checkingHTTPAcknowledgement(let value), .confirmingHTTP(let value, _),
+      .verifying(let value), .ready(let value), .setupRequired(let value),
+      .failed(let value, _), .pausedHTTPRestoration(let value):
       endpoint = value
 
     case .editing, .requiresHTTPS:

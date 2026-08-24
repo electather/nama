@@ -67,7 +67,9 @@ struct ConnectionDiscoveryTests {
     feature.select(expectedCandidates[0])
 
     feature.addressDidChange()
-    #expect(feature.state == .confirmingHTTP(record.endpoint, .entry))
+    await eventually {
+      feature.state == .confirmingHTTP(record.endpoint, .entry)
+    }
     #expect(await verifier.endpoints.isEmpty)
 
     feature.cancel()
