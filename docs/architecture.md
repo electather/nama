@@ -68,14 +68,21 @@ connection tracer on iOS, iPadOS, tvOS, and macOS. Its connection surface keeps
 manual HTTP(S) endpoint entry available beside explicit `_nama._tcp` LAN
 discovery. `NamaEndpoint` admits HTTPS or lexically approved local HTTP without
 DNS resolution, so manual entry, discovery, retry, and restoration reject every
-other HTTP destination before verification. A foreground-scoped `NWBrowser`
-reconciles only transport-eligible advertisements by normalized endpoint and
-never contacts or selects a candidate without a person choosing it. The app
-persists only the last successfully verified canonical endpoint in
-`UserDefaults` and reverifies it once per window after launch. Safe failures
-retain the endpoint; a legacy forbidden HTTP value remains visible in a blocked
-HTTPS-required state until explicit Change Endpoint. Local-HTTP consent and
-transport hardening, Pairing, and all media behavior remain unimplemented.
+other HTTP destination before verification. Before the first request to any
+permitted local HTTP endpoint, manual entry, discovery, and restoration require
+explicit confirmation. Cancelling returns each ingress path to its safe source
+state; continuing retains acknowledgement through failures and retries in that
+active flow. Every selected local HTTP state carries a text, symbol, and
+accessibility warning.
+
+A foreground-scoped `NWBrowser` reconciles only transport-eligible
+advertisements by normalized endpoint and never contacts or selects a candidate
+without a person choosing it. The app persists only the last successfully
+verified canonical endpoint in `UserDefaults` and reverifies it once per window
+after launch. Safe failures retain the endpoint; a legacy forbidden HTTP value
+remains visible in a blocked HTTPS-required state until explicit Change
+Endpoint. Persistent HTTP acknowledgement, remaining transport hardening,
+Pairing, and all media behavior remain unimplemented.
 
 ## Architectural decision records
 

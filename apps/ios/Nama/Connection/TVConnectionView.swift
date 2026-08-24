@@ -32,6 +32,17 @@
           actionButtons(feature.state.actions)
         }
 
+      case .confirmingHTTP(let endpoint, _), .pausedHTTPRestoration(let endpoint):
+        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+          Text(LocalHTTPConfirmationCopy.title)
+            .font(.largeTitle)
+          Text(LocalHTTPConfirmationCopy.message)
+            .fixedSize(horizontal: false, vertical: true)
+          TVEndpointValue(endpoint: endpoint)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
+          actionButtons(feature.state.actions)
+        }
+
       case .verifying(let endpoint):
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           NamaDiscoveryContent(feature: feature)
@@ -40,6 +51,7 @@
             ProgressView()
             TVEndpointValue(endpoint: endpoint)
           }
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
           actionButtons(feature.state.actions)
         }
 
@@ -48,6 +60,7 @@
           Text("Nama is ready")
             .font(.largeTitle)
           TVEndpointValue(endpoint: endpoint)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
           actionButtons(feature.state.actions)
         }
 
@@ -58,6 +71,7 @@
           TVEndpointValue(endpoint: endpoint)
           Text("Run `nama setup` from a trusted computer, then try again.")
             .foregroundStyle(.secondary)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
           actionButtons(feature.state.actions)
         }
 
@@ -66,6 +80,7 @@
           Text(failure.message)
             .font(.title2)
           TVEndpointValue(endpoint: endpoint)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
           actionButtons(feature.state.actions)
         }
 
@@ -120,6 +135,13 @@
         }
         .focused($focusedControl, equals: .cancel)
 
+      case .continueWithoutHTTPS:
+        Button("Continue") {
+          feature.continueWithoutHTTPS()
+        }
+        .buttonStyle(.borderedProminent)
+        .focused($focusedControl, equals: .continueWithoutHTTPS)
+
       case .retry:
         Button("Retry") {
           feature.retry()
@@ -138,16 +160,7 @@
     }
 
     private var preferredFocus: Focus? {
-      switch feature.state {
-      case .editing, .verifying:
-        .address
-
-      case .ready, .requiresHTTPS:
-        .changeEndpoint
-
-      case .setupRequired, .failed:
-        .retry
-      }
+      Focus(feature.state.televisionFocus)
     }
 
     private enum Layout {
@@ -162,8 +175,34 @@
       case address
       case connect
       case cancel
+      case continueWithoutHTTPS
       case retry
       case changeEndpoint
+
+      init(_ focus: TelevisionConnectionFocus) {
+        switch focus {
+        case .address:
+          self = .address
+
+        case .action(let action):
+          switch action {
+          case .connect:
+            self = .connect
+
+          case .cancel:
+            self = .cancel
+
+          case .continueWithoutHTTPS:
+            self = .continueWithoutHTTPS
+
+          case .retry:
+            self = .retry
+
+          case .changeEndpoint:
+            self = .changeEndpoint
+          }
+        }
+      }
     }
   }
 

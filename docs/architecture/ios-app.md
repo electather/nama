@@ -1,10 +1,11 @@
 # Universal Apple application
 
 Status: the universal SwiftUI target, manual-connection tracer, endpoint
-transport eligibility, explicit foreground LAN discovery, and verified endpoint
-restoration are implemented. Device pairing, consumer media behavior, and
-product playback remain target
-work. This note labels implemented, target, and deferred behavior explicitly;
+transport eligibility, explicit per-flow permitted local-HTTP confirmation,
+persistent selected-endpoint warning, foreground LAN discovery, and verified
+endpoint restoration are implemented. Device pairing, consumer media behavior,
+and product playback remain target work. This note labels implemented, target,
+and deferred behavior explicitly;
 a target invariant is required architecture, not a claim that its runtime
 exists.
 
@@ -63,7 +64,9 @@ optional LAN discovery, and verified endpoint restoration:
 - Initial scanning lasts two seconds before an empty state. The browser remains
   active so later candidates appear immediately, and removal of the final
   candidate returns directly to empty.
-- Selecting a candidate invokes the same verifier as manual submission.
+- Selecting an HTTPS candidate invokes the same verifier as HTTPS manual
+  submission. Selecting permitted local HTTP first enters confirmation; Continue
+  invokes that shared verifier, while Cancel returns to the candidate list.
   Selection replacement cancels the prior attempt, while later advertisement
   removal does not cancel verification of the selected endpoint.
 - `NamaSetupStatusVerifier` calls generated `SetupService.GetStatus` once
@@ -75,7 +78,8 @@ optional LAN discovery, and verified endpoint restoration:
 - The async `UserDefaultsVerifiedEndpointStore` actor retains only the last
   successfully verified canonical endpoint. Each window activates restoration
   once after SwiftUI installs its feature state, avoiding I/O from disposable
-  view initializers while reusing the manual verification states. A legacy
+  view initializers while reusing the manual verification states. A restored
+  permitted local HTTP endpoint enters confirmation before contact. A legacy
   forbidden HTTP value is retained as display-only recovery data rather than
   constructed as a `NamaEndpoint`.
 - Ready and setup-required results conditionally save against the preference
@@ -84,55 +88,52 @@ optional LAN discovery, and verified endpoint restoration:
   Endpoint cancels local work, advances the installation-wide generation, and
   clears the preference so an older completion in another window cannot
   restore it.
-- The `@MainActor @Observable` feature owns editing, HTTPS-required, verifying,
-  ready, setup-required, safe verification failure, and discovery presentation
-  states. Forbidden manual HTTP remains editable, and a blocked restored value
-  offers only Change Endpoint. The feature rejects stale verification and
-  discovery completion by attempt identity.
+- Local HTTP acknowledgement remains in the selected feature flow through safe
+  failures and explicit Retry. It is not yet persisted, so later restoration
+  asks again before contact.
+- The `@MainActor @Observable` feature owns editing, local-HTTP confirmation,
+  paused HTTP restoration, HTTPS-required, verifying, ready, setup-required,
+  safe verification failure, and discovery presentation states. Forbidden
+  manual HTTP remains editable, and a blocked restored value offers only Change
+  Endpoint. The feature rejects stale verification and discovery completion by
+  attempt identity.
 - Leaving the foreground or closing the surface cancels active discovery and
   only an active verification while preserving terminal verification state.
   Local task cancellation is silent; a remote Connect `canceled` response is a
   visible cannot-connect failure.
 - iPhone, iPad, and Mac use the shared native form presentation. Apple TV uses
-  a focus-specific scrolling presentation over the same feature state.
-  Platform-specific permission guidance exists only where Apple exposes the
-  Local Network privacy state.
+  a focus-specific scrolling presentation over the same feature state. Every
+  selected local HTTP state shows the unencrypted connection through text,
+  symbol, and explicit accessibility semantics. Platform-specific permission
+  guidance exists only where Apple exposes the Local Network privacy state.
 - The app declares `_nama._tcp` and its Local Network purpose in its partial
   Info property list without a multicast entitlement. The macOS build uses App
   Sandbox with outgoing network-client access only.
-
-The Swift Testing target covers endpoint normalization, TXT parsing, canonical
-candidate reconciliation, duplicate and removal behavior, discovery lifecycle
-and timing, explicit selection, endpoint preference contents, clearing,
-cross-window invalidation, explicit one-time restoration, successful and failed
-restoration, verification replacement and cancellation, request construction
-and client metadata, redirect refusal, unary-only transport enforcement, safe
-failure mapping, state transitions, retry, stale completions, and presentation
-actions. `check:ios` lints Swift formatting, runs
-the test target through its macOS host, and performs signing-disabled iOS, tvOS,
-and macOS builds. These checks do not prove physical-device privacy prompts,
-focus, accessibility, or playback behavior.
-
-This baseline implements endpoint eligibility and forbidden-HTTP recovery.
-Local-HTTP consent and acknowledgement, persistent unencrypted warnings, proxy
-bypass, and the local-networking ATS exception remain target work.
 
 The Swift Testing target covers endpoint normalization and address-class
 boundaries, forbidden-HTTP discovery suppression, TXT parsing, canonical
 candidate reconciliation, duplicate and removal behavior, discovery lifecycle
 and timing, explicit selection, endpoint preference contents, blocked legacy
 restoration, clearing, cross-window invalidation, explicit one-time
-restoration, successful and failed restoration, verification replacement and
-cancellation, request construction and client metadata, safe failure mapping,
-state transitions, retry, stale completions, and presentation actions.
-`check:ios` lints Swift formatting, runs the test target through its macOS host,
-and performs signing-disabled iOS, tvOS, and macOS builds. These checks do not
-prove physical-device privacy prompts, focus, accessibility, or playback
-behavior.
+restoration, successful and failed restoration, local-HTTP confirmation and
+source-specific cancellation, verifier admission, acknowledgement across
+failure and Retry, verification replacement and cancellation, request
+construction and client metadata, redirect refusal, unary-only transport
+enforcement, safe failure mapping, state transitions, stale completions, long
+endpoint presentation state, localized copy, warning semantics, presentation
+actions, and television focus intent. `check:ios` lints Swift formatting, runs
+the test target through its macOS host, and performs signing-disabled iOS, tvOS,
+and macOS builds. These checks do not prove physical-device privacy prompts,
+focus, accessibility, or playback behavior.
 
-The implemented source does not yet contain local-HTTP consent or transport
-hardening, Keychain Device credentials, Pairing, Home, Library, Details, Watch
-State, or Playback behavior.
+This baseline implements endpoint eligibility, per-flow local-HTTP consent,
+persistent selected-endpoint warnings, and forbidden-HTTP recovery.
+Endpoint-bound persistent acknowledgement, proxy bypass, and the local-networking
+ATS exception remain target work.
+
+The implemented source does not yet contain persisted local-HTTP
+acknowledgement or remaining transport hardening, Keychain Device credentials,
+Pairing, Home, Library, Details, Watch State, or Playback behavior.
 
 ## Target runtime topology
 
