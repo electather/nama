@@ -491,11 +491,15 @@ details, and safe field details into closed feature failures. Unexpected
 defects expose only an allowlisted correlation ID where useful. Feature owners,
 not a global error presenter, decide recovery presentation.
 
-Structured logging uses allowlisted fields and categories owned by each feature
-or adapter. Logs never contain request or response bodies, arbitrary headers,
-credentials, polling tokens, raw generated messages, unrestricted endpoint
-input, locator URLs, locator headers, or provider failures. No analytics or
-telemetry backend is added without a current accepted use case.
+Nama-owned structured logging uses allowlisted fields and categories owned by
+each feature or adapter. It never contains request or response bodies,
+arbitrary headers, credentials, polling tokens, raw generated messages,
+unrestricted endpoint input, locator material, or provider failures.
+[ADR-0032](../adr/0032-aetherengine-mvp-security-exception.md) permits the
+selected engine's own local Release logs to contain complete short-lived
+locator URLs during the MVP; the app never persists, uploads, or exposes those
+engine logs. No analytics or telemetry backend is added without a current
+accepted use case.
 
 ## Media data and presentation
 
@@ -576,11 +580,11 @@ services or credentials.
 
 ## Playback boundary
 
-[ADR-0012](../adr/0012-single-playback-engine-adapter.md) confines the selected
-engine to one concrete Nama-owned adapter. The adapter is the only module
-allowed to import the engine. Engine views, publishers, tracks, cues, errors,
-and configuration types never cross into another feature or the public RPC
-layer.
+[ADR-0012](../adr/0012-single-playback-engine-adapter.md) confines AetherEngine
+`6.21.0` to one concrete Nama-owned adapter. The module containing `NamaPlayer`
+and its `NamaPlayerSurface` is the only one allowed to import the engine.
+Engine views, publishers, tracks, cues, errors, and configuration types never
+cross into another feature or the public RPC layer.
 
 The adapter exposes Nama-owned values:
 
@@ -598,11 +602,15 @@ is not a user-visible failure. Native and software rendering surfaces may
 switch inside the adapter, but the adapter remains the sole engine lifecycle
 owner.
 
-The architecture does not select an engine before one exact revision passes the
-source, locator-security, logging, licensing, media, distribution, and
-physical-device gates below. It adds neither a lowest-common-denominator player
-interface nor a multi-engine factory. AetherEngine `6.21.0` remains ineligible
-under the recorded source-review findings.
+A locator expiry is not refreshed inside the engine. The coordinator closes the
+old playback session, replans and opens at the current clamped position, and
+supplies one complete replacement request; the newer load owns all locator,
+header, redirect, track, and rendering state.
+
+[ADR-0032](../adr/0032-aetherengine-mvp-security-exception.md) selects
+AetherEngine `6.21.0` and requires its exact source revision and complete
+resolved dependency closure to remain pinned. The adapter adds neither a
+lowest-common-denominator player interface nor a multi-engine factory.
 
 ### Locator and logging invariants
 
@@ -611,21 +619,25 @@ direct-delivery security boundary. Media travels directly from the provider to
 the client. The core is not a media relay, and an on-device loopback bridge used
 by a player does not change that boundary.
 
-- Locators and locator headers are session-memory-only. Never persist or place
-  them in logs, errors, analytics, diagnostics, metadata, defaults, or
-  Keychain.
-- Custom locator headers apply only to the locator's exact normalized
-  scheme/host/effective-port origin. A redirect never widens that scope.
-- Enforce the same rule independently for every HLS playlist, variant,
-  rendition, segment, key, subtitle, and redirect request.
-- Follow only origins present in the validated `allowed_redirect_origins`
-  allowlist, without forwarding origin-scoped headers to a changed origin.
-- Normalize engine and network failures into a closed, secret-free Nama error
-  model.
+- Nama-owned locator values and headers are session-memory-only. Never persist,
+  upload, or place them in Nama-owned logs, errors, analytics, diagnostics,
+  metadata, defaults, or Keychain. The selected engine's local Release logs may
+  contain complete short-lived locator URLs under ADR-0032's MVP exception.
+- Follow only origins present in the core-validated
+  `allowed_redirect_origins` allowlist. Each value is an exact normalized
+  scheme/host/effective-port origin.
+- Locator headers target the locator's original normalized origin. During the
+  MVP, AetherEngine may replay them when an HLS subrequest or redirect moves to
+  another allowed origin. Enforce the allowlist independently for every
+  playlist, variant, rendition, segment, key, subtitle, and redirect request.
+- The core never supplies administrator, Device, or reusable provider-account
+  credentials in a locator. Normalize engine and network failures into a
+  closed, secret-free Nama error model.
 
-An engine that cannot enforce these rules internally is ineligible. Removing
-all headers, marking secrets private after interpolation, or sanitizing only at
-the app boundary is not an acceptable workaround.
+An engine or adapter that permits a destination outside the validated allowlist
+remains ineligible. ADR-0032 defers only Release locator-URL redaction and
+header stripping on an allowed-origin change; it does not make other locator
+rules advisory.
 
 ### Player interaction invariants
 
@@ -645,20 +657,23 @@ the app boundary is not an acceptable workaround.
 
 ### Engine acceptance
 
-Before product playback depends on an engine:
+Before product playback depends on AetherEngine:
 
-1. Pin and inspect the exact source revision, including redirect, HLS
-   subrequest, logging, error, and locator-refresh behavior on iOS, tvOS, and
-   macOS.
-2. Keep engine imports confined to the adapter and test Nama-owned mapping,
-   lifecycle, track selection, platform interaction, and redaction behavior.
-3. Exercise SDR, HDR10, Dolby Vision, multichannel audio, text and image
-   subtitles, seeking, track switching, redirects, expiry, and recovery on
-   representative physical iPhone or iPad, Apple TV, and Mac hardware. Display
-   switching and home-theater audio claims require the actual Apple TV,
-   display, and audio route.
-4. Verify Release logs and network captures contain no locator, query secret,
-   header, or cross-origin credential replay on every supported platform.
+1. Pin `6.21.0` and its complete resolved dependency closure. Record source and
+   artifact checksums, build configuration, and the two accepted ADR-0032
+   limitations.
+2. Keep engine imports confined to `NamaPlayer` and `NamaPlayerSurface`, and
+   test the complete Nama-owned request, state, clock, lifecycle, track,
+   rendering, replacement-load, and failure mapping.
+3. Play one known-good SDR HLS fixture through `NamaPlayer` on representative
+   physical iPhone or iPad, Apple TV, and Mac hardware. Issue #39 owns
+   capability and fallback evidence; issue #40 owns the full media and
+   interaction matrix.
+4. Inspect Release logs and network captures on every supported platform.
+   Record the accepted local locator-URL logging and allowed-origin header
+   replay, and verify there is no request to a non-allowlisted destination,
+   Nama-owned locator logging, persistence, upload, or locator-bearing user
+   error.
 5. Inspect signed artifacts, linkage, bundled media libraries, notices,
    corresponding source, and relinking obligations before distribution.
 

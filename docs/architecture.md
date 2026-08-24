@@ -128,13 +128,14 @@ Accepted ADRs record only the choices and rationale below; their linked living a
 29. [ADR-0029 — Require Apple platform version 26](adr/0029-apple-platform-26-minimum.md)
 30. [ADR-0030 — Keep one active pairing per Apple app installation](adr/0030-one-active-apple-pairing.md)
 31. [ADR-0031 — Separate Device credential verification from Pairing delivery](adr/0031-separate-device-verification-from-pairing-delivery.md)
+32. [ADR-0032 — Use AetherEngine 6.21.0 with a bounded MVP security exception](adr/0032-aetherengine-mvp-security-exception.md)
 
 ## Invariants
 
 1. The core is the source of truth for Nama-owned user and watch state; plugins never become hidden databases. See [ADR-0006](adr/0006-stateless-supervised-plugin-subprocesses.md), [ADR-0022](adr/0022-canonical-provider-neutral-media-model.md), and [ADR-0023](adr/0023-canonical-watch-state-reconciliation.md).
 2. Remote provider resource IDs, errors, SDK types, and provider-specific consumer shapes stop at plugin boundaries. Installed provider type IDs and schema-driven configuration are authenticated Nama management resources; public consumers otherwise see Nama concepts. See [ADR-0005](adr/0005-provider-neutral-public-api.md) and [ADR-0019](adr/0019-restricted-schema-driven-provider-configuration.md).
 3. Protobuf is the source of truth for every supported client, CLI, and plugin RPC; authentication is not a second client SDK. See [ADR-0003](adr/0003-protobuf-connectrpc-boundary.md), [ADR-0004](adr/0004-independent-public-plugin-protobuf-packages.md), and [ADR-0007](adr/0007-private-better-auth-adapter.md).
-4. Media bytes do not pass through the core in normal playback. Locators remain origin-scoped and short-lived. See [ADR-0013](adr/0013-origin-scoped-short-lived-locators.md).
+4. Media bytes do not pass through the core in normal playback. Locators remain short-lived and restricted to core-validated redirect origins; the selected Apple MVP engine carries the bounded logging and header-replay exceptions recorded in ADR-0032. See [ADR-0013](adr/0013-origin-scoped-short-lived-locators.md) and [ADR-0032](adr/0032-aetherengine-mvp-security-exception.md).
 5. A plugin may be restarted or replaced without losing correctness; schedules, credentials, cursors, and reconciliation state belong to the core. See [ADR-0006](adr/0006-stateless-supervised-plugin-subprocesses.md) and [ADR-0024](adr/0024-best-effort-provider-scans.md).
 6. Playback-engine types do not escape the universal Apple app's playback adapter. See [ADR-0012](adr/0012-single-playback-engine-adapter.md).
 7. New infrastructure or abstraction requires a current use case, not only a plausible future one.

@@ -142,7 +142,24 @@ Each plugin returns its build version and contract major from `PluginService.Get
 - Request and response bodies, authorization headers, locator headers, passwords, bootstrap tokens, polling tokens, provider configuration, and opaque plugin session context are never logged.
 - Locators are absolute HTTP or HTTPS URLs. Any attached headers are allowlisted by the core and valid only for the referenced artwork or playback session.
 
-`nama.api.v1.HttpHeader` contains `name` and `value`. It is used only inside artwork, media, and external-subtitle locator responses and applies only to the locator URL's origin. Every locator also contains repeated `allowed_redirect_origins`, validated by the core. Each value is a normalized scheme/host/port origin with no credentials, path, query, or fragment. Clients enforce that allowlist and never forward any custom locator header when the origin changes. A client or playback engine that cannot enforce both rules is ineligible for adoption; it does not turn either rule into advisory behavior. Exact-source review rejected tvOS AetherEngine `6.21.0`: it replays unrecognized custom headers across origins, preserves recognized credentials for same-host HTTP-to-HTTPS redirects without comparing ports, and publicly logs complete locator URLs in Release. `nama.api.v1.BearerCredential` contains `token` and `expires_at`. Credential-bearing responses are sensitive in their entirety.
+`nama.api.v1.HttpHeader` contains `name` and `value`. It is used only inside
+artwork, media, and external-subtitle locator responses. The core associates
+each header with the locator URL's origin. Every locator also contains repeated
+`allowed_redirect_origins`, validated by the core; each value is a normalized
+scheme/host/port origin with no credentials, path, query, or fragment.
+
+Clients reject every destination outside that allowlist. Clients normally strip
+custom locator headers when the normalized origin changes. Under
+[ADR-0032](../adr/0032-aetherengine-mvp-security-exception.md), the selected
+Apple MVP engine may replay locator headers only to another origin already in
+the core-validated allowlist and may write complete short-lived locator URLs to
+its own local Release logs. The exception never permits a non-allowlisted
+destination, a reusable provider-account credential, Nama-owned locator
+logging or persistence, or a locator-bearing user error. A client or engine
+that cannot enforce the redirect allowlist remains ineligible.
+
+`nama.api.v1.BearerCredential` contains `token` and `expires_at`.
+Credential-bearing responses are sensitive in their entirety.
 
 ## Public services
 
@@ -689,7 +706,17 @@ Opening the same operation ID with the same request returns the same logical ses
 
 Under [ADR-0013](../adr/0013-origin-scoped-short-lived-locators.md), the locator authorizes only the planned item/session and expires no earlier than the expected runtime plus a bounded grace period. It never contains an administrator, device, provider API-key, or reusable provider-account credential. Media bytes then flow from the provider to the Apple client without traversing the core.
 
-Milestone 1 must prove that Jellyfin can satisfy this security boundary on real hardware. Current documented Jellyfin APIs do not themselves promise an item- or session-scoped media credential, so this is a release-blocking proof rather than an assumed implementation detail. Jellyfin does not advertise usable `PLAYBACK_OPEN` to the core until that proof passes. Milestone 4 repeats the transport, logging, and redirect proof on iOS, tvOS, and macOS. The same rule applies to every later provider, including Plex. If a provider cannot safely constrain direct authorization, playback returns to security design; Nama does not ship a reusable provider credential or silently become a proxy.
+Milestone 1 must prove that Jellyfin can satisfy this security boundary on real
+hardware. Current documented Jellyfin APIs do not themselves promise an item-
+or session-scoped media credential, so this is a release-blocking proof rather
+than an assumed implementation detail. Jellyfin does not advertise usable
+`PLAYBACK_OPEN` to the core until that proof passes. Milestone 4 repeats the
+transport and redirect proof on iOS, tvOS, and macOS, records ADR-0032's two
+accepted Apple-engine limitations, and verifies that neither limitation widens
+the core's credential scope or redirect allowlist. The same rule applies to
+every later provider, including Plex. If a provider cannot safely constrain
+direct authorization, playback returns to security design; Nama does not ship a
+reusable provider credential or silently become a proxy.
 
 ### ReportPlayback
 
@@ -931,7 +958,13 @@ The package-local `OpenPlaybackRequest` contains `operation_id`, plugin plan ID,
 
 `session_context` may contain provider state or secrets. The core keeps it only for the active session, never logs it, and supplies it unchanged to later plugin processes if the original process restarts. It is never copied to a public response.
 
-The core exposes only `SESSION` or sufficiently constrained `MEDIA_ITEM` leases. It rejects `PROVIDER_ACCOUNT` authorization and any header, URL, or redirect origin that is reusable or unsafe outside the planned item. Redirect origins proposed by a plugin are untrusted and must match core configuration; public clients strip custom headers on every origin change. A plugin cannot weaken this rule by advertising a capability.
+The core exposes only `SESSION` or sufficiently constrained `MEDIA_ITEM` leases.
+It rejects `PROVIDER_ACCOUNT` authorization and any header, URL, or redirect
+origin that is reusable or unsafe outside the planned item. Redirect origins
+proposed by a plugin are untrusted and must match core configuration; public
+clients enforce that allowlist and apply the shared locator-header rules,
+including ADR-0032's bounded Apple MVP exception. A plugin cannot weaken this
+rule by advertising a capability.
 
 Plugin report fields mirror public event ID, sequence, state, position, duration, observed selected tracks, and optional diagnostic client time, plus the private session context. Selected track references must belong to the active lease and are observations rather than switch commands. Plugin close fields mirror final position, duration, reason, operation ID, and optional diagnostic client time, plus the context.
 
@@ -1318,7 +1351,7 @@ These flows define how the services compose. They are not authorization shortcut
 This design follows established provider and television behavior without adopting provider wire shapes:
 
 - Apple tvOS interaction and media-detail expectations: [Designing for tvOS](https://developer.apple.com/design/human-interface-guidelines/designing-for-tvos/) and [Apple TV movie and show information](https://support.apple.com/en-ca/guide/tv/atvb0d26676e/tvos).
-- AetherEngine's player surface and separate sidecar-subtitle URL/header handling: [README](https://github.com/superuser404notfound/aetherengine/blob/main/README.md) and [format support](https://github.com/superuser404notfound/aetherengine/blob/main/docs/formats.md).
+- AetherEngine `6.21.0` player-surface and separate sidecar-subtitle URL/header handling: [README](https://github.com/superuser404notfound/AetherEngine/blob/6.21.0/README.md) and [format support](https://github.com/superuser404notfound/AetherEngine/blob/6.21.0/docs/formats.md).
 - Better Auth's sign-out implementation, whose caught session-deletion failure must not become a successful Nama response: [sign-out source](https://github.com/better-auth/better-auth/blob/v1.6.26/packages/better-auth/src/api/routes/sign-out.ts#L34-L49). Nama's runtime confirms revocation with an authoritative follow-up lookup.
 - Jellyfin's documented surface: [stable OpenAPI](https://api.jellyfin.org/openapi/jellyfin-openapi-stable.json). Current source was also inspected at commit [`1fbd873`](https://github.com/jellyfin/jellyfin/tree/1fbd8739292cce610231be93daf43368733edf63) to distinguish implementation behavior from API guarantees.
 - Plex's documented surface: [metadata](https://developer.plex.tv/pms/#section/API-Info/Metadata-Response), [pagination](https://developer.plex.tv/pms/#section/API-Info/Pagination), [scrobble](https://developer.plex.tv/pms/#tag/Timeline/operation/putScrobble), and [timeline reporting](https://developer.plex.tv/pms/#tag/Timeline/operation/timelinePostSlash).

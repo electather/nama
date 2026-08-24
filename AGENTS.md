@@ -44,13 +44,13 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Give PostgreSQL activity-state integration polls enough wall-clock time for a cold `nama-server` process to reach migrations under the parallel repository check; a one-second poll expires before lock admission.
 - Do not treat generated Protobuf or Connect round trips as Nama behavior tests. Verify schema format/lint/build, generation drift, consumer compilation, and handwritten Nama policy or adapter behavior.
 - For `google.protobuf.Struct` field-level Protovalidate CEL, use `this.size()`, not `this.fields.size()`; Protovalidate-ES exposes the WKT as a JSON object and the latter fails at runtime.
-- Do not build product playback on AetherEngine `6.21.0`: source review rejected it because it leaks locator headers across origins and logs locator URLs in Release.
+- Pin AetherEngine `6.21.0` and its complete resolved dependency closure. ADR-0032 permits only its local Release locator-URL logging and locator-header replay between core-allowlisted origins for the MVP; never widen that exception.
 - Do not claim generic Apple-platform builds prove runtime behavior; inspect the actual universal application on every affected platform and keep unrun physical-device rows explicit.
 - Scope each universal-app connection feature to one window; when its scene leaves the foreground, cancel only the active verification, and treat a remote Connect `canceled` response as a safe visible failure rather than local cancellation.
 - Keep array-valued `NSBonjourServices` in the Apple app's partial Info property list; generated `INFOPLIST_KEY_*` build settings do not emit the Bonjour array.
 - Never copy a restored endpoint into the live manual-entry binding; its `onChange` intentionally cancels active verification as a user edit.
 - Keep Nama endpoint RPCs on the Nama-owned unary URLSession transport; Connect's default URLSession client follows redirects before Nama can reject their targets.
-- Do not expose provider resource IDs, SDK types, raw provider errors, configuration secrets, reusable credentials, locator URLs, or locator headers across the public boundary or in logs.
+- Do not expose provider resource IDs, SDK types, raw provider errors, configuration secrets, reusable credentials, locator URLs, or locator headers across the public boundary.
 - Hold each provider-instance supervisor admission fence through durable update resolution; release it only after pinning the committed or recovered revision, and leave it closed while durable truth remains ambiguous.
 - Route every provider-instance core activity through the provider-management scoped activity gate; never replace the production deletion fence with a no-op or test-only hook.
 - Retain a provider delete's scoped activity fence while its database result is ambiguous; only an exact retry with the same Administrator, operation ID, and expected revision may reuse that ownership.
@@ -140,7 +140,7 @@ Fail early, fail clearly, and never swallow a failure.
 
 - At every trust boundary, validate input and return the documented Connect code plus stable Nama reason and safe field details where applicable.
 - Normalize external failures at the adapter boundary. Unexpected defects remain internal and expose only a correlation ID to clients.
-- Use structured, allowlisted log fields. Never log request bodies, arbitrary headers, passwords, tokens, database URLs, configuration values, provider credentials, locator URLs, or locator headers.
+- Use structured, allowlisted log fields. Nama-owned code never logs request bodies, arbitrary headers, passwords, tokens, database URLs, configuration values, provider credentials, locator URLs, or locator headers. ADR-0032's AetherEngine-local MVP exception is not persisted, uploaded, or exposed through product diagnostics.
 - The API p95 budget is 200ms. Once runnable server traffic exists, propose and implement a concrete latency-monitoring path before claiming the budget is met; do not add a metrics backend speculatively today.
 - Filter, sort, aggregate, and paginate in PostgreSQL when persistence exists. Avoid unbounded reads, `select *`, and N+1 request paths.
 
