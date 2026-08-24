@@ -29,6 +29,8 @@ struct DiscoveryTests {
       "http://nama.local",
       "http://nama.example.com",
       "http://100.64.0.1",
+      "http://[::ffff:8.8.8.8]",
+      "http://127.0.0.1.sslip.io",
     ].map { endpoint in
       NamaDiscoveryRecord(
         serviceName: endpoint,
@@ -41,6 +43,8 @@ struct DiscoveryTests {
     #expect(records[2] != nil)
     #expect(records[3] == nil)
     #expect(records[4] == nil)
+    #expect(records[5] == nil)
+    #expect(records[6] == nil)
   }
 
   @Test("ignores missing, malformed, empty, and non-UTF-8 URL TXT values")

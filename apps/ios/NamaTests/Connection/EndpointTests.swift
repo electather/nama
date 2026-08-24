@@ -5,6 +5,13 @@ import Testing
 
 @Suite("Nama endpoint normalization")
 struct EndpointTests {
+  private func localName(finalLabelLength: Int) -> String {
+    "\(String(repeating: "a", count: 63))."
+      + "\(String(repeating: "b", count: 63))."
+      + "\(String(repeating: "c", count: 63))."
+      + "\(String(repeating: "d", count: finalLabelLength)).local"
+  }
+
   @Test(
     "normalizes scheme, host, default port, and trailing slash",
     arguments: [
@@ -53,6 +60,11 @@ struct EndpointTests {
       ("http://[FE80::1%25en0]", "http://[fe80::1%25en0]/"),
       ("http://[::ffff:10.0.0.1]", "http://[::ffff:10.0.0.1]/"),
       ("http://[::ffff:192.168.1.1]", "http://[::ffff:192.168.1.1]/"),
+      ("http://[::ffff:127.0.0.1]", "http://[::ffff:127.0.0.1]/"),
+      ("http://[::ffff:169.254.255.255]", "http://[::ffff:169.254.255.255]/"),
+      ("http://[::ffff:172.16.0.0]", "http://[::ffff:172.16.0.0]/"),
+      ("http://[::ffff:172.31.255.255]", "http://[::ffff:172.31.255.255]/"),
+      ("http://[febf::1%25en0]", "http://[febf::1%25en0]/"),
       ("http://LOCALHOST", "http://localhost/"),
       ("http://api.Localhost", "http://api.localhost/"),
       ("http://nama.Local", "http://nama.local/"),
@@ -61,6 +73,40 @@ struct EndpointTests {
   )
   func acceptsLocalHTTP(input: String, expected: String) throws {
     #expect(try NamaEndpoint(input).absoluteString == expected)
+  }
+
+  @Test("accepts maximum local DNS label and name lengths over HTTP")
+  func acceptsMaximumLocalNameLengths() throws {
+    let maximumLabelHost = "\(String(repeating: "a", count: 63)).local"
+    let maximumNameHost = localName(finalLabelLength: 55)
+
+    #expect(maximumNameHost.utf8.count == 253)
+    #expect(
+      try NamaEndpoint("http://\(maximumLabelHost)").absoluteString
+        == "http://\(maximumLabelHost)/"
+    )
+    #expect(
+      try NamaEndpoint("http://\(maximumNameHost)").absoluteString
+        == "http://\(maximumNameHost)/"
+    )
+  }
+
+  @Test("requires HTTPS beyond local DNS label and name length boundaries")
+  func rejectsOversizedLocalNames() {
+    let oversizedLabelHost = "\(String(repeating: "a", count: 64)).local"
+    let oversizedNameHost = localName(finalLabelLength: 56)
+
+    #expect(oversizedNameHost.utf8.count == 254)
+    for host in [oversizedLabelHost, oversizedNameHost] {
+      do {
+        _ = try NamaEndpoint("http://\(host)")
+        Issue.record("Expected \(host) to require HTTPS")
+      } catch let error as EndpointValidationError {
+        #expect(error == .requiresHTTPS)
+      } catch {
+        Issue.record("Expected a typed endpoint validation error")
+      }
+    }
   }
 
   @Test(
@@ -95,6 +141,14 @@ struct EndpointTests {
       "http://[2001:4860:4860::8888]",
       "http://[::ffff:8.8.8.8]",
       "http://[::ffff:100.64.0.1]",
+      "http://[::ffff:126.255.255.255]",
+      "http://[::ffff:128.0.0.0]",
+      "http://[::ffff:169.253.255.255]",
+      "http://[::ffff:169.255.0.0]",
+      "http://[::ffff:172.15.255.255]",
+      "http://[::ffff:172.32.0.0]",
+      "http://[::ffff:192.167.255.255]",
+      "http://[::ffff:192.169.0.0]",
       "http://example.com",
       "http://nama",
       "http://local",
@@ -102,6 +156,10 @@ struct EndpointTests {
       "http://api.localhost.example",
       "http://nama.local.example",
       "http://127.0.0.1.nip.io",
+      "http://127.0.0.1.sslip.io",
+      "http://192-168-1-20.nip.io",
+      "http://localhost.localdomain",
+      "http://ip6-localhost",
       "http://notlocal",
       "http://-nama.local",
       "http://nama-.local",
@@ -152,6 +210,8 @@ struct EndpointTests {
       "http://[::1%25lo0]",
       "http://[fd00::1%25en0]",
       "https://[2001:db8::1%25en0]",
+      "http://[fe7f::1%25en0]",
+      "http://[fec0::1%25en0]",
       "http://[fe80::1%25]",
       "http://192.168.1.1%25en0",
     ]

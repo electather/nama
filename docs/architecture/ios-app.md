@@ -119,23 +119,29 @@ optional LAN discovery, and verified endpoint restoration:
   multicast entitlement, arbitrary loads, or static per-domain exceptions. The
   macOS build uses App Sandbox with outgoing network-client access only.
 
-The Swift Testing target covers endpoint normalization and address-class
-boundaries, forbidden-HTTP discovery suppression, TXT parsing, canonical
-candidate reconciliation, duplicate and removal behavior, discovery lifecycle
-and timing, explicit selection, endpoint preference contents, blocked legacy
-restoration, clearing, generation and stale-completion races, explicit one-time
-restoration, successful and failed restoration, local-HTTP confirmation and
-source-specific cancellation, exact endpoint-bound acknowledgement,
-cross-window visibility, partial and mismatched preference recovery,
-acknowledgement across failure and Retry, verification replacement and
-cancellation, proxy selection, request construction and client metadata,
-redirect refusal, unary-only transport enforcement, safe failure mapping, state
-transitions, stale completions, long endpoint presentation state, localized
-copy, warning semantics, presentation actions, and television focus intent.
-`check:ios` lints Swift formatting, runs the test target through its macOS host,
-and performs signing-disabled iOS, tvOS, and macOS builds. These checks do not
-prove physical-device privacy prompts, focus, accessibility, or playback
-behavior.
+The Swift Testing target covers endpoint normalization and every approved and
+forbidden address-class boundary, mapped and scoped IPv6, local DNS label and
+name-length boundaries, and DNS-alias rejection. It also covers forbidden-HTTP
+discovery suppression, TXT parsing, canonical candidate reconciliation,
+duplicate and removal behavior, discovery lifecycle and timing, explicit
+selection, endpoint preference contents, blocked legacy restoration, clearing,
+generation and stale-completion races, explicit one-time restoration,
+successful and failed restoration, local-HTTP confirmation and source-specific
+cancellation, exact endpoint-bound acknowledgement, cross-window visibility,
+partial and mismatched preference recovery, acknowledgement across failure and
+Retry, verification replacement and cancellation, proxy selection, request
+construction and client metadata, redirect refusal, unary-only transport
+enforcement, safe failure mapping, state transitions, stale completions, long
+endpoint presentation state, localized copy, warning semantics, presentation
+actions, and television focus intent.
+
+Self-contained previews render discovery outcomes, local-HTTP confirmation with
+a long endpoint, persistent ready and failure warnings, and blocked
+restoration. They make the states available for actual-surface inspection but
+are not runtime evidence. `check:ios` lints Swift formatting, runs the test
+target through its macOS host, inspects the built ATS shape, and performs
+signing-disabled iOS, tvOS, and macOS builds. These checks do not prove
+physical-device privacy prompts, focus, accessibility, or playback behavior.
 
 This baseline implements endpoint eligibility, endpoint-bound persistent
 local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP
@@ -446,25 +452,46 @@ The app does not use a global `NWPathMonitor` to gate requests. A path
 observation cannot prove that one Nama endpoint is reachable, trusted,
 compatible, or healthy; bounded endpoint operations remain authoritative.
 
-### Connection runtime acceptance
+### Connection verification evidence
 
-When Connection target behavior lands, runtime acceptance requires:
+The implemented Connection boundary has these committed automated owners:
 
-- LAN discovery on a physical iPhone, physical iPad, Apple TV, and Mac;
-- manual HTTPS and permitted local-HTTP entry for LAN, VPN, and reverse-proxy
-  deployments on all four surfaces;
-- HTTP confirmation, persistent warning, cancellation, legacy restoration, long
-  endpoint, and accessibility behavior on all four actual surfaces;
-- focused coverage of every allowed and forbidden address class, local-name
-  boundary, discovery suppression, proxy selection, and redirect refusal;
-- public HTTP rejection before transport creation on every ingress path;
-- local-network and ATS allow, deny, and later-settings-change behavior on
-  physical iPhone, physical iPad, Apple TV, and Mac;
-- foreground cancellation, candidate deduplication, manual fallback, and
-  pairing replacement behavior on their actual surfaces; and
-- every unrun physical-device row remaining explicitly unverified.
+| Boundary | Automated owner | Covered behavior |
+| --- | --- | --- |
+| Endpoint eligibility | `EndpointTests` | Every approved IPv4 and IPv6 range and adjacent forbidden boundary, mapped IPv6, scoped link-local IPv6, proper local-name label and total-length boundaries, suffix lookalikes, trailing dots, public and special-use addresses, and DNS aliases remain lexical-only policy decisions. |
+| Ingress admission | `ConnectionFeatureTests`, `DiscoveryTests`, and `ConnectionRecoveryTests` | Manual and restored forbidden HTTP never invoke the verifier; discovery cannot construct a candidate from forbidden HTTP; Retry and Continue cannot escape blocked restoration. |
+| Consent and persistence | `ConnectionFeatureTests`, `ConnectionRecoveryTests`, `VerifiedEndpointStoreTests`, and `ConnectionPresentationTests` | Exact acknowledgement, source-specific cancellation, warning retention, migration, generation fencing, and cross-window visibility pass through the shared feature and store seams. |
+| Transport | `SetupStatusVerifierTests` | Redirect targets are not contacted, redirect metadata stays inside URLSession, local HTTP selects a proxy-free copy, HTTPS preserves the supplied normal configuration, and cancellation reaches both schemes. Platform trust remains URLSession-owned; the redirect delegate implements no authentication-challenge override. |
+| Application declarations | `check:ios` | Built iOS, tvOS, and macOS property lists must enable only ATS local networking and must omit arbitrary loads and static exception domains. |
 
-Simulator behavior is not local-network privacy proof.
+The previews and platform builds above remain inspection and compilation aids,
+not runtime evidence. Local acceptance has exercised only the scenarios
+recorded below; every omitted requirement remains **Unverified**.
+
+Actual-surface inspection on each row also requires source-specific
+cancellation, foreground cancellation, candidate deduplication, and manual
+fallback. Pairing replacement remains target behavior without a current
+implementation or runtime claim and is therefore **Unverified** on every
+actual surface.
+
+| Surface | Required inspection | Recorded result |
+| --- | --- | --- |
+| iPhone | Confirmation, persistent warning, blocked restoration, long endpoint, touch and keyboard focus, Dynamic Type, VoiceOver labels and order, contrast, and non-color-only meaning | **Partially verified** — an iPhone 17 Pro simulator rendered blocked restoration and the persistent failed local-HTTP warning with a long endpoint. The warning remained legible through the largest Dynamic Type category with Increase Contrast enabled and communicated its meaning through text and symbol. Confirmation, input focus, operation, and VoiceOver order remain **Unverified**. |
+| iPad | The iPhone inspection plus window resizing and cross-window policy behavior | **Partially verified** — an iPad Pro 13-inch simulator rendered the persistent failed local-HTTP warning and long endpoint without clipping. The remaining inspection is **Unverified**. |
+| Apple TV | Confirmation, persistent warning, blocked restoration, long endpoint, remote focus and operation, VoiceOver labels and order, contrast, and non-color-only meaning; Dynamic Type is not applicable | **Partially verified** — an Apple TV 4K simulator rendered the persistent failed local-HTTP warning and long endpoint with visible initial focus on Retry. Confirmation, blocked restoration, remote operation, and VoiceOver order remain **Unverified**. |
+| Mac | Confirmation, persistent warning, blocked restoration, long endpoint, keyboard and pointer focus, window and cross-window behavior, Dynamic Type, VoiceOver labels and order, contrast, and non-color-only meaning | **Partially verified** — a locally Apple Development-signed sandboxed build on Mac hardware rendered confirmation, approved local HTTP against a live Nama server, the resulting setup-required warning, and the failed long-endpoint state. The accessibility tree exposed the visible labels and actions. Blocked restoration, keyboard and pointer focus, cross-window behavior, Dynamic Type, and VoiceOver order remain **Unverified**. |
+
+Simulator behavior, shared source, and built declarations are not Local Network
+privacy, ATS, LAN, or proxy-routing proof. Physical iPhone, iPad, and Apple TV
+hardware were unavailable for this acceptance run and remain explicitly
+**Unverified**:
+
+| Hardware | Required runtime exercise | Recorded result |
+| --- | --- | --- |
+| Physical iPhone | `_nama._tcp` discovery, approved local HTTP, manual HTTPS and HTTP for LAN, VPN, and reverse-proxy deployments, and Local Network allow, deny, and later-Settings behavior | **Unverified** |
+| Physical iPad | `_nama._tcp` discovery, approved local HTTP, manual HTTPS and HTTP for LAN, VPN, and reverse-proxy deployments, and Local Network allow, deny, and later-Settings behavior | **Unverified** |
+| Apple TV | `_nama._tcp` discovery, approved local HTTP, and manual HTTPS and HTTP for LAN, VPN, and reverse-proxy deployments; the iPhone/iPad Local Network prompt is not exposed | **Unverified** |
+| Mac hardware | `_nama._tcp` discovery, approved local HTTP, manual HTTPS and HTTP for LAN, VPN, and reverse-proxy deployments, and exposed Local Network privacy behavior | **Partially verified** — a native Nama publisher advertised the exact local HTTP endpoint through Apple `NWBrowser`; the signed sandboxed app confirmed that endpoint, contacted its live `SetupService`, and displayed the setup-required result with the persistent HTTP warning. Manual HTTPS, VPN and reverse-proxy HTTP, and Local Network privacy-state behavior remain **Unverified**. |
 
 ## Networking, compatibility, and failures
 
