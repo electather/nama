@@ -128,8 +128,8 @@ focus, accessibility, or playback behavior.
 
 This baseline implements endpoint eligibility, per-flow local-HTTP consent,
 persistent selected-endpoint warnings, and forbidden-HTTP recovery.
-Endpoint-bound persistent acknowledgement, proxy bypass, redirect refusal, and
-the local-networking ATS exception remain target work.
+Endpoint-bound persistent acknowledgement, proxy bypass, and the local-networking
+ATS exception remain target work.
 
 The implemented source does not yet contain persisted local-HTTP
 acknowledgement or remaining transport hardening, Keychain Device credentials,

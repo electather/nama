@@ -38,6 +38,7 @@ nonisolated struct NamaEndpoint: Hashable, Sendable {
   private static let asciiHyphen: UInt8 = 0x2D
   private static let asciiLowercaseLetterRange: ClosedRange<UInt8> = 0x61...0x7A
   private static let asciiDigitRange: ClosedRange<UInt8> = 0x30...0x39
+
   private enum LocalName {
     case unrelated
     case emptyNamespace
@@ -194,9 +195,11 @@ nonisolated struct NamaEndpoint: Hashable, Sendable {
     switch localName(in: host) {
     case .localhost:
       return true
+
     case .qualified(let prefix):
       return prefix.split(separator: ".", omittingEmptySubsequences: false)
         .allSatisfy(isProperDNSLabel)
+
     case .emptyNamespace, .unrelated:
       return false
     }

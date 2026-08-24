@@ -50,21 +50,15 @@ struct ConnectionPresentationTests {
   }
 
   @MainActor
-  @Test("the warning and a long endpoint render through the shared form presentation")
-  func warningAndLongEndpointRender() throws {
-    let endpoint = try NamaEndpoint(
+  @Test("a long endpoint expands the production endpoint control instead of truncating")
+  func longEndpointExpandsEndpointControl() throws {
+    let shortEndpoint = try NamaEndpoint("http://nama.local")
+    let longEndpoint = try NamaEndpoint(
       "http://nama.local/a/very/long/reverse/proxy/path/that/must/remain/visible/to/the/person/"
     )
-    let renderer = ImageRenderer(
-      content: VStack(alignment: .leading) {
-        HTTPConnectionWarning(isPresented: true)
-        EndpointValue(endpoint: endpoint)
-      }
-      .frame(width: 320, alignment: .leading)
-      .padding()
-    )
-
-    #expect(renderer.cgImage != nil)
+    let shortHeight = try renderedEndpointHeight(for: shortEndpoint)
+    let longHeight = try renderedEndpointHeight(for: longEndpoint)
+    #expect(longHeight > shortHeight)
   }
 
   @Test("every selected local HTTP state exposes the unencrypted warning")
@@ -88,7 +82,7 @@ struct ConnectionPresentationTests {
       .pausedHTTPRestoration(httpsEndpoint),
     ]
 
-    #expect(localHTTPStates.allSatisfy(\.showsUnencryptedHTTPWarning))
+    #expect(!localHTTPStates.map(\.showsUnencryptedHTTPWarning).contains(false))
     #expect(httpsStates.allSatisfy { !$0.showsUnencryptedHTTPWarning })
     #expect(!ConnectionState.editing(validationError: nil).showsUnencryptedHTTPWarning)
     #expect(
@@ -196,4 +190,15 @@ struct ConnectionPresentationTests {
         == .action(.continueWithoutHTTPS)
     )
   }
+}
+
+@MainActor
+private func renderedEndpointHeight(for endpoint: NamaEndpoint) throws -> Int {
+  let presentationWidth: CGFloat = 320
+  let renderer = ImageRenderer(
+    content: EndpointValue(endpoint: endpoint)
+      .frame(width: presentationWidth, alignment: .leading)
+  )
+  let image = try #require(renderer.cgImage)
+  return image.height
 }

@@ -108,3 +108,17 @@ actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
     restoredEndpoint = nil
   }
 }
+
+actor ImmediateVerifier: ConnectionVerifying {
+  private(set) var callCount = 0
+  private let result: ConnectionVerificationResult
+
+  init(result: ConnectionVerificationResult) {
+    self.result = result
+  }
+
+  func verify(_: NamaEndpoint) -> ConnectionVerificationResult {
+    callCount += 1
+    return result
+  }
+}

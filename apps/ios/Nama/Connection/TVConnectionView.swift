@@ -188,12 +188,16 @@
           switch action {
           case .connect:
             self = .connect
+
           case .cancel:
             self = .cancel
+
           case .continueWithoutHTTPS:
             self = .continueWithoutHTTPS
+
           case .retry:
             self = .retry
+
           case .changeEndpoint:
             self = .changeEndpoint
           }

@@ -30,6 +30,9 @@
 		100000000000000000000021 /* VerifiedEndpointStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000024 /* VerifiedEndpointStore.swift */; };
 		100000000000000000000022 /* ConnectionRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000025 /* ConnectionRecoveryTests.swift */; };
 		100000000000000000000023 /* ConnectionDiscoverySession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000026 /* ConnectionDiscoverySession.swift */; };
+		100000000000000000000024 /* ConnectionFeatureFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000027 /* ConnectionFeatureFlow.swift */; };
+		100000000000000000000025 /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000028 /* ConnectionState.swift */; };
+		100000000000000000000026 /* ConnectionVerification.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000029 /* ConnectionVerification.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,6 +72,9 @@
 		200000000000000000000024 /* VerifiedEndpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifiedEndpointStore.swift; sourceTree = "<group>"; };
 		200000000000000000000025 /* ConnectionRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionRecoveryTests.swift; sourceTree = "<group>"; };
 		200000000000000000000026 /* ConnectionDiscoverySession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionDiscoverySession.swift; sourceTree = "<group>"; };
+		200000000000000000000027 /* ConnectionFeatureFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionFeatureFlow.swift; sourceTree = "<group>"; };
+		200000000000000000000028 /* ConnectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionState.swift; sourceTree = "<group>"; };
+		200000000000000000000029 /* ConnectionVerification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionVerification.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +141,9 @@
 				200000000000000000000021 /* DiscoveryView.swift */,
 				200000000000000000000024 /* VerifiedEndpointStore.swift */,
 				200000000000000000000007 /* ConnectionFeature.swift */,
+				200000000000000000000027 /* ConnectionFeatureFlow.swift */,
+				200000000000000000000028 /* ConnectionState.swift */,
+				200000000000000000000029 /* ConnectionVerification.swift */,
 				200000000000000000000009 /* SetupStatusVerifier.swift */,
 				200000000000000000000011 /* ConnectionPresentation.swift */,
 				200000000000000000000012 /* ConnectionView.swift */,
@@ -283,6 +292,9 @@
 				100000000000000000000018 /* DiscoveryView.swift in Sources */,
 				100000000000000000000021 /* VerifiedEndpointStore.swift in Sources */,
 				100000000000000000000006 /* ConnectionFeature.swift in Sources */,
+				100000000000000000000024 /* ConnectionFeatureFlow.swift in Sources */,
+				100000000000000000000025 /* ConnectionState.swift in Sources */,
+				100000000000000000000026 /* ConnectionVerification.swift in Sources */,
 				100000000000000000000008 /* SetupStatusVerifier.swift in Sources */,
 				100000000000000000000010 /* ConnectionPresentation.swift in Sources */,
 				100000000000000000000011 /* ConnectionView.swift in Sources */,
