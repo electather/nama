@@ -269,11 +269,10 @@ struct SetupStatusVerifierTests {
       "ProxyAutoDiscoveryEnable": true,
       "SOCKSEnable": true,
     ]
-    configuration.proxyConfigurations = [
-      ProxyConfiguration(
-        httpCONNECTProxy: .hostPort(host: "configured-proxy.invalid", port: 8_080)
-      ),
-    ]
+    let proxyConfiguration = ProxyConfiguration(
+      httpCONNECTProxy: .hostPort(host: "configured-proxy.invalid", port: 8_080)
+    )
+    configuration.proxyConfigurations = [proxyConfiguration]
     return configuration
   }
 }
