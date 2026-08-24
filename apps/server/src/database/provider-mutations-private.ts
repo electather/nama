@@ -3,6 +3,10 @@ import { and, eq, inArray, max, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
 import {
+  catalogItemIdsOwnedByProvider,
+  removeOrphanedLibraryEntries,
+} from "./catalog-hierarchy-private.ts";
+import {
   assertCredentialCompleteness,
   installationConfigurationSchema,
 } from "./provider-credentials-private.ts";
@@ -735,9 +739,14 @@ const deleteInstance = (
           if (current.enabled) {
             return false;
           }
+          const catalogItemIds = await catalogItemIdsOwnedByProvider(
+            transaction,
+            input.providerInstanceId,
+          );
           await transaction
             .delete(providerInstance)
             .where(eq(providerInstance.id, input.providerInstanceId));
+          await removeOrphanedLibraryEntries(transaction, catalogItemIds);
           await transaction.insert(providerOperationResult).values({
             administratorUserId: input.operation.administratorUserId,
             method: input.operation.method,

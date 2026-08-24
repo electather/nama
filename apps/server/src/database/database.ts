@@ -6,6 +6,8 @@ import { Context, Data, Effect, Layer, Redacted } from "effect";
 import { Pool } from "pg";
 
 import { Config } from "../config/config.ts";
+import { makeCatalogPersistence } from "./catalog-persistence.ts";
+import type { CatalogPersistence } from "./catalog-persistence.ts";
 import { reconcileDatabaseInitialization } from "./initialization.ts";
 import type { DatabaseInitialization } from "./initialization.ts";
 import { makeProviderPersistence } from "./provider-persistence.ts";
@@ -35,6 +37,7 @@ interface DatabaseAuthentication {
 
 interface DatabaseService {
   readonly authentication: DatabaseAuthentication;
+  readonly catalog: CatalogPersistence;
   readonly initialization: DatabaseInitialization;
   readonly checkReadiness: Effect.Effect<boolean>;
   readonly providers: ProviderPersistence;
@@ -133,6 +136,7 @@ const makeDatabase = (migrationsFolder: string) =>
           completeInitialization(database, administratorUserId),
         database,
       },
+      catalog: makeCatalogPersistence(database),
       checkReadiness: makeReadinessProbe(pool),
       initialization,
       providers: providerPersistence.service,
