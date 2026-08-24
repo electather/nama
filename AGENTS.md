@@ -52,6 +52,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Never copy a restored endpoint into the live manual-entry binding; its `onChange` intentionally cancels active verification as a user edit.
 - Keep Nama endpoint RPCs on the Nama-owned unary URLSession transport; Connect's default URLSession client follows redirects before Nama can reject their targets.
 - Do not expose provider resource IDs, SDK types, raw provider errors, configuration secrets, reusable credentials, locator URLs, or locator headers across the public boundary.
+- Commit each accepted Pairing poll's PostgreSQL-time `next_poll_at` before surfacing an approved credential-delivery failure; never let the expected failure roll back the durable gate.
 - Hold each provider-instance supervisor admission fence through durable update resolution; release it only after pinning the committed or recovered revision, and leave it closed while durable truth remains ambiguous.
 - Route every provider-instance core activity through the provider-management scoped activity gate; never replace the production deletion fence with a no-op or test-only hook.
 - Retain a provider delete's scoped activity fence while its database result is ambiguous; only an exact retry with the same Administrator, operation ID, and expected revision may reuse that ownership.

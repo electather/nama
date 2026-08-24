@@ -159,6 +159,35 @@ it.live("revokes a Device convergently and removes every credential recovery pat
   ),
 );
 
+it.live("advances the polling gate before reporting unavailable approved credentials", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    useDatabase(databaseUrl, productionMigrations, (database) =>
+      Effect.gen(function* unavailableCredentialPollingTest() {
+        yield* withPool(databaseUrl, (pool) =>
+          insertFixtureUser(pool, ADMINISTRATOR_ID, ADMINISTRATOR_EMAIL),
+        );
+        const pairing = yield* database.pairings.beginPairing({ displayName: "Bedroom TV" });
+        const approval = yield* database.pairings.approvePairing({
+          administratorUserId: ADMINISTRATOR_ID,
+          operationId: "approve-unavailable-credential-pairing",
+          userCode: pairing.userCode,
+        });
+        yield* database.pairings.revokeDevice(approval.device.id);
+        yield* makePollEligible(databaseUrl, pairing.id);
+
+        const unavailable = yield* database.pairings
+          .pollPairing({ pairingId: pairing.id, pollingToken: pairing.pollingToken })
+          .pipe(Effect.flip);
+        expect(unavailable).toMatchObject({ _tag: "PairingCredentialUnavailable" });
+
+        const repeated = yield* database.pairings
+          .pollPairing({ pairingId: pairing.id, pollingToken: pairing.pollingToken })
+          .pipe(Effect.flip);
+        expect(repeated).toMatchObject({ _tag: "PairingPollRateLimited" });
+      }),
+    ),
+  ),
+);
 it.live("fails closed for moved tampered and unsupported delivery envelopes", () =>
   withIsolatedDatabase((databaseUrl) =>
     useDatabase(databaseUrl, productionMigrations, (database) =>

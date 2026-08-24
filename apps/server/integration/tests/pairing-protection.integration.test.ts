@@ -9,6 +9,7 @@ import {
   useDatabase,
   withPool,
 } from "./database.test-support.ts";
+import { makePollEligible } from "./pairing-persistence.test-support.ts";
 import { withIsolatedDatabase } from "./postgres.test-support.ts";
 
 const ADMINISTRATOR_ID = "pairing-protection-administrator";
@@ -32,14 +33,7 @@ it.live("fails closed and redacts sentinels after a master-key change", () =>
             userCode: pairing.userCode,
           };
           yield* database.pairings.approvePairing(approvalInput);
-          yield* withPool(databaseUrl, (pool) =>
-            Effect.promise(() =>
-              pool.query(
-                "UPDATE pairing_request SET next_poll_at = transaction_timestamp() WHERE id = $1",
-                [pairing.id],
-              ),
-            ),
-          );
+          yield* makePollEligible(databaseUrl, pairing.id);
           const status = yield* database.pairings.pollPairing({
             pairingId: pairing.id,
             pollingToken: pairing.pollingToken,

@@ -3,10 +3,14 @@ import { Effect } from "effect";
 
 import { cleanupExpiredPairingRecords, lockPairingState } from "./pairing-cleanup-private.ts";
 import { approvedPairingStatus } from "./pairing-delivery-private.ts";
-import type { StoredPollingRequest } from "./pairing-delivery-private.ts";
+import type {
+  ApprovedPairingStatusInput,
+  StoredPollingRequest,
+} from "./pairing-delivery-private.ts";
 import {
   PairingAuthenticationFailed,
   PairingCapacityReached,
+  PairingCredentialUnavailable,
   PairingPollRateLimited,
   normalizePairingFailure,
 } from "./pairing-persistence-model-private.ts";
@@ -44,6 +48,23 @@ interface PairingCreation {
 interface PairingInsertInput extends PairingCreation {
   readonly normalizedCode: string;
 }
+
+type PairingPollTransactionResult =
+  | Readonly<{ readonly failure: InstanceType<typeof PairingCredentialUnavailable> }>
+  | Readonly<{ readonly result: PairingPollResult }>;
+
+const approvedPollTransactionResult = async (
+  input: ApprovedPairingStatusInput,
+): Promise<PairingPollTransactionResult> => {
+  try {
+    return { result: await approvedPairingStatus(input) };
+  } catch (error) {
+    if (error instanceof PairingCredentialUnavailable) {
+      return { failure: error };
+    }
+    throw error;
+  }
+};
 
 const admitPairing = async (transaction: PairingTransaction): Promise<void> => {
   await lockPairingState(transaction);
@@ -169,30 +190,37 @@ const lockPollingRequest = async (
   return row;
 };
 
-const pollPairingTransaction = (
+const pollPairingTransaction = async (
   context: PairingPersistenceContext,
   input: PollPairingInput,
   pollingTokenDigest: Buffer,
-): Promise<PairingPollResult> =>
-  context.database.transaction(async (transaction) => {
-    const row = await lockPollingRequest(transaction, input, pollingTokenDigest);
-    if (row.expired) {
-      return { status: "expired" };
-    }
-    if (!row.pollEligible) {
-      throw new PairingPollRateLimited({ retryAt: row.nextPollAt });
-    }
-    await transaction
-      .update(pairingRequest)
-      .set({
-        nextPollAt: sql`least(${pairingRequest.expiresAt}, transaction_timestamp() + interval '5 seconds')`,
-      })
-      .where(eq(pairingRequest.id, input.pairingId));
-    if (row.status === "pending") {
-      return { status: "pending" };
-    }
-    return approvedPairingStatus({ context, poll: input, row, transaction });
-  });
+): Promise<PairingPollResult> => {
+  const outcome = await context.database.transaction(
+    async (transaction): Promise<PairingPollTransactionResult> => {
+      const row = await lockPollingRequest(transaction, input, pollingTokenDigest);
+      if (row.expired) {
+        return { result: { status: "expired" } };
+      }
+      if (!row.pollEligible) {
+        throw new PairingPollRateLimited({ retryAt: row.nextPollAt });
+      }
+      await transaction
+        .update(pairingRequest)
+        .set({
+          nextPollAt: sql`least(${pairingRequest.expiresAt}, transaction_timestamp() + interval '5 seconds')`,
+        })
+        .where(eq(pairingRequest.id, input.pairingId));
+      if (row.status === "pending") {
+        return { result: { status: "pending" } };
+      }
+      return approvedPollTransactionResult({ context, poll: input, row, transaction });
+    },
+  );
+  if ("failure" in outcome) {
+    throw outcome.failure;
+  }
+  return outcome.result;
+};
 
 const persistPairingPoll = async (
   context: PairingPersistenceContext,

@@ -44,34 +44,34 @@ interface AcquiredPairingPersistence {
   readonly state: PairingCleanupState;
 }
 
-const runCleanup = (database: PairingDatabase, state: PairingCleanupState): Effect.Effect<void> =>
-  Effect.uninterruptible(
-    Effect.tryPromise({
-      catch: pairingPersistenceFailure,
-      try: () => cleanupExpiredPairings(database),
-    }).pipe(
-      Effect.matchEffect({
-        onFailure: () =>
-          Effect.sync(() => {
-            state.healthy = false;
-          }),
-        onSuccess: () =>
-          Effect.sync(() => {
-            state.healthy = true;
-          }),
-      }),
-    ),
+const cleanupPairings = (
+  database: PairingDatabase,
+  state: PairingCleanupState,
+): Effect.Effect<void, PairingPersistenceFailure> =>
+  Effect.tryPromise({
+    catch: pairingPersistenceFailure,
+    try: () => cleanupExpiredPairings(database),
+  }).pipe(
+    Effect.matchEffect({
+      onFailure: (failure) =>
+        Effect.sync(() => {
+          state.healthy = false;
+        }).pipe(Effect.andThen(Effect.fail(failure))),
+      onSuccess: () =>
+        Effect.sync(() => {
+          state.healthy = true;
+        }),
+    }),
   );
 
 const periodicCleanup = (
   database: PairingDatabase,
   state: PairingCleanupState,
   intervalMilliseconds: number,
-) =>
-  Effect.sleep(intervalMilliseconds).pipe(
-    Effect.andThen(runCleanup(database, state)),
-    Effect.forever,
-  );
+) => {
+  const cleanup = cleanupPairings(database, state).pipe(Effect.ignore, Effect.uninterruptible);
+  return Effect.sleep(intervalMilliseconds).pipe(Effect.andThen(cleanup), Effect.forever);
+};
 
 const stopPeriodicCleanup = (fiber: Fiber.Fiber<never>): Effect.Effect<void> =>
   Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber)), Effect.asVoid);
@@ -83,16 +83,7 @@ const makePairingService = (
   const service: PairingPersistence = {
     approvePairing: (input) => approvePairing(context, input),
     beginPairing: (input) => beginPairing(context, input.displayName),
-    cleanupExpired: Effect.tryPromise({
-      catch: () => {
-        state.healthy = false;
-        return pairingPersistenceFailure();
-      },
-      try: async () => {
-        await cleanupExpiredPairings(context.database);
-        state.healthy = true;
-      },
-    }),
+    cleanupExpired: cleanupPairings(context.database, state),
     cleanupHealthy: () => state.healthy,
     pollPairing: (input) => pollPairing(context, input),
     recordDeviceSeen: (deviceId) => recordDeviceSeen(context, deviceId),

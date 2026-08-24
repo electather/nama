@@ -20,7 +20,7 @@ const cleanupExpiredPairingRecords = async (database: PairingExecutor): Promise<
       from ${pairingRequest}
       where expires_at <= transaction_timestamp()
         and delivery_envelope_version is not null
-      order by expires_at, created_at, id
+      order by expires_at, created_at
       limit ${CLEANUP_BATCH_SIZE}
       for update skip locked
     )
@@ -38,7 +38,7 @@ const cleanupExpiredPairingRecords = async (database: PairingExecutor): Promise<
       select id
       from ${pairingRequest}
       where retained_until <= transaction_timestamp()
-      order by retained_until, created_at, id
+      order by retained_until, created_at
       limit ${CLEANUP_BATCH_SIZE}
       for update skip locked
     )
@@ -51,7 +51,7 @@ const cleanupExpiredPairingRecords = async (database: PairingExecutor): Promise<
       select administrator_user_id, method, operation_id
       from ${pairingApprovalResult}
       where expires_at <= transaction_timestamp()
-      order by expires_at, created_at, operation_id
+      order by expires_at, created_at
       limit ${CLEANUP_BATCH_SIZE}
       for update skip locked
     )
