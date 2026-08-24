@@ -151,6 +151,7 @@ private struct DiscoveryCandidateButton: View {
     case candidate
     case permissionDenied
     case failed
+    case requiresHTTPS
 
     static let holdDurationSeconds = 3_600
     static let holdDuration = Duration.seconds(holdDurationSeconds)
@@ -161,6 +162,10 @@ private struct DiscoveryCandidateButton: View {
         preconditionFailure("Preview endpoint must be valid")
       }
     }()
+
+    static let httpsRequiredEndpoint = HTTPSRequiredEndpoint(
+      "http://nama-in-the-living-room-with-an-intentionally-long-hostname.example.com/reverse-proxy/"
+    )
   }
 
   nonisolated private struct PreviewDiscovery: NamaDiscovering {
@@ -186,7 +191,10 @@ private struct DiscoveryCandidateButton: View {
     private var generation: UInt64 = 0
 
     func snapshot() -> VerifiedEndpointStoreSnapshot {
-      VerifiedEndpointStoreSnapshot(endpoint: endpoint, generation: generation)
+      VerifiedEndpointStoreSnapshot(
+        endpoint: endpoint.map(RestoredNamaEndpoint.eligible),
+        generation: generation
+      )
     }
 
     func save(
@@ -214,7 +222,7 @@ private struct DiscoveryCandidateButton: View {
   private func previewFeature(_ preview: DiscoveryPreview) -> ConnectionFeature {
     let event: NamaDiscoveryEvent?
     switch preview {
-    case .inactive, .scanning, .empty:
+    case .inactive, .scanning, .empty, .requiresHTTPS:
       event = nil
 
     case .candidate:
@@ -242,6 +250,12 @@ private struct DiscoveryCandidateButton: View {
       }
       try await Task.sleep(for: DiscoveryPreview.holdDuration)
     }
+
+    if preview == .requiresHTTPS {
+      feature.setPreviewState(.requiresHTTPS(DiscoveryPreview.httpsRequiredEndpoint))
+      return feature
+    }
+
     feature.flowDidEnter()
     if preview != .inactive {
       feature.activateDiscovery()
@@ -272,4 +286,14 @@ private struct DiscoveryCandidateButton: View {
   #Preview("Discovery — Failure") {
     ConnectionRootView(feature: previewFeature(.failed))
   }
+
+  #if os(tvOS)
+    #Preview("HTTPS required — Apple TV") {
+      ConnectionRootView(feature: previewFeature(.requiresHTTPS))
+    }
+  #else
+    #Preview("HTTPS required — Form") {
+      ConnectionRootView(feature: previewFeature(.requiresHTTPS))
+    }
+  #endif
 #endif

@@ -1,8 +1,9 @@
 # Universal Apple application
 
-Status: the universal SwiftUI target, manual-connection tracer, explicit
-foreground LAN discovery, and verified endpoint restoration are implemented.
-Device pairing, consumer media behavior, and product playback remain target
+Status: the universal SwiftUI target, manual-connection tracer, endpoint
+transport eligibility, explicit foreground LAN discovery, and verified endpoint
+restoration are implemented. Device pairing, consumer media behavior, and
+product playback remain target
 work. This note labels implemented, target, and deferred behavior explicitly;
 a target invariant is required architecture, not a claim that its runtime
 exists.
@@ -49,12 +50,13 @@ optional LAN discovery, and verified endpoint restoration:
   Network-framework discovery adapter for each `WindowGroup` window.
 - `NamaEndpoint` accepts an absolute HTTP or HTTPS URL with an explicit scheme
   and non-empty host, no credentials, query, or fragment, and an optional
-  reverse-proxy path prefix. It lowercases the host, removes default ports, and
-  normalizes the path.
+  reverse-proxy path prefix. It normalizes the address and represents only
+  HTTPS or the lexically permitted local-HTTP classes defined under
+  [Connection target](#connection-target), without DNS resolution.
 - `NWBrowser` browses `_nama._tcp` only after explicit activation and only
   while the window is foregrounded. It accepts a result only when TXT `url`
-  normalizes as a `NamaEndpoint`; unknown keys and malformed records are
-  ignored without contacting the advertiser.
+  normalizes as a transport-eligible `NamaEndpoint`; malformed and forbidden
+  HTTP records are ignored without contacting the advertiser.
 - Discovery candidates are keyed and sorted by normalized endpoint, merge
   duplicate records and interfaces, and retain sorted DNS-SD instance names
   only as untrusted secondary display text.
@@ -73,16 +75,20 @@ optional LAN discovery, and verified endpoint restoration:
 - The async `UserDefaultsVerifiedEndpointStore` actor retains only the last
   successfully verified canonical endpoint. Each window activates restoration
   once after SwiftUI installs its feature state, avoiding I/O from disposable
-  view initializers while reusing the manual verification states.
+  view initializers while reusing the manual verification states. A legacy
+  forbidden HTTP value is retained as display-only recovery data rather than
+  constructed as a `NamaEndpoint`.
 - Ready and setup-required results conditionally save against the preference
   generation captured when verification started. Safe failures and local
-  cancellation retain the endpoint; Retry starts one new attempt. Change Server
-  cancels local work, advances the installation-wide generation, and clears the
-  preference so an older completion in another window cannot restore it.
-- The `@MainActor @Observable` feature owns editing, verifying, ready,
-  setup-required, safe verification failure, and discovery presentation
-  states. It rejects stale verification and discovery completion by attempt
-  identity.
+  cancellation retain the endpoint; Retry starts one new attempt. Change
+  Endpoint cancels local work, advances the installation-wide generation, and
+  clears the preference so an older completion in another window cannot
+  restore it.
+- The `@MainActor @Observable` feature owns editing, HTTPS-required, verifying,
+  ready, setup-required, safe verification failure, and discovery presentation
+  states. Forbidden manual HTTP remains editable, and a blocked restored value
+  offers only Change Endpoint. The feature rejects stale verification and
+  discovery completion by attempt identity.
 - Leaving the foreground or closing the surface cancels active discovery and
   only an active verification while preserving terminal verification state.
   Local task cancellation is silent; a remote Connect `canceled` response is a
@@ -107,8 +113,26 @@ the test target through its macOS host, and performs signing-disabled iOS, tvOS,
 and macOS builds. These checks do not prove physical-device privacy prompts,
 focus, accessibility, or playback behavior.
 
-The implemented source does not yet contain Keychain Device credentials,
-Pairing, Home, Library, Details, Watch State, or Playback behavior.
+This baseline implements endpoint eligibility and forbidden-HTTP recovery.
+Local-HTTP consent and acknowledgement, persistent unencrypted warnings, proxy
+bypass, and the local-networking ATS exception remain target work.
+
+The Swift Testing target covers endpoint normalization and address-class
+boundaries, forbidden-HTTP discovery suppression, TXT parsing, canonical
+candidate reconciliation, duplicate and removal behavior, discovery lifecycle
+and timing, explicit selection, endpoint preference contents, blocked legacy
+restoration, clearing, cross-window invalidation, explicit one-time
+restoration, successful and failed restoration, verification replacement and
+cancellation, request construction and client metadata, safe failure mapping,
+state transitions, retry, stale completions, and presentation actions.
+`check:ios` lints Swift formatting, runs the test target through its macOS host,
+and performs signing-disabled iOS, tvOS, and macOS builds. These checks do not
+prove physical-device privacy prompts, focus, accessibility, or playback
+behavior.
+
+The implemented source does not yet contain local-HTTP consent or transport
+hardening, Keychain Device credentials, Pairing, Home, Library, Details, Watch
+State, or Playback behavior.
 
 ## Target runtime topology
 
@@ -236,9 +260,9 @@ Successful ready and setup-required status responses write only the canonical
 endpoint when no later explicit clear has invalidated their preference
 generation. On launch, each Connection window reads the preference once and
 reverifies it through the same bounded request as manual entry. Safe failure and
-cancellation retain the preference. Retry creates one new attempt; Change Server
-cancels local work, invalidates every older window attempt, removes the
-preference, and returns to endpoint selection.
+cancellation retain the preference. Retry creates one new attempt; Change
+Endpoint cancels local work, invalidates every older window attempt, removes
+the preference, and returns to endpoint selection.
 
 A successful pairing writes the Keychain record before updating the convenience
 endpoint. On launch, a paired session comes entirely from the Keychain record.

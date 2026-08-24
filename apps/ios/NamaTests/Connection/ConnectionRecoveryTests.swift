@@ -27,8 +27,8 @@ struct ConnectionRecoveryTests {
     #expect(await verifier.cancellationCount == 1)
   }
 
-  @Test("Change Server prevents Retry while clearing the saved endpoint")
-  func changeServerPreventsRetryDuringClear() async throws {
+  @Test("Change Endpoint prevents Retry while clearing the saved endpoint")
+  func changeEndpointPreventsRetryDuringClear() async throws {
     let endpoint = try NamaEndpoint("https://nama.example.com")
     let store = SuspendingClearEndpointStore(endpoint: endpoint)
     let verifier = ManualVerifier()
@@ -48,7 +48,7 @@ struct ConnectionRecoveryTests {
     await eventually { await store.clearStarted }
     feature.retry()
     await eventually {
-      let isEditing = feature.state == .editing(showsValidationError: false)
+      let isEditing = feature.state == .editing(validationError: nil)
       let retried = await verifier.callCount > 1
       return isEditing || retried
     }
@@ -62,7 +62,7 @@ struct ConnectionRecoveryTests {
     }
 
     #expect(callCount == 1)
-    #expect(feature.state == .editing(showsValidationError: false))
+    #expect(feature.state == .editing(validationError: nil))
     #expect(await store.endpoint == nil)
   }
 }
@@ -81,7 +81,10 @@ private actor SuspendingClearEndpointStore: VerifiedEndpointStoring {
   }
 
   func snapshot() -> VerifiedEndpointStoreSnapshot {
-    VerifiedEndpointStoreSnapshot(endpoint: endpoint, generation: generation)
+    VerifiedEndpointStoreSnapshot(
+      endpoint: endpoint.map(RestoredNamaEndpoint.eligible),
+      generation: generation
+    )
   }
 
   func save(

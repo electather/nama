@@ -1,7 +1,12 @@
 import Foundation
 
+nonisolated enum RestoredNamaEndpoint: Equatable, Sendable {
+  case eligible(NamaEndpoint)
+  case requiresHTTPS(HTTPSRequiredEndpoint)
+}
+
 nonisolated struct VerifiedEndpointStoreSnapshot: Sendable {
-  let endpoint: NamaEndpoint?
+  let endpoint: RestoredNamaEndpoint?
   let generation: UInt64
 }
 
@@ -33,9 +38,7 @@ actor UserDefaultsVerifiedEndpointStore: VerifiedEndpointStoring {
   }
 
   func snapshot() -> VerifiedEndpointStoreSnapshot {
-    let endpoint = defaults.string(forKey: Self.endpointKey).flatMap { value in
-      try? NamaEndpoint(value)
-    }
+    let endpoint = defaults.string(forKey: Self.endpointKey).flatMap(Self.restoredEndpoint)
     return VerifiedEndpointStoreSnapshot(endpoint: endpoint, generation: generation)
   }
 
@@ -57,5 +60,16 @@ actor UserDefaultsVerifiedEndpointStore: VerifiedEndpointStoring {
   func clear() {
     generation &+= 1
     defaults.removeObject(forKey: Self.endpointKey)
+  }
+
+  private static func restoredEndpoint(_ value: String) -> RestoredNamaEndpoint? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    do {
+      return .eligible(try NamaEndpoint(trimmed))
+    } catch let error as EndpointValidationError where error == .requiresHTTPS {
+      return .requiresHTTPS(HTTPSRequiredEndpoint(trimmed))
+    } catch {
+      return nil
+    }
   }
 }

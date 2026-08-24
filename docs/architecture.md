@@ -66,16 +66,16 @@ The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect,
 The universal SwiftUI application consumes the generated public client for one
 connection tracer on iOS, iPadOS, tvOS, and macOS. Its connection surface keeps
 manual HTTP(S) endpoint entry available beside explicit `_nama._tcp` LAN
-discovery. A foreground-scoped `NWBrowser` accepts only structurally valid
-advertised TXT `url` values, reconciles duplicate interfaces by normalized
-endpoint, and never contacts or selects a candidate without a person choosing
-it. Manual, discovered, and restored endpoints share one cancellable ten-second
-setup-status verifier and the same safe ready, setup-required, unavailable,
-transport, and incompatible states. The app persists only the last successfully
-verified canonical endpoint in `UserDefaults` and reverifies it once per window
-after launch. Safe restoration failures retain the endpoint until explicit
-Change Server. Pairing and all media behavior remain
-unimplemented.
+discovery. `NamaEndpoint` admits HTTPS or lexically approved local HTTP without
+DNS resolution, so manual entry, discovery, retry, and restoration reject every
+other HTTP destination before verification. A foreground-scoped `NWBrowser`
+reconciles only transport-eligible advertisements by normalized endpoint and
+never contacts or selects a candidate without a person choosing it. The app
+persists only the last successfully verified canonical endpoint in
+`UserDefaults` and reverifies it once per window after launch. Safe failures
+retain the endpoint; a legacy forbidden HTTP value remains visible in a blocked
+HTTPS-required state until explicit Change Endpoint. Local-HTTP consent and
+transport hardening, Pairing, and all media behavior remain unimplemented.
 
 ## Architectural decision records
 

@@ -37,7 +37,7 @@ struct ConnectionRootView: View {
       case .editing, .verifying:
         "Connect to Nama"
 
-      case .ready, .setupRequired, .failed:
+      case .ready, .setupRequired, .failed, .requiresHTTPS:
         "Nama Endpoint"
       }
     }
@@ -45,8 +45,8 @@ struct ConnectionRootView: View {
     @ViewBuilder
     private var content: some View {
       switch feature.state {
-      case .editing(let showsValidationError):
-        EntryForm(feature: feature, showsValidationError: showsValidationError)
+      case .editing(let validationError):
+        EntryForm(feature: feature, validationError: validationError)
 
       case .verifying(let endpoint):
         VerifyingForm(feature: feature, endpoint: endpoint)
@@ -59,20 +59,23 @@ struct ConnectionRootView: View {
 
       case .failed(let endpoint, let failure):
         FailureForm(feature: feature, endpoint: endpoint, failure: failure)
+
+      case .requiresHTTPS(let endpoint):
+        HTTPSRequiredForm(feature: feature, endpoint: endpoint)
       }
     }
   }
 
   private struct EntryForm: View {
     @Bindable var feature: ConnectionFeature
-    let showsValidationError: Bool
+    let validationError: EndpointValidationError?
 
     var body: some View {
       Form {
         Section {
           NamaDiscoveryContent(feature: feature)
         }
-        AddressFields(feature: feature, showsValidationError: showsValidationError)
+        AddressFields(feature: feature, validationError: validationError)
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
         }
@@ -90,7 +93,7 @@ struct ConnectionRootView: View {
         Section {
           NamaDiscoveryContent(feature: feature)
         }
-        AddressFields(feature: feature, showsValidationError: false)
+        AddressFields(feature: feature, validationError: nil)
         Section {
           ProgressView()
             .frame(maxWidth: .infinity)
@@ -164,9 +167,31 @@ struct ConnectionRootView: View {
     }
   }
 
+  private struct HTTPSRequiredForm: View {
+    let feature: ConnectionFeature
+    let endpoint: HTTPSRequiredEndpoint
+
+    var body: some View {
+      Form {
+        Section {
+          Text(SavedEndpointHTTPSRequiredCopy.title)
+            .font(.headline)
+          Text(SavedEndpointHTTPSRequiredCopy.message)
+            .foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
+          EndpointValue(endpoint: endpoint)
+        }
+        Section {
+          ConnectionActionButtons(feature: feature, actions: feature.state.actions)
+        }
+      }
+      .connectionFormLayout()
+    }
+  }
+
   private struct AddressFields: View {
     @Bindable var feature: ConnectionFeature
-    let showsValidationError: Bool
+    let validationError: EndpointValidationError?
 
     var body: some View {
       Section("Nama endpoint") {
@@ -184,8 +209,8 @@ struct ConnectionRootView: View {
           .onChange(of: feature.address) {
             feature.addressDidChange()
           }
-        if showsValidationError {
-          Text(EndpointValidationError.invalid.message)
+        if let validationError {
+          Text(validationError.message)
             .foregroundStyle(.red)
         }
       }
@@ -228,7 +253,7 @@ struct ConnectionRootView: View {
         .buttonStyle(.borderedProminent)
 
       case .changeEndpoint:
-        Button("Change Server") {
+        Button("Change Endpoint") {
           Task {
             await feature.changeEndpoint()
           }
@@ -238,11 +263,19 @@ struct ConnectionRootView: View {
   }
 
   private struct EndpointValue: View {
-    let endpoint: NamaEndpoint
+    private let address: String
+
+    init(endpoint: NamaEndpoint) {
+      address = endpoint.absoluteString
+    }
+
+    init(endpoint: HTTPSRequiredEndpoint) {
+      address = endpoint.absoluteString
+    }
 
     var body: some View {
       LabeledContent("Endpoint") {
-        Text(endpoint.absoluteString)
+        Text(address)
           .font(.body.monospaced())
           .multilineTextAlignment(.trailing)
           .textSelection(.enabled)

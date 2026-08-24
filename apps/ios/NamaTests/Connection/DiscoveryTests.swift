@@ -21,6 +21,28 @@ struct DiscoveryTests {
     #expect(record?.serviceName == "Living Room")
   }
 
+  @Test("suppresses forbidden HTTP advertisements while retaining eligible endpoints")
+  func enforcesTransportPolicy() {
+    let records = [
+      "https://nama.example.com",
+      "http://192.168.1.20",
+      "http://nama.local",
+      "http://nama.example.com",
+      "http://100.64.0.1",
+    ].map { endpoint in
+      NamaDiscoveryRecord(
+        serviceName: endpoint,
+        txtRecord: NWTXTRecord(["url": endpoint])
+      )
+    }
+
+    #expect(records[0] != nil)
+    #expect(records[1] != nil)
+    #expect(records[2] != nil)
+    #expect(records[3] == nil)
+    #expect(records[4] == nil)
+  }
+
   @Test("ignores missing, malformed, empty, and non-UTF-8 URL TXT values")
   func ignoresMalformedTXTRecords() {
     var nonUTF8Record = NWTXTRecord()

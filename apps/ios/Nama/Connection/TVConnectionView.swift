@@ -19,14 +19,14 @@
     @ViewBuilder
     private var content: some View {
       switch feature.state {
-      case .editing(let showsValidationError):
+      case .editing(let validationError):
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text("Connect to Nama")
             .font(.largeTitle)
           NamaDiscoveryContent(feature: feature)
           addressField
-          if showsValidationError {
-            Text(EndpointValidationError.invalid.message)
+          if let validationError {
+            Text(validationError.message)
               .foregroundStyle(.red)
           }
           actionButtons(feature.state.actions)
@@ -65,6 +65,16 @@
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text(failure.message)
             .font(.title2)
+          TVEndpointValue(endpoint: endpoint)
+          actionButtons(feature.state.actions)
+        }
+
+      case .requiresHTTPS(let endpoint):
+        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+          Text(SavedEndpointHTTPSRequiredCopy.title)
+            .font(.largeTitle)
+          Text(SavedEndpointHTTPSRequiredCopy.message)
+            .foregroundStyle(.red)
           TVEndpointValue(endpoint: endpoint)
           actionButtons(feature.state.actions)
         }
@@ -118,7 +128,7 @@
         .focused($focusedControl, equals: .retry)
 
       case .changeEndpoint:
-        Button("Change Server") {
+        Button("Change Endpoint") {
           Task {
             await feature.changeEndpoint()
           }
@@ -132,7 +142,7 @@
       case .editing, .verifying:
         .address
 
-      case .ready:
+      case .ready, .requiresHTTPS:
         .changeEndpoint
 
       case .setupRequired, .failed:
@@ -158,15 +168,23 @@
   }
 
   private struct TVEndpointValue: View {
-    let endpoint: NamaEndpoint
-
     private static let verticalSpacing: CGFloat = 8
+
+    private let address: String
+
+    init(endpoint: NamaEndpoint) {
+      address = endpoint.absoluteString
+    }
+
+    init(endpoint: HTTPSRequiredEndpoint) {
+      address = endpoint.absoluteString
+    }
 
     var body: some View {
       VStack(alignment: .leading, spacing: Self.verticalSpacing) {
         Text("Endpoint")
           .font(.headline)
-        Text(endpoint.absoluteString)
+        Text(address)
           .font(.body.monospaced())
           .fixedSize(horizontal: false, vertical: true)
       }

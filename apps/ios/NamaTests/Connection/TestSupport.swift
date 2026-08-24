@@ -66,15 +66,26 @@ actor ManualVerifier: ConnectionVerifying {
 }
 
 actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
-  private(set) var endpoint: NamaEndpoint?
+  private var restoredEndpoint: RestoredNamaEndpoint?
   private var generation: UInt64 = 0
 
+  var endpoint: NamaEndpoint? {
+    guard case .eligible(let endpoint)? = restoredEndpoint else {
+      return nil
+    }
+    return endpoint
+  }
+
   init(endpoint: NamaEndpoint? = nil) {
-    self.endpoint = endpoint
+    restoredEndpoint = endpoint.map(RestoredNamaEndpoint.eligible)
+  }
+
+  init(restoredEndpoint: RestoredNamaEndpoint) {
+    self.restoredEndpoint = restoredEndpoint
   }
 
   func snapshot() -> VerifiedEndpointStoreSnapshot {
-    VerifiedEndpointStoreSnapshot(endpoint: endpoint, generation: generation)
+    VerifiedEndpointStoreSnapshot(endpoint: restoredEndpoint, generation: generation)
   }
 
   func save(
@@ -84,7 +95,7 @@ actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
     guard snapshot.generation == generation else {
       return false
     }
-    self.endpoint = endpoint
+    restoredEndpoint = .eligible(endpoint)
     return true
   }
 
@@ -94,6 +105,6 @@ actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
 
   func clear() {
     generation &+= 1
-    endpoint = nil
+    restoredEndpoint = nil
   }
 }

@@ -5,7 +5,7 @@
       "comment" : "Button that cancels the active endpoint verification request.",
       "extractionState" : "manual"
     },
-    "Change Server" : {
+    "Change Endpoint" : {
       "comment" : "Button that clears the verified Nama endpoint and returns to endpoint selection.",
       "extractionState" : "manual"
     },
@@ -33,8 +33,8 @@
       "comment" : "Label for the normalized Nama endpoint being verified or displayed.",
       "extractionState" : "manual"
     },
-    "Enter a valid HTTP or HTTPS server address." : {
-      "comment" : "Inline validation error shown after an invalid manual submission.",
+    "Enter a valid HTTP or HTTPS Nama endpoint." : {
+      "comment" : "Inline validation error shown after a malformed manual submission.",
       "extractionState" : "manual"
     },
     "Find Nama on Local Network" : {
@@ -43,6 +43,10 @@
     },
     "Finish setting up Nama" : {
       "comment" : "Status shown when the verified Nama endpoint has no Administrator yet.",
+      "extractionState" : "manual"
+    },
+    "HTTPS required" : {
+      "comment" : "Title shown when a saved Nama endpoint can no longer be contacted over HTTP.",
       "extractionState" : "manual"
     },
     "https://nama.example.com" : {
@@ -99,6 +103,14 @@
     },
     "This address did not respond as a compatible Nama server." : {
       "comment" : "Safe message for a response that is not compatible with the public Nama contract.",
+      "extractionState" : "manual"
+    },
+    "This Nama endpoint requires HTTPS." : {
+      "comment" : "Inline validation error shown when a manual HTTP endpoint is not local.",
+      "extractionState" : "manual"
+    },
+    "This saved Nama endpoint can no longer be contacted over HTTP. Change the endpoint to use HTTPS." : {
+      "comment" : "Recovery guidance shown for a saved HTTP endpoint that is no longer eligible.",
       "extractionState" : "manual"
     },
     "Try again, or enter the Nama address manually." : {
