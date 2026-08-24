@@ -2,7 +2,8 @@
 
 Status: the universal SwiftUI target, manual-connection tracer, endpoint
 transport eligibility, explicit permitted local-HTTP confirmation,
-endpoint-bound persistent acknowledgement, selected-endpoint warning,
+endpoint-bound persistent acknowledgement, persistent selected-endpoint warning,
+endpoint-scoped local-HTTP proxy bypass, the ATS local-networking declaration,
 foreground LAN discovery, and verified endpoint restoration are implemented.
 Device pairing, consumer media behavior, and product playback remain target
 work. This note labels implemented, target, and deferred behavior explicitly;
@@ -72,9 +73,11 @@ optional LAN discovery, and verified endpoint restoration:
   verification of the selected endpoint.
 - `NamaSetupStatusVerifier` calls generated `SetupService.GetStatus` once
   through a Nama-owned unary URLSession transport with a ten-second timeout and
-  allowlisted client name, version, and platform metadata. The transport uses
-  platform TLS trust, refuses every redirect before target contact, discards its
-  location and response body, reports incompatible, and rejects streaming as
+  allowlisted client name, version, and platform metadata. Permitted local HTTP
+  uses an endpoint-scoped proxy-free configuration; HTTPS preserves the supplied
+  normal configuration and system proxy behavior. The transport retains platform
+  TLS trust, refuses every redirect before target contact, discards its location
+  and response body, reports incompatible, and rejects streaming as
   unimplemented.
 - The async `UserDefaultsVerifiedEndpointStore` actor retains the last
   successfully verified canonical endpoint and, for local HTTP, its exact
@@ -111,9 +114,10 @@ optional LAN discovery, and verified endpoint restoration:
   selected local HTTP state shows the unencrypted connection through text,
   symbol, and explicit accessibility semantics. Platform-specific permission
   guidance exists only where Apple exposes the Local Network privacy state.
-- The app declares `_nama._tcp` and its Local Network purpose in its partial
-  Info property list without a multicast entitlement. The macOS build uses App
-  Sandbox with outgoing network-client access only.
+- The app declares `_nama._tcp`, its Local Network purpose, and the narrow ATS
+  local-networking allowance in its partial Info property list without a
+  multicast entitlement, arbitrary loads, or static per-domain exceptions. The
+  macOS build uses App Sandbox with outgoing network-client access only.
 
 The Swift Testing target covers endpoint normalization and address-class
 boundaries, forbidden-HTTP discovery suppression, TXT parsing, canonical
@@ -124,22 +128,22 @@ restoration, successful and failed restoration, local-HTTP confirmation and
 source-specific cancellation, exact endpoint-bound acknowledgement,
 cross-window visibility, partial and mismatched preference recovery,
 acknowledgement across failure and Retry, verification replacement and
-cancellation, request construction and client metadata, redirect refusal,
-unary-only transport enforcement, safe failure mapping, state transitions,
-long endpoint presentation state, localized copy, warning semantics,
-presentation actions, and television focus intent. `check:ios` lints Swift
-formatting, runs the test target through its macOS host, and performs
-signing-disabled iOS, tvOS, and macOS builds. These checks do not prove
-physical-device privacy prompts, focus, accessibility, or playback behavior.
+cancellation, proxy selection, request construction and client metadata,
+redirect refusal, unary-only transport enforcement, safe failure mapping, state
+transitions, stale completions, long endpoint presentation state, localized
+copy, warning semantics, presentation actions, and television focus intent.
+`check:ios` lints Swift formatting, runs the test target through its macOS host,
+and performs signing-disabled iOS, tvOS, and macOS builds. These checks do not
+prove physical-device privacy prompts, focus, accessibility, or playback
+behavior.
 
 This baseline implements endpoint eligibility, endpoint-bound persistent
-local-HTTP consent, persistent selected-endpoint warnings, and forbidden-HTTP
-recovery. Proxy bypass and the local-networking ATS exception remain target
-work.
+local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP
+recovery, endpoint-scoped local-HTTP proxy bypass, and the narrow ATS
+local-networking allowance.
 
-The implemented source does not yet contain remaining transport hardening,
-Keychain Device credentials, Pairing, Home, Library, Details, Watch State, or
-Playback behavior.
+The implemented source does not yet contain Keychain Device credentials,
+Pairing, Home, Library, Details, Watch State, or Playback behavior.
 
 ## Target runtime topology
 

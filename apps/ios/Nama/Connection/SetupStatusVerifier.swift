@@ -20,7 +20,10 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
   }
 
   func verify(_ endpoint: NamaEndpoint) async -> ConnectionVerificationResult {
-    let transport = NamaUnaryURLSessionHTTPClient(configuration: sessionConfiguration)
+    let transport = NamaUnaryURLSessionHTTPClient(
+      endpoint: endpoint,
+      configuration: sessionConfiguration
+    )
     let protocolClient = ProtocolClient(
       httpClient: transport,
       config: ProtocolClientConfig(
@@ -94,8 +97,31 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
 nonisolated final class NamaUnaryURLSessionHTTPClient: HTTPClientInterface, @unchecked Sendable {
   private let session: URLSession
 
-  init(configuration: URLSessionConfiguration) {
-    session = URLSession(configuration: configuration)
+  init(
+    endpoint: NamaEndpoint,
+    configuration: URLSessionConfiguration,
+    makeSession: (URLSessionConfiguration) -> URLSession = { configuration in
+      URLSession(configuration: configuration)
+    }
+  ) {
+    let selectedConfiguration: URLSessionConfiguration
+    if endpoint.usesUnencryptedHTTP {
+      guard let proxyFreeConfiguration = configuration.copy() as? URLSessionConfiguration else {
+        preconditionFailure("URLSessionConfiguration did not preserve its type when copied")
+      }
+      proxyFreeConfiguration.connectionProxyDictionary = [
+        "HTTPEnable": false,
+        "HTTPSEnable": false,
+        "ProxyAutoConfigEnable": false,
+        "ProxyAutoDiscoveryEnable": false,
+        "SOCKSEnable": false,
+      ]
+      proxyFreeConfiguration.proxyConfigurations = []
+      selectedConfiguration = proxyFreeConfiguration
+    } else {
+      selectedConfiguration = configuration
+    }
+    session = makeSession(selectedConfiguration)
   }
 
   deinit {
