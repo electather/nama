@@ -209,7 +209,7 @@ struct ConnectionRestorationTests {
     #expect(await store.snapshot().acknowledgesLocalHTTP(endpoint))
   }
 
-  @Test("legacy forbidden HTTP restoration stays visible and never reaches verification")
+  @Test("legacy forbidden HTTP restoration rejects Retry and Continue without verification")
   func blocksLegacyForbiddenHTTP() async {
     let savedAddress = "http://nama.example.com/reverse-proxy/"
     let endpoint = HTTPSRequiredEndpoint(savedAddress)
@@ -225,8 +225,11 @@ struct ConnectionRestorationTests {
 
     feature.restoreSavedEndpoint()
     await eventually { feature.state == .requiresHTTPS(endpoint) }
+    feature.retry()
+    feature.continueWithoutHTTPS()
 
     #expect(feature.address.isEmpty)
+    #expect(feature.state == .requiresHTTPS(endpoint))
     #expect(feature.state.actions == [.changeEndpoint])
     #expect(await verifier.callCount == 0)
     #expect(await store.snapshot().endpoint == .requiresHTTPS(endpoint))
