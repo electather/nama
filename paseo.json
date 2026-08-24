@@ -1,0 +1,5 @@
+{
+  "worktree": {
+    "setup": "git fetch origin main && git merge --no-edit origin/main && mise run setup && test -f .omp/lsp.json && test -x node_modules/.bin/tsc && mise exec -- gopls version"
+  }
+}
