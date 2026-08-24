@@ -74,6 +74,11 @@ explicit confirmation. Cancelling returns each ingress path to its safe source
 state; continuing retains acknowledgement through failures and retries in that
 active flow. Every selected local HTTP state carries a text, symbol, and
 accessibility warning.
+Permitted local HTTP verification uses an endpoint-scoped proxy-free URLSession
+configuration, while HTTPS retains the supplied normal configuration and system
+proxy behavior. Both schemes refuse redirects, retain platform TLS trust, and
+run with the app's narrow ATS local-networking declaration rather than
+arbitrary-load or per-domain exceptions.
 
 A foreground-scoped `NWBrowser` reconciles only transport-eligible
 advertisements by normalized endpoint and never contacts or selects a candidate
@@ -81,8 +86,8 @@ without a person choosing it. The app persists only the last successfully
 verified canonical endpoint in `UserDefaults` and reverifies it once per window
 after launch. Safe failures retain the endpoint; a legacy forbidden HTTP value
 remains visible in a blocked HTTPS-required state until explicit Change
-Endpoint. Persistent HTTP acknowledgement, remaining transport hardening,
-Pairing, and all media behavior remain unimplemented.
+Endpoint. Endpoint-bound persistent HTTP acknowledgement, Pairing, and all media
+remain unimplemented.
 
 ## Architectural decision records
 

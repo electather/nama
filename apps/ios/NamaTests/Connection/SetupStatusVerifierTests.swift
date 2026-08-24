@@ -1,5 +1,6 @@
 import Connect
 import Foundation
+import Network
 import Testing
 
 @testable import Nama
@@ -34,8 +35,46 @@ struct SetupStatusVerifierTests {
     #expect(StubURLProtocol.recordedRequests.count == 1)
   }
 
-  @Test("refuses redirects before target contact and maps them to incompatible")
-  func redirect() async throws {
+  @Test("uses a proxy-free endpoint-scoped session for permitted local HTTP")
+  func localHTTPProxySelection() throws {
+    let selectedConfiguration = try selectedSessionConfiguration(
+      for: NamaEndpoint("http://nama.local"),
+      suppliedConfiguration: makeProxiedConfiguration()
+    )
+    let proxySettings = try #require(selectedConfiguration.connectionProxyDictionary)
+    #expect(proxySettings["HTTPEnable"] as? Bool == false)
+    #expect(proxySettings["SOCKSEnable"] as? Bool == false)
+    #expect(proxySettings["ProxyAutoConfigEnable"] as? Bool == false)
+    #expect(proxySettings["ProxyAutoDiscoveryEnable"] as? Bool == false)
+    #expect(selectedConfiguration.proxyConfigurations.isEmpty)
+  }
+
+  @Test("preserves the supplied proxy configuration for HTTPS")
+  func httpsProxySelection() throws {
+    let suppliedConfiguration = makeProxiedConfiguration()
+    _ = try selectedSessionConfiguration(
+      for: NamaEndpoint("http://nama.local"),
+      suppliedConfiguration: suppliedConfiguration
+    )
+    let selectedConfiguration = try selectedSessionConfiguration(
+      for: NamaEndpoint("https://nama.example.com"),
+      suppliedConfiguration: suppliedConfiguration
+    )
+    let proxySettings = try #require(selectedConfiguration.connectionProxyDictionary)
+    #expect(proxySettings["HTTPEnable"] as? Bool == true)
+    #expect(proxySettings["HTTPProxy"] as? String == "configured-proxy.invalid")
+    #expect(proxySettings["ProxyAutoConfigEnable"] as? Bool == true)
+    #expect(selectedConfiguration.proxyConfigurations.count == 1)
+  }
+
+  @Test(
+    "refuses redirects before target contact and maps them to incompatible",
+    arguments: [
+      ("http://nama.local", "nama.local"),
+      ("https://nama.example.com", "nama.example.com"),
+    ]
+  )
+  func redirect(endpointValue: String, expectedHost: String) async throws {
     let redirectTarget = try #require(URL(string: "https://redirect.example/private-target"))
     StubURLProtocol.configure(
       .redirect(
@@ -45,12 +84,12 @@ struct SetupStatusVerifierTests {
     )
     defer { StubURLProtocol.reset() }
 
-    let result = await makeVerifier().verify(try NamaEndpoint("https://nama.example.com"))
+    let result = await makeVerifier().verify(try NamaEndpoint(endpointValue))
     let requests = StubURLProtocol.recordedRequests
 
     #expect(result == .failure(.incompatible))
     #expect(requests.count == 1)
-    #expect(requests.first?.url?.host == "nama.example.com")
+    #expect(requests.first?.url?.host == expectedHost)
   }
 
   @Test("keeps redirect location metadata and body inside URLSession")
@@ -58,7 +97,10 @@ struct SetupStatusVerifierTests {
     let redirectTarget = try #require(URL(string: "https://redirect.example/private-target"))
     StubURLProtocol.configure(.redirect(redirectTarget, body: "redirect-controlled"))
     defer { StubURLProtocol.reset() }
-    let transport = NamaUnaryURLSessionHTTPClient(configuration: makeConfiguration())
+    let transport = NamaUnaryURLSessionHTTPClient(
+      endpoint: try NamaEndpoint("https://nama.example.com"),
+      configuration: makeConfiguration()
+    )
     let request = HTTPRequest<Data?>(
       url: try #require(URL(string: "https://nama.example.com/status")),
       headers: [:],
@@ -86,7 +128,10 @@ struct SetupStatusVerifierTests {
   func streaming() throws {
     StubURLProtocol.configure(.hold)
     defer { StubURLProtocol.reset() }
-    let transport = NamaUnaryURLSessionHTTPClient(configuration: makeConfiguration())
+    let transport = NamaUnaryURLSessionHTTPClient(
+      endpoint: try NamaEndpoint("https://nama.example.com"),
+      configuration: makeConfiguration()
+    )
     let request = HTTPRequest<Data?>(
       url: try #require(URL(string: "https://nama.example.com/stream")),
       headers: [:],
@@ -167,11 +212,14 @@ struct SetupStatusVerifierTests {
     #expect(result == .failure(.cannotConnect))
   }
 
-  @Test("task cancellation cancels the active URL request")
-  func cancellation() async throws {
+  @Test(
+    "task cancellation cancels the active URL request",
+    arguments: ["http://nama.local", "https://nama.example.com"]
+  )
+  func cancellation(endpointValue: String) async throws {
     StubURLProtocol.configure(.hold)
     let verifier = makeVerifier()
-    let endpoint = try NamaEndpoint("https://nama.example.com")
+    let endpoint = try NamaEndpoint(endpointValue)
     let task = Task { await verifier.verify(endpoint) }
     await eventually { StubURLProtocol.recordedRequests.count == 1 }
 
@@ -193,6 +241,39 @@ struct SetupStatusVerifierTests {
   private func makeConfiguration() -> URLSessionConfiguration {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [StubURLProtocol.self]
+    return configuration
+  }
+
+  private func selectedSessionConfiguration(
+    for endpoint: NamaEndpoint,
+    suppliedConfiguration: URLSessionConfiguration
+  ) throws -> URLSessionConfiguration {
+    var selectedConfiguration: URLSessionConfiguration?
+    let transport = NamaUnaryURLSessionHTTPClient(
+      endpoint: endpoint,
+      configuration: suppliedConfiguration
+    ) { configuration in
+      selectedConfiguration = configuration
+      return URLSession(configuration: configuration)
+    }
+    defer { _ = transport }
+    return try #require(selectedConfiguration)
+  }
+
+  private func makeProxiedConfiguration() -> URLSessionConfiguration {
+    let configuration = makeConfiguration()
+    configuration.connectionProxyDictionary = [
+      "HTTPEnable": true,
+      "HTTPProxy": "configured-proxy.invalid",
+      "ProxyAutoConfigEnable": true,
+      "ProxyAutoDiscoveryEnable": true,
+      "SOCKSEnable": true,
+    ]
+    configuration.proxyConfigurations = [
+      ProxyConfiguration(
+        httpCONNECTProxy: .hostPort(host: "configured-proxy.invalid", port: 8_080)
+      ),
+    ]
     return configuration
   }
 }
