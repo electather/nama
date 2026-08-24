@@ -161,7 +161,14 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
   consumer reads never proxy live provider payloads.
 - Provider-neutral Home/library browsing for movies and shows, basic search of
   available stored media, media details, artwork, seasons, and episodes.
-- A thin `NamaPlayer` adapter around one exact-pinned, security-reviewed engine. Shared UI and networking code consumes only Nama-owned playback and state types; platform-specific presentation or system adapters exist only where the supported Apple platforms differ.
+- A thin `NamaPlayer` adapter around exact-pinned AetherEngine `6.21.0` and its
+  complete resolved dependency closure. Shared UI and networking code consumes
+  only Nama-owned playback and state types; platform-specific presentation or
+  system adapters exist only where the supported Apple platforms differ.
+  [ADR-0032](adr/0032-aetherengine-mvp-security-exception.md) records the two
+  accepted MVP limitations: local engine Release logs may contain complete
+  short-lived locator URLs, and the engine may replay locator headers between
+  core-allowlisted origins.
 - The app reports the current device's real playback capabilities. Selection order is direct play, direct stream/remux, selective stream conversion, then full transcode. User-selected quality may request transcoding explicitly.
 - Playback from provider-issued URLs, play/pause, seek, audio/subtitle selection, visible loading/failure states, and recovery to the details screen.
 - Accessibility and input basics for each platform: focus order, readable labels, Dynamic Type where supported, contrast, keyboard, pointer, touch, and remote interaction, with no critical action available only through an undiscoverable gesture.
@@ -234,6 +241,10 @@ Turn the proven vertical slice into software that can be upgraded and operated s
 - Versioned releases, migration compatibility policy, rollback instructions where schema changes permit it, image provenance, dependency/license inventory, and security update process.
 - Bounded resource use for plugin processes and sync work, actionable health/status output, log redaction, and stable CLI diagnostics.
 - Test fixtures for supported Jellyfin versions and the playback matrix gathered during real MVP use.
+- [Issue #158](https://github.com/electather/nama/issues/158) removes ADR-0032's
+  AetherEngine exceptions: redact complete locator URLs from Release logs and
+  strip locator headers whenever the normalized origin changes, including
+  every HLS and subtitle subrequest.
 - Performance budgets based on observed libraries for startup, common API latency, sync duration, and idle resource use. Optimize only exceeded budgets.
 
 ### Explicit non-goals
