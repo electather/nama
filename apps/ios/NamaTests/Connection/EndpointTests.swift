@@ -109,6 +109,8 @@ struct EndpointTests {
       "http://localhost.",
       "http://nama.local.",
       "http://192.168.1.1.",
+      "http://.local",
+      "http://.localhost",
     ]
   )
   func rejectsForbiddenHTTP(input: String) {
@@ -123,18 +125,14 @@ struct EndpointTests {
   }
 
   @Test(
-    "rejects empty local namespace hosts as malformed",
-    arguments: ["http://.local", "http://.localhost", "https://.local", "https://.localhost"]
+    "keeps HTTPS eligible for empty local namespace hosts",
+    arguments: [
+      ("https://.local", "https://.local/"),
+      ("https://.localhost", "https://.localhost/"),
+    ]
   )
-  func rejectsEmptyLocalNamespace(input: String) {
-    do {
-      _ = try NamaEndpoint(input)
-      Issue.record("Expected \(input) to be malformed")
-    } catch let error as EndpointValidationError {
-      #expect(error == .invalid)
-    } catch {
-      Issue.record("Expected a typed endpoint validation error")
-    }
+  func acceptsHTTPSForEmptyLocalNamespace(input: String, expected: String) throws {
+    #expect(try NamaEndpoint(input).absoluteString == expected)
   }
 
   @Test(

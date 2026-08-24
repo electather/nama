@@ -23,12 +23,12 @@ nonisolated enum ConnectionState: Equatable, Sendable {
   case ready(NamaEndpoint)
   case setupRequired(NamaEndpoint)
   case failed(NamaEndpoint, VerificationFailure)
-  case requiresHTTPS(String)
+  case requiresHTTPS(HTTPSRequiredEndpoint)
 }
 
 nonisolated private enum RestoredEndpointResolution: Sendable {
   case verification(NamaEndpoint, ConnectionVerificationResult)
-  case requiresHTTPS(String)
+  case requiresHTTPS(HTTPSRequiredEndpoint)
 }
 
 @MainActor
@@ -59,6 +59,12 @@ final class ConnectionFeature {
     self.endpointStore = endpointStore
     discoverySession = ConnectionDiscoverySession(discovery: discovery, sleep: sleep)
   }
+
+  #if DEBUG
+    func setPreviewState(_ state: ConnectionState) {
+      self.state = state
+    }
+  #endif
 
   deinit {
     activeTask?.cancel()
@@ -185,20 +191,20 @@ final class ConnectionFeature {
     case .verification(let endpoint, let result):
       finishVerification(result, endpoint: endpoint, attempt: currentAttempt)
 
-    case .requiresHTTPS(let address):
-      finishHTTPSRequiredRestoration(address, attempt: currentAttempt)
+    case .requiresHTTPS(let endpoint):
+      finishHTTPSRequiredRestoration(endpoint, attempt: currentAttempt)
     }
   }
 
   private func finishHTTPSRequiredRestoration(
-    _ savedAddress: String,
+    _ endpoint: HTTPSRequiredEndpoint,
     attempt currentAttempt: Int
   ) {
     guard isCurrentAttempt(currentAttempt) else {
       return
     }
     activeTask = nil
-    state = .requiresHTTPS(savedAddress)
+    state = .requiresHTTPS(endpoint)
   }
 
   private func startVerification(of endpoint: NamaEndpoint) {
@@ -307,11 +313,11 @@ nonisolated private func resolveRestoredEndpoint(
     }
     return .verification(endpoint, result)
 
-  case .requiresHTTPS(let address):
+  case .requiresHTTPS(let endpoint):
     guard await endpointStore.isCurrent(snapshot) else {
       return nil
     }
-    return .requiresHTTPS(address)
+    return .requiresHTTPS(endpoint)
   }
 }
 

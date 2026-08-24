@@ -38,7 +38,7 @@
           addressField
           HStack(spacing: Layout.actionSpacing) {
             ProgressView()
-            TVEndpointValue(address: endpoint.absoluteString)
+            TVEndpointValue(endpoint: endpoint)
           }
           actionButtons(feature.state.actions)
         }
@@ -47,7 +47,7 @@
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text("Nama is ready")
             .font(.largeTitle)
-          TVEndpointValue(address: endpoint.absoluteString)
+          TVEndpointValue(endpoint: endpoint)
           actionButtons(feature.state.actions)
         }
 
@@ -55,7 +55,7 @@
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text("Finish setting up Nama")
             .font(.largeTitle)
-          TVEndpointValue(address: endpoint.absoluteString)
+          TVEndpointValue(endpoint: endpoint)
           Text("Run `nama setup` from a trusted computer, then try again.")
             .foregroundStyle(.secondary)
           actionButtons(feature.state.actions)
@@ -65,17 +65,17 @@
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text(failure.message)
             .font(.title2)
-          TVEndpointValue(address: endpoint.absoluteString)
+          TVEndpointValue(endpoint: endpoint)
           actionButtons(feature.state.actions)
         }
 
-      case .requiresHTTPS(let savedAddress):
+      case .requiresHTTPS(let endpoint):
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text(SavedEndpointHTTPSRequiredCopy.title)
             .font(.largeTitle)
           Text(SavedEndpointHTTPSRequiredCopy.message)
             .foregroundStyle(.red)
-          TVEndpointValue(address: savedAddress)
+          TVEndpointValue(endpoint: endpoint)
           actionButtons(feature.state.actions)
         }
       }
@@ -168,9 +168,17 @@
   }
 
   private struct TVEndpointValue: View {
-    let address: String
-
     private static let verticalSpacing: CGFloat = 8
+
+    private let address: String
+
+    init(endpoint: NamaEndpoint) {
+      address = endpoint.absoluteString
+    }
+
+    init(endpoint: HTTPSRequiredEndpoint) {
+      address = endpoint.absoluteString
+    }
 
     var body: some View {
       VStack(alignment: .leading, spacing: Self.verticalSpacing) {

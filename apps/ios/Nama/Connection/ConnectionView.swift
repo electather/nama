@@ -60,8 +60,8 @@ struct ConnectionRootView: View {
       case .failed(let endpoint, let failure):
         FailureForm(feature: feature, endpoint: endpoint, failure: failure)
 
-      case .requiresHTTPS(let savedAddress):
-        HTTPSRequiredForm(feature: feature, savedAddress: savedAddress)
+      case .requiresHTTPS(let endpoint):
+        HTTPSRequiredForm(feature: feature, endpoint: endpoint)
       }
     }
   }
@@ -97,7 +97,7 @@ struct ConnectionRootView: View {
         Section {
           ProgressView()
             .frame(maxWidth: .infinity)
-          EndpointValue(address: endpoint.absoluteString)
+          EndpointValue(endpoint: endpoint)
         }
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -116,7 +116,7 @@ struct ConnectionRootView: View {
         Section {
           Text("Nama is ready")
             .font(.headline)
-          EndpointValue(address: endpoint.absoluteString)
+          EndpointValue(endpoint: endpoint)
         }
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -135,7 +135,7 @@ struct ConnectionRootView: View {
         Section {
           Text("Finish setting up Nama")
             .font(.headline)
-          EndpointValue(address: endpoint.absoluteString)
+          EndpointValue(endpoint: endpoint)
           Text("Run `nama setup` from a trusted computer, then try again.")
             .foregroundStyle(.secondary)
         }
@@ -157,7 +157,7 @@ struct ConnectionRootView: View {
         Section {
           Text(failure.message)
             .foregroundStyle(.red)
-          EndpointValue(address: endpoint.absoluteString)
+          EndpointValue(endpoint: endpoint)
         }
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -169,7 +169,7 @@ struct ConnectionRootView: View {
 
   private struct HTTPSRequiredForm: View {
     let feature: ConnectionFeature
-    let savedAddress: String
+    let endpoint: HTTPSRequiredEndpoint
 
     var body: some View {
       Form {
@@ -179,7 +179,7 @@ struct ConnectionRootView: View {
           Text(SavedEndpointHTTPSRequiredCopy.message)
             .foregroundStyle(.red)
             .fixedSize(horizontal: false, vertical: true)
-          EndpointValue(address: savedAddress)
+          EndpointValue(endpoint: endpoint)
         }
         Section {
           ConnectionActionButtons(feature: feature, actions: feature.state.actions)
@@ -263,7 +263,15 @@ struct ConnectionRootView: View {
   }
 
   private struct EndpointValue: View {
-    let address: String
+    private let address: String
+
+    init(endpoint: NamaEndpoint) {
+      address = endpoint.absoluteString
+    }
+
+    init(endpoint: HTTPSRequiredEndpoint) {
+      address = endpoint.absoluteString
+    }
 
     var body: some View {
       LabeledContent("Endpoint") {

@@ -92,7 +92,8 @@ struct ConnectionPresentationTests {
       ConnectionState.failed(endpoint, .cannotConnect).actions == [.retry, .changeEndpoint]
     )
     #expect(
-      ConnectionState.requiresHTTPS("http://nama.example.com/").actions == [.changeEndpoint]
+      ConnectionState.requiresHTTPS(HTTPSRequiredEndpoint("http://nama.example.com/")).actions
+        == [.changeEndpoint]
     )
   }
 

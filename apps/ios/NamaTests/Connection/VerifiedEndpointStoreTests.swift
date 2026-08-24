@@ -22,18 +22,23 @@ struct VerifiedEndpointStoreTests {
     #expect(await store.snapshot().endpoint == .eligible(endpoint))
   }
 
-  @Test("retains a legacy forbidden HTTP endpoint for explicit recovery")
-  func retainsForbiddenHTTP() async throws {
+  @Test(
+    "retains a legacy forbidden HTTP endpoint for explicit recovery",
+    arguments: [
+      "http://nama.example.com/reverse-proxy/",
+      "http://.local",
+    ]
+  )
+  func retainsForbiddenHTTP(savedAddress: String) async throws {
     let suiteName = "NamaTests.VerifiedEndpointStore.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suiteName))
     defer { defaults.removePersistentDomain(forName: suiteName) }
-    let savedAddress = "http://nama.example.com/reverse-proxy/"
     defaults.set(savedAddress, forKey: "verifiedNamaEndpoint")
     let store = UserDefaultsVerifiedEndpointStore(suiteName: suiteName)
 
     let snapshot = await store.snapshot()
 
-    #expect(snapshot.endpoint == .requiresHTTPS(savedAddress))
+    #expect(snapshot.endpoint == .requiresHTTPS(HTTPSRequiredEndpoint(savedAddress)))
     #expect(defaults.string(forKey: "verifiedNamaEndpoint") == savedAddress)
   }
 

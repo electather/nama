@@ -2,7 +2,7 @@ import Foundation
 
 nonisolated enum RestoredNamaEndpoint: Equatable, Sendable {
   case eligible(NamaEndpoint)
-  case requiresHTTPS(String)
+  case requiresHTTPS(HTTPSRequiredEndpoint)
 }
 
 nonisolated struct VerifiedEndpointStoreSnapshot: Sendable {
@@ -67,7 +67,7 @@ actor UserDefaultsVerifiedEndpointStore: VerifiedEndpointStoring {
     do {
       return .eligible(try NamaEndpoint(trimmed))
     } catch let error as EndpointValidationError where error == .requiresHTTPS {
-      return .requiresHTTPS(trimmed)
+      return .requiresHTTPS(HTTPSRequiredEndpoint(trimmed))
     } catch {
       return nil
     }

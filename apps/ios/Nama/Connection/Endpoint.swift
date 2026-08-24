@@ -6,6 +6,14 @@ nonisolated enum EndpointValidationError: Error, Equatable {
   case requiresHTTPS
 }
 
+nonisolated struct HTTPSRequiredEndpoint: Equatable, Sendable {
+  let absoluteString: String
+
+  init(_ absoluteString: String) {
+    self.absoluteString = absoluteString
+  }
+}
+
 nonisolated struct NamaEndpoint: Hashable, Sendable {
   let url: URL
 
@@ -72,9 +80,6 @@ nonisolated struct NamaEndpoint: Hashable, Sendable {
     components.host = normalizedHost
     components.percentEncodedPath = Self.normalizedPath(components.percentEncodedPath)
 
-    if case .emptyNamespace = Self.localName(in: normalizedHost) {
-      throw EndpointValidationError.invalid
-    }
     guard let endpointURL = components.url, Self.hasValidZone(normalizedHost) else {
       throw EndpointValidationError.invalid
     }
