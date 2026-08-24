@@ -3,7 +3,6 @@ import {
   bigint,
   boolean,
   check,
-  customType,
   index,
   integer,
   jsonb,
@@ -15,14 +14,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { user } from "./auth-schema.ts";
-
-type JsonPrimitive = boolean | null | number | string;
-type JsonValue = JsonPrimitive | readonly JsonValue[] | { readonly [key: string]: JsonValue };
-type JsonObject = Readonly<Record<string, JsonValue>>;
-
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
-  dataType: () => "bytea",
-});
+import { bytea } from "./database-types-private.ts";
+import type { JsonObject, JsonPrimitive, JsonValue } from "./database-types-private.ts";
 
 // fallow-ignore-next-line code-duplication -- Drizzle table declarations keep security constraints adjacent to their columns for migration review.
 const providerInstallation = pgTable(

@@ -1,6 +1,6 @@
 # Core server
 
-Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, authenticated plugin-subprocess supervisor, bundled-provider discovery/listing, candidate and stored-instance connection testing, and verified provider-instance create/list/get/update/delete including disable and re-enable are implemented and verified.
+Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, secure Pairing/Device persistence and protection, authenticated plugin-subprocess supervisor, bundled-provider discovery/listing, candidate and stored-instance connection testing, and verified provider-instance create/list/get/update/delete including disable and re-enable are implemented and verified.
 
 This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics.
 
@@ -12,6 +12,7 @@ This note is the canonical record for durable core-server boundaries. The implem
 - safe structured Effect and allowlisted terminal RPC logging;
 - one PostgreSQL pool, one schema-aware Drizzle instance, and a narrow private authentication capability;
 - automatic reviewed migrations, transactional fail-closed initialization reconciliation, and bounded readiness probes;
+- the core-owned Pairing request, Device, active credential-verifier, temporary encrypted-delivery, approval-result, and Effect-scoped cleanup boundary;
 - the process-local bootstrap-token state machine and transactional administrator completion;
 - exact liveness and readiness routes before Connect delegation;
 - one native Node listener and one Effect managed request runtime for health and RPC callbacks;
@@ -470,4 +471,4 @@ operation rows.
 
 ## Deferred work
 
-Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. User-facing provider connection-test commands, Jellyfin media behavior, pairing, playback, and synchronization belong to their owning milestones.
+Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. User-facing provider connection-test commands, Jellyfin media behavior, public Pairing handlers and clients, playback, and synchronization belong to their owning milestones.

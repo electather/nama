@@ -2,8 +2,11 @@ import { join } from "node:path";
 
 import { NodeFileSystem } from "@effect/platform-node";
 import { expect, it } from "@effect/vitest";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Clock, Effect, FileSystem } from "effect";
 
+import { databaseSchema } from "../../src/database/schema.ts";
 import {
   exerciseMarkerConstraints,
   insertFixtureUser,
@@ -20,6 +23,27 @@ import { integrationUrl, withIsolatedDatabase } from "./postgres.test-support.ts
 const FIRST_ROW_INDEX = 0;
 const PROBE_BOUND_MILLISECONDS = 3000;
 const SINGLE_ROW_COUNT = 1;
+const CURRENT_PROVIDER_MIGRATIONS = ["0000_late_juggernaut.sql", "0001_orange_terrax.sql"] as const;
+const CURRENT_PROVIDER_JOURNAL = JSON.stringify({
+  dialect: "postgresql",
+  entries: [
+    {
+      breakpoints: true,
+      idx: 0,
+      tag: "0000_late_juggernaut",
+      version: "7",
+      when: 1_786_817_904_831,
+    },
+    {
+      breakpoints: true,
+      idx: 1,
+      tag: "0001_orange_terrax",
+      version: "7",
+      when: 1_787_120_774_974,
+    },
+  ],
+  version: "7",
+});
 
 const namaConnectionCount = (databaseUrl: string) =>
   withPool(databaseUrl, (observer) =>
@@ -32,6 +56,22 @@ const namaConnectionCount = (databaseUrl: string) =>
       (result) => result.rows[FIRST_ROW_INDEX]?.connection_count,
     ),
   );
+const PRODUCTION_TABLE_NAMES = [
+  "account",
+  "device",
+  "device_credential",
+  "nama_server_state",
+  "pairing_approval_result",
+  "pairing_request",
+  "provider_credential",
+  "provider_installation",
+  "provider_instance",
+  "provider_instance_observation",
+  "provider_operation_result",
+  "session",
+  "user",
+  "verification",
+] as const;
 
 const makeInvalidMigrationFolders = Effect.gen(function* invalidMigrationFolders() {
   const fileSystem = yield* FileSystem.FileSystem;
@@ -44,6 +84,35 @@ const makeInvalidMigrationFolders = Effect.gen(function* invalidMigrationFolders
   yield* fileSystem.makeDirectory(join(malformed, "meta"));
   yield* fileSystem.writeFileString(join(malformed, "meta", "_journal.json"), "not-json");
   return { malformed, missing };
+}).pipe(Effect.provide(NodeFileSystem.layer));
+
+const publicTableNames = (databaseUrl: string) =>
+  withPool(databaseUrl, (pool) =>
+    Effect.map(
+      Effect.promise(() =>
+        pool.query<{ readonly table_name: string }>(
+          "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
+        ),
+      ),
+      (result) => result.rows.map(({ table_name: tableName }) => tableName),
+    ),
+  );
+
+const makeCurrentProviderMigrationFolder = Effect.gen(function* currentProviderMigrations() {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const folder = yield* fileSystem.makeTempDirectoryScoped({
+    prefix: "nama-current-provider-migrations-",
+  });
+  yield* fileSystem.makeDirectory(join(folder, "meta"));
+  for (const fileName of CURRENT_PROVIDER_MIGRATIONS) {
+    const content = yield* fileSystem.readFileString(join(productionMigrations, fileName));
+    yield* fileSystem.writeFileString(join(folder, fileName), content);
+  }
+  yield* fileSystem.writeFileString(
+    join(folder, "meta", "_journal.json"),
+    CURRENT_PROVIDER_JOURNAL,
+  );
+  return folder;
 }).pipe(Effect.provide(NodeFileSystem.layer));
 
 it.live("creates all production tables and one uninitialized server singleton", () =>
@@ -70,18 +139,9 @@ it.live("creates all production tables and one uninitialized server singleton", 
         }),
       );
 
-      expect(result.tables.map(({ table_name: tableName }) => tableName)).toEqual([
-        "account",
-        "nama_server_state",
-        "provider_credential",
-        "provider_installation",
-        "provider_instance",
-        "provider_instance_observation",
-        "provider_operation_result",
-        "session",
-        "user",
-        "verification",
-      ]);
+      expect(result.tables.map(({ table_name: tableName }) => tableName)).toEqual(
+        PRODUCTION_TABLE_NAMES,
+      );
       expect(result.state).toEqual([
         expect.objectContaining({
           initialized_at_type: "timestamp with time zone",
@@ -125,9 +185,33 @@ it.live("upgrades the prior zero-entry production journal exactly once", () =>
       expect(yield* migrationCount()).toBe("0");
 
       yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
-      expect(yield* migrationCount()).toBe("2");
+      expect(yield* migrationCount()).toBe("3");
       yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
-      expect(yield* migrationCount()).toBe("2");
+      expect(yield* migrationCount()).toBe("3");
+    }),
+  ),
+);
+
+it.live("upgrades exactly once from the current provider production migration", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* currentProviderMigrationUpgradeTest() {
+      const currentProviderMigrations = yield* makeCurrentProviderMigrationFolder;
+      yield* withPool(databaseUrl, (pool) =>
+        Effect.promise(() =>
+          migrate(drizzle(pool, { logger: false, schema: databaseSchema }), {
+            migrationsFolder: currentProviderMigrations,
+          }),
+        ),
+      );
+      const before = yield* publicTableNames(databaseUrl);
+      expect(before).toContain("provider_operation_result");
+      expect(before).not.toContain("pairing_request");
+
+      yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
+      const afterFirstUpgrade = yield* publicTableNames(databaseUrl);
+      expect(afterFirstUpgrade).toContain("pairing_request");
+      yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
+      expect(yield* publicTableNames(databaseUrl)).toEqual(afterFirstUpgrade);
     }),
   ),
 );

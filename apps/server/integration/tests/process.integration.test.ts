@@ -139,7 +139,7 @@ const expectFatalOutput = (
 };
 
 const expectFreshMigratedState = (migratedState: MigratedState): void => {
-  expect(migratedState.migrationCount).toBe("2");
+  expect(migratedState.migrationCount).toBe("3");
   expect(migratedState.serverState?.key).toBe("server");
   expect(migratedState.serverState?.administrator_user_id).toBeNull();
   expect(migratedState.serverState?.initialized_at).toBeNull();

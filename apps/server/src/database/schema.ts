@@ -3,6 +3,12 @@ import { check, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 import { account, session, user, verification } from "./auth-schema.ts";
 import {
+  device,
+  deviceCredential,
+  pairingApprovalResult,
+  pairingRequest,
+} from "./pairing-schema.ts";
+import {
   providerCredential,
   providerInstallation,
   providerInstance,
@@ -31,6 +37,10 @@ const namaServerState = pgTable(
 const authenticationDatabaseSchema = { account, namaServerState, session, user, verification };
 const databaseSchema = {
   ...authenticationDatabaseSchema,
+  device,
+  deviceCredential,
+  pairingApprovalResult,
+  pairingRequest,
   providerCredential,
   providerInstallation,
   providerInstance,
@@ -39,5 +49,6 @@ const databaseSchema = {
 };
 
 export * from "./auth-schema.ts";
+export * from "./pairing-schema.ts";
 export * from "./provider-schema.ts";
 export { databaseSchema, namaServerState };

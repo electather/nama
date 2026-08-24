@@ -1,6 +1,6 @@
 # Authentication, setup, and pairing
 
-Status: issue #23 server setup and administrator authentication plus issue #24 CLI setup, sign-in, and status are implemented and verified. Device pairing and Apple-client behavior remain unfinished.
+Status: issue #23 server setup and Administrator authentication, issue #24 CLI setup, sign-in, and status, and issue #145 Pairing and Device persistence/protection are implemented and verified. Public DeviceService handlers, CLI Pairing commands, and Apple-client behavior remain unfinished.
 
 Nama owns the public setup and authentication semantics. Better Auth is a private server-side implementation detail used only by the runtime-loaded adapter behind `SetupService` and `AuthService`; generated auth persistence alone is not the boundary ([ADR-0007](../adr/0007-private-better-auth-adapter.md)).
 
@@ -28,7 +28,13 @@ Under [ADR-0009](../adr/0009-confirm-durable-session-revocation.md), `SignOut` i
 
 The Go CLI implements named profile targeting, setup followed by sign-in, later sign-in, and authentication status over these RPCs. It keeps bearer credentials only in the native credential facility, binds each record to its canonical full server target, and never falls back to a plaintext file. Malformed and legacy unbound records never attach; a successful deletion makes them an absent credential that setup or login may replace, while deletion failure is a typed, fail-closed credential-cleanup error. A process-injected bearer is eligible for authentication status without native-store access and is never persisted or deleted; setup and login reject while the injection is active so they cannot orphan a newly issued bearer. Lost non-wire setup responses are recovered by status without replaying administrator creation. Once recovery confirms initialization, sign-in and credential storage use a separate fresh bounded settlement context even if the original caller context expired; known wire application failures still return directly. Malformed sign-in responses with a usable bearer are revoked. Failed local credential storage restores the prior native state and revokes the new session, and an unconfirmed revocation takes precedence over the storage error.
 
-## Target Pairing and Device authentication
+## Implemented Pairing persistence and target Device authentication
+
+The core-owned PostgreSQL boundary implements the Pairing request, Device,
+active Device-verifier, temporary encrypted-delivery, and Administrator-scoped
+approval-result lifecycles below. It is wired into database startup and cleanup
+but not into public `DeviceService` handlers, Device-authorized RPC admission,
+CLI commands, or Apple credential ownership.
 
 Device pairing separates an eight-character uppercase unambiguous Base32 human
 code from independent high-entropy polling and Device secrets. The displayed
@@ -118,4 +124,4 @@ Focused server and CLI coverage, disposable PostgreSQL, generated clients, compi
 
 ## Unfinished work
 
-Device pairing—including human codes, polling tokens, approval, device credentials, listing, and revocation—is not implemented. CLI sign-out and Apple-client discovery, pairing, and credential storage remain unfinished. Public signup, invitations, password recovery, OAuth/OIDC, multiple roles, and a web administration UI remain outside the implemented runtime.
+Public Device pairing—including `DeviceService` handlers, Device authorization, listing, and revocation—is not implemented; the supporting Pairing request, Device, credential-verifier, encrypted-delivery, and approval-result persistence/protection boundary is implemented. CLI sign-out and Apple-client discovery, pairing, and credential storage remain unfinished. Public signup, invitations, password recovery, OAuth/OIDC, multiple roles, and a web administration UI remain outside the implemented runtime.

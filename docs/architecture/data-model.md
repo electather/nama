@@ -18,7 +18,7 @@ Device credential verification and temporary Pairing delivery use separate
 protected records under
 [ADR-0031](../adr/0031-separate-device-verification-from-pairing-delivery.md).
 
-## Target Pairing and Device persistence
+## Pairing and Device persistence
 
 Pairing persistence has four independently retained record families:
 

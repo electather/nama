@@ -1,4 +1,4 @@
-// oxlint-disable import/max-dependencies -- The complete Database test double includes the provider persistence seam.
+// oxlint-disable import/max-dependencies -- The complete Database test double includes its owned persistence seams.
 import { expect } from "@effect/vitest";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Cause, Effect, Exit } from "effect";
@@ -6,6 +6,7 @@ import { Pool } from "pg";
 
 import { Database } from "../../database/database.ts";
 import { databaseSchema } from "../../database/schema.ts";
+import { unusedPairingPersistence } from "../../database/tests/pairing-persistence.test-support.ts";
 import { unusedProviderPersistence } from "../../database/tests/provider-persistence.test-support.ts";
 import type { RuntimeControl } from "../../lifecycle/runtime-control.ts";
 import { makeBootstrapToken } from "../../setup/bootstrap-token.ts";
@@ -120,6 +121,7 @@ const makeCoordinatorFixture = (
     authentication: { completeInitialization, database: unusedAuthenticationDatabase },
     checkReadiness: Effect.succeed(true),
     initialization,
+    pairings: unusedPairingPersistence,
     providers: unusedProviderPersistence,
   });
   const coordinator = makeSetupCoordinator({

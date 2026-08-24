@@ -8,6 +8,8 @@ import { Pool } from "pg";
 import { Config } from "../config/config.ts";
 import { reconcileDatabaseInitialization } from "./initialization.ts";
 import type { DatabaseInitialization } from "./initialization.ts";
+import { makePairingPersistence } from "./pairing-persistence.ts";
+import type { PairingPersistence } from "./pairing-persistence.ts";
 import { makeProviderPersistence } from "./provider-persistence.ts";
 import type { ProviderPersistence } from "./provider-persistence.ts";
 import { databaseSchema, namaServerState } from "./schema.ts";
@@ -37,6 +39,7 @@ interface DatabaseService {
   readonly authentication: DatabaseAuthentication;
   readonly initialization: DatabaseInitialization;
   readonly checkReadiness: Effect.Effect<boolean>;
+  readonly pairings: PairingPersistence;
   readonly providers: ProviderPersistence;
 }
 const ignoreIdlePoolError = (): void => {
@@ -96,6 +99,17 @@ const completeInitialization = (
       }),
   });
 
+const makeDatabaseReadiness = (
+  pool: Readonly<Pool>,
+  pairings: PairingPersistence,
+): Effect.Effect<boolean> =>
+  Effect.suspend(() => {
+    if (!pairings.cleanupHealthy()) {
+      return Effect.succeed(false);
+    }
+    return makeReadinessProbe(pool);
+  });
+
 const makeDatabase = (migrationsFolder: string) =>
   Effect.gen(function* makeDatabaseService() {
     const config = yield* Config;
@@ -125,6 +139,10 @@ const makeDatabase = (migrationsFolder: string) =>
       makeProviderPersistence(database, config.security.masterKey),
       (owner) => Effect.sync(owner.close),
     );
+    const pairingPersistence = yield* Effect.acquireRelease(
+      makePairingPersistence(database, config.security.masterKey),
+      (owner) => owner.close,
+    );
     yield* runInitialProbe(pool);
 
     return Database.of({
@@ -133,8 +151,9 @@ const makeDatabase = (migrationsFolder: string) =>
           completeInitialization(database, administratorUserId),
         database,
       },
-      checkReadiness: makeReadinessProbe(pool),
+      checkReadiness: makeDatabaseReadiness(pool, pairingPersistence.service),
       initialization,
+      pairings: pairingPersistence.service,
       providers: providerPersistence.service,
     });
   });
