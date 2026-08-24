@@ -54,7 +54,7 @@ struct HTTPConnectionWarning: View {
 
     private var navigationTitle: LocalizedStringResource {
       switch feature.state {
-      case .editing, .verifying:
+      case .editing, .checkingHTTPAcknowledgement, .verifying:
         "Connect to Nama"
 
       case .confirmingHTTP, .ready, .setupRequired, .failed, .pausedHTTPRestoration,
@@ -72,7 +72,7 @@ struct HTTPConnectionWarning: View {
       case .confirmingHTTP(let endpoint, _):
         HTTPConfirmationForm(feature: feature, endpoint: endpoint)
 
-      case .verifying(let endpoint):
+      case .checkingHTTPAcknowledgement(let endpoint), .verifying(let endpoint):
         VerifyingForm(feature: feature, endpoint: endpoint)
 
       case .ready(let endpoint):

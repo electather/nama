@@ -68,21 +68,24 @@ connection tracer on iOS, iPadOS, tvOS, and macOS. Its connection surface keeps
 manual HTTP(S) endpoint entry available beside explicit `_nama._tcp` LAN
 discovery. `NamaEndpoint` admits HTTPS or lexically approved local HTTP without
 DNS resolution, so manual entry, discovery, retry, and restoration reject every
-other HTTP destination before verification. Before the first request to any
-permitted local HTTP endpoint, manual entry, discovery, and restoration require
-explicit confirmation. Cancelling returns each ingress path to its safe source
-state; continuing retains acknowledgement through failures and retries in that
-active flow. Every selected local HTTP state carries a text, symbol, and
-accessibility warning.
+other HTTP destination before verification. Before the first request to a
+permitted local HTTP endpoint without an exact persisted acknowledgement,
+manual entry, discovery, and restoration require explicit confirmation.
+Cancelling returns each ingress path to its safe source state; continuing
+retains acknowledgement through failures and retries, then persists it only
+after successful verification. Every selected local HTTP state carries a text,
+symbol, and accessibility warning.
 
 A foreground-scoped `NWBrowser` reconciles only transport-eligible
 advertisements by normalized endpoint and never contacts or selects a candidate
-without a person choosing it. The app persists only the last successfully
-verified canonical endpoint in `UserDefaults` and reverifies it once per window
-after launch. Safe failures retain the endpoint; a legacy forbidden HTTP value
-remains visible in a blocked HTTPS-required state until explicit Change
-Endpoint. Persistent HTTP acknowledgement, remaining transport hardening,
-Pairing, and all media behavior remain unimplemented.
+without a person choosing it. The app persists the last successfully verified
+canonical endpoint and its exact local-HTTP acknowledgement in `UserDefaults`,
+shares them across windows, and reverifies the endpoint once per window after
+launch. Missing, partial, stale, or mismatched acknowledgement asks again
+rather than authorizing another endpoint. Safe failures retain the endpoint; a
+legacy forbidden HTTP value remains visible in a blocked HTTPS-required state
+until explicit Change Endpoint. Remaining transport hardening, Pairing, and all
+media behavior remain unimplemented.
 
 ## Architectural decision records
 

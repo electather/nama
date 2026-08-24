@@ -62,7 +62,9 @@ nonisolated func resolveRestoredEndpoint(
       guard await endpointStore.isCurrent(snapshot) else {
         return nil
       }
-      return .confirmation(endpoint, snapshot)
+      guard snapshot.acknowledgesLocalHTTP(endpoint) else {
+        return .confirmation(endpoint, snapshot)
+      }
     }
     guard
       let result = await verifyEndpoint(

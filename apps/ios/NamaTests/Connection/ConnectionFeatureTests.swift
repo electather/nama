@@ -55,7 +55,7 @@ struct ConnectionFeatureTests {
 
     feature.submit()
 
-    #expect(feature.state == .confirmingHTTP(endpoint, .entry))
+    await eventually { feature.state == .confirmingHTTP(endpoint, .entry) }
     #expect(feature.state.actions == [.cancel, .continueWithoutHTTPS])
     #expect(await verifier.callCount == 0)
 
@@ -78,7 +78,7 @@ struct ConnectionFeatureTests {
     feature.address = enteredAddress
 
     feature.submit()
-    #expect(feature.state == .confirmingHTTP(endpoint, .entry))
+    await eventually { feature.state == .confirmingHTTP(endpoint, .entry) }
     feature.cancel()
 
     #expect(feature.address == enteredAddress)
@@ -253,5 +253,135 @@ struct ConnectionFeatureTests {
     await eventually { await verifier.cancellationCount == 1 }
 
     #expect(feature.state == .editing(validationError: nil))
+  }
+}
+
+@Suite("Connection HTTP acknowledgement state")
+struct ConnectionHTTPAcknowledgementTests {
+  @Test("selected local HTTP remains visible while acknowledgement loads")
+  func selectedLocalHTTPRemainsVisibleDuringAcknowledgementLookup() async throws {
+    let store = SuspendingSnapshotEndpointStore()
+    let verifier = ImmediateVerifier(result: .ready)
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
+    let endpoint = try NamaEndpoint("http://nama.local")
+    feature.address = endpoint.absoluteString
+
+    feature.submit()
+    await eventually { await store.snapshotStarted }
+
+    #expect(feature.state.showsUnencryptedHTTPWarning)
+    #expect(feature.state.actions == [.connect, .cancel, .changeEndpoint])
+    #expect(await verifier.callCount == 0)
+    await store.finishSnapshot()
+    await eventually {
+      feature.state == .confirmingHTTP(endpoint, .entry)
+    }
+  }
+
+  @Test("a successful local HTTP acknowledgement is shared across windows")
+  func sharesSuccessfulLocalHTTPAcknowledgementAcrossWindows() async throws {
+    let suiteName = "NamaTests.ConnectionFeature.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let store = UserDefaultsVerifiedEndpointStore(suiteName: suiteName)
+    let endpoint = try NamaEndpoint("http://nama.local/reverse-proxy")
+    let firstVerifier = ImmediateVerifier(result: .ready)
+    let firstFeature = ConnectionFeature(
+      verifier: firstVerifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
+    firstFeature.address = endpoint.absoluteString
+    firstFeature.submit()
+    await eventually {
+      firstFeature.state == .confirmingHTTP(endpoint, .entry)
+    }
+    firstFeature.continueWithoutHTTPS()
+    await eventually { firstFeature.state == .ready(endpoint) }
+
+    let secondVerifier = ImmediateVerifier(result: .ready)
+    let secondFeature = ConnectionFeature(
+      verifier: secondVerifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
+    secondFeature.address = endpoint.absoluteString
+    secondFeature.submit()
+    await eventually { secondFeature.state == .ready(endpoint) }
+
+    #expect(await firstVerifier.callCount == 1)
+    #expect(await secondVerifier.callCount == 1)
+  }
+
+  @Test("acknowledged local HTTP restoration remains visible while verifying")
+  func acknowledgedLocalHTTPRestorationShowsVerification() async throws {
+    let endpoint = try NamaEndpoint("http://nama.local")
+    let store = InMemoryVerifiedEndpointStore()
+    #expect(
+      await store.save(
+        endpoint,
+        ifUnchangedSince: store.snapshot()
+      )
+    )
+    let verifier = ManualVerifier()
+    let feature = ConnectionFeature(
+      verifier: verifier,
+      discovery: InactiveDiscovery(),
+      endpointStore: store
+    )
+
+    feature.restoreSavedEndpoint()
+    await eventually { await verifier.callCount == 1 }
+
+    #expect(feature.state == .verifying(endpoint))
+    #expect(feature.state.showsUnencryptedHTTPWarning)
+    await verifier.resolve(call: 0, with: .cancelled)
+    await eventually {
+      feature.state == .editing(validationError: nil)
+    }
+  }
+}
+
+private actor SuspendingSnapshotEndpointStore: VerifiedEndpointStoring {
+  private var generation: UInt64 = 0
+  private var continuation: CheckedContinuation<VerifiedEndpointStoreSnapshot, Never>?
+
+  var snapshotStarted: Bool {
+    continuation != nil
+  }
+
+  func snapshot() async -> VerifiedEndpointStoreSnapshot {
+    await withCheckedContinuation { continuation in
+      self.continuation = continuation
+    }
+  }
+
+  func save(
+    _: NamaEndpoint,
+    ifUnchangedSince snapshot: VerifiedEndpointStoreSnapshot
+  ) -> Bool {
+    snapshot.generation == generation
+  }
+
+  func isCurrent(_ snapshot: VerifiedEndpointStoreSnapshot) -> Bool {
+    snapshot.generation == generation
+  }
+
+  func clear() {
+    generation &+= 1
+  }
+
+  func finishSnapshot() {
+    continuation?.resume(
+      returning: VerifiedEndpointStoreSnapshot(
+        endpoint: nil,
+        generation: generation
+      )
+    )
+    continuation = nil
   }
 }
