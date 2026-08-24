@@ -19,8 +19,8 @@ extension ConnectionFeature {
     case .setupRequired(let value), .failed(let value, _):
       endpoint = value
 
-    case .editing, .confirmingHTTP, .verifying, .ready, .pausedHTTPRestoration,
-      .requiresHTTPS:
+    case .editing, .checkingHTTPAcknowledgement, .confirmingHTTP, .verifying,
+      .ready, .pausedHTTPRestoration, .requiresHTTPS:
       return
     }
     startVerification(of: endpoint)
@@ -43,7 +43,8 @@ extension ConnectionFeature {
       endpoint = value
       restorationSnapshot = snapshot
 
-    case .editing, .verifying, .ready, .setupRequired, .failed, .requiresHTTPS:
+    case .editing, .checkingHTTPAcknowledgement, .verifying, .ready, .setupRequired,
+      .failed, .requiresHTTPS:
       return
     }
     startVerification(of: endpoint, from: restorationSnapshot)
@@ -61,7 +62,8 @@ extension ConnectionFeature {
   func addressDidChange() {
     let selectedEndpoint: NamaEndpoint?
     switch state {
-    case .confirmingHTTP(let endpoint, .entry), .verifying(let endpoint):
+    case .checkingHTTPAcknowledgement(let endpoint),
+      .confirmingHTTP(let endpoint, .entry), .verifying(let endpoint):
       selectedEndpoint = endpoint
 
     case .editing, .confirmingHTTP, .ready, .setupRequired, .failed,
@@ -79,8 +81,8 @@ extension ConnectionFeature {
     case .confirmingHTTP(let endpoint, .restoration):
       state = .pausedHTTPRestoration(endpoint)
 
-    case .editing, .confirmingHTTP, .verifying, .ready, .setupRequired, .failed,
-      .pausedHTTPRestoration, .requiresHTTPS:
+    case .editing, .checkingHTTPAcknowledgement, .confirmingHTTP, .verifying,
+      .ready, .setupRequired, .failed, .pausedHTTPRestoration, .requiresHTTPS:
       returnToEditing()
     }
   }
@@ -133,7 +135,7 @@ extension ConnectionFeature {
         return
       }
       if case .eligible(let endpoint) = restoredEndpoint,
-        !endpoint.usesUnencryptedHTTP,
+        !endpoint.usesUnencryptedHTTP || snapshot.acknowledgesLocalHTTP(endpoint),
         self?.beginRestoredVerification(endpoint, attempt: currentAttempt) != true
       {
         return
@@ -200,10 +202,45 @@ extension ConnectionFeature {
   }
 
   private func beginConnectionFlow(for endpoint: NamaEndpoint) {
-    if endpoint.usesUnencryptedHTTP {
-      enterHTTPConfirmation(for: endpoint, context: .entry)
-    } else {
+    guard endpoint.usesUnencryptedHTTP else {
       startVerification(of: endpoint)
+      return
+    }
+
+    restorationHandled = true
+    cancelActiveAttempt()
+    pendingRestorationSnapshot = nil
+    state = .checkingHTTPAcknowledgement(endpoint)
+    attempt &+= 1
+    let currentAttempt = attempt
+    let store = endpointStore
+
+    activeTask = Task { [weak self] in
+      let snapshot = await store.snapshot()
+      guard !Task.isCancelled else {
+        return
+      }
+      self?.finishLocalHTTPAdmission(
+        endpoint,
+        snapshot: snapshot,
+        attempt: currentAttempt
+      )
+    }
+  }
+
+  private func finishLocalHTTPAdmission(
+    _ endpoint: NamaEndpoint,
+    snapshot: VerifiedEndpointStoreSnapshot,
+    attempt currentAttempt: Int
+  ) {
+    guard isCurrentAttempt(currentAttempt) else {
+      return
+    }
+    activeTask = nil
+    if snapshot.acknowledgesLocalHTTP(endpoint) {
+      startVerification(of: endpoint, from: snapshot)
+    } else {
+      enterHTTPConfirmation(for: endpoint, context: .entry)
     }
   }
 

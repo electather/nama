@@ -66,6 +66,7 @@ struct ConnectionPresentationTests {
     let httpEndpoint = try NamaEndpoint("http://nama.local/very/long/reverse/proxy/path/")
     let httpsEndpoint = try NamaEndpoint("https://nama.example.com")
     let localHTTPStates: [ConnectionState] = [
+      .checkingHTTPAcknowledgement(httpEndpoint),
       .confirmingHTTP(httpEndpoint, .entry),
       .verifying(httpEndpoint),
       .ready(httpEndpoint),
@@ -74,6 +75,7 @@ struct ConnectionPresentationTests {
       .pausedHTTPRestoration(httpEndpoint),
     ]
     let httpsStates: [ConnectionState] = [
+      .checkingHTTPAcknowledgement(httpsEndpoint),
       .confirmingHTTP(httpsEndpoint, .entry),
       .verifying(httpsEndpoint),
       .ready(httpsEndpoint),
@@ -164,6 +166,10 @@ struct ConnectionPresentationTests {
     let httpEndpoint = try NamaEndpoint("http://nama.local")
 
     #expect(ConnectionState.editing(validationError: nil).actions == [.connect])
+    #expect(
+      ConnectionState.checkingHTTPAcknowledgement(httpEndpoint).actions
+        == [.connect, .cancel, .changeEndpoint]
+    )
     #expect(
       ConnectionState.confirmingHTTP(httpEndpoint, .entry).actions
         == [.cancel, .continueWithoutHTTPS]

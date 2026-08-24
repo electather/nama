@@ -5,6 +5,7 @@ nonisolated enum HTTPConfirmationContext: Equatable, Sendable {
 
 nonisolated enum ConnectionState: Equatable, Sendable {
   case editing(validationError: EndpointValidationError?)
+  case checkingHTTPAcknowledgement(NamaEndpoint)
   case confirmingHTTP(NamaEndpoint, HTTPConfirmationContext)
   case verifying(NamaEndpoint)
   case ready(NamaEndpoint)
