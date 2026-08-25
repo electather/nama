@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-lines-per-function, eslint/no-magic-numbers, eslint/prefer-destructuring -- The literal full plugin aggregate and independently derived canonical expectation remain side by side as one protocol fixture.
+// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/prefer-destructuring -- The literal full plugin aggregate and independently derived canonical expectation remain side by side as one protocol fixture.
 import { create } from "@bufbuild/protobuf";
 import { DateSchema } from "@nama/api/google/type/date_pb.js";
 import {

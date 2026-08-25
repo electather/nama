@@ -191,15 +191,19 @@ const readCatalogImport = (databaseUrl: string, providerInstanceId: string) =>
     }),
   );
 
+interface CatalogImportPoll {
+  readonly deadline: number;
+  readonly expectedStatus: string;
+}
+
 const pollCatalogImport = (
   databaseUrl: string,
   providerInstanceId: string,
-  expectedStatus: string,
-  deadline: number,
+  poll: CatalogImportPoll,
 ): Effect.Effect<CatalogImportSnapshot> =>
   Effect.gen(function* waitForCatalogImport() {
     const snapshot = yield* readCatalogImport(databaseUrl, providerInstanceId);
-    if (snapshot.status === expectedStatus) {
+    if (snapshot.status === poll.expectedStatus) {
       return snapshot;
     }
     if (
@@ -210,11 +214,11 @@ const pollCatalogImport = (
       return yield* Effect.die(new Error(`catalog import failed: ${snapshot.safeFailureReason}`));
     }
     const now = yield* Clock.currentTimeMillis;
-    if (now >= deadline) {
-      return yield* Effect.die(new Error(`catalog import did not reach ${expectedStatus}`));
+    if (now >= poll.deadline) {
+      return yield* Effect.die(new Error(`catalog import did not reach ${poll.expectedStatus}`));
     }
     yield* Effect.sleep(CATALOG_IMPORT_POLL_MILLISECONDS);
-    return yield* pollCatalogImport(databaseUrl, providerInstanceId, expectedStatus, deadline);
+    return yield* pollCatalogImport(databaseUrl, providerInstanceId, poll);
   });
 
 const waitForCatalogImport = (
@@ -224,12 +228,10 @@ const waitForCatalogImport = (
 ) =>
   Clock.currentTimeMillis.pipe(
     Effect.flatMap((now) =>
-      pollCatalogImport(
-        databaseUrl,
-        providerInstanceId,
+      pollCatalogImport(databaseUrl, providerInstanceId, {
+        deadline: now + CATALOG_IMPORT_WAIT_MILLISECONDS,
         expectedStatus,
-        now + CATALOG_IMPORT_WAIT_MILLISECONDS,
-      ),
+      }),
     ),
   );
 
@@ -1277,9 +1279,9 @@ it.live(
                 canonicalItemCount: importedCatalog.canonicalItemCount,
                 libraryEntryCount: importedCatalog.libraryEntryCount,
                 mappingCount: importedCatalog.mappingCount,
-                safeFailureReason: null,
                 status: "paused",
               });
+              expect(pausedCatalog.safeFailureReason).toBeNull();
 
               const reenableArguments = [
                 "provider",
@@ -1310,9 +1312,9 @@ it.live(
                 canonicalItemCount: importedCatalog.canonicalItemCount,
                 libraryEntryCount: importedCatalog.libraryEntryCount,
                 mappingCount: importedCatalog.mappingCount,
-                safeFailureReason: null,
                 status: "succeeded",
               });
+              expect(reimportedCatalog.safeFailureReason).toBeNull();
               const disableForDeletionArguments = [
                 "provider",
                 "instance",
@@ -1360,10 +1362,10 @@ it.live(
                 canonicalItemCount: importedCatalog.canonicalItemCount,
                 libraryEntryCount: 0,
                 mappingCount: 0,
-                nextRetryAt: null,
-                safeFailureReason: null,
-                status: null,
               });
+              expect(deletedCatalog.nextRetryAt).toBeNull();
+              expect(deletedCatalog.safeFailureReason).toBeNull();
+              expect(deletedCatalog.status).toBeNull();
 
               runningProcess = yield* restartProcess({
                 currentProcess: runningProcess,

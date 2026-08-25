@@ -205,23 +205,24 @@ const normalizedSourceAvailability = (
   return availability ?? invalidMedia();
 };
 
-const normalizedSource = (
-  value: unknown,
-  itemId: string,
-  locationType: unknown,
-  itemRuntime: unknown,
-) => {
+interface JellyfinSourceContext {
+  readonly itemId: string;
+  readonly itemRuntime: unknown;
+  readonly locationType: unknown;
+}
+
+const normalizedSource = (value: unknown, context: JellyfinSourceContext) => {
   if (!isUnknownRecord(value)) {
     return invalidMedia();
   }
   const sourceId = requiredText(value["Id"]);
-  const sourceReference = { itemReference: { itemId }, sourceId };
+  const sourceReference = { itemReference: { itemId: context.itemId }, sourceId };
   const partReference = { partId: sourceId, sourceReference };
-  const runtime = optionalDuration(value["RunTimeTicks"] ?? itemRuntime);
+  const runtime = optionalDuration(value["RunTimeTicks"] ?? context.itemRuntime);
   const bitRateBps = optionalPositiveInteger(value["Bitrate"]);
   const sizeBytes = optionalUnsignedInteger(value["Size"]);
   return {
-    availability: normalizedSourceAvailability(value["Type"], locationType),
+    availability: normalizedSourceAvailability(value["Type"], context.locationType),
     ...optionalProperty("bitRateBps", bitRateBps),
     ...optionalProperty("label", optionalText(value["Name"])),
     parts: [
@@ -232,7 +233,7 @@ const normalizedSource = (
         partReference,
         ...optionalProperty("runtime", runtime),
         ...optionalProperty("sizeBytes", sizeBytes),
-        tracks: normalizedTracks(value["MediaStreams"], itemId, sourceId),
+        tracks: normalizedTracks(value["MediaStreams"], context.itemId, sourceId),
       },
     ],
     ...optionalProperty("runtime", runtime),
@@ -240,18 +241,11 @@ const normalizedSource = (
   };
 };
 
-const normalizeJellyfinSources = (
-  value: unknown,
-  itemId: string,
-  locationType: unknown,
-  itemRuntime: unknown,
-) => {
+const normalizeJellyfinSources = (value: unknown, context: JellyfinSourceContext) => {
   if (!Array.isArray(value) || value.length > MAXIMUM_SOURCES) {
     return invalidMedia();
   }
-  const sources = value.map((sourceValue) =>
-    normalizedSource(sourceValue, itemId, locationType, itemRuntime),
-  );
+  const sources = value.map((sourceValue) => normalizedSource(sourceValue, context));
   const sourceIds = sources.map((source) => source.sourceReference.sourceId);
   if (new Set(sourceIds).size !== sourceIds.length) {
     return invalidMedia();
@@ -259,4 +253,4 @@ const normalizeJellyfinSources = (
   return sources;
 };
 
-export { normalizeJellyfinSources };
+export { type JellyfinSourceContext, normalizeJellyfinSources };

@@ -52,13 +52,11 @@ const uniqueNestedObservations = <Input, Observation>(
     const observation = mapObservation(value);
     const reference = referenceOf(observation);
     const existing = observationsByReference.get(reference);
-    if (existing !== undefined) {
-      if (!isDeepStrictEqual(existing, observation)) {
-        throw invalidPage();
-      }
-      continue;
+    if (existing === undefined) {
+      observationsByReference.set(reference, observation);
+    } else if (!isDeepStrictEqual(existing, observation)) {
+      throw invalidPage();
     }
-    observationsByReference.set(reference, observation);
   }
   return [...observationsByReference.values()];
 };
@@ -86,16 +84,15 @@ const artworkObservation = (artwork: ProviderArtwork, ownerItemId: string) => {
   };
 };
 
+const portraitArtworkReference = (portrait: ProviderMediaCredit["portraitArtworkReference"]) =>
+  portrait && {
+    artworkReference: portrait.artworkId,
+    itemReference: required(portrait.itemReference).itemId,
+  };
+
 const creditObservation = (credit: ProviderMediaCredit) => {
   const role = required(CREDIT_ROLE[credit.role]);
-  const portrait = credit.portraitArtworkReference;
-  const portraitReference =
-    portrait === undefined
-      ? undefined
-      : {
-          artworkReference: portrait.artworkId,
-          itemReference: required(portrait.itemReference).itemId,
-        };
+  const portraitReference = portraitArtworkReference(credit.portraitArtworkReference);
   return {
     ...optional("characterName", credit.characterName),
     name: credit.name,

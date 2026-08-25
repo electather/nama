@@ -1,4 +1,4 @@
-// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, unicorn/no-null -- These disposable-PostgreSQL scenarios keep each durable scan transition and exact SQL-null assertion visible in execution order.
+// oxlint-disable eslint/max-lines-per-function, eslint/no-magic-numbers, unicorn/no-null -- These disposable-PostgreSQL scenarios keep each durable scan transition and exact SQL-null assertion visible in execution order.
 import { expect, it } from "@effect/vitest";
 import { Effect } from "effect";
 

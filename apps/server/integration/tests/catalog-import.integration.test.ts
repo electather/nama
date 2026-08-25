@@ -117,7 +117,7 @@ const pollCatalogStatus = (
   Effect.gen(function* catalogStatusPoll() {
     const snapshot = yield* catalogRows(databaseUrl);
     if (snapshot.rows[0]?.status === expectedStatus) {
-      return;
+      return yield* Effect.void;
     }
     const now = yield* Clock.currentTimeMillis;
     if (now >= deadline) {
@@ -126,7 +126,7 @@ const pollCatalogStatus = (
       );
     }
     yield* Effect.sleep(CATALOG_POLL_MILLISECONDS);
-    yield* pollCatalogStatus(databaseUrl, expectedStatus, deadline);
+    return yield* pollCatalogStatus(databaseUrl, expectedStatus, deadline);
   });
 
 const waitForCatalogStatus = (databaseUrl: string, expectedStatus: string) =>
@@ -144,7 +144,7 @@ const pollFailureCount = (
   Effect.gen(function* catalogFailurePoll() {
     const failure = yield* scanFailure(databaseUrl);
     if (failure.rows[0]?.consecutive_failure_count === expectedCount) {
-      return;
+      return yield* Effect.void;
     }
     const now = yield* Clock.currentTimeMillis;
     if (now >= deadline) {
@@ -153,7 +153,7 @@ const pollFailureCount = (
       );
     }
     yield* Effect.sleep(CATALOG_POLL_MILLISECONDS);
-    yield* pollFailureCount(databaseUrl, expectedCount, deadline);
+    return yield* pollFailureCount(databaseUrl, expectedCount, deadline);
   });
 
 const waitForFailureCount = (databaseUrl: string, expectedCount: number) =>

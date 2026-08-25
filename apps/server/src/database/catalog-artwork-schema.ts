@@ -81,8 +81,8 @@ const canonicalArtwork = pgTable(
     locale: text("locale"),
     providerInstanceId: text("provider_instance_id").notNull(),
     role: text("role").notNull(),
-    textPresence: text("text_presence").notNull(),
     targetItemReference: text("target_item_reference").notNull(),
+    textPresence: text("text_presence").notNull(),
     width: bigint("width", { mode: "number" }),
   },
   (table) => [

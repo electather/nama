@@ -64,18 +64,15 @@ const insertActiveArtworkAndCredits = async ({
       locale: entry.locale,
       providerInstanceId: input.providerInstanceId,
       role: entry.role,
-      textPresence: entry.textPresence,
       targetItemReference: entry.targetItemReference,
+      textPresence: entry.textPresence,
       width: entry.width,
     };
   });
   await insertBatches(artworkRows, (batch) => transaction.insert(canonicalArtwork).values(batch));
 
   const creditRows = input.credits.map((credit, displayOrder) => {
-    const portraitId =
-      credit.portraitArtworkReference === undefined
-        ? undefined
-        : artworkIdentityId(credit.portraitArtworkReference, artworkIds);
+    const portraitId = artworkIdentityId(credit.portraitArtworkReference, artworkIds);
     return {
       canonicalItemId,
       characterName: credit.characterName,

@@ -1,3 +1,4 @@
+// oxlint-disable eslint/max-lines-per-function, eslint/max-statements -- The scheduler state-machine scenarios keep concurrent transitions and their assertions visible in execution order.
 import { create } from "@bufbuild/protobuf";
 import { expect, it } from "@effect/vitest";
 import { ListConsistency, ListItemsResponseSchema } from "@nama/api/nama/plugin/v1/library_pb.js";
@@ -7,7 +8,14 @@ import type { CatalogPersistence } from "../../database/catalog-persistence.ts";
 import { makeCatalogImport } from "../catalog-import.ts";
 import type { CatalogImportDependencies } from "../catalog-import.ts";
 
-const ZERO_RANDOM = 0;
+const ZERO = 0;
+const ZERO_RANDOM = ZERO;
+const COUNT_INCREMENT = 1;
+const FIRST_CANDIDATE_PASS = 1;
+const EXPECTED_CANDIDATE_PASSES = 2;
+const EXPECTED_SECOND_PROVIDER_CALLS = 1;
+const FAILURE_OBSERVATION_WAIT_MILLISECONDS = 500;
+const PROVIDER_DISCOVERY_WAIT_MILLISECONDS = 1500;
 
 const unexpected = <Success>(): Effect.Effect<Success> =>
   Effect.die("unexpected catalog persistence call");
@@ -80,7 +88,7 @@ it.live("reports an unexpected provider scan defect to the runtime owner", () =>
       );
       const observed = yield* Effect.raceFirst(
         Deferred.await(reported).pipe(Effect.as(true)),
-        Effect.sleep(500).pipe(Effect.as(false)),
+        Effect.sleep(FAILURE_OBSERVATION_WAIT_MILLISECONDS).pipe(Effect.as(false)),
       );
 
       expect(observed).toBe(true);
@@ -91,28 +99,28 @@ it.live("reports an unexpected provider scan defect to the runtime owner", () =>
 it.live("keeps polling while an existing provider scan remains active", () =>
   Effect.scoped(
     Effect.gen(function* nonblockingCatalogSchedulerTest() {
-      const firstEntered = yield* Deferred.make<void>();
-      const firstRelease = yield* Deferred.make<void>();
-      const secondEntered = yield* Deferred.make<void>();
+      const firstEntered = yield* Deferred.make<boolean>();
+      const firstRelease = yield* Deferred.make<boolean>();
+      const secondEntered = yield* Deferred.make<boolean>();
       const completeResponse = create(ListItemsResponseSchema, {
         complete: true,
         consistency: ListConsistency.BEST_EFFORT_SCAN,
       });
-      let candidatePasses = 0;
-      let secondProviderCalls = 0;
+      let candidatePasses = ZERO;
+      let secondProviderCalls = ZERO;
       const catalog: CatalogPersistence = {
         acceptPage: () => Effect.succeed("accepted"),
         beginScan: ({ providerInstanceId }) =>
           Effect.succeed({
-            failureCount: 0,
+            failureCount: ZERO,
             providerInstanceId,
             revision: `${providerInstanceId}-revision`,
           }),
         failScan: () => unexpected(),
         listScanCandidates: Effect.sync(() => {
-          candidatePasses += 1;
+          candidatePasses += COUNT_INCREMENT;
           const first = { providerInstanceId: "first-provider", revision: "first-revision" };
-          if (candidatePasses === 1) {
+          if (candidatePasses === FIRST_CANDIDATE_PASS) {
             return [first];
           }
           return [first, { providerInstanceId: "second-provider", revision: "second-revision" }];
@@ -128,13 +136,13 @@ it.live("keeps polling while an existing provider scan remains active", () =>
         coreRunId: "core-run",
         listPage: ({ providerInstanceId }) => {
           if (providerInstanceId === "first-provider") {
-            return Deferred.succeed(firstEntered, undefined).pipe(
+            return Deferred.succeed(firstEntered, true).pipe(
               Effect.andThen(Deferred.await(firstRelease)),
               Effect.as(completeResponse),
             );
           }
-          secondProviderCalls += 1;
-          return Deferred.succeed(secondEntered, undefined).pipe(Effect.as(completeResponse));
+          secondProviderCalls += COUNT_INCREMENT;
+          return Deferred.succeed(secondEntered, true).pipe(Effect.as(completeResponse));
         },
         random: () => ZERO_RANDOM,
         runProviderActivity,
@@ -145,13 +153,13 @@ it.live("keeps polling while an existing provider scan remains active", () =>
 
       const discovered = yield* Effect.raceFirst(
         Deferred.await(secondEntered).pipe(Effect.as(true)),
-        Effect.sleep(1500).pipe(Effect.as(false)),
+        Effect.sleep(PROVIDER_DISCOVERY_WAIT_MILLISECONDS).pipe(Effect.as(false)),
       );
       const candidatePassesWhileBlocked = candidatePasses;
       const secondProviderCallsWhileBlocked = secondProviderCalls;
-      yield* Deferred.succeed(firstRelease, undefined);
-      expect(candidatePassesWhileBlocked).toBeGreaterThanOrEqual(2);
-      expect(secondProviderCallsWhileBlocked).toBe(1);
+      yield* Deferred.succeed(firstRelease, true);
+      expect(candidatePassesWhileBlocked).toBeGreaterThanOrEqual(EXPECTED_CANDIDATE_PASSES);
+      expect(secondProviderCallsWhileBlocked).toBe(EXPECTED_SECOND_PROVIDER_CALLS);
       expect(discovered).toBe(true);
     }),
   ),

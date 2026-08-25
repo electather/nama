@@ -78,6 +78,43 @@ const collectActiveArtwork = (input: CatalogItemObservation): readonly ActiveArt
   return artwork;
 };
 
+interface ArtworkMappingRow {
+  readonly artworkId: string;
+  readonly artworkReference: string;
+  readonly targetItemReference: string;
+}
+
+const activeArtworkCondition = (
+  artwork: readonly ActiveArtwork[],
+  canonicalItemId: string,
+  input: CatalogItemObservation,
+) => {
+  const activeReferences = artwork.map((entry) => {
+    const targetMatches = eq(providerArtworkMapping.targetItemReference, entry.targetItemReference);
+    const artworkMatches = eq(providerArtworkMapping.artworkReference, entry.artworkReference);
+    return and(targetMatches, artworkMatches);
+  });
+  return and(
+    eq(providerArtworkMapping.providerInstanceId, input.providerInstanceId),
+    eq(providerArtworkMapping.itemReference, input.itemReference),
+    eq(providerArtworkMapping.canonicalItemId, canonicalItemId),
+    or(...activeReferences),
+  );
+};
+
+const artworkIdsByTarget = (rows: readonly ArtworkMappingRow[]): ArtworkIdsByTargetReference => {
+  const artworkIds = new Map<string, Map<string, string>>();
+  for (const row of rows) {
+    const idsForTarget = artworkIds.get(row.targetItemReference);
+    if (idsForTarget === undefined) {
+      artworkIds.set(row.targetItemReference, new Map([[row.artworkReference, row.artworkId]]));
+    } else {
+      idsForTarget.set(row.artworkReference, row.artworkId);
+    }
+  }
+  return artworkIds;
+};
+
 const upsertArtworkMappings = async ({
   artwork,
   canonicalItemId,
@@ -103,6 +140,7 @@ const upsertArtworkMappings = async ({
   if (artwork.length === EMPTY_LENGTH) {
     return new Map();
   }
+  const condition = activeArtworkCondition(artwork, canonicalItemId, input);
   const rows = await transaction
     .select({
       artworkId: providerArtworkMapping.artworkId,
@@ -110,31 +148,8 @@ const upsertArtworkMappings = async ({
       targetItemReference: providerArtworkMapping.targetItemReference,
     })
     .from(providerArtworkMapping)
-    .where(
-      and(
-        eq(providerArtworkMapping.providerInstanceId, input.providerInstanceId),
-        eq(providerArtworkMapping.itemReference, input.itemReference),
-        eq(providerArtworkMapping.canonicalItemId, canonicalItemId),
-        or(
-          ...artwork.map((entry) =>
-            and(
-              eq(providerArtworkMapping.targetItemReference, entry.targetItemReference),
-              eq(providerArtworkMapping.artworkReference, entry.artworkReference),
-            ),
-          ),
-        ),
-      ),
-    );
-  const artworkIds = new Map<string, Map<string, string>>();
-  for (const row of rows) {
-    const idsForTarget = artworkIds.get(row.targetItemReference);
-    if (idsForTarget === undefined) {
-      artworkIds.set(row.targetItemReference, new Map([[row.artworkReference, row.artworkId]]));
-    } else {
-      idsForTarget.set(row.artworkReference, row.artworkId);
-    }
-  }
-  return artworkIds;
+    .where(condition);
+  return artworkIdsByTarget(rows);
 };
 
 const upsertSourceMappings = async (
@@ -173,9 +188,14 @@ const upsertSourceMappings = async (
 };
 
 const artworkIdentityId = (
-  reference: CatalogProviderArtworkReference,
+  reference: CatalogProviderArtworkReference | undefined,
   artworkIds: ArtworkIdsByTargetReference,
-): string | undefined => artworkIds.get(reference.itemReference)?.get(reference.artworkReference);
+): string | undefined => {
+  if (reference === undefined) {
+    return undefined;
+  }
+  return artworkIds.get(reference.itemReference)?.get(reference.artworkReference);
+};
 export {
   type ArtworkIdsByTargetReference,
   type ActiveArtwork,

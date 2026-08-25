@@ -33,9 +33,9 @@ const makeScheduler = (
     Effect.catchCause((cause) => reportUnexpectedCause(cause, reportFatalFailure)),
   );
 
-const makeCatalogImport = (dependencies: CatalogImportDependencies): CatalogImportService => {
+const makeScanProvider = (dependencies: CatalogImportDependencies) => {
   const active = new Set<string>();
-  const scanProvider = (providerInstanceId: string) =>
+  return (providerInstanceId: string) =>
     Effect.suspend(() => {
       if (active.has(providerInstanceId)) {
         return Effect.void;
@@ -48,6 +48,10 @@ const makeCatalogImport = (dependencies: CatalogImportDependencies): CatalogImpo
         }),
       );
     });
+};
+
+const makeCatalogImport = (dependencies: CatalogImportDependencies): CatalogImportService => {
+  const scanProvider = makeScanProvider(dependencies);
   const scanEligible = (reportFatalFailure: ReportCatalogFatalFailure) =>
     Effect.gen(function* scanEligibleCatalogs() {
       const paused = yield* attempt(

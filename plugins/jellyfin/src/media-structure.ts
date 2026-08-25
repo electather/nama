@@ -2,6 +2,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { ArtworkRole, MediaKind } from "@nama/api/nama/plugin/v1/media_pb.js";
 
 import { normalizeJellyfinSources } from "./media-source.ts";
+import type { JellyfinSourceContext } from "./media-source.ts";
 import {
   ABSENT_MEDIA_VALUE,
   invalidMedia,
@@ -85,6 +86,15 @@ const normalizedEpisodeDetails = (item: Readonly<Record<string, unknown>>) => {
   };
 };
 
+const normalizedPlayableSources = (item: Readonly<Record<string, unknown>>, itemId: string) => {
+  const context: JellyfinSourceContext = {
+    itemId,
+    itemRuntime: item["RunTimeTicks"],
+    locationType: item["LocationType"],
+  };
+  return normalizeJellyfinSources(item["MediaSources"], context);
+};
+
 const normalizeJellyfinItemStructure = (
   item: Readonly<Record<string, unknown>>,
   itemId: string,
@@ -95,12 +105,7 @@ const normalizeJellyfinItemStructure = (
         kind: MediaKind.MOVIE,
         kindDetails: normalizedMovieDetails(item),
         primaryArtworkRole: ArtworkRole.POSTER,
-        sources: normalizeJellyfinSources(
-          item["MediaSources"],
-          itemId,
-          item["LocationType"],
-          item["RunTimeTicks"],
-        ),
+        sources: normalizedPlayableSources(item, itemId),
       };
     }
     case "Series": {
@@ -124,12 +129,7 @@ const normalizeJellyfinItemStructure = (
         kind: MediaKind.EPISODE,
         kindDetails: normalizedEpisodeDetails(item),
         primaryArtworkRole: ArtworkRole.THUMBNAIL,
-        sources: normalizeJellyfinSources(
-          item["MediaSources"],
-          itemId,
-          item["LocationType"],
-          item["RunTimeTicks"],
-        ),
+        sources: normalizedPlayableSources(item, itemId),
       };
     }
     default: {

@@ -1,5 +1,5 @@
 import { once } from "node:events";
-// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, unicorn/max-nested-calls -- The real subprocess scenario keeps provider fixtures and complete wire expectations visible at one boundary.
+// oxlint-disable import/max-dependencies, eslint/max-lines-per-function, eslint/max-statements, unicorn/max-nested-calls -- The real subprocess scenario keeps provider fixtures, production adapters, and complete wire expectations visible at one boundary.
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { join } from "node:path";
@@ -774,7 +774,7 @@ const readPersistedCatalogImport = (databaseUrl: string) =>
               WHERE provider_instance_id = $1) AS status`,
         [CATALOG_PROVIDER_INSTANCE_ID],
       );
-      const row = result.rows[0];
+      const [row] = result.rows;
       if (row === undefined) {
         throw new Error("persisted catalog import snapshot is missing");
       }
@@ -790,25 +790,29 @@ const readPersistedCatalogImport = (databaseUrl: string) =>
     }),
   );
 
+interface PersistedCatalogPoll {
+  readonly condition: (snapshot: PersistedCatalogImport) => boolean;
+  readonly deadline: number;
+  readonly description: string;
+}
+
 const pollPersistedCatalogImport = (
   databaseUrl: string,
-  condition: (snapshot: PersistedCatalogImport) => boolean,
-  description: string,
-  deadline: number,
+  poll: PersistedCatalogPoll,
 ): Effect.Effect<PersistedCatalogImport> =>
   Effect.gen(function* persistedCatalogImportPoll() {
     const snapshot = yield* readPersistedCatalogImport(databaseUrl);
-    if (condition(snapshot)) {
+    if (poll.condition(snapshot)) {
       return snapshot;
     }
     const now = yield* Clock.currentTimeMillis;
-    if (now >= deadline) {
+    if (now >= poll.deadline) {
       return yield* Effect.die(
-        new Error(`catalog import did not ${description}: ${JSON.stringify(snapshot)}`),
+        new Error(`catalog import did not ${poll.description}: ${JSON.stringify(snapshot)}`),
       );
     }
     yield* Effect.sleep(CATALOG_IMPORT_POLL_MILLISECONDS);
-    return yield* pollPersistedCatalogImport(databaseUrl, condition, description, deadline);
+    return yield* pollPersistedCatalogImport(databaseUrl, poll);
   });
 
 const waitForPersistedCatalogImport = (
@@ -818,12 +822,11 @@ const waitForPersistedCatalogImport = (
 ) =>
   Clock.currentTimeMillis.pipe(
     Effect.flatMap((now) =>
-      pollPersistedCatalogImport(
-        databaseUrl,
+      pollPersistedCatalogImport(databaseUrl, {
         condition,
+        deadline: now + CATALOG_IMPORT_WAIT_MILLISECONDS,
         description,
-        now + CATALOG_IMPORT_WAIT_MILLISECONDS,
-      ),
+      }),
     ),
   );
 
@@ -854,7 +857,8 @@ const readCanonicalStorage = (databaseUrl: string) =>
                         FROM media_track AS record)
          )::text AS stored_catalog`,
       );
-      const storedCatalog = result.rows[0]?.stored_catalog;
+      const [row] = result.rows;
+      const storedCatalog = row?.stored_catalog;
       if (storedCatalog === undefined) {
         throw new Error("canonical storage snapshot is missing");
       }
@@ -1402,7 +1406,7 @@ it.live(
                 catalog: database.catalog,
                 coreRunId,
                 listPage,
-                random: () => 0,
+                random: () => NO_PROVIDER_REQUESTS,
                 runProviderActivity: passthroughActivity,
               });
             const reportFatalFailure = (cause: unknown) => Effect.die(cause);
@@ -1428,9 +1432,9 @@ it.live(
                 hasContinuation: true,
                 libraryEntryCount: 4,
                 mappingCount: 4,
-                safeFailureReason: null,
                 status: "running",
               });
+              expect(interrupted.safeFailureReason).toBeNull();
 
               jellyfin.catalog.hangAtStartIndex = undefined;
               yield* Effect.scoped(
@@ -1450,9 +1454,9 @@ it.live(
                 hasContinuation: false,
                 libraryEntryCount: 4,
                 mappingCount: 4,
-                safeFailureReason: null,
                 status: "succeeded",
               });
+              expect(completed.safeFailureReason).toBeNull();
 
               providerRevision = `${CATALOG_PROVIDER_REVISION}-replacement`;
               yield* withPool(databaseUrl, (pool) =>
