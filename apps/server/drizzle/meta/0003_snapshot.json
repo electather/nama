@@ -64,6 +64,7 @@
           "primaryKey": true,
           "notNull": true
         },
+
         "account_id": {
           "name": "account_id",
           "type": "text",
@@ -172,6 +173,7 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+
     "public.session": {
       "name": "session",
       "schema": "",

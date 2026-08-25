@@ -14,12 +14,11 @@ the generated private Connect interface, supervised production plugin, and
 controlled provider fixtures. `LIBRARY_READ`, `ARTWORK_RESOLVE`,
 `WATCH_STATE_READ`, and `WATCHED_WRITE` are advertised.
 
-Issue #145's Better Auth OAuth authorization-server routes, authenticated CLI
-approval, JWT-protected consumer access, broad client-grant revocation, and
-Apple token ownership are accepted target requirements but are not implemented.
-Issue #167 separately owns browser sign-in and device confirmation. The
-currently generated `DeviceService` contract is obsolete and remains only until
-that implementation removes it and regenerates all consumers.
+Issue #145's Better Auth authorization-server routes, authenticated CLI
+approval, JWT-protected consumer access, broad client-grant revocation, Apple
+token ownership, and removal of the obsolete `DeviceService` contract are
+implemented. Issue #167 separately owns browser sign-in and device
+confirmation.
 
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
@@ -1242,12 +1241,10 @@ global fatal-ambiguity rule or blindly replay candidate/provider work.
 
 Both v1 packages follow additive wire compatibility from the first complete Milestone 0 commit. Buf `FILE` breaking checks protect both packages.
 
-Issue #145 is the accepted pre-release exception for the unimplemented
-`DeviceService`: the implementation cutover removes that service and its
-messages, reserves removed message fields and enum values where Protobuf
-supports reservation, regenerates every consumer in the same change, and then
-advances the breaking-change baseline. No released client has consumed this
-surface, and no replacement Protobuf API mirrors the Better Auth HTTP contract.
+Issue #145 is the accepted pre-release exception that removed the unimplemented
+`DeviceService`, regenerated every consumer, and advanced the breaking-change
+baseline. No released client consumed that surface, and no replacement
+Protobuf API mirrors the Better Auth HTTP contract.
 
 - Never renumber or reuse a field or enum value.
 - Never change a field's scalar/message type, cardinality, presence, map shape, or oneof membership.

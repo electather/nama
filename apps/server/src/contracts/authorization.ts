@@ -1,33 +1,32 @@
 type ContractAuthority =
   | "public"
   | "bootstrap-token"
-  | "polling-token"
+  | "authenticated-principal"
   | "administrator"
-  | "administrator-or-device"
+  | "session-or-library"
+  | "session-or-playback"
+  | "session-or-user-state"
   | "plugin-bearer";
 
 export const contractAuthorityByMethod = {
+  "nama.api.v1.AuthService.ApproveDeviceAuthorization": "authenticated-principal",
   "nama.api.v1.AuthService.GetCurrentUser": "administrator",
+  "nama.api.v1.AuthService.RevokeAppleClientRefreshTokens": "administrator",
   "nama.api.v1.AuthService.SignIn": "public",
   "nama.api.v1.AuthService.SignOut": "administrator",
-  "nama.api.v1.DeviceService.ApprovePairing": "administrator",
-  "nama.api.v1.DeviceService.BeginPairing": "public",
-  "nama.api.v1.DeviceService.GetPairingStatus": "polling-token",
-  "nama.api.v1.DeviceService.ListDevices": "administrator",
-  "nama.api.v1.DeviceService.RevokeDevice": "administrator",
   "nama.api.v1.HealthService.Check": "administrator",
   "nama.api.v1.HealthService.GetDiagnostics": "administrator",
-  "nama.api.v1.LibraryService.GetHome": "administrator-or-device",
-  "nama.api.v1.LibraryService.GetMedia": "administrator-or-device",
-  "nama.api.v1.LibraryService.GetMediaSource": "administrator-or-device",
-  "nama.api.v1.LibraryService.ListChildren": "administrator-or-device",
-  "nama.api.v1.LibraryService.ListLibrary": "administrator-or-device",
-  "nama.api.v1.LibraryService.ResolveArtwork": "administrator-or-device",
-  "nama.api.v1.LibraryService.Search": "administrator-or-device",
-  "nama.api.v1.PlaybackService.ClosePlayback": "administrator-or-device",
-  "nama.api.v1.PlaybackService.OpenPlayback": "administrator-or-device",
-  "nama.api.v1.PlaybackService.PlanPlayback": "administrator-or-device",
-  "nama.api.v1.PlaybackService.ReportPlayback": "administrator-or-device",
+  "nama.api.v1.LibraryService.GetHome": "session-or-library",
+  "nama.api.v1.LibraryService.GetMedia": "session-or-library",
+  "nama.api.v1.LibraryService.GetMediaSource": "session-or-library",
+  "nama.api.v1.LibraryService.ListChildren": "session-or-library",
+  "nama.api.v1.LibraryService.ListLibrary": "session-or-library",
+  "nama.api.v1.LibraryService.ResolveArtwork": "session-or-library",
+  "nama.api.v1.LibraryService.Search": "session-or-library",
+  "nama.api.v1.PlaybackService.ClosePlayback": "session-or-playback",
+  "nama.api.v1.PlaybackService.OpenPlayback": "session-or-playback",
+  "nama.api.v1.PlaybackService.PlanPlayback": "session-or-playback",
+  "nama.api.v1.PlaybackService.ReportPlayback": "session-or-playback",
   "nama.api.v1.ProviderService.CreateProviderInstance": "administrator",
   "nama.api.v1.ProviderService.DeleteProviderInstance": "administrator",
   "nama.api.v1.ProviderService.GetProviderInstance": "administrator",
@@ -41,8 +40,8 @@ export const contractAuthorityByMethod = {
   "nama.api.v1.SyncService.GetSyncRun": "administrator",
   "nama.api.v1.SyncService.GetSyncStatus": "administrator",
   "nama.api.v1.SyncService.TriggerSync": "administrator",
-  "nama.api.v1.UserStateService.GetUserState": "administrator-or-device",
-  "nama.api.v1.UserStateService.SetWatched": "administrator-or-device",
+  "nama.api.v1.UserStateService.GetUserState": "session-or-user-state",
+  "nama.api.v1.UserStateService.SetWatched": "session-or-user-state",
   "nama.plugin.v1.HealthService.Check": "plugin-bearer",
   "nama.plugin.v1.LibraryService.GetItem": "plugin-bearer",
   "nama.plugin.v1.LibraryService.ListItems": "plugin-bearer",

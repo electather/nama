@@ -19,6 +19,12 @@ public protocol Nama_Api_V1_AuthServiceClientInterface: Sendable {
 
     @available(iOS 13, *)
     func `signOut`(request: Nama_Api_V1_SignOutRequest, headers: Connect.Headers) async -> ResponseMessage<Nama_Api_V1_SignOutResponse>
+
+    @available(iOS 13, *)
+    func `approveDeviceAuthorization`(request: Nama_Api_V1_ApproveDeviceAuthorizationRequest, headers: Connect.Headers) async -> ResponseMessage<Nama_Api_V1_ApproveDeviceAuthorizationResponse>
+
+    @available(iOS 13, *)
+    func `revokeAppleClientRefreshTokens`(request: Nama_Api_V1_RevokeAppleClientRefreshTokensRequest, headers: Connect.Headers) async -> ResponseMessage<Nama_Api_V1_RevokeAppleClientRefreshTokensResponse>
 }
 
 /// Concrete implementation of `Nama_Api_V1_AuthServiceClientInterface`.
@@ -44,11 +50,23 @@ public final class Nama_Api_V1_AuthServiceClient: Nama_Api_V1_AuthServiceClientI
         return await self.client.unary(path: "/nama.api.v1.AuthService/SignOut", idempotencyLevel: .unknown, request: request, headers: headers)
     }
 
+    @available(iOS 13, *)
+    public func `approveDeviceAuthorization`(request: Nama_Api_V1_ApproveDeviceAuthorizationRequest, headers: Connect.Headers = [:]) async -> ResponseMessage<Nama_Api_V1_ApproveDeviceAuthorizationResponse> {
+        return await self.client.unary(path: "/nama.api.v1.AuthService/ApproveDeviceAuthorization", idempotencyLevel: .unknown, request: request, headers: headers)
+    }
+
+    @available(iOS 13, *)
+    public func `revokeAppleClientRefreshTokens`(request: Nama_Api_V1_RevokeAppleClientRefreshTokensRequest, headers: Connect.Headers = [:]) async -> ResponseMessage<Nama_Api_V1_RevokeAppleClientRefreshTokensResponse> {
+        return await self.client.unary(path: "/nama.api.v1.AuthService/RevokeAppleClientRefreshTokens", idempotencyLevel: .unknown, request: request, headers: headers)
+    }
+
     public enum Metadata {
         public enum Methods {
             public static let signIn = Connect.MethodSpec(name: "SignIn", service: "nama.api.v1.AuthService", type: .unary)
             public static let getCurrentUser = Connect.MethodSpec(name: "GetCurrentUser", service: "nama.api.v1.AuthService", type: .unary)
             public static let signOut = Connect.MethodSpec(name: "SignOut", service: "nama.api.v1.AuthService", type: .unary)
+            public static let approveDeviceAuthorization = Connect.MethodSpec(name: "ApproveDeviceAuthorization", service: "nama.api.v1.AuthService", type: .unary)
+            public static let revokeAppleClientRefreshTokens = Connect.MethodSpec(name: "RevokeAppleClientRefreshTokens", service: "nama.api.v1.AuthService", type: .unary)
         }
     }
 }

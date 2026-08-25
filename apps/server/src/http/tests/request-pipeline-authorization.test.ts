@@ -1,12 +1,19 @@
+// oxlint-disable import/max-dependencies, eslint/max-statements -- The authorization inventory scenario keeps administrator, principal, scoped consumer, and plugin authority ordering visible together.
 import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
+import { Effect } from "effect";
 import { expect, test } from "vitest";
 
 import { AuthService } from "../../../../../gen/ts/src/nama/api/v1/auth_pb.js";
-import { DeviceService } from "../../../../../gen/ts/src/nama/api/v1/device_pb.js";
 import { LibraryService } from "../../../../../gen/ts/src/nama/api/v1/library_pb.js";
+import { PlaybackService } from "../../../../../gen/ts/src/nama/api/v1/playback_pb.js";
+import { UserStateService } from "../../../../../gen/ts/src/nama/api/v1/user_state_pb.js";
 import { PluginService } from "../../../../../gen/ts/src/nama/plugin/v1/plugin_pb.js";
-import { createRequestPipeline, getRequestAdministrator } from "../request-pipeline.ts";
+import {
+  createRequestPipeline,
+  getRequestAdministrator,
+  getRequestPrincipal,
+} from "../request-pipeline.ts";
 import type { RequestPipelineDependencies } from "../request-pipeline.ts";
 import { expectApplicationError } from "./request-pipeline-assertions.ts";
 import {
@@ -80,6 +87,16 @@ const recordAdministrator =
     const response = responseFor(received);
     return Promise.resolve(response);
   };
+const recordPrincipal =
+  (trace: string[], seenPrincipalIds: string[]): RequestHandler =>
+  (received) => {
+    trace.push("next");
+    const principal = getRequestPrincipal(received.contextValues);
+    if (principal !== undefined) {
+      seenPrincipalIds.push(principal.id);
+    }
+    return Promise.resolve(responseFor(received));
+  };
 
 const expectInvalidAdministratorCredential = async (makeHeader: HeaderFactory): Promise<void> => {
   const trace: string[] = [];
@@ -136,10 +153,12 @@ test("denies a decoded unary method absent from the authority inventory before v
   expect(trace).toStrictEqual([]);
 });
 
-test("accepts an administrator for administrator and administrator-or-device methods", async () => {
+test("accepts a session for administrator and consumer methods", async () => {
   const trace: string[] = [];
   const authentication = makeTestAuthenticationService({
-    resolveAdministrator: () => traceEffect(trace, "resolve", ADMINISTRATOR),
+    resolveAdministrator: () => traceEffect(trace, "resolve-administrator", ADMINISTRATOR),
+    resolveConsumerPrincipal: (_authorization, scope) =>
+      traceEffect(trace, `resolve-consumer:${scope}`, ADMINISTRATOR),
   });
   const requestValidator = {
     validate: () => {
@@ -147,9 +166,10 @@ test("accepts an administrator for administrator and administrator-or-device met
       return { kind: "valid" as const };
     },
   };
-  const seenAdministratorIds: string[] = [];
+  const seenPrincipalIds: string[] = [];
   const interceptor = createPipeline({ authentication, requestValidator });
-  const next = recordAdministrator(trace, seenAdministratorIds);
+  const administratorNext = recordAdministrator(trace, seenPrincipalIds);
+  const principalNext = recordPrincipal(trace, seenPrincipalIds);
 
   await invoke(
     interceptor,
@@ -160,21 +180,85 @@ test("accepts an administrator for administrator and administrator-or-device met
         header: bearerHeader(),
       },
     ),
-    next,
+    administratorNext,
   );
   await invoke(
     interceptor,
     withRequestId(LibraryService.method.getHome, create(LibraryService.method.getHome.input), {
       header: bearerHeader(),
     }),
-    next,
+    principalNext,
   );
 
-  expect(trace).toStrictEqual(["resolve", "validate", "next", "resolve", "validate", "next"]);
-  expect(seenAdministratorIds).toStrictEqual([ADMINISTRATOR.id, ADMINISTRATOR.id]);
+  expect(trace).toStrictEqual([
+    "resolve-administrator",
+    "validate",
+    "next",
+    "resolve-consumer:nama:library",
+    "validate",
+    "next",
+  ]);
+  expect(seenPrincipalIds).toStrictEqual([ADMINISTRATOR.id, ADMINISTRATOR.id]);
+});
+test("passes each consumer method group's exact OAuth scope requirement", async () => {
+  const seenScopes: string[] = [];
+  const authentication = makeTestAuthenticationService({
+    resolveConsumerPrincipal: (_authorization, scope) =>
+      Effect.sync(() => {
+        seenScopes.push(scope);
+        return ADMINISTRATOR;
+      }),
+  });
+  const interceptor = createPipeline({ authentication });
+
+  await invoke(
+    interceptor,
+    withRequestId(
+      PlaybackService.method.planPlayback,
+      create(PlaybackService.method.planPlayback.input),
+      { header: bearerHeader() },
+    ),
+    () => Promise.resolve(responseFor(CURRENT_ADMINISTRATOR_REQUEST)),
+  );
+  await invoke(
+    interceptor,
+    withRequestId(
+      UserStateService.method.getUserState,
+      create(UserStateService.method.getUserState.input),
+      { header: bearerHeader() },
+    ),
+    () => Promise.resolve(responseFor(CURRENT_ADMINISTRATOR_REQUEST)),
+  );
+
+  expect(seenScopes).toStrictEqual(["nama:playback", "nama:user-state"]);
+});
+test("admits device approval through authenticated-principal authority without an Administrator check", async () => {
+  const trace: string[] = [];
+  const authentication = makeTestAuthenticationService({
+    resolvePrincipal: () => traceEffect(trace, "resolve-principal", ADMINISTRATOR),
+  });
+  const requestValidator = {
+    validate: () => {
+      trace.push("validate");
+      return { kind: "valid" as const };
+    },
+  };
+  const interceptor = createPipeline({ authentication, requestValidator });
+
+  await invoke(
+    interceptor,
+    withRequestId(
+      AuthService.method.approveDeviceAuthorization,
+      create(AuthService.method.approveDeviceAuthorization.input, { userCode: "ABCD-EFGH" }),
+      { header: bearerHeader() },
+    ),
+    recordDispatch(trace),
+  );
+
+  expect(trace).toStrictEqual(["resolve-principal", "validate", "next"]);
 });
 
-test("fails closed for polling-token and plugin-only authorities without dispatch", async () => {
+test("fails closed for plugin-only authority without dispatch", async () => {
   const trace: string[] = [];
   const authentication = makeTestAuthenticationService({
     resolveAdministrator: () => traceEffect(trace, "resolve", ADMINISTRATOR),
@@ -187,18 +271,7 @@ test("fails closed for polling-token and plugin-only authorities without dispatc
   };
   const interceptor = createPipeline({ authentication, requestValidator });
 
-  const pollingPromise = invoke(
-    interceptor,
-    withRequestId(
-      DeviceService.method.getPairingStatus,
-      create(DeviceService.method.getPairingStatus.input),
-      {
-        header: bearerHeader(),
-      },
-    ),
-    recordDispatch(trace),
-  );
-  const pluginPromise = invoke(
+  const promise = invoke(
     interceptor,
     withRequestId(PluginService.method.getInfo, create(PluginService.method.getInfo.input), {
       header: bearerHeader(),
@@ -206,19 +279,11 @@ test("fails closed for polling-token and plugin-only authorities without dispatc
     recordDispatch(trace),
   );
 
-  await Promise.all([
-    expectApplicationError({
-      code: Code.PermissionDenied,
-      promise: pollingPromise,
-      reason: "PERMISSION_DENIED",
-    }),
-    expectApplicationError({
-      code: Code.PermissionDenied,
-      promise: pluginPromise,
-      reason: "PERMISSION_DENIED",
-    }),
-  ]);
-
+  await expectApplicationError({
+    code: Code.PermissionDenied,
+    promise,
+    reason: "PERMISSION_DENIED",
+  });
   expect(trace).toStrictEqual([]);
 });
 
@@ -247,7 +312,7 @@ test("maps authoritative session-store failure to AUTHENTICATION_UNAVAILABLE", a
 test("authenticates a protected request before validation and Connect's unimplemented handler", async () => {
   const trace: string[] = [];
   const authentication = makeTestAuthenticationService({
-    resolveAdministrator: () => traceFailureEffect(trace, "resolve", INVALID_BEARER),
+    resolveConsumerPrincipal: () => traceFailureEffect(trace, "resolve", INVALID_BEARER),
   });
   const requestValidator = {
     validate: () => {

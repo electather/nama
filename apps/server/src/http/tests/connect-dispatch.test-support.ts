@@ -39,9 +39,15 @@ const requestRuntime = Object.freeze({
 } satisfies RequestRuntime);
 
 const authentication: AuthenticationService = Object.freeze({
+  approveDeviceAuthorization: () => Effect.die("device approval is outside dispatch coverage"),
   consumeGlobalSignInBudget: noRateLimit,
   consumeIdentitySignInBudget: () => noRateLimit,
   resolveAdministrator: () => Effect.succeed(ADMINISTRATOR),
+  resolveConsumerPrincipal: () => Effect.succeed(ADMINISTRATOR),
+  resolvePrincipal: () => Effect.succeed(ADMINISTRATOR),
+  revokeAppleClientRefreshTokens: Effect.die(
+    "Apple client revocation is outside dispatch coverage",
+  ),
   signIn: () =>
     Effect.succeed({
       administrator: ADMINISTRATOR,

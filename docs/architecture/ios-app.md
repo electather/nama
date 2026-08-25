@@ -1,14 +1,14 @@
 # Universal Apple application
 
-Status: the universal SwiftUI target, manual-connection tracer, endpoint
-transport eligibility, explicit permitted local-HTTP confirmation,
-endpoint-bound persistent acknowledgement, persistent selected-endpoint warning,
-endpoint-scoped local-HTTP proxy bypass, the ATS local-networking declaration,
-foreground LAN discovery, and verified endpoint restoration are implemented.
-Better Auth OAuth authorization, consumer media behavior, and product playback remain target
-work. This note labels implemented, target, and deferred behavior explicitly;
-a target invariant is required architecture, not a claim that its runtime
-exists.
+Status: the universal SwiftUI target, endpoint connection and restoration,
+acknowledged eligible local HTTP, foreground LAN discovery, native Better Auth
+device authorization, refresh rotation, and endpoint-bound Keychain token
+storage are implemented. Apple-platform builds and macOS-host tests pass. A
+signed Apple TV 4K simulator has completed local-HTTP acknowledgement,
+no-browser authorization through the generated CLI, scoped consumer
+verification, Keychain commit, and relaunch restoration. Consumer media
+behavior, physical Apple hardware, expiry-driven actual-surface refresh, and
+the remaining Apple surfaces remain unverified.
 
 ## Authority and fixed decisions
 
@@ -45,11 +45,15 @@ The application boundary is:
 
 ## Implemented baseline
 
-The checked-in application implements one connection tracer with manual entry,
-optional LAN discovery, and verified endpoint restoration:
+The checked-in application implements endpoint connection and Better Auth OAuth
+device authorization:
 
-- `NamaApp` creates one `ConnectionFeature`, setup-status verifier, and
-  Network-framework discovery adapter for each `WindowGroup` window.
+- `NamaApp` creates one connection and OAuth authorization feature per window
+  over one installation-wide authorization session and Keychain store. The
+  session shares only non-secret active authorization status, expiry, and
+  refresh/mutation admission; candidate codes, candidate failures, attempts,
+  secret token material, and task lifetimes stay out of that observable shared
+  state.
 - `NamaEndpoint` accepts an absolute HTTP or HTTPS URL with an explicit scheme
   and non-empty host, no credentials, query, or fragment, and an optional
   reverse-proxy path prefix. It normalizes the address and represents only
@@ -118,6 +122,20 @@ optional LAN discovery, and verified endpoint restoration:
   local-networking allowance in its partial Info property list without a
   multicast entitlement, arbitrary loads, or static per-domain exceptions. The
   macOS build uses App Sandbox with outgoing network-client access only.
+- `OAuthAuthorizationFeature` requests the fixed Apple public client's device
+  grant directly over native HTTP, presents CLI-only approval instructions,
+  polls no faster than Better Auth's returned interval, proves the access JWT
+  reaches the scoped `GetHome` authorization boundary, rotates refresh tokens
+  at access-token expiry, and publishes authorization only after verification
+  and the endpoint-bound bundle commit.
+- `KeychainOAuthTokenStore` keeps one versioned exact-endpoint record with
+  `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and synchronization disabled.
+  Damaged bytes are quarantined before removal; failed or cancelled candidate
+  commits preserve the previous record.
+- The OAuth HTTP adapter requests the exact Nama resource and consumer scopes
+  plus `offline_access`, refuses redirects, and applies the connection module's
+  proxy-free policy to acknowledged eligible local HTTP. Browser verification
+  and Better Auth browser session routes are not part of this surface.
 
 The Swift Testing target covers endpoint normalization and every approved and
 forbidden address-class boundary, mapped and scoped IPv6, local DNS label and
@@ -145,11 +163,11 @@ physical-device privacy prompts, focus, accessibility, or playback behavior.
 
 This baseline implements endpoint eligibility, endpoint-bound persistent
 local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP
-recovery, endpoint-scoped local-HTTP proxy bypass, and the narrow ATS
-local-networking allowance.
-
-The implemented source does not yet contain Keychain OAuth tokens, device
-authorization, Home, Library, Details, Watch State, or Playback behavior.
+recovery, endpoint-scoped local-HTTP proxy bypass, the narrow ATS
+local-networking allowance, Better Auth device authorization and refresh,
+endpoint-bound Keychain tokens, and a scoped `GetHome` authorization probe that
+must reach the deliberately unimplemented handler. Home, Library, Details,
+Watch State, and Playback product behavior remain unimplemented.
 
 ## Target runtime topology
 
@@ -476,22 +494,22 @@ The implemented Connection boundary has these committed automated owners:
 | Consent and persistence | `ConnectionFeatureTests`, `ConnectionRecoveryTests`, `VerifiedEndpointStoreTests`, and `ConnectionPresentationTests` | Exact acknowledgement, source-specific cancellation, warning retention, migration, generation fencing, and cross-window visibility pass through the shared feature and store seams. |
 | Transport | `SetupStatusVerifierTests` | Redirect targets are not contacted, redirect metadata stays inside URLSession, local HTTP selects a proxy-free copy, HTTPS preserves the supplied normal configuration, and cancellation reaches both schemes. Platform trust remains URLSession-owned; the redirect delegate implements no authentication-challenge override. |
 | Application declarations | `check:ios` | Built iOS, tvOS, and macOS property lists must enable only ATS local networking and must omit arbitrary loads and static exception domains. |
+| OAuth authorization and persistence | `OAuthAuthorizationFeatureTests`, `OAuthAuthorizationLifecycleTests`, `OAuthAuthorizationTransportTests`, and `OAuthTokenStoreTests` | Concrete native OAuth and scoped Connect requests, returned-interval polling, expiry-driven refresh, structured retry, window-local task cancellation, shared refresh admission and takeover, serialized mutation rollback, replacement publication ordering, damaged-record quarantine, and this-device-only non-synchronizing Keychain attributes are specified through deterministic seams. |
 
 The previews and platform builds above remain inspection and compilation aids,
 not runtime evidence. Local acceptance has exercised only the scenarios
 recorded below; every omitted requirement remains **Unverified**.
 
-Actual-surface inspection on each row also requires source-specific
-cancellation, foreground cancellation, candidate deduplication, and manual
-fallback. OAuth authorization replacement remains target behavior without a
-current implementation or runtime claim and is therefore **Unverified** on
-every actual surface.
+The signed Apple TV 4K simulator authorization result below is simulator
+actual-surface evidence. It is not physical-device privacy, ATS, LAN,
+proxy-routing, remote-control, or Keychain-hardware proof. Actual-surface
+inspection on the remaining rows and expiry-driven refresh remain required.
 
 | Surface | Required inspection | Recorded result |
 | --- | --- | --- |
 | iPhone | Confirmation, persistent warning, blocked restoration, long endpoint, touch and keyboard focus, Dynamic Type, VoiceOver labels and order, contrast, and non-color-only meaning | **Partially verified** — an iPhone 17 Pro simulator rendered blocked restoration and the persistent failed local-HTTP warning with a long endpoint. The warning remained legible through the largest Dynamic Type category with Increase Contrast enabled and communicated its meaning through text and symbol. Confirmation, input focus, operation, and VoiceOver order remain **Unverified**. |
 | iPad | The iPhone inspection plus window resizing and cross-window policy behavior | **Partially verified** — an iPad Pro 13-inch simulator rendered the persistent failed local-HTTP warning and long endpoint without clipping. The remaining inspection is **Unverified**. |
-| Apple TV | Confirmation, persistent warning, blocked restoration, long endpoint, remote focus and operation, VoiceOver labels and order, contrast, and non-color-only meaning; Dynamic Type is not applicable | **Partially verified** — an Apple TV 4K simulator rendered the persistent failed local-HTTP warning and long endpoint with visible initial focus on Retry. Confirmation, blocked restoration, remote operation, and VoiceOver order remain **Unverified**. |
+| Apple TV | Confirmation, persistent warning, blocked restoration, long endpoint, remote focus and operation, VoiceOver labels and order, contrast, and non-color-only meaning; Dynamic Type is not applicable | **Partially verified** — a signed Apple TV 4K simulator confirmed acknowledged local HTTP against a live Nama server, displayed the device code, completed generated-CLI approval and native token exchange, reached the scoped consumer boundary, committed the endpoint-bound Keychain bundle, and restored authorization after relaunch. Expiry-driven refresh, foreground cancellation, blocked restoration, physical-remote operation, and VoiceOver order remain **Unverified**. |
 | Mac | Confirmation, persistent warning, blocked restoration, long endpoint, keyboard and pointer focus, window and cross-window behavior, Dynamic Type, VoiceOver labels and order, contrast, and non-color-only meaning | **Partially verified** — a locally Apple Development-signed sandboxed build on Mac hardware rendered confirmation, approved local HTTP against a live Nama server, the resulting setup-required warning, and the failed long-endpoint state. The accessibility tree exposed the visible labels and actions. Blocked restoration, keyboard and pointer focus, cross-window behavior, Dynamic Type, and VoiceOver order remain **Unverified**. |
 
 Simulator behavior, shared source, and built declarations are not Local Network

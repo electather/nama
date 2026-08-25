@@ -278,6 +278,158 @@ func (*SignOutResponse) Descriptor() ([]byte, []int) {
 	return file_nama_api_v1_auth_proto_rawDescGZIP(), []int{5}
 }
 
+type ApproveDeviceAuthorizationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserCode      string                 `protobuf:"bytes,1,opt,name=user_code,json=userCode,proto3" json:"user_code,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApproveDeviceAuthorizationRequest) Reset() {
+	*x = ApproveDeviceAuthorizationRequest{}
+	mi := &file_nama_api_v1_auth_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApproveDeviceAuthorizationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApproveDeviceAuthorizationRequest) ProtoMessage() {}
+
+func (x *ApproveDeviceAuthorizationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_nama_api_v1_auth_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApproveDeviceAuthorizationRequest.ProtoReflect.Descriptor instead.
+func (*ApproveDeviceAuthorizationRequest) Descriptor() ([]byte, []int) {
+	return file_nama_api_v1_auth_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ApproveDeviceAuthorizationRequest) GetUserCode() string {
+	if x != nil {
+		return x.UserCode
+	}
+	return ""
+}
+
+type ApproveDeviceAuthorizationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApproveDeviceAuthorizationResponse) Reset() {
+	*x = ApproveDeviceAuthorizationResponse{}
+	mi := &file_nama_api_v1_auth_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApproveDeviceAuthorizationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApproveDeviceAuthorizationResponse) ProtoMessage() {}
+
+func (x *ApproveDeviceAuthorizationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_nama_api_v1_auth_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApproveDeviceAuthorizationResponse.ProtoReflect.Descriptor instead.
+func (*ApproveDeviceAuthorizationResponse) Descriptor() ([]byte, []int) {
+	return file_nama_api_v1_auth_proto_rawDescGZIP(), []int{7}
+}
+
+type RevokeAppleClientRefreshTokensRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeAppleClientRefreshTokensRequest) Reset() {
+	*x = RevokeAppleClientRefreshTokensRequest{}
+	mi := &file_nama_api_v1_auth_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeAppleClientRefreshTokensRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeAppleClientRefreshTokensRequest) ProtoMessage() {}
+
+func (x *RevokeAppleClientRefreshTokensRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_nama_api_v1_auth_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeAppleClientRefreshTokensRequest.ProtoReflect.Descriptor instead.
+func (*RevokeAppleClientRefreshTokensRequest) Descriptor() ([]byte, []int) {
+	return file_nama_api_v1_auth_proto_rawDescGZIP(), []int{8}
+}
+
+type RevokeAppleClientRefreshTokensResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeAppleClientRefreshTokensResponse) Reset() {
+	*x = RevokeAppleClientRefreshTokensResponse{}
+	mi := &file_nama_api_v1_auth_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeAppleClientRefreshTokensResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeAppleClientRefreshTokensResponse) ProtoMessage() {}
+
+func (x *RevokeAppleClientRefreshTokensResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_nama_api_v1_auth_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeAppleClientRefreshTokensResponse.ProtoReflect.Descriptor instead.
+func (*RevokeAppleClientRefreshTokensResponse) Descriptor() ([]byte, []int) {
+	return file_nama_api_v1_auth_proto_rawDescGZIP(), []int{9}
+}
+
 var File_nama_api_v1_auth_proto protoreflect.FileDescriptor
 
 const file_nama_api_v1_auth_proto_rawDesc = "" +
@@ -297,11 +449,18 @@ const file_nama_api_v1_auth_proto_rawDesc = "" +
 	"\x16GetCurrentUserResponse\x12H\n" +
 	"\radministrator\x18\x01 \x01(\v2\x1a.nama.api.v1.AdministratorB\x06\xbaH\x03\xc8\x01\x01R\radministrator\"\x10\n" +
 	"\x0eSignOutRequest\"\x11\n" +
-	"\x0fSignOutResponse2\xf1\x01\n" +
+	"\x0fSignOutResponse\"K\n" +
+	"!ApproveDeviceAuthorizationRequest\x12&\n" +
+	"\tuser_code\x18\x01 \x01(\tB\t\xbaH\x06r\x04\x10\x01\x18@R\buserCode\"$\n" +
+	"\"ApproveDeviceAuthorizationResponse\"'\n" +
+	"%RevokeAppleClientRefreshTokensRequest\"(\n" +
+	"&RevokeAppleClientRefreshTokensResponse2\xfc\x03\n" +
 	"\vAuthService\x12A\n" +
 	"\x06SignIn\x12\x1a.nama.api.v1.SignInRequest\x1a\x1b.nama.api.v1.SignInResponse\x12Y\n" +
 	"\x0eGetCurrentUser\x12\".nama.api.v1.GetCurrentUserRequest\x1a#.nama.api.v1.GetCurrentUserResponse\x12D\n" +
-	"\aSignOut\x12\x1b.nama.api.v1.SignOutRequest\x1a\x1c.nama.api.v1.SignOutResponseB\x9f\x01\n" +
+	"\aSignOut\x12\x1b.nama.api.v1.SignOutRequest\x1a\x1c.nama.api.v1.SignOutResponse\x12}\n" +
+	"\x1aApproveDeviceAuthorization\x12..nama.api.v1.ApproveDeviceAuthorizationRequest\x1a/.nama.api.v1.ApproveDeviceAuthorizationResponse\x12\x89\x01\n" +
+	"\x1eRevokeAppleClientRefreshTokens\x122.nama.api.v1.RevokeAppleClientRefreshTokensRequest\x1a3.nama.api.v1.RevokeAppleClientRefreshTokensResponseB\x9f\x01\n" +
 	"\x0fcom.nama.api.v1B\tAuthProtoP\x01Z3github.com/electather/nama/gen/go/nama/api/v1;apiv1\xa2\x02\x03NAX\xaa\x02\vNama.Api.V1\xca\x02\vNama\\Api\\V1\xe2\x02\x17Nama\\Api\\V1\\GPBMetadata\xea\x02\rNama::Api::V1b\x06proto3"
 
 var (
@@ -316,32 +475,40 @@ func file_nama_api_v1_auth_proto_rawDescGZIP() []byte {
 	return file_nama_api_v1_auth_proto_rawDescData
 }
 
-var file_nama_api_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_nama_api_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_nama_api_v1_auth_proto_goTypes = []any{
-	(*SignInRequest)(nil),          // 0: nama.api.v1.SignInRequest
-	(*SignInResponse)(nil),         // 1: nama.api.v1.SignInResponse
-	(*GetCurrentUserRequest)(nil),  // 2: nama.api.v1.GetCurrentUserRequest
-	(*GetCurrentUserResponse)(nil), // 3: nama.api.v1.GetCurrentUserResponse
-	(*SignOutRequest)(nil),         // 4: nama.api.v1.SignOutRequest
-	(*SignOutResponse)(nil),        // 5: nama.api.v1.SignOutResponse
-	(*Administrator)(nil),          // 6: nama.api.v1.Administrator
-	(*BearerCredential)(nil),       // 7: nama.api.v1.BearerCredential
+	(*SignInRequest)(nil),                          // 0: nama.api.v1.SignInRequest
+	(*SignInResponse)(nil),                         // 1: nama.api.v1.SignInResponse
+	(*GetCurrentUserRequest)(nil),                  // 2: nama.api.v1.GetCurrentUserRequest
+	(*GetCurrentUserResponse)(nil),                 // 3: nama.api.v1.GetCurrentUserResponse
+	(*SignOutRequest)(nil),                         // 4: nama.api.v1.SignOutRequest
+	(*SignOutResponse)(nil),                        // 5: nama.api.v1.SignOutResponse
+	(*ApproveDeviceAuthorizationRequest)(nil),      // 6: nama.api.v1.ApproveDeviceAuthorizationRequest
+	(*ApproveDeviceAuthorizationResponse)(nil),     // 7: nama.api.v1.ApproveDeviceAuthorizationResponse
+	(*RevokeAppleClientRefreshTokensRequest)(nil),  // 8: nama.api.v1.RevokeAppleClientRefreshTokensRequest
+	(*RevokeAppleClientRefreshTokensResponse)(nil), // 9: nama.api.v1.RevokeAppleClientRefreshTokensResponse
+	(*Administrator)(nil),                          // 10: nama.api.v1.Administrator
+	(*BearerCredential)(nil),                       // 11: nama.api.v1.BearerCredential
 }
 var file_nama_api_v1_auth_proto_depIdxs = []int32{
-	6, // 0: nama.api.v1.SignInResponse.administrator:type_name -> nama.api.v1.Administrator
-	7, // 1: nama.api.v1.SignInResponse.credential:type_name -> nama.api.v1.BearerCredential
-	6, // 2: nama.api.v1.GetCurrentUserResponse.administrator:type_name -> nama.api.v1.Administrator
-	0, // 3: nama.api.v1.AuthService.SignIn:input_type -> nama.api.v1.SignInRequest
-	2, // 4: nama.api.v1.AuthService.GetCurrentUser:input_type -> nama.api.v1.GetCurrentUserRequest
-	4, // 5: nama.api.v1.AuthService.SignOut:input_type -> nama.api.v1.SignOutRequest
-	1, // 6: nama.api.v1.AuthService.SignIn:output_type -> nama.api.v1.SignInResponse
-	3, // 7: nama.api.v1.AuthService.GetCurrentUser:output_type -> nama.api.v1.GetCurrentUserResponse
-	5, // 8: nama.api.v1.AuthService.SignOut:output_type -> nama.api.v1.SignOutResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	10, // 0: nama.api.v1.SignInResponse.administrator:type_name -> nama.api.v1.Administrator
+	11, // 1: nama.api.v1.SignInResponse.credential:type_name -> nama.api.v1.BearerCredential
+	10, // 2: nama.api.v1.GetCurrentUserResponse.administrator:type_name -> nama.api.v1.Administrator
+	0,  // 3: nama.api.v1.AuthService.SignIn:input_type -> nama.api.v1.SignInRequest
+	2,  // 4: nama.api.v1.AuthService.GetCurrentUser:input_type -> nama.api.v1.GetCurrentUserRequest
+	4,  // 5: nama.api.v1.AuthService.SignOut:input_type -> nama.api.v1.SignOutRequest
+	6,  // 6: nama.api.v1.AuthService.ApproveDeviceAuthorization:input_type -> nama.api.v1.ApproveDeviceAuthorizationRequest
+	8,  // 7: nama.api.v1.AuthService.RevokeAppleClientRefreshTokens:input_type -> nama.api.v1.RevokeAppleClientRefreshTokensRequest
+	1,  // 8: nama.api.v1.AuthService.SignIn:output_type -> nama.api.v1.SignInResponse
+	3,  // 9: nama.api.v1.AuthService.GetCurrentUser:output_type -> nama.api.v1.GetCurrentUserResponse
+	5,  // 10: nama.api.v1.AuthService.SignOut:output_type -> nama.api.v1.SignOutResponse
+	7,  // 11: nama.api.v1.AuthService.ApproveDeviceAuthorization:output_type -> nama.api.v1.ApproveDeviceAuthorizationResponse
+	9,  // 12: nama.api.v1.AuthService.RevokeAppleClientRefreshTokens:output_type -> nama.api.v1.RevokeAppleClientRefreshTokensResponse
+	8,  // [8:13] is the sub-list for method output_type
+	3,  // [3:8] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_nama_api_v1_auth_proto_init() }
@@ -357,7 +524,7 @@ func file_nama_api_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_nama_api_v1_auth_proto_rawDesc), len(file_nama_api_v1_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

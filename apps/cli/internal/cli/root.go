@@ -57,6 +57,8 @@ Examples
   nama profile set local --server https://nama.example.test
   nama setup --profile local --display-name "Nama Administrator" --email admin@example.test
   nama auth login --profile local --email admin@example.test
+  nama auth approve-device ABCD-EFGH --profile local
+  nama auth revoke-apple-client --profile local
   nama auth status --profile local`
 
 // Dependencies supplies the concrete process dependencies for the command tree.
@@ -245,9 +247,11 @@ func NewRootCommand(dependencies Dependencies) *cobra.Command {
 			InvalidArguments: runtime.invalidArguments,
 		}),
 		authcommand.NewCommand(authcommand.Handlers{
-			Login:            runtime.login,
-			Status:           runtime.status,
-			InvalidArguments: runtime.invalidArguments,
+			ApproveDevice:     runtime.approveDeviceAuthorization,
+			Login:             runtime.login,
+			RevokeAppleClient: runtime.revokeAppleClientRefreshTokens,
+			Status:            runtime.status,
+			InvalidArguments:  runtime.invalidArguments,
 		}),
 	)
 	helpCommand := runtime.newHelpCommand()
@@ -488,16 +492,106 @@ func (r *runtime) status(command *cobra.Command) error {
 		if err != nil {
 			return nil, err
 		}
-		result, err := app.Status(command.Context(), app.StatusInput{
-			Profile:       state.resolved.Profile,
-			ProfileServer: state.config.Profiles[state.resolved.Profile],
-			Server:        state.resolved.Server,
-		}, authClient, r.dependencies.Credentials)
+		result, err := app.Status(
+			command.Context(),
+			selectedSession(state),
+			authClient,
+			r.dependencies.Credentials,
+		)
 		if err != nil {
 			return nil, classifyLocalError(err)
 		}
 		return result, nil
 	})
+}
+
+func (r *runtime) approveDeviceAuthorization(command *cobra.Command, userCode string) error {
+	return r.execute(command, true, func(state commandState) (any, error) {
+		if state.resolved.Server == "" {
+			return nil, clierror.InvalidArgument(errors.New("device approval requires a server URL"))
+		}
+		_, authClient, err := r.clients(state, false)
+		if err != nil {
+			return nil, err
+		}
+		result, err := app.ApproveDeviceAuthorization(
+			command.Context(),
+			app.ApproveDeviceAuthorizationInput{
+				Session:  selectedSession(state),
+				UserCode: userCode,
+			},
+			authClient,
+			r.dependencies.Credentials,
+		)
+		if err != nil {
+			return nil, classifyLocalError(err)
+		}
+		return result, nil
+	})
+}
+
+func (r *runtime) revokeAppleClientRefreshTokens(command *cobra.Command, yes bool) error {
+	return r.execute(command, true, func(state commandState) (any, error) {
+		if state.resolved.Server == "" {
+			return nil, clierror.InvalidArgument(errors.New("apple client revocation requires a server URL"))
+		}
+		if err := r.confirmAppleClientRevocation(command, state, yes); err != nil {
+			return nil, err
+		}
+		_, authClient, err := r.clients(state, false)
+		if err != nil {
+			return nil, err
+		}
+		result, err := app.RevokeAppleClientRefreshTokens(
+			command.Context(),
+			app.RevokeAppleClientRefreshTokensInput{
+				Session: selectedSession(state),
+			},
+			authClient,
+			r.dependencies.Credentials,
+		)
+		if err != nil {
+			return nil, classifyLocalError(err)
+		}
+		return result, nil
+	})
+}
+
+func selectedSession(state commandState) app.SelectedSession {
+	return app.SelectedSession{
+		Profile:       state.resolved.Profile,
+		ProfileServer: state.config.Profiles[state.resolved.Profile],
+		Server:        state.resolved.Server,
+	}
+}
+
+func (r *runtime) confirmAppleClientRevocation(
+	command *cobra.Command,
+	state commandState,
+	yes bool,
+) error {
+	if yes {
+		return nil
+	}
+	if state.resolved.Output == config.OutputJSON || !r.dependencies.SecretInput.Terminal {
+		return clierror.InvalidArgument(errors.New("--yes is required for non-interactive apple client revocation"))
+	}
+	if _, err := io.WriteString(
+		command.ErrOrStderr(),
+		"Revoke every Apple client refresh token? Existing access tokens remain valid until expiry. [y/N] ",
+	); err != nil {
+		return clierror.Unexpected(err)
+	}
+	answer, err := bufio.NewReader(command.InOrStdin()).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return clierror.Unexpected(err)
+	}
+	confirmed := strings.EqualFold(strings.TrimSpace(answer), "y") ||
+		strings.EqualFold(strings.TrimSpace(answer), "yes")
+	if !confirmed {
+		return clierror.New(clierror.CodeRequestCancelled, errors.New("apple client revocation was not confirmed"))
+	}
+	return nil
 }
 
 func (r *runtime) listProviderTypes(command *cobra.Command, pageSize uint32, pageToken string) error {

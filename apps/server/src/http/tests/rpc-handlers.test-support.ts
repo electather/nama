@@ -109,9 +109,13 @@ const makeRpcAuthenticationService = (
   overrides: Partial<AuthenticationService> = {},
 ): AuthenticationService =>
   Object.freeze({
+    approveDeviceAuthorization: () => Effect.die("Unexpected device approval"),
     consumeGlobalSignInBudget: Effect.die("Unexpected global sign-in limit check"),
     consumeIdentitySignInBudget: () => Effect.die("Unexpected identity sign-in limit check"),
     resolveAdministrator: () => Effect.die("Unexpected administrator lookup"),
+    resolveConsumerPrincipal: () => Effect.die("Unexpected consumer principal lookup"),
+    resolvePrincipal: () => Effect.die("Unexpected principal lookup"),
+    revokeAppleClientRefreshTokens: Effect.die("Unexpected Apple client revocation"),
     signIn: () => Effect.die("Unexpected sign-in"),
     signOut: () => Effect.die("Unexpected sign-out"),
     ...overrides,

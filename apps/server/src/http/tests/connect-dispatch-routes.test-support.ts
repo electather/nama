@@ -1,5 +1,4 @@
 import { AuthService } from "../../../../../gen/ts/src/nama/api/v1/auth_pb.js";
-import { DeviceService } from "../../../../../gen/ts/src/nama/api/v1/device_pb.js";
 import { HealthService } from "../../../../../gen/ts/src/nama/api/v1/health_pb.js";
 import { LibraryService } from "../../../../../gen/ts/src/nama/api/v1/library_pb.js";
 import { PlaybackService } from "../../../../../gen/ts/src/nama/api/v1/playback_pb.js";
@@ -40,7 +39,6 @@ const connectProtocolProbePath = connectPath(SetupService, SetupService.method.g
 const publicConnectRepresentativeRoutes: readonly RepresentativeRoute[] = Object.freeze([
   route({ body: "{}", method: SetupService.method.getStatus, service: SetupService }),
   route({ body: DUMMY_SIGN_IN_BODY, method: AuthService.method.signIn, service: AuthService }),
-  route({ body: "{}", method: DeviceService.method.beginPairing, service: DeviceService }),
   route({
     body: "{}",
     expectsUnimplemented: true,

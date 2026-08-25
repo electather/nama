@@ -286,7 +286,7 @@ func TestStatusOperation(t *testing.T) {
 
 	for _, test := range []struct {
 		name            string
-		input           StatusInput
+		input           SelectedSession
 		store           statusCredentialStoreFake
 		currentUser     *apiv1.GetCurrentUserResponse
 		currentUserErr  error
@@ -343,7 +343,7 @@ func TestStatusOperation(t *testing.T) {
 		},
 		{
 			name: "does not send a stored profile credential to a server override",
-			input: StatusInput{
+			input: SelectedSession{
 				Profile:       loginProfile,
 				ProfileServer: loginServer,
 				Server:        "https://override.example.test",
@@ -353,7 +353,7 @@ func TestStatusOperation(t *testing.T) {
 		},
 		{
 			name: "uses an injected credential on a server override",
-			input: StatusInput{
+			input: SelectedSession{
 				Profile:       loginProfile,
 				ProfileServer: loginServer,
 				Server:        "https://override.example.test",
@@ -365,7 +365,7 @@ func TestStatusOperation(t *testing.T) {
 		},
 		{
 			name:          "omits profile data when an explicit server has no selected profile",
-			input:         StatusInput{Server: loginServer},
+			input:         SelectedSession{Server: loginServer},
 			store:         statusCredentialStoreFake{credential: injectedCredential, exists: true},
 			currentUser:   &apiv1.GetCurrentUserResponse{Administrator: setupAdministrator},
 			wantSignedIn:  true,
@@ -507,19 +507,19 @@ func TestStatusResolvesInjectionBeforeIneligibleStoredCredentials(t *testing.T) 
 
 	for _, test := range []struct {
 		name          string
-		input         StatusInput
+		input         SelectedSession
 		injectedToken string
 		wantSignedIn  bool
 		wantUserCalls int
 	}{
 		{
 			name:         "no selected profile",
-			input:        StatusInput{Server: loginServer},
+			input:        SelectedSession{Server: loginServer},
 			wantSignedIn: false,
 		},
 		{
 			name: "stored profile credential on a server override",
-			input: StatusInput{
+			input: SelectedSession{
 				Profile:       loginProfile,
 				ProfileServer: loginServer,
 				Server:        "https://override.example.test",
@@ -528,7 +528,7 @@ func TestStatusResolvesInjectionBeforeIneligibleStoredCredentials(t *testing.T) 
 		},
 		{
 			name:          "injected credential without a selected profile",
-			input:         StatusInput{Server: loginServer},
+			input:         SelectedSession{Server: loginServer},
 			injectedToken: newBearer,
 			wantSignedIn:  true,
 			wantUserCalls: 1,
@@ -725,8 +725,8 @@ func successfulLoginSignIn(credential auth.Credential) loginSignInResult {
 	}}
 }
 
-func matchingStatusInput() StatusInput {
-	return StatusInput{Profile: loginProfile, ProfileServer: loginServer, Server: loginServer}
+func matchingStatusInput() SelectedSession {
+	return SelectedSession{Profile: loginProfile, ProfileServer: loginServer, Server: loginServer}
 }
 
 type loginSignInResult struct {
@@ -740,6 +740,7 @@ type loginSignOutResult struct {
 }
 
 type loginAuthServiceFake struct {
+	apiv1.UnimplementedAuthServiceHandler
 	signIn         loginSignInResult
 	signOut        loginSignOutResult
 	signInCalls    int
@@ -804,6 +805,7 @@ func (f *loginCredentialStoreFake) Delete(context.Context, string) error {
 }
 
 type statusAuthServiceFake struct {
+	apiv1.UnimplementedAuthServiceHandler
 	currentUser      *apiv1.GetCurrentUserResponse
 	currentUserErr   error
 	currentUserCalls int

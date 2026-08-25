@@ -15,11 +15,12 @@ is ready or still needs Administrator setup.
 ## Product Purpose
 
 Nama's universal Apple application provides one native, dependable client
-across Apple platforms. This connection flow turns an explicitly discovered,
-manually entered, or restored transport address into a verified, restorable
-Nama endpoint without guessing identity, weakening platform security, or
-promising unimplemented OAuth authorization and media behavior. Success means the person
-always sees an honest, actionable connection state.
+across Apple platforms. Its connection and authorization flow turns an
+explicitly discovered, manually entered, or restored transport address into a
+verified Nama endpoint and one endpoint-bound OAuth grant without guessing
+identity or weakening platform security. Media behavior remains unimplemented;
+success means the person always sees an honest, actionable connection or
+authorization state.
 
 ## Brand Personality
 
