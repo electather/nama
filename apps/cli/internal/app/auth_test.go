@@ -740,6 +740,7 @@ type loginSignOutResult struct {
 }
 
 type loginAuthServiceFake struct {
+	apiv1.UnimplementedAuthServiceHandler
 	signIn         loginSignInResult
 	signOut        loginSignOutResult
 	signInCalls    int
@@ -804,6 +805,7 @@ func (f *loginCredentialStoreFake) Delete(context.Context, string) error {
 }
 
 type statusAuthServiceFake struct {
+	apiv1.UnimplementedAuthServiceHandler
 	currentUser      *apiv1.GetCurrentUserResponse
 	currentUserErr   error
 	currentUserCalls int

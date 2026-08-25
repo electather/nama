@@ -1,11 +1,12 @@
+// oxlint-disable eslint/max-lines, eslint/max-lines-per-function, eslint/max-params -- The complete private-runtime construction fake keeps module loading, plugin configuration, and secret-containment captures in one reusable fixture.
 import { hkdf as nodeHkdf } from "node:crypto";
 import { promisify } from "node:util";
 
 import { expect } from "@effect/vitest";
-import { Redacted } from "effect";
+import { Effect, Redacted } from "effect";
 
 import type { ConfigService } from "../../config/schema.ts";
-import { account, session, user, verification } from "../../database/auth-schema.ts";
+import { generatedAuthenticationSchema } from "../../database/schema.ts";
 import type { RuntimeModuleLoader as BetterAuthModuleLoader } from "../better-auth-adapter-runtime.ts";
 
 const hkdf = promisify(nodeHkdf);
@@ -26,9 +27,13 @@ const MAXIMUM_PASSWORD_LENGTH = 128;
 const MASTER_KEY_BYTE = 7;
 const DIFFERENT_MASTER_KEY_BYTE = 8;
 const EXPECTED_MODULE_IDS = [
+  "@better-auth/oauth-provider",
   "better-auth",
   "better-auth/adapters/drizzle",
+  "better-auth/node",
+  "better-auth/oauth2",
   "better-auth/plugins/bearer",
+  "better-auth/plugins/jwt",
 ];
 const EMPTY_HKDF_SALT = Buffer.alloc(ZERO);
 const HKDF_INFO_BYTES = Buffer.from(HKDF_INFO, "utf8");
@@ -37,36 +42,38 @@ const MASTER_KEY = Buffer.alloc(HKDF_OUTPUT_BYTES, MASTER_KEY_BYTE);
 const DIFFERENT_MASTER_KEY = Buffer.alloc(HKDF_OUTPUT_BYTES, DIFFERENT_MASTER_KEY_BYTE);
 const DATABASE = Object.freeze({ testDatabase: true });
 const DATABASE_SERVICE = Object.freeze({
-  authentication: Object.freeze({ database: DATABASE }),
+  authentication: Object.freeze({
+    database: DATABASE,
+    revokeAppleClientRefreshTokens: Effect.die("unexpected Apple client revocation"),
+  }),
 });
-const GENERATED_AUTH_SCHEMA = {
-  account,
-  session,
-  user,
-  verification,
-} satisfies GeneratedAuthSchema;
+const GENERATED_AUTH_SCHEMA = generatedAuthenticationSchema;
+const TEST_NODE_HANDLER = () => {};
 type BetterAuthModule = Record<string, unknown>;
 type RuntimeOptions = BetterAuthModule;
-interface GeneratedAuthSchema {
-  readonly account: unknown;
-  readonly session: unknown;
-  readonly user: unknown;
-  readonly verification: unknown;
-}
 type DrizzleAdapterCall = Readonly<{ configuration: RuntimeOptions; database: unknown }>;
 interface RuntimeCaptures {
   readonly bearerOptions: (RuntimeOptions | undefined)[];
   readonly betterAuthOptions: RuntimeOptions[];
+  readonly deviceAuthorizationOptions: (RuntimeOptions | undefined)[];
   readonly drizzleAdapterCalls: DrizzleAdapterCall[];
   readonly forbiddenCalls: string[];
+  readonly jwtOptions: (RuntimeOptions | undefined)[];
   readonly moduleIds: string[];
+  readonly nodeHandlerRuntimes: unknown[];
+  readonly oauthProviderOptions: RuntimeOptions[];
 }
 interface RuntimeFakes {
   readonly adapter: unknown;
+  readonly bearerPlugin: unknown;
   readonly captures: RuntimeCaptures;
+  readonly deviceAuthorizationPlugin: unknown;
+  readonly jwtPlugin: unknown;
   readonly loadModule: BetterAuthModuleLoader;
+  readonly nodeHandler: unknown;
   readonly modules: Record<string, BetterAuthModule>;
-  readonly plugin: unknown;
+  readonly oauthProviderPlugin: unknown;
+  readonly runtime: unknown;
 }
 const encodeMasterKey = (masterKey: Buffer): string =>
   `${BASE64_PREFIX}${masterKey.toString("base64")}`;
@@ -106,12 +113,29 @@ const makeForbiddenExport = (captures: RuntimeCaptures, name: string) => () => {
 const makeRuntimeModules = (
   captures: RuntimeCaptures,
   adapter: unknown,
-  plugin: unknown,
+  nodeHandler: unknown,
+  plugins: Readonly<{
+    bearer: unknown;
+    deviceAuthorization: unknown;
+    jwt: unknown;
+    oauthProvider: unknown;
+  }>,
+  runtime: unknown,
 ): Record<string, BetterAuthModule> => ({
+  "@better-auth/oauth-provider": {
+    oauthDeviceAuthorization: (options: RuntimeOptions | undefined) => {
+      captures.deviceAuthorizationOptions.push(options);
+      return plugins.deviceAuthorization;
+    },
+    oauthProvider: (options: RuntimeOptions) => {
+      captures.oauthProviderOptions.push(options);
+      return plugins.oauthProvider;
+    },
+  },
   "better-auth": {
     betterAuth: (options: RuntimeOptions) => {
       captures.betterAuthOptions.push(options);
-      return Object.freeze({ privateRuntime: true });
+      return runtime;
     },
     handler: makeForbiddenExport(captures, "handler"),
     migrate: makeForbiddenExport(captures, "migrate"),
@@ -124,26 +148,60 @@ const makeRuntimeModules = (
     handler: makeForbiddenExport(captures, "adapter handler"),
     migrate: makeForbiddenExport(captures, "adapter migrate"),
   },
+  "better-auth/node": {
+    toNodeHandler: (candidate: unknown) => {
+      captures.nodeHandlerRuntimes.push(candidate);
+      return nodeHandler;
+    },
+  },
+  "better-auth/oauth2": {
+    verifyJwsAccessToken: makeForbiddenExport(captures, "verifyJwsAccessToken"),
+  },
   "better-auth/plugins/bearer": {
     bearer: (options: RuntimeOptions | undefined) => {
       captures.bearerOptions.push(options);
-      return plugin;
+      return plugins.bearer;
     },
     handler: makeForbiddenExport(captures, "bearer handler"),
     migrate: makeForbiddenExport(captures, "bearer migrate"),
+  },
+  "better-auth/plugins/jwt": {
+    jwt: (options: RuntimeOptions | undefined) => {
+      captures.jwtOptions.push(options);
+      return plugins.jwt;
+    },
   },
 });
 const makeRuntimeFakes = (): RuntimeFakes => {
   const captures: RuntimeCaptures = {
     bearerOptions: [],
     betterAuthOptions: [],
+    deviceAuthorizationOptions: [],
     drizzleAdapterCalls: [],
     forbiddenCalls: [],
+    jwtOptions: [],
     moduleIds: [],
+    nodeHandlerRuntimes: [],
+    oauthProviderOptions: [],
   };
   const adapter = Object.freeze({ adapter: "drizzle" });
-  const plugin = Object.freeze({ id: "bearer" });
-  const modules = makeRuntimeModules(captures, adapter, plugin);
+  const bearerPlugin = Object.freeze({ id: "bearer" });
+  const deviceAuthorizationPlugin = Object.freeze({ id: "device-authorization" });
+  const jwtPlugin = Object.freeze({ id: "jwt" });
+  const oauthProviderPlugin = Object.freeze({ id: "oauth-provider" });
+  const runtime = Object.freeze({ $context: Promise.resolve({}), privateRuntime: true });
+  const modules = makeRuntimeModules(
+    captures,
+    adapter,
+    TEST_NODE_HANDLER,
+    {
+      bearer: bearerPlugin,
+      deviceAuthorization: deviceAuthorizationPlugin,
+      jwt: jwtPlugin,
+      oauthProvider: oauthProviderPlugin,
+    },
+    runtime,
+  );
   const loadModule: BetterAuthModuleLoader = (moduleId) => {
     captures.moduleIds.push(moduleId);
     const runtimeModule = modules[moduleId];
@@ -152,7 +210,18 @@ const makeRuntimeFakes = (): RuntimeFakes => {
     }
     return runtimeModule;
   };
-  return { adapter, captures, loadModule, modules, plugin };
+  return {
+    adapter,
+    bearerPlugin,
+    captures,
+    deviceAuthorizationPlugin,
+    jwtPlugin,
+    loadModule,
+    modules,
+    nodeHandler: TEST_NODE_HANDLER,
+    oauthProviderPlugin,
+    runtime,
+  };
 };
 const capturedSecret = (fakes: RuntimeFakes): string => {
   const secret = fakes.captures.betterAuthOptions[ZERO]?.["secret"];
@@ -204,14 +273,6 @@ const expectSafeConstructionFailure = (failure: unknown, privateError: Error): v
   }
 };
 
-const isGeneratedAuthSchema = (value: unknown): value is GeneratedAuthSchema =>
-  typeof value === "object" &&
-  value !== null &&
-  "account" in value &&
-  "session" in value &&
-  "user" in value &&
-  "verification" in value;
-
 const expectModuleLoading = (fakes: RuntimeFakes): void => {
   expect(fakes.captures.moduleIds).toHaveLength(EXPECTED_MODULE_IDS.length);
   expect(fakes.captures.moduleIds.toSorted()).toEqual(EXPECTED_MODULE_IDS.toSorted());
@@ -232,22 +293,27 @@ const expectDrizzleAdapterConfiguration = (fakes: RuntimeFakes): void => {
   if (drizzleAdapterCall === undefined) {
     throw new TypeError("Drizzle adapter must receive exactly one configuration");
   }
-  const configuredSchema = drizzleAdapterCall.configuration["schema"];
-  if (!isGeneratedAuthSchema(configuredSchema)) {
-    throw new TypeError("Drizzle adapter must receive an authentication schema");
-  }
-  const hasExactSchemaIdentity =
-    configuredSchema.account === account &&
-    configuredSchema.session === session &&
-    configuredSchema.user === user &&
-    configuredSchema.verification === verification;
-  expect(hasExactSchemaIdentity).toBe(true);
+  expect(drizzleAdapterCall.configuration["schema"]).toBe(GENERATED_AUTH_SCHEMA);
 };
 
 const expectRuntimeConfiguration = (fakes: RuntimeFakes, secret: string): void => {
+  expect(fakes.captures.nodeHandlerRuntimes).toEqual([fakes.runtime]);
   expect(fakes.captures.bearerOptions).toEqual([{ requireSignature: true }]);
+  expect(fakes.captures.jwtOptions).toEqual([{ disableSettingJwtHeader: true }]);
+  expect(fakes.captures.deviceAuthorizationOptions).toEqual([undefined]);
+  expect(fakes.captures.oauthProviderOptions).toEqual([
+    {
+      cachedResources: new Set([PUBLIC_URL]),
+      cachedTrustedClients: new Set(["nama-apple"]),
+      consentPage: "/oauth/not-available",
+      grantTypes: ["authorization_code", "refresh_token"],
+      loginPage: "/oauth/not-available",
+      scopes: ["nama:library", "nama:playback", "nama:user-state", "offline_access"],
+    },
+  ]);
   expect(fakes.captures.betterAuthOptions).toEqual([
     {
+      basePath: "/",
       baseURL: PUBLIC_URL,
       database: fakes.adapter,
       emailAndPassword: {
@@ -257,7 +323,12 @@ const expectRuntimeConfiguration = (fakes: RuntimeFakes, secret: string): void =
         minPasswordLength: MINIMUM_PASSWORD_LENGTH,
       },
       logger: { disabled: true },
-      plugins: [fakes.plugin],
+      plugins: [
+        fakes.bearerPlugin,
+        fakes.jwtPlugin,
+        fakes.oauthProviderPlugin,
+        fakes.deviceAuthorizationPlugin,
+      ],
       secret,
       telemetry: { enabled: false },
     },

@@ -24,6 +24,10 @@ interface DatabaseAuthentication {
   readonly completeInitialization: (
     administratorUserId: string,
   ) => Effect.Effect<void, DatabaseInitializationCompletionError>;
+  readonly revokeAppleClientRefreshTokens: Effect.Effect<
+    void,
+    Readonly<{ readonly _tag: "DatabaseAuthenticationMutationError" }>
+  >;
 }
 
 interface DatabaseTimeRow {
@@ -51,9 +55,26 @@ interface PersistedCompletion {
   readonly marker: readonly MarkerRow[];
 }
 
+interface AppleOAuthConfigurationRow {
+  readonly application_type: string | null;
+  readonly client_id: string;
+  readonly client_secret: string | null;
+  readonly grant_types: string[] | null;
+  readonly resource: string;
+  readonly resource_scopes: string[] | null;
+  readonly scopes: string[] | null;
+  readonly token_endpoint_auth_method: string | null;
+}
+interface RefreshTokenRevocationRow {
+  readonly client_id: string;
+  readonly id: string;
+  readonly revoked: Date | null;
+}
 const SERVER_KEY = "server";
 const FIRST_ROW_INDEX = 0;
 const SINGLE_MARKER_COUNT = 1;
+const SECOND_ROW_INDEX = 1;
+const THIRD_ROW_INDEX = 2;
 const DATABASE_PATH_PREFIX_LENGTH = 1;
 const ADMINISTRATOR: AdministratorFixture = {
   email: "administrator@example.test",
@@ -61,6 +82,18 @@ const ADMINISTRATOR: AdministratorFixture = {
   name: "Administrator",
 };
 
+const APPLE_CLIENT_ID = "nama-apple";
+const APPLE_RESOURCE = "http://localhost:8080/";
+const DEVICE_CODE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
+const APPLE_SCOPES = [
+  "nama:library",
+  "nama:playback",
+  "nama:user-state",
+  "offline_access",
+] as const;
+const RESOURCE_SCOPES = ["nama:library", "nama:playback", "nama:user-state"] as const;
+const OTHER_CLIENT_ID = "other-client";
+const EXISTING_REVOCATION = new Date("2026-08-20T12:00:00.000Z");
 const readServerMarker = (databaseUrl: string) =>
   withPool(databaseUrl, (observer) =>
     Effect.map(
@@ -190,6 +223,108 @@ const assertRepeatCompletionPreservesDatabase = (
   expect(persistedCompletion.marker).toEqual(completedMarker);
   expect(persistedCompletion.administrators).toEqual([ADMINISTRATOR]);
 };
+const readAppleOAuthConfiguration = (databaseUrl: string) =>
+  withPool(databaseUrl, (observer) =>
+    Effect.map(
+      Effect.promise(() =>
+        observer.query<AppleOAuthConfigurationRow>(
+          `SELECT
+             client.client_id,
+             client.client_secret,
+             client.token_endpoint_auth_method,
+             client.application_type,
+             client.grant_types,
+             client.scopes,
+             resource.identifier AS resource,
+             resource.allowed_scopes AS resource_scopes
+           FROM oauth_client AS client
+           JOIN oauth_client_resource AS link ON link.client_id = client.client_id
+           JOIN oauth_resource AS resource ON resource.identifier = link.resource_id
+           WHERE client.client_id = $1`,
+          [APPLE_CLIENT_ID],
+        ),
+      ),
+      (result) => result.rows,
+    ),
+  );
+const prepareRefreshTokenFamilies = (databaseUrl: string) =>
+  withPool(databaseUrl, (observer) =>
+    Effect.promise(async () => {
+      await observer.query(
+        `INSERT INTO "user" (id, name, email, email_verified)
+         VALUES ('oauth-user', 'OAuth User', 'oauth-user@example.test', true)`,
+      );
+      await observer.query(
+        `INSERT INTO oauth_client (id, client_id, redirect_uris)
+         VALUES ('other-client', $1, ARRAY[]::text[])`,
+        [OTHER_CLIENT_ID],
+      );
+      await observer.query(
+        `INSERT INTO oauth_refresh_token
+           (id, token, client_id, user_id, expires_at, created_at, revoked, scopes)
+         VALUES
+           ('apple-active', 'apple-active-token', $2, 'oauth-user', '2026-09-20T12:00:00Z', '2026-08-20T12:00:00Z', NULL, ARRAY['offline_access']::text[]),
+           ('apple-revoked', 'apple-revoked-token', $2, 'oauth-user', '2026-09-20T12:00:00Z', '2026-08-20T12:00:00Z', $3, ARRAY['offline_access']::text[]),
+           ('other-active', 'other-active-token', $1, 'oauth-user', '2026-09-20T12:00:00Z', '2026-08-20T12:00:00Z', NULL, ARRAY['offline_access']::text[])`,
+        [OTHER_CLIENT_ID, APPLE_CLIENT_ID, EXISTING_REVOCATION],
+      );
+    }),
+  );
+
+const readRefreshTokenRevocations = (databaseUrl: string) =>
+  withPool(databaseUrl, (observer) =>
+    Effect.map(
+      Effect.promise(() =>
+        observer.query<RefreshTokenRevocationRow>(
+          "SELECT id, client_id, revoked FROM oauth_refresh_token ORDER BY id",
+        ),
+      ),
+      (result) => result.rows,
+    ),
+  );
+
+it.live("seeds the fixed Apple public client for the configured Nama resource", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    useDatabase(databaseUrl, productionMigrations, () =>
+      Effect.gen(function* fixedAppleClientTest() {
+        const rows = yield* readAppleOAuthConfiguration(databaseUrl);
+        expect(rows).toEqual([
+          {
+            application_type: "native",
+            client_id: APPLE_CLIENT_ID,
+            // oxlint-disable-next-line unicorn/no-null -- A public OAuth client has no database secret.
+            client_secret: null,
+            grant_types: [DEVICE_CODE_GRANT, "refresh_token"],
+            resource: APPLE_RESOURCE,
+            resource_scopes: [...RESOURCE_SCOPES],
+            scopes: [...APPLE_SCOPES],
+            token_endpoint_auth_method: "none",
+          },
+        ]);
+      }),
+    ),
+  ),
+);
+it.live("revokes every active refresh-token family for only the fixed Apple client", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    useDatabase(databaseUrl, productionMigrations, (database) =>
+      Effect.gen(function* fixedAppleClientRevocationTest() {
+        yield* prepareRefreshTokenFamilies(databaseUrl);
+        yield* database.authentication.revokeAppleClientRefreshTokens;
+        const rows = yield* readRefreshTokenRevocations(databaseUrl);
+
+        expect(rows.map((row) => ({ clientId: row.client_id, id: row.id }))).toEqual([
+          { clientId: APPLE_CLIENT_ID, id: "apple-active" },
+          { clientId: APPLE_CLIENT_ID, id: "apple-revoked" },
+          { clientId: OTHER_CLIENT_ID, id: "other-active" },
+        ]);
+        expect(rows[FIRST_ROW_INDEX]?.revoked).toBeInstanceOf(Date);
+        expect(rows[SECOND_ROW_INDEX]?.revoked).toEqual(EXISTING_REVOCATION);
+        expect(rows[THIRD_ROW_INDEX]?.revoked).toBeNull();
+      }),
+    ),
+  ),
+);
 
 it.live(
   "completes the durable initialization marker once and reports repeat completion safely",

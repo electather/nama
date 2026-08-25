@@ -1,3 +1,4 @@
+// oxlint-disable eslint/max-lines-per-function -- The thin generated AuthService mapping remains one complete authentication route inventory.
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import type { ServiceImpl } from "@connectrpc/connect";
 import { Effect } from "effect";
@@ -70,6 +71,19 @@ const createAuthServiceHandlers = ({
   authentication,
   requestRuntime,
 }: AuthServiceHandlerDependencies): Partial<ServiceImpl<typeof AuthService>> => ({
+  approveDeviceAuthorization: (request, context) =>
+    requestRuntime.runPromise(
+      Effect.suspend(() => {
+        const authorization = context.requestHeader.get("authorization");
+        if (authorization === null) {
+          return Effect.fail(privateAuthenticationDefect);
+        }
+        return authentication
+          .approveDeviceAuthorization(authorization, request.userCode)
+          .pipe(Effect.as({}));
+      }),
+      context.signal,
+    ),
   getCurrentUser: (_request, context) =>
     requestRuntime.runPromise(
       Effect.suspend(() => {
@@ -79,6 +93,11 @@ const createAuthServiceHandlers = ({
         }
         return Effect.succeed({ administrator: administratorMessage(administrator) });
       }),
+      context.signal,
+    ),
+  revokeAppleClientRefreshTokens: (_request, context) =>
+    requestRuntime.runPromise(
+      authentication.revokeAppleClientRefreshTokens.pipe(Effect.as({})),
       context.signal,
     ),
   signIn: (request: SignInRequest, context) =>

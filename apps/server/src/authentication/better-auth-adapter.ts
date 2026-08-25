@@ -1,25 +1,21 @@
-import { createRequire } from "node:module";
+import type { RequestListener } from "node:http";
 
 import { Context, Effect, Layer } from "effect";
 
 import { Config } from "../config/config.ts";
 import type { ConfigService } from "../config/schema.ts";
-import { account, session, user, verification } from "../database/auth-schema.ts";
 import { Database } from "../database/database.ts";
 import {
   authenticationStoreUnavailable,
   callRuntime,
   deriveSecret,
   invalidCredentials,
-  invokeRuntimeFunction,
   isInvalidCredentialsError,
   makeResolveBearer,
   makeSignOut,
   parseCreateAdministratorResult,
   parseRuntimeResult,
   privateAuthenticationDefect,
-  readRuntimeFunction,
-  readRuntimeModule,
   readSignedBearer,
 } from "./better-auth-adapter-private.ts";
 import type {
@@ -33,9 +29,13 @@ import type {
   RuntimeModuleLoader,
   StoreFailure,
 } from "./better-auth-adapter-private.ts";
-
-const MAXIMUM_PASSWORD_LENGTH = 128;
-const MINIMUM_PASSWORD_LENGTH = 8;
+import { isObjectValue, readProperty } from "./better-auth-adapter-runtime.ts";
+import { makeApproveDeviceAuthorization } from "./better-auth-device-approval-private.ts";
+import type { ApproveDeviceAuthorization } from "./better-auth-device-approval-private.ts";
+import { makeResolveOAuthAccess } from "./better-auth-oauth-private.ts";
+import type { ResolveOAuthAccess } from "./better-auth-oauth-private.ts";
+import { makeBetterAuthRuntime } from "./better-auth-runtime-private.ts";
+import type { AuthenticationDatabase, BetterAuthRuntime } from "./better-auth-runtime-private.ts";
 
 type BetterAuthConstructionFailure = Readonly<{ _tag: "BetterAuthConstructionError" }>;
 type AuthenticationFailure = StoreFailure | InvalidBearer | InvalidCredentials;
@@ -64,6 +64,10 @@ interface BetterAuthAdapterService {
   readonly createAdministrator: (
     input: CreateAdministratorInput,
   ) => Effect.Effect<Administrator, StoreFailure>;
+  readonly oauthRequestListener: RequestListener;
+  readonly approveDeviceAuthorization: ApproveDeviceAuthorization;
+  readonly resolveOAuthAccess: ResolveOAuthAccess;
+  readonly revokeAppleClientRefreshTokens: Effect.Effect<void, StoreFailure>;
   readonly resolveBearer: (
     authorization: string,
   ) => Effect.Effect<ResolvedBearer, ResolveBearerFailure>;
@@ -73,86 +77,11 @@ interface BetterAuthAdapterService {
   readonly signOut: (authorization: string) => Effect.Effect<void, StoreFailure>;
 }
 
-interface AuthenticationDatabase {
-  readonly authentication: Readonly<{ readonly database: unknown }>;
-}
-
 interface BetterAuthAdapterInput {
   readonly config: ConfigService;
   readonly database: AuthenticationDatabase;
   readonly loadModule?: RuntimeModuleLoader;
 }
-
-interface RuntimeAdapterOptions {
-  readonly config: ConfigService;
-  readonly database: AuthenticationDatabase;
-  readonly loadModule: RuntimeModuleLoader;
-  readonly secret: string;
-}
-
-const nodeRequire = createRequire(import.meta.url);
-const defaultModuleLoader: RuntimeModuleLoader = (moduleId) => {
-  switch (moduleId) {
-    case "better-auth": {
-      return nodeRequire("better-auth");
-    }
-    case "better-auth/adapters/drizzle": {
-      return nodeRequire("better-auth/adapters/drizzle");
-    }
-    case "better-auth/plugins/bearer": {
-      return nodeRequire("better-auth/plugins/bearer");
-    }
-    default: {
-      const neverModuleId: never = moduleId;
-      return neverModuleId;
-    }
-  }
-};
-
-const makeRuntimeAdapter = ({
-  config,
-  database,
-  loadModule,
-  secret,
-}: RuntimeAdapterOptions): unknown => {
-  const betterAuth = readRuntimeFunction(
-    readRuntimeModule(loadModule("better-auth")),
-    "betterAuth",
-  );
-  const drizzleAdapter = readRuntimeFunction(
-    readRuntimeModule(loadModule("better-auth/adapters/drizzle")),
-    "drizzleAdapter",
-  );
-  const bearer = readRuntimeFunction(
-    readRuntimeModule(loadModule("better-auth/plugins/bearer")),
-    "bearer",
-  );
-  const adapter = invokeRuntimeFunction(drizzleAdapter, [
-    database.authentication.database,
-    {
-      provider: "pg",
-      schema: { account, session, user, verification },
-      transaction: true,
-    },
-  ]);
-  const plugin = invokeRuntimeFunction(bearer, [{ requireSignature: true }]);
-  return invokeRuntimeFunction(betterAuth, [
-    {
-      baseURL: config.server.publicUrl,
-      database: adapter,
-      emailAndPassword: {
-        autoSignIn: false,
-        enabled: true,
-        maxPasswordLength: MAXIMUM_PASSWORD_LENGTH,
-        minPasswordLength: MINIMUM_PASSWORD_LENGTH,
-      },
-      logger: { disabled: true },
-      plugins: [plugin],
-      secret,
-      telemetry: { enabled: false },
-    },
-  ]);
-};
 
 const makeCreateAdministrator =
   (runtime: unknown): BetterAuthAdapterService["createAdministrator"] =>
@@ -211,11 +140,21 @@ const makeSignIn =
       ),
     );
 
-const makeAdapterService = (runtime: unknown): BetterAuthAdapterService => {
+const makeAdapterService = ({
+  oauthRequestListener,
+  resource,
+  revokeAppleClientRefreshTokens,
+  runtime,
+  verifyJwsAccessToken,
+}: BetterAuthRuntime): BetterAuthAdapterService => {
   const resolveBearer = makeResolveBearer(runtime);
   return Object.freeze({
+    approveDeviceAuthorization: makeApproveDeviceAuthorization(runtime, resource),
     createAdministrator: makeCreateAdministrator(runtime),
+    oauthRequestListener,
     resolveBearer,
+    resolveOAuthAccess: makeResolveOAuthAccess(runtime, resource, verifyJwsAccessToken),
+    revokeAppleClientRefreshTokens,
     signIn: makeSignIn(runtime, resolveBearer),
     signOut: makeSignOut(runtime),
   });
@@ -228,18 +167,30 @@ const makeBetterAuthAdapter = (
     const secret = yield* deriveSecret(input.config.security.masterKey).pipe(
       Effect.mapError(() => betterAuthConstructionError),
     );
-    return yield* Effect.try({
+    const runtimeAdapter = yield* Effect.try({
       catch: () => betterAuthConstructionError,
       try: () =>
-        makeAdapterService(
-          makeRuntimeAdapter({
-            config: input.config,
-            database: input.database,
-            loadModule: input.loadModule ?? defaultModuleLoader,
-            secret,
-          }),
-        ),
+        makeBetterAuthRuntime({
+          config: input.config,
+          database: input.database,
+          loadModule: input.loadModule,
+          secret,
+        }),
     });
+    yield* Effect.tryPromise({
+      catch: () => betterAuthConstructionError,
+      try: async () => {
+        if (!isObjectValue(runtimeAdapter.runtime)) {
+          throw new TypeError("Better Auth runtime must be an object");
+        }
+        const initialization = readProperty(runtimeAdapter.runtime, "$context");
+        if (initialization === undefined) {
+          throw new TypeError("Better Auth runtime context is missing");
+        }
+        await Promise.resolve(initialization);
+      },
+    });
+    return makeAdapterService(runtimeAdapter);
   });
 
 class BetterAuthAdapter extends contextService<BetterAuthAdapter, BetterAuthAdapterService>()(

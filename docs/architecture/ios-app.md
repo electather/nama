@@ -1,14 +1,12 @@
 # Universal Apple application
 
-Status: the universal SwiftUI target, manual-connection tracer, endpoint
-transport eligibility, explicit permitted local-HTTP confirmation,
-endpoint-bound persistent acknowledgement, persistent selected-endpoint warning,
-endpoint-scoped local-HTTP proxy bypass, the ATS local-networking declaration,
-foreground LAN discovery, and verified endpoint restoration are implemented.
-Better Auth OAuth authorization, consumer media behavior, and product playback remain target
-work. This note labels implemented, target, and deferred behavior explicitly;
-a target invariant is required architecture, not a claim that its runtime
-exists.
+Status: the universal SwiftUI target, endpoint connection and restoration,
+acknowledged eligible local HTTP, foreground LAN discovery, native Better Auth
+device authorization, refresh rotation, and endpoint-bound Keychain token
+storage are implemented. Consumer media behavior and product playback remain
+target work. Apple-platform build and actual-surface OAuth authorization are
+still unverified in the current evidence table; implementation status is not a
+claim that those release rows pass.
 
 ## Authority and fixed decisions
 
@@ -45,11 +43,15 @@ The application boundary is:
 
 ## Implemented baseline
 
-The checked-in application implements one connection tracer with manual entry,
-optional LAN discovery, and verified endpoint restoration:
+The checked-in application implements endpoint connection and Better Auth OAuth
+device authorization:
 
-- `NamaApp` creates one `ConnectionFeature`, setup-status verifier, and
-  Network-framework discovery adapter for each `WindowGroup` window.
+- `NamaApp` creates one connection and OAuth authorization feature per window
+  over one installation-wide authorization session and Keychain store. The
+  session shares only non-secret active authorization status, expiry, and
+  refresh/mutation admission; candidate codes, candidate failures, attempts,
+  secret token material, and task lifetimes stay out of that observable shared
+  state.
 - `NamaEndpoint` accepts an absolute HTTP or HTTPS URL with an explicit scheme
   and non-empty host, no credentials, query, or fragment, and an optional
   reverse-proxy path prefix. It normalizes the address and represents only
@@ -118,6 +120,20 @@ optional LAN discovery, and verified endpoint restoration:
   local-networking allowance in its partial Info property list without a
   multicast entitlement, arbitrary loads, or static per-domain exceptions. The
   macOS build uses App Sandbox with outgoing network-client access only.
+- `OAuthAuthorizationFeature` requests the fixed Apple public client's device
+  grant directly over native HTTP, presents CLI-only approval instructions,
+  polls no faster than Better Auth's returned interval, proves the access JWT
+  reaches the scoped `GetHome` authorization boundary, rotates refresh tokens
+  at access-token expiry, and publishes authorization only after verification
+  and the endpoint-bound bundle commit.
+- `KeychainOAuthTokenStore` keeps one versioned exact-endpoint record with
+  `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and synchronization disabled.
+  Damaged bytes are quarantined before removal; failed or cancelled candidate
+  commits preserve the previous record.
+- The OAuth HTTP adapter requests the exact Nama resource and consumer scopes
+  plus `offline_access`, refuses redirects, and applies the connection module's
+  proxy-free policy to acknowledged eligible local HTTP. Browser verification
+  and Better Auth browser session routes are not part of this surface.
 
 The Swift Testing target covers endpoint normalization and every approved and
 forbidden address-class boundary, mapped and scoped IPv6, local DNS label and
@@ -145,11 +161,11 @@ physical-device privacy prompts, focus, accessibility, or playback behavior.
 
 This baseline implements endpoint eligibility, endpoint-bound persistent
 local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP
-recovery, endpoint-scoped local-HTTP proxy bypass, and the narrow ATS
-local-networking allowance.
-
-The implemented source does not yet contain Keychain OAuth tokens, device
-authorization, Home, Library, Details, Watch State, or Playback behavior.
+recovery, endpoint-scoped local-HTTP proxy bypass, the narrow ATS
+local-networking allowance, Better Auth device authorization and refresh,
+endpoint-bound Keychain tokens, and a scoped `GetHome` authorization probe that
+must reach the deliberately unimplemented handler. Home, Library, Details,
+Watch State, and Playback product behavior remain unimplemented.
 
 ## Target runtime topology
 
@@ -476,16 +492,17 @@ The implemented Connection boundary has these committed automated owners:
 | Consent and persistence | `ConnectionFeatureTests`, `ConnectionRecoveryTests`, `VerifiedEndpointStoreTests`, and `ConnectionPresentationTests` | Exact acknowledgement, source-specific cancellation, warning retention, migration, generation fencing, and cross-window visibility pass through the shared feature and store seams. |
 | Transport | `SetupStatusVerifierTests` | Redirect targets are not contacted, redirect metadata stays inside URLSession, local HTTP selects a proxy-free copy, HTTPS preserves the supplied normal configuration, and cancellation reaches both schemes. Platform trust remains URLSession-owned; the redirect delegate implements no authentication-challenge override. |
 | Application declarations | `check:ios` | Built iOS, tvOS, and macOS property lists must enable only ATS local networking and must omit arbitrary loads and static exception domains. |
+| OAuth authorization and persistence | `OAuthAuthorizationFeatureTests`, `OAuthAuthorizationLifecycleTests`, `OAuthAuthorizationTransportTests`, and `OAuthTokenStoreTests` | Concrete native OAuth and scoped Connect requests, returned-interval polling, expiry-driven refresh, structured retry, window-local task cancellation, shared refresh admission and takeover, serialized mutation rollback, replacement publication ordering, damaged-record quarantine, and this-device-only non-synchronizing Keychain attributes are specified through deterministic seams. |
 
 The previews and platform builds above remain inspection and compilation aids,
 not runtime evidence. Local acceptance has exercised only the scenarios
 recorded below; every omitted requirement remains **Unverified**.
 
 Actual-surface inspection on each row also requires source-specific
-cancellation, foreground cancellation, candidate deduplication, and manual
-fallback. OAuth authorization replacement remains target behavior without a
-current implementation or runtime claim and is therefore **Unverified** on
-every actual surface.
+cancellation, foreground cancellation, candidate deduplication, manual
+fallback, OAuth replacement, refresh, and restoration. The OAuth implementation
+has no recorded Apple build or actual-surface result and is therefore
+**Unverified** on every actual surface.
 
 | Surface | Required inspection | Recorded result |
 | --- | --- | --- |

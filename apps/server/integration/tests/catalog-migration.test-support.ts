@@ -2,9 +2,11 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Effect } from "effect";
 
-import { productionMigrations } from "./database.test-support.ts";
+import { productionMigrations, withPool } from "./database.test-support.ts";
 
 const FIRST_INDEX = 0;
 const NEXT_INDEX_OFFSET = 1;
@@ -102,10 +104,15 @@ const makeCurrentProviderMigrationFolder = () =>
     Effect.promise(() => rm(folder, { force: true, recursive: true })),
   );
 
+const applyMigrationFolder = (databaseUrl: string, migrationsFolder: string) =>
+  withPool(databaseUrl, (pool) =>
+    Effect.promise(() => migrate(drizzle(pool), { migrationsFolder })),
+  );
+
 const listProductionMigrationTags = () =>
   Effect.promise(async () => {
     const files = await readdir(productionMigrations);
     return files.filter((file) => file.endsWith(".sql")).toSorted();
   });
 
-export { listProductionMigrationTags, makeCurrentProviderMigrationFolder };
+export { applyMigrationFolder, listProductionMigrationTags, makeCurrentProviderMigrationFolder };

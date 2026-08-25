@@ -750,6 +750,7 @@ func (f *setupServiceFake) CreateAdministrator(_ context.Context, request *conne
 }
 
 type setupAuthServiceFake struct {
+	apiv1.UnimplementedAuthServiceHandler
 	signIn                 setupSignInResult
 	signOut                setupSignOutResult
 	signInCalls            int

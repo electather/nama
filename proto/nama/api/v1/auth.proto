@@ -31,9 +31,23 @@ message GetCurrentUserResponse {
 message SignOutRequest {}
 
 message SignOutResponse {}
+message ApproveDeviceAuthorizationRequest {
+  string user_code = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 64
+  ];
+}
+
+message ApproveDeviceAuthorizationResponse {}
+
+message RevokeAppleClientRefreshTokensRequest {}
+
+message RevokeAppleClientRefreshTokensResponse {}
 
 service AuthService {
   rpc SignIn(SignInRequest) returns (SignInResponse);
   rpc GetCurrentUser(GetCurrentUserRequest) returns (GetCurrentUserResponse);
   rpc SignOut(SignOutRequest) returns (SignOutResponse);
+  rpc ApproveDeviceAuthorization(ApproveDeviceAuthorizationRequest) returns (ApproveDeviceAuthorizationResponse);
+  rpc RevokeAppleClientRefreshTokens(RevokeAppleClientRefreshTokensRequest) returns (RevokeAppleClientRefreshTokensResponse);
 }

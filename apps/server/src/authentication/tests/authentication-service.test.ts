@@ -21,6 +21,8 @@ const EMAIL = "ada.administrator@nama.example";
 const SECOND_EMAIL = "grace.administrator@nama.example";
 const AUTHORIZATION = "Bearer session-token.hmac-signature";
 const SECOND_AUTHORIZATION = "Bearer second-session-token.second-signature";
+const OAUTH_AUTHORIZATION = "Bearer header.payload.signature";
+const LIBRARY_SCOPE = "nama:library";
 const SESSION_EXPIRY = new Date("2026-09-01T12:00:00.000Z");
 const SECOND_SESSION_EXPIRY = new Date("2026-10-01T12:00:00.000Z");
 const PRIVATE_AUTHENTICATION_DETAIL = "private Better Auth runtime failure";
@@ -65,8 +67,12 @@ type UnsafePrivateAuthenticationDefect = PrivateAuthenticationDefect &
 
 const makeAdapter = (overrides: Partial<BetterAuthAdapterService> = {}): BetterAuthAdapterService =>
   Object.freeze({
+    approveDeviceAuthorization: () => Effect.die("unexpected approveDeviceAuthorization call"),
     createAdministrator: () => Effect.die("unexpected createAdministrator call"),
+    oauthRequestListener: () => {},
     resolveBearer: () => Effect.die("unexpected resolveBearer call"),
+    resolveOAuthAccess: () => Effect.die("unexpected resolveOAuthAccess call"),
+    revokeAppleClientRefreshTokens: Effect.die("unexpected revokeAppleClientRefreshTokens call"),
     signIn: () => Effect.die("unexpected signIn call"),
     signOut: () => Effect.die("unexpected signOut call"),
     ...overrides,
@@ -137,6 +143,84 @@ it.effect("returns only the administrator from authoritative bearer resolution",
     const resolved = yield* authentication.resolveAdministrator(AUTHORIZATION);
     expect(resolved).toStrictEqual(administrator);
     expect(authorizations).toStrictEqual([AUTHORIZATION]);
+  }),
+);
+it.effect("routes a signed session bearer only through session resolution", () =>
+  Effect.gen(function* consumerSessionTest() {
+    const events: string[] = [];
+    const authentication = makeAuthenticationService({
+      betterAuthAdapter: makeAdapter({
+        resolveBearer: () =>
+          Effect.sync(() => {
+            events.push("session");
+            return resolvedBearer;
+          }),
+        resolveOAuthAccess: () =>
+          Effect.sync(() => {
+            events.push("oauth");
+            return { id: ADMINISTRATOR_ID };
+          }),
+      }),
+      signInLimiter: makeFixedTimeSignInLimiter(),
+    });
+
+    expect(
+      yield* authentication.resolveConsumerPrincipal(AUTHORIZATION, LIBRARY_SCOPE),
+    ).toStrictEqual(administrator);
+    expect(events).toStrictEqual(["session"]);
+  }),
+);
+
+it.effect("routes a JWT bearer only through scoped OAuth verification", () =>
+  Effect.gen(function* consumerOAuthTest() {
+    const events: string[] = [];
+    const authentication = makeAuthenticationService({
+      betterAuthAdapter: makeAdapter({
+        resolveBearer: () =>
+          Effect.sync(() => {
+            events.push("session");
+            return resolvedBearer;
+          }),
+        resolveOAuthAccess: (authorization, scope) =>
+          Effect.sync(() => {
+            events.push(`oauth:${authorization}:${scope}`);
+            return { id: ADMINISTRATOR_ID };
+          }),
+      }),
+      signInLimiter: makeFixedTimeSignInLimiter(),
+    });
+
+    expect(
+      yield* authentication.resolveConsumerPrincipal(OAUTH_AUTHORIZATION, LIBRARY_SCOPE),
+    ).toStrictEqual({ id: ADMINISTRATOR_ID });
+    expect(events).toStrictEqual([`oauth:${OAUTH_AUTHORIZATION}:${LIBRARY_SCOPE}`]);
+  }),
+);
+
+it.effect("does not fall back to a session after OAuth verification fails", () =>
+  Effect.gen(function* failedConsumerOAuthTest() {
+    const events: string[] = [];
+    const authentication = makeAuthenticationService({
+      betterAuthAdapter: makeAdapter({
+        resolveBearer: () =>
+          Effect.sync(() => {
+            events.push("session");
+            return resolvedBearer;
+          }),
+        resolveOAuthAccess: () =>
+          Effect.sync(() => {
+            events.push("oauth");
+          }).pipe(Effect.andThen(Effect.fail(invalidBearer))),
+      }),
+      signInLimiter: makeFixedTimeSignInLimiter(),
+    });
+
+    expect(
+      yield* Effect.flip(
+        authentication.resolveConsumerPrincipal(OAUTH_AUTHORIZATION, LIBRARY_SCOPE),
+      ),
+    ).toBe(invalidBearer);
+    expect(events).toStrictEqual(["oauth"]);
   }),
 );
 

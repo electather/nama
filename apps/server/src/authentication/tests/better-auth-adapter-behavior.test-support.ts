@@ -1,5 +1,6 @@
+// oxlint-disable eslint/max-lines, eslint/max-lines-per-function -- The complete private-runtime behavior fake keeps every Better Auth method plan and safe capture in one reusable fixture.
 import { expect } from "@effect/vitest";
-import { Redacted } from "effect";
+import { Effect, Redacted } from "effect";
 
 import type { ConfigService } from "../../config/schema.ts";
 import { makeBetterAuthAdapter } from "../better-auth-adapter.ts";
@@ -58,7 +59,10 @@ const expectedSignIn = Object.freeze({
 });
 const database = Object.freeze({ testDatabase: true });
 const databaseService = Object.freeze({
-  authentication: Object.freeze({ database }),
+  authentication: Object.freeze({
+    database,
+    revokeAppleClientRefreshTokens: Effect.die("unexpected Apple client revocation"),
+  }),
 });
 const configuration = Object.freeze({
   database: Object.freeze({
@@ -73,16 +77,29 @@ const configuration = Object.freeze({
 }) satisfies ConfigService;
 type FailureTag =
   | "AuthenticationStoreUnavailable"
+  | "DeviceAuthorizationAccessDenied"
+  | "DeviceAuthorizationAlreadyProcessed"
+  | "DeviceAuthorizationCodeInvalid"
+  | "DeviceAuthorizationExpired"
   | "InvalidBearer"
   | "InvalidCredentials"
+  | "PermissionDenied"
   | "PrivateAuthenticationDefect";
-type RuntimeMethod = "getSession" | "signInEmail" | "signOut" | "signUpEmail";
+type RuntimeMethod =
+  | "deviceApprove"
+  | "deviceVerify"
+  | "getJwks"
+  | "getSession"
+  | "signInEmail"
+  | "signOut"
+  | "signUpEmail";
 type RuntimeRecord = Record<string, unknown>;
 type RuntimeResult = RuntimeRecord | typeof BETTER_AUTH_ABSENT | undefined;
 type RuntimePlans = Record<RuntimeMethod, () => Promise<unknown>>;
 type BehaviorRuntimeCaptures = Readonly<Record<RuntimeMethod, unknown[]>>;
 interface BehaviorRuntimeFakes {
   readonly captures: BehaviorRuntimeCaptures;
+  readonly callOrder: RuntimeMethod[];
   readonly loadModule: BehaviorModuleLoader;
   readonly plans: RuntimePlans;
 }
@@ -139,31 +156,61 @@ const makeSessionResponse = (): RuntimeRecord => ({
 });
 const makeBehaviorRuntimeFakes = (): BehaviorRuntimeFakes => {
   const captures: BehaviorRuntimeCaptures = {
+    deviceApprove: [],
+    deviceVerify: [],
+    getJwks: [],
     getSession: [],
     signInEmail: [],
     signOut: [],
     signUpEmail: [],
   };
   const plans: RuntimePlans = {
+    deviceApprove: resolvedPlan({ success: true }),
+    deviceVerify: resolvedPlan({
+      client_id: "nama-apple",
+      resource: PUBLIC_URL,
+      scope: "nama:library nama:playback nama:user-state offline_access",
+      status: "pending",
+      user_code: "ABCD-EFGH",
+    }),
+    getJwks: resolvedPlan({ keys: [{ kid: "signing-key" }] }),
     getSession: resolvedPlan(makeSessionResponse()),
     signInEmail: resolvedPlan(makeSignInResponse()),
     signOut: resolvedPlan({ privateResponseField: PRIVATE_PROPERTY_VALUE, success: true }),
     signUpEmail: resolvedPlan(makeSignUpResponse()),
   };
+  const callOrder: RuntimeMethod[] = [];
   const invoke = (method: RuntimeMethod, input: unknown): Promise<unknown> => {
+    callOrder.push(method);
     captures[method].push(input);
     return plans[method]();
   };
   const api = Object.freeze({
+    deviceApprove: (input: unknown) => invoke("deviceApprove", input),
+    deviceVerify: (input: unknown) => invoke("deviceVerify", input),
+    getJwks: (input: unknown) => invoke("getJwks", input),
     getSession: (input: unknown) => invoke("getSession", input),
     signInEmail: (input: unknown) => invoke("signInEmail", input),
     signOut: (input: unknown) => invoke("signOut", input),
     signUpEmail: (input: unknown) => invoke("signUpEmail", input),
   });
   const modules: Record<string, BetterAuthModule> = {
-    "better-auth": { betterAuth: () => Object.freeze({ api }) },
+    "@better-auth/oauth-provider": {
+      oauthDeviceAuthorization: () => Object.freeze({ id: "device-authorization" }),
+      oauthProvider: () => Object.freeze({ id: "oauth-provider" }),
+    },
+    "better-auth": {
+      betterAuth: () => Object.freeze({ $context: Promise.resolve({}), api }),
+    },
     "better-auth/adapters/drizzle": { drizzleAdapter: () => Object.freeze({ adapter: "drizzle" }) },
+    "better-auth/node": { toNodeHandler: () => () => {} },
+    "better-auth/oauth2": {
+      verifyJwsAccessToken: () => {
+        throw new TypeError("unexpected OAuth access verification");
+      },
+    },
     "better-auth/plugins/bearer": { bearer: () => Object.freeze({ id: "bearer" }) },
+    "better-auth/plugins/jwt": { jwt: () => Object.freeze({ id: "jwt" }) },
   };
   const loadModule: BehaviorModuleLoader = (moduleId) => {
     const module = modules[moduleId];
@@ -172,13 +219,16 @@ const makeBehaviorRuntimeFakes = (): BehaviorRuntimeFakes => {
     }
     return module;
   };
-  return { captures, loadModule, plans };
+  return { callOrder, captures, loadModule, plans };
 };
-const makeAdapter = (fakes: BehaviorRuntimeFakes) =>
+const makeAdapter = (
+  fakes: BehaviorRuntimeFakes,
+  loadModule: BehaviorModuleLoader = fakes.loadModule,
+) =>
   makeBetterAuthAdapter({
     config: configuration,
     database: databaseService,
-    loadModule: fakes.loadModule,
+    loadModule,
   });
 const expectObject = (value: unknown, description: string): object => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {

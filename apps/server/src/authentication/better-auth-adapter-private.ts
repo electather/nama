@@ -262,6 +262,7 @@ export {
   deriveSecret,
   makeResolveBearer,
   makeSignOut,
+  invalidBearer,
   invalidCredentials,
   invokeRuntimeFunction,
   isInvalidCredentialsError,

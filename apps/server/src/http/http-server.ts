@@ -1,7 +1,9 @@
+// oxlint-disable import/max-dependencies -- The HTTP composition boundary wires lifecycle, health, Connect, OAuth, database, and LAN advertisement onto one listener.
 import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
 
 import { Cause, Context, Effect, Exit, Fiber, Layer, Scope } from "effect";
 
+import { BetterAuthAdapter } from "../authentication/better-auth-adapter.ts";
 import { Config } from "../config/config.ts";
 import { Database } from "../database/database.ts";
 import { RuntimeControl } from "../lifecycle/runtime-control.ts";
@@ -36,6 +38,31 @@ interface HttpServerLayerOptions {
 }
 
 const contextService = Context.Service;
+const PATH_START_INDEX = 0;
+const oauthMethodByPath: Readonly<Record<string, "GET" | "POST">> = Object.freeze({
+  "/.well-known/oauth-authorization-server": "GET",
+  "/.well-known/oauth-protected-resource": "GET",
+  "/device/code": "POST",
+  "/jwks": "GET",
+  "/oauth2/revoke": "POST",
+  "/oauth2/token": "POST",
+});
+
+const makeApplicationRequestListener =
+  (oauthRequest: RequestListener, connectRequest: RequestListener): RequestListener =>
+  (request, response) => {
+    const target = request.url ?? "";
+    const queryIndex = target.indexOf("?");
+    let path = target;
+    if (queryIndex >= PATH_START_INDEX) {
+      path = target.slice(PATH_START_INDEX, queryIndex);
+    }
+    if (oauthMethodByPath[path] === request.method) {
+      oauthRequest(request, response);
+      return;
+    }
+    connectRequest(request, response);
+  };
 
 const makeRequestListener =
   ({ accepting, healthStatus, requestRuntime, unmatchedRequest }: RequestListenerOptions) =>
@@ -76,19 +103,24 @@ const makeServer = (
   unmatchedRequest: RequestListener | undefined,
   emitStopping: () => Effect.Effect<void>,
 ) =>
+  // oxlint-disable-next-line eslint/max-statements -- One scoped acquisition sequence owns the listener and every shutdown dependency.
   Effect.gen(function* makeHttpServer() {
     const config = yield* Config;
+    const betterAuthAdapter = yield* BetterAuthAdapter;
     const database = yield* Database;
     const runtimeControl = yield* RuntimeControl;
     const scope = yield* Effect.scope;
     const requestRuntime = yield* makeRequestRuntime(database);
     const accepting: AcceptingState = { value: true };
     const healthStatus = makeHealthStatus(database.checkReadiness, runtimeControl.isReady);
+    const connectRequest = unmatchedRequest ?? (yield* makeConnectRequestListener(requestRuntime));
     const listener = makeRequestListener({
       accepting,
       healthStatus,
       requestRuntime,
-      unmatchedRequest: unmatchedRequest ?? (yield* makeConnectRequestListener(requestRuntime)),
+      unmatchedRequest:
+        unmatchedRequest ??
+        makeApplicationRequestListener(betterAuthAdapter.oauthRequestListener, connectRequest),
     });
     const server = yield* Effect.acquireRelease(
       openListener(config.server.bind, listener),

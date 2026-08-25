@@ -1,14 +1,14 @@
 # Authentication, setup, and OAuth authorization
 
-Status: issue #23 server setup and Administrator authentication plus issue #24 CLI setup, sign-in, and status are implemented and verified. Issue #145 defines the accepted Better Auth OAuth authorization target with authenticated CLI approval; its runtime, wire-contract, CLI, and Apple behavior remain unimplemented. Issue #167 separately owns browser approval.
+Status: issue #23 server setup and Administrator authentication, issue #24 CLI setup/sign-in/status, and issue #145's Better Auth authorization server, generated authenticated CLI approval, scoped JWT enforcement, broad client revocation, and Apple OAuth/Keychain implementation are checked in. Executable server and CLI flows are verified; universal-app build and actual-surface authorization evidence still require an Apple host. Issue #167 separately owns browser approval.
 
 Nama owns public setup, Administrator authentication, and protected-resource authorization semantics. The implemented setup and CLI Administrator-authentication adapter remains private behind `SetupService` and `AuthService`; [ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md) deliberately exposes only the fixed Apple client's standard OAuth metadata, JWKS, device-code, token, refresh, and revocation routes, superseding that part of [ADR-0007](../adr/0007-private-better-auth-adapter.md). CLI approval remains a generated `AuthService` operation over the private adapter. Browser email/password and session routes remain private unless issue #167 implements its separate web-app surface.
 
 ## Implemented runtime boundary
 
-The private adapter is currently the only production module that loads Better Auth. Better Auth routes, cookies, request and response models, errors, raw sessions, and secrets are not mounted in the implemented runtime. The adapter uses the shared PostgreSQL pool through the database module's narrow Drizzle capability, while `better-auth.config.ts` remains tooling-only and the committed generated auth schema remains its sole model source. It derives a 32-byte secret from the redacted master key with HKDF-SHA-256 and context `nama/better-auth/v1`, encodes it as unpadded base64url, enables email/password and signed bearer credentials, disables automatic sign-in, logging, and telemetry, and leaves Better Auth's Administrator-session lifecycle unchanged.
+The private adapter is the only production module that loads Better Auth. The listener allowlists only OAuth metadata, protected-resource metadata, JWKS, device-code issuance, token, refresh, and revocation routes; cookies, browser email/password/session routes, user-code verification, and approve/deny HTTP routes remain private. The adapter uses the shared PostgreSQL pool through the database module's narrow Drizzle capability, while `better-auth.config.ts` remains tooling-only and the committed generated auth schema remains its sole model source. It derives a 32-byte secret from the redacted master key with HKDF-SHA-256 and context `nama/better-auth/v1`, encodes it as unpadded base64url, disables Better Auth logging and telemetry, and keeps Administrator sessions separate from OAuth consumer access.
 
-Under [ADR-0025](../adr/0025-default-deny-rpc-authorization.md), all generated public descriptors are registered behind the default-deny method inventory, so authorization precedes an unimplemented handler. The implemented runtime supports `SetupService.GetStatus`, `SetupService.CreateAdministrator`, `AuthService.SignIn`, `AuthService.GetCurrentUser`, and `AuthService.SignOut`. The unimplemented `DeviceService` descriptors remain generated only until issue #145 removes the obsolete contract.
+Under [ADR-0025](../adr/0025-default-deny-rpc-authorization.md), all generated public descriptors are registered behind the default-deny method inventory, so authorization precedes an unimplemented consumer handler. The runtime supports `SetupService.GetStatus`, `SetupService.CreateAdministrator`, `AuthService.SignIn`, `AuthService.GetCurrentUser`, `AuthService.SignOut`, role-neutral `AuthService.ApproveDeviceAuthorization`, and Administrator-only `AuthService.RevokeAppleClientRefreshTokens`. The obsolete `DeviceService` contract and generated clients are removed.
 
 ## Durable setup and recovery ([ADR-0008](../adr/0008-fail-closed-setup-reconciliation.md))
 
@@ -28,7 +28,7 @@ Under [ADR-0009](../adr/0009-confirm-durable-session-revocation.md), `SignOut` i
 
 The Go CLI implements named profile targeting, setup followed by sign-in, later sign-in, and authentication status over these RPCs. It keeps bearer credentials only in the native credential facility, binds each record to its canonical full server target, and never falls back to a plaintext file. Malformed and legacy unbound records never attach; a successful deletion makes them an absent credential that setup or login may replace, while deletion failure is a typed, fail-closed credential-cleanup error. A process-injected bearer is eligible for authentication status without native-store access and is never persisted or deleted; setup and login reject while the injection is active so they cannot orphan a newly issued bearer. Lost non-wire setup responses are recovered by status without replaying administrator creation. Once recovery confirms initialization, sign-in and credential storage use a separate fresh bounded settlement context even if the original caller context expired; known wire application failures still return directly. Malformed sign-in responses with a usable bearer are revoked. Failed local credential storage restores the prior native state and revokes the new session, and an unconfirmed revocation takes precedence over the storage error.
 
-## Target Better Auth authorization server
+## Better Auth authorization server
 
 Issue #145 adds the exact compatible Better Auth JWT, OAuth Provider, and OAuth
 Device Authorization plugins. Better Auth owns the RFC 8628 device-code
@@ -81,7 +81,7 @@ encrypted credential-delivery envelope, operation replay record, custom
 device-authorization capacity, or cleanup scheduler. Access JWTs retain Better
 Auth's one-hour default and refresh tokens retain its 30-day default.
 
-## Target CLI device authorization
+## CLI device authorization
 
 The Apple public client requests an OAuth device authorization directly from
 Better Auth and presents the returned user code with instructions for the
@@ -112,7 +112,7 @@ non-Administrator session can use the same RPC and CLI command unchanged. Issue
 optional web-app surface over the same role-neutral internal application
 service. The issue #145 flow remains complete without a browser.
 
-## Target protected-resource authorization
+## Protected-resource authorization
 
 Connect remains the protected resource API. Its default-deny method inventory
 locally verifies every OAuth access JWT's signature through the Better Auth
@@ -141,7 +141,7 @@ narrow Administrator CLI operation that revokes every Better Auth refresh-token
 family for the fixed Apple client. It does not identify, list, or revoke
 individual installations.
 
-## Target Apple OAuth token ownership
+## Apple OAuth token ownership
 
 One universal Apple app installation owns one active endpoint-bound OAuth token
 bundle, shared by every window. The last verified endpoint without credentials
@@ -163,8 +163,8 @@ grant. Multiple saved endpoint grants remain deferred.
 
 [ADR-0026](../adr/0026-standard-google-rpc-error-details.md) governs Connect application failure details, and [ADR-0027](../adr/0027-logical-operation-idempotency.md) keeps server-owned request correlation separate from logical-operation identity. The outer Node dispatch assigns server-owned `nama-request-id` to every delegated Connect response before decoding. Application-generated failures carry the same value in `google.rpc.RequestInfo`; malformed Connect input may fail before the application pipeline, so the response header is the correlation fallback. Terminal RPC logs contain only the request ID, method, Connect code, and duration. Better Auth HTTP endpoints retain their standard protocol errors but share the same credential and body redaction rules.
 
-Focused server and CLI coverage, disposable PostgreSQL, generated clients, compiled-command smoke tests, and package-entrypoint process coverage verify the implemented setup creation and restart repair, sign-in/current-user/sign-out, CLI setup recovery and credential replacement, forced session-deletion failure, rate limits, cancellation, correlation, public-error and log redaction, readiness, and fatal ambiguity handling. Issue #145 additionally requires executable authorization-server discovery, generated Connect CLI approval over the private Better Auth adapter, device-code exchange, JWT enforcement, refresh rotation, broad client-grant revocation, and Apple Keychain flows before the OAuth target may be called implemented.
+Focused server and CLI coverage, disposable PostgreSQL, generated clients, compiled-command smoke tests, and package-entrypoint process coverage verify setup/authentication recovery plus authorization-server discovery, authenticated CLI approval, device-code exchange, local JWT enforcement, refresh rotation, and broad refresh-family revocation. Swift Testing coverage is checked in for returned-interval polling, refresh replacement, damaged-record quarantine, and Keychain policy, but Apple-platform build and actual-surface execution remain separate required evidence.
 
 ## Unfinished work
 
-Better Auth OAuth Provider, public authorization-server routes, CLI device approval, JWT-protected consumer access, broad Apple-client grant revocation, and Apple Keychain token ownership are not implemented. Browser sign-in and device confirmation remain the separate issue #167 web-app target. The current `DeviceService` Protobuf contract is obsolete target material and remains only until the implementation cutover removes it and regenerates every consumer. CLI sign-out remains unfinished. Public signup, invitations, password recovery, dynamic client registration, authorization-code and client-credentials grants, OIDC identity scopes, multiple roles, multiple saved endpoint grants, and a general web administration UI beyond issue #167 remain outside the target runtime.
+Browser sign-in and device confirmation remain the separate issue #167 web-app target. CLI sign-out remains unfinished. Public signup, invitations, password recovery, dynamic client registration, authorization-code and client-credentials flows for the Apple public client, OIDC identity scopes, multiple roles, multiple saved endpoint grants, and a general web administration UI beyond issue #167 remain outside the target. Real Apple TV no-browser authorization, focus, accessibility, local-network privacy, and Keychain behavior must still be recorded on Apple hardware before release acceptance.

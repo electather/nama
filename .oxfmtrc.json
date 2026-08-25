@@ -3,7 +3,7 @@
   "arrowParens": "always",
   "bracketSpacing": true,
   "endOfLine": "lf",
-  "ignorePatterns": ["gen/ts/src/**"],
+  "ignorePatterns": ["apps/server/src/database/auth-schema.ts", "gen/ts/src/**"],
   "insertFinalNewline": true,
   "printWidth": 100,
   "quoteProps": "as-needed",

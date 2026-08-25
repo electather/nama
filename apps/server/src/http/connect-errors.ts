@@ -20,6 +20,10 @@ type PublicErrorReason =
   | "AUTHENTICATION_FAILED"
   | "AUTHENTICATION_UNAVAILABLE"
   | "CREDENTIAL_INVALID"
+  | "DEVICE_AUTHORIZATION_ACCESS_DENIED"
+  | "DEVICE_AUTHORIZATION_ALREADY_PROCESSED"
+  | "DEVICE_AUTHORIZATION_CODE_INVALID"
+  | "DEVICE_AUTHORIZATION_EXPIRED"
   | "DEADLINE_EXCEEDED"
   | "INTERNAL"
   | "NOT_INITIALIZED"
@@ -57,6 +61,10 @@ type TaggedFailureTag =
   | "BootstrapTokenInvalidError"
   | "BootstrapTokenUnavailableError"
   | "DeadlineExceeded"
+  | "DeviceAuthorizationAccessDenied"
+  | "DeviceAuthorizationAlreadyProcessed"
+  | "DeviceAuthorizationCodeInvalid"
+  | "DeviceAuthorizationExpired"
   | "InvalidBearer"
   | "InvalidCredentials"
   | "MissingAuthorityInventory"
@@ -111,6 +119,22 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
   DeadlineExceeded: {
     code: Code.DeadlineExceeded,
     reason: "DEADLINE_EXCEEDED",
+  },
+  DeviceAuthorizationAccessDenied: {
+    code: Code.PermissionDenied,
+    reason: "DEVICE_AUTHORIZATION_ACCESS_DENIED",
+  },
+  DeviceAuthorizationAlreadyProcessed: {
+    code: Code.FailedPrecondition,
+    reason: "DEVICE_AUTHORIZATION_ALREADY_PROCESSED",
+  },
+  DeviceAuthorizationCodeInvalid: {
+    code: Code.InvalidArgument,
+    reason: "DEVICE_AUTHORIZATION_CODE_INVALID",
+  },
+  DeviceAuthorizationExpired: {
+    code: Code.FailedPrecondition,
+    reason: "DEVICE_AUTHORIZATION_EXPIRED",
   },
   IdempotencyKeyReused: {
     code: Code.AlreadyExists,

@@ -6,6 +6,7 @@ import type {
   StoredCatalogItem,
 } from "../../src/database/catalog-persistence-model-private.ts";
 import {
+  applyMigrationFolder,
   listProductionMigrationTags,
   makeCurrentProviderMigrationFolder,
 } from "./catalog-migration.test-support.ts";
@@ -338,7 +339,7 @@ it.live("migrates a fresh database and the current provider journal to the catal
       const priorTags = yield* makeCurrentProviderMigrationFolder().pipe(
         Effect.flatMap((migrationFolder) =>
           Effect.gen(function* applyProviderJournal() {
-            yield* useDatabase(databaseUrl, migrationFolder, (database) => database.checkReadiness);
+            yield* applyMigrationFolder(databaseUrl, migrationFolder);
             return yield* listProductionMigrationTags();
           }),
         ),

@@ -54,9 +54,13 @@ const makeTestAuthenticationService = (
   overrides: Partial<AuthenticationService> = {},
 ): AuthenticationService =>
   Object.freeze({
+    approveDeviceAuthorization: () => Effect.die(new Error("Unexpected device approval.")),
     consumeGlobalSignInBudget: noGlobalSignInLimit(),
     consumeIdentitySignInBudget: noIdentitySignInLimit,
     resolveAdministrator: () => Effect.die(new Error("Unexpected administrator resolution.")),
+    resolveConsumerPrincipal: () => Effect.die(new Error("Unexpected consumer resolution.")),
+    resolvePrincipal: () => Effect.die(new Error("Unexpected principal resolution.")),
+    revokeAppleClientRefreshTokens: Effect.die(new Error("Unexpected Apple client revocation.")),
     signIn: () => Effect.die(new Error("Unexpected sign-in.")),
     signOut: () => Effect.die(new Error("Unexpected sign-out.")),
     ...overrides,
