@@ -191,7 +191,6 @@ const createFailureState = (input: { readonly databaseUrl: string }): FailureSta
       input.databaseUrl,
       databaseLocation.hostname,
       databaseLocation.pathname,
-      databaseLocation.port,
       MASTER_KEY,
       FIXED_SESSION_DELETE_FAULT,
     ],

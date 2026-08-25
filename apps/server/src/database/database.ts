@@ -9,8 +9,8 @@ import { Pool } from "pg";
 import { Config } from "../config/config.ts";
 import { APPLE_PUBLIC_CLIENT_ID } from "../config/oauth.ts";
 import { oauthRefreshToken } from "./auth-schema.ts";
-import { makeCatalogPersistence } from "./catalog-persistence.ts";
-import type { CatalogPersistence } from "./catalog-persistence.ts";
+import { makeCatalog } from "./catalog-persistence.ts";
+import type { CatalogPersistence, CatalogQueryStorage } from "./catalog-persistence.ts";
 import { reconcileDatabaseInitialization } from "./initialization.ts";
 import type { DatabaseInitialization } from "./initialization.ts";
 import { reconcileOAuthConfiguration } from "./oauth-configuration-persistence.ts";
@@ -50,6 +50,7 @@ interface DatabaseAuthentication {
 interface DatabaseService {
   readonly authentication: DatabaseAuthentication;
   readonly catalog: CatalogPersistence;
+  readonly catalogQueries: CatalogQueryStorage;
   readonly initialization: DatabaseInitialization;
   readonly checkReadiness: Effect.Effect<boolean>;
   readonly providers: ProviderPersistence;
@@ -128,6 +129,23 @@ const revokeAppleClientRefreshTokens = (
     },
   });
 
+const prepareDatabase = (
+  database: DatabaseDrizzle,
+  migrationsFolder: string,
+  publicUrl: Config["Service"]["server"]["publicUrl"],
+) =>
+  Effect.gen(function* prepareDatabaseEffect() {
+    yield* Effect.tryPromise({
+      catch: () => new MigrationError(undefined),
+      try: () => migrate(database, { migrationsFolder }),
+    });
+    yield* Effect.tryPromise({
+      catch: () => new MigrationError(undefined),
+      try: () => reconcileOAuthConfiguration(database, publicUrl),
+    });
+    return yield* reconcileDatabaseInitialization(database);
+  });
+
 const makeDatabase = (migrationsFolder: string) =>
   Effect.gen(function* makeDatabaseService() {
     const config = yield* Config;
@@ -148,15 +166,12 @@ const makeDatabase = (migrationsFolder: string) =>
 
     yield* verifyConnection(pool);
     const database = drizzle(pool, { logger: false, schema: databaseSchema });
-    yield* Effect.tryPromise({
-      catch: () => new MigrationError(undefined),
-      try: () => migrate(database, { migrationsFolder }),
-    });
-    yield* Effect.tryPromise({
-      catch: () => new MigrationError(undefined),
-      try: () => reconcileOAuthConfiguration(database, config.server.publicUrl),
-    });
-    const initialization = yield* reconcileDatabaseInitialization(database);
+    const initialization = yield* prepareDatabase(
+      database,
+      migrationsFolder,
+      config.server.publicUrl,
+    );
+    const catalog = makeCatalog(database);
     const providerPersistence = yield* Effect.acquireRelease(
       makeProviderPersistence(database, config.security.masterKey),
       (owner) => Effect.sync(owner.close),
@@ -170,7 +185,8 @@ const makeDatabase = (migrationsFolder: string) =>
         database,
         revokeAppleClientRefreshTokens: revokeAppleClientRefreshTokens(database),
       },
-      catalog: makeCatalogPersistence(database),
+      catalog: catalog.persistence,
+      catalogQueries: catalog.queries,
       checkReadiness: makeReadinessProbe(pool),
       initialization,
       providers: providerPersistence.service,

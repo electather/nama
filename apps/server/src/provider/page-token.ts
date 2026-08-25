@@ -19,7 +19,7 @@ const PageTokenInvalid = taggedError("PageTokenInvalid")<Record<string, never>>;
 type PageTokenInvalidFailure = InstanceType<typeof PageTokenInvalid>;
 
 interface PageTokenBindings {
-  readonly administratorId: string;
+  readonly principalId: string;
   readonly method: string;
   readonly pageSize: number;
   readonly query: string;
@@ -36,7 +36,7 @@ interface PageTokenDecodeInput extends PageTokenBindings {
 }
 
 interface PageTokenPayload {
-  readonly administrator_id: string;
+  readonly principal_id: string;
   readonly cursor: string;
   readonly expires_at: number;
   readonly method: string;
@@ -54,17 +54,17 @@ interface PageTokenCodec {
 const invalidToken = (): PageTokenInvalidFailure => new PageTokenInvalid({});
 
 const payloadFor = (input: PageTokenEncodeInput): PageTokenPayload => ({
-  administrator_id: input.administratorId,
   cursor: input.cursor,
   expires_at: input.expiresAt,
   method: input.method,
   page_size: input.pageSize,
+  principal_id: input.principalId,
   query: input.query,
   version: PAGE_TOKEN_VERSION,
 });
 
 const validBindings = (input: PageTokenBindings): boolean =>
-  input.administratorId.length > 0 &&
+  input.principalId.length > 0 &&
   input.method.length > 0 &&
   Number.isSafeInteger(input.pageSize) &&
   input.pageSize > 0;
@@ -85,7 +85,7 @@ const decodeBase64url = (segment: string): Buffer => {
 };
 
 const PAYLOAD_KEYS = [
-  "administrator_id",
+  "principal_id",
   "cursor",
   "expires_at",
   "method",
@@ -123,7 +123,7 @@ const payloadFromProperties = (
   properties: Readonly<Record<string, unknown>>,
 ): PageTokenPayload | undefined => {
   const {
-    administrator_id: administratorId,
+    principal_id: principalId,
     cursor,
     expires_at: expiresAt,
     method,
@@ -133,7 +133,7 @@ const payloadFromProperties = (
   } = properties;
   if (
     version !== PAGE_TOKEN_VERSION ||
-    !nonemptyString(administratorId) ||
+    !nonemptyString(principalId) ||
     !nonemptyString(cursor) ||
     !positiveSafeInteger(expiresAt) ||
     !nonemptyString(method) ||
@@ -143,11 +143,11 @@ const payloadFromProperties = (
     return undefined;
   }
   return {
-    administrator_id: administratorId,
     cursor,
     expires_at: expiresAt,
     method,
     page_size: pageSize,
+    principal_id: principalId,
     query,
     version: PAGE_TOKEN_VERSION,
   };
@@ -244,7 +244,7 @@ const makePageTokenCodec = async (encodedMasterKey: string): Promise<PageTokenCo
         }
         const payload = parsePayload(canonicalJson);
         if (
-          payload.administrator_id !== input.administratorId ||
+          payload.principal_id !== input.principalId ||
           payload.method !== input.method ||
           payload.page_size !== input.pageSize ||
           payload.query !== input.query ||

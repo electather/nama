@@ -165,6 +165,7 @@
         "allow": [
           "catalog",
           "authentication",
+          "catalog",
           "configuration",
           "database",
           "lifecycle",
@@ -181,7 +182,7 @@
       },
       {
         "from": "catalog",
-        "allow": ["database", "plugin", "provider"]
+        "allow": ["configuration", "database", "plugin", "provider"]
       },
       { "from": "configuration", "allow": [] },
       { "from": "logging", "allow": ["configuration"] },
@@ -198,6 +199,7 @@
         "from": "transport",
         "allow": [
           "authentication",
+          "catalog",
           "configuration",
           "contracts",
           "database",
@@ -213,6 +215,7 @@
           "catalog",
           "authentication",
           "configuration",
+          "catalog",
           "contracts",
           "database",
           "lifecycle",

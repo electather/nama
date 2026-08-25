@@ -1,4 +1,4 @@
-import { asc, eq, getTableColumns } from "drizzle-orm";
+import { asc, eq, getTableColumns, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { canonicalArtwork, canonicalCredit } from "./catalog-artwork-schema.ts";
@@ -108,7 +108,7 @@ const loadParentRows = (database: CatalogTransaction, canonicalItemId: string) =
     .from(canonicalHierarchy)
     .innerJoin(parentItem, eq(parentItem.id, canonicalHierarchy.parentItemId))
     .where(eq(canonicalHierarchy.childItemId, canonicalItemId))
-    .orderBy(asc(canonicalHierarchy.relationship));
+    .orderBy(sql`case ${canonicalHierarchy.relationship} when 'show' then 1 else 2 end`);
 };
 
 const loadSourceRows = (database: CatalogTransaction, canonicalItemId: string) =>
@@ -254,4 +254,4 @@ const loadItem = (
     isolationLevel: "repeatable read",
   });
 
-export { loadItem };
+export { loadItem, loadItemSnapshot };

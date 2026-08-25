@@ -8,6 +8,8 @@ import type {
   CatalogPersistenceFailure,
   StoredCatalogItem,
 } from "./catalog-persistence-model-private.ts";
+import { makeCatalogQueryStorage } from "./catalog-query-storage.ts";
+import type { CatalogQueryStorage } from "./catalog-query-storage.ts";
 import { loadItem } from "./catalog-reads-private.ts";
 import {
   acceptPage,
@@ -131,12 +133,24 @@ const makeCatalogPersistence = (database: CatalogDatabase): CatalogPersistence =
     }),
 });
 
+interface CatalogOwner {
+  readonly persistence: CatalogPersistence;
+  readonly queries: CatalogQueryStorage;
+}
+
+const makeCatalog = (database: CatalogDatabase): CatalogOwner => ({
+  persistence: makeCatalogPersistence(database),
+  queries: makeCatalogQueryStorage(database),
+});
+
 export {
   type AcceptCatalogPageInput,
   type BeginCatalogScanInput,
   type CatalogItemObservation,
+  type CatalogOwner,
   type CatalogPageAcceptance,
   type CatalogPersistence,
+  type CatalogQueryStorage,
   type CatalogScanCandidate,
   type CatalogScanFailureReason,
   type CatalogScanFailureRecording,
@@ -144,5 +158,5 @@ export {
   type FailCatalogScanInput,
   type RestartCatalogScanInput,
   type ResolveCatalogPageInput,
-  makeCatalogPersistence,
+  makeCatalog,
 };

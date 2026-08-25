@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { providerCatalogScanState, providerItemMapping } from "./catalog-item-schema.ts";
+import { providerItemMapping } from "./catalog-item-schema.ts";
 import { replaceCanonicalItemInTransaction } from "./catalog-mutations-private.ts";
 import type { CatalogDatabase, CatalogTransaction } from "./catalog-persistence-model-private.ts";
 import {
@@ -19,6 +19,7 @@ import type {
   ResolveCatalogPageInput,
   RestartCatalogScanInput,
 } from "./catalog-scan-model-private.ts";
+import { providerCatalogScanState } from "./catalog-scan-schema.ts";
 import type { CatalogScanStatus } from "./catalog-scan-types-private.ts";
 
 const acceptedPageStatus = (complete: boolean): CatalogScanStatus => {

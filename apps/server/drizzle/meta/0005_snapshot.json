@@ -2206,6 +2206,7 @@
           "primaryKey": false,
           "notNull": true
         },
+
         "season_count": {
           "name": "season_count",
           "type": "bigint",

@@ -1,10 +1,10 @@
 import { eq, sql } from "drizzle-orm";
 
-import { providerCatalogScanState } from "./catalog-item-schema.ts";
 import type {
   CatalogItemObservation,
   CatalogTransaction,
 } from "./catalog-persistence-model-private.ts";
+import { providerCatalogScanState } from "./catalog-scan-schema.ts";
 import type { CatalogScanStatus } from "./catalog-scan-types-private.ts";
 import { providerInstance } from "./provider-schema.ts";
 

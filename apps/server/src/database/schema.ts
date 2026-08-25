@@ -12,11 +12,11 @@ import {
   canonicalHierarchy,
   canonicalItem,
   libraryEntry,
-  providerCatalogScanState,
   providerExternalIdentifier,
   providerItemMapping,
   providerItemParentReference,
 } from "./catalog-item-schema.ts";
+import { providerCatalogScanState } from "./catalog-scan-schema.ts";
 import {
   mediaPart,
   mediaSource,
@@ -83,6 +83,7 @@ const databaseSchema = {
 export * from "./auth-schema.ts";
 export * from "./catalog-artwork-schema.ts";
 export * from "./catalog-item-schema.ts";
+export * from "./catalog-scan-schema.ts";
 export * from "./catalog-source-schema.ts";
 export * from "./catalog-track-schema.ts";
 export * from "./provider-schema.ts";

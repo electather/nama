@@ -28,7 +28,7 @@ import { withIsolatedDatabase } from "./postgres.test-support.ts";
 
 const FIRST_INDEX = 0;
 const CONCURRENT_OBSERVATIONS = 12;
-const EXPECTED_CATALOG_MIGRATION_COUNT = 3;
+const EXPECTED_CATALOG_MIGRATION_COUNT = 4;
 const EXPECTED_PAIR_COUNT = 2;
 const EXPECTED_SINGLE_ID_COUNT = 1;
 const CATALOG_TABLES = [

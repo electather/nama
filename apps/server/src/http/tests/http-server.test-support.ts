@@ -11,7 +11,10 @@ import type { SetupCoordinatorService } from "../../authentication/setup-coordin
 import { Config } from "../../config/config.ts";
 import { Database } from "../../database/database.ts";
 import { databaseSchema } from "../../database/schema.ts";
-import { unusedCatalogPersistence } from "../../database/tests/catalog-persistence.test-support.ts";
+import {
+  unusedCatalogPersistence,
+  unusedCatalogQueries,
+} from "../../database/tests/catalog-persistence.test-support.ts";
 import { unusedProviderPersistence } from "../../database/tests/provider-persistence.test-support.ts";
 import { RuntimeControl } from "../../lifecycle/runtime-control.ts";
 import { ProviderManagement } from "../../provider/provider-management.ts";
@@ -151,6 +154,7 @@ const makeDatabase = (
       revokeAppleClientRefreshTokens: Effect.die("unexpected Apple client revocation"),
     },
     catalog: unusedCatalogPersistence,
+    catalogQueries: unusedCatalogQueries,
     checkReadiness,
     initialization,
     providers: unusedProviderPersistence,

@@ -1824,8 +1824,9 @@ it.live("recovers a killed ready plugin with fresh launch authority", () =>
 it.effect(
   "bounds a recovery episode to three launches with 100/500ms backoff",
   () =>
-    withControlDirectory((controlDirectory) =>
-      Effect.scoped(
+    withControlDirectory((controlDirectory) => {
+      const lines: string[] = [];
+      return Effect.scoped(
         Effect.gen(function* boundedRecoveryTest() {
           const supervisor = yield* PluginSupervisor;
           const handleScope = yield* Scope.make();
@@ -1843,8 +1844,14 @@ it.effect(
           }
           yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
           yield* awaitProcessExit(firstLaunch.pid);
+          yield* awaitCondition(() =>
+            lines.some(
+              (line) =>
+                line.includes('"event":"plugin.recovery_attempt"') &&
+                line.includes('"recovery_attempt":2'),
+            ),
+          );
           yield* TestClock.withLive(Effect.sleep(10));
-
           yield* TestClock.adjust(99);
           expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
           yield* TestClock.adjust(1);
@@ -1854,8 +1861,14 @@ it.effect(
           }
           yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 2);
           yield* awaitProcessExit(secondLaunch.pid);
+          yield* awaitCondition(() =>
+            lines.some(
+              (line) =>
+                line.includes('"event":"plugin.recovery_attempt"') &&
+                line.includes('"recovery_attempt":3'),
+            ),
+          );
           yield* TestClock.withLive(Effect.sleep(10));
-
           yield* TestClock.adjust(499);
           expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(2);
           yield* TestClock.adjust(1);
@@ -1867,9 +1880,16 @@ it.effect(
           yield* Effect.yieldNow;
           yield* TestClock.adjust(2000);
           yield* Fiber.join(finalization);
-        }).pipe(Effect.provide(PluginSupervisor.layer())),
-      ),
-    ),
+        }).pipe(
+          Effect.provide(PluginSupervisor.layer()),
+          Effect.provide(
+            configuredLoggingLayer(loggingConfig, (line) => {
+              lines.push(line);
+            }),
+          ),
+        ),
+      );
+    }),
   RECOVERY_TEST_TIMEOUT_MILLISECONDS,
 );
 
@@ -1943,9 +1963,8 @@ it.effect("does not retry a launch-protocol rejection", () =>
           return yield* Effect.die("fixture launch record missing");
         }
         yield* awaitProcessExit(firstLaunch.pid);
-        yield* Effect.yieldNow;
-        yield* TestClock.adjust(600);
         const failure = yield* Fiber.join(call).pipe(Effect.flip);
+        yield* TestClock.adjust(600);
 
         expect(failure).toMatchObject({
           _tag: "PluginUnavailable",
@@ -2326,11 +2345,13 @@ it.live("recovers a replacement that exits after its handshake during active dem
         }
         yield* awaitPathPresence(recoveredLaunch.socketPath);
 
-        const health = yield* directHealthCheck(
-          recoveredLaunch.socketPath,
-          `Bearer ${recoveredLaunch.bearer}`,
+        const health = yield* plugin.call(
+          HealthService.method.check,
+          {},
+          CALL_DEADLINE_MILLISECONDS,
         );
         expect(health.status).toBe(ServingStatus.SERVING);
+        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(3);
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
   ),
@@ -2339,8 +2360,9 @@ it.live("recovers a replacement that exits after its handshake during active dem
 it.effect(
   "makes a three-launch exhausted recovery episode terminal",
   () =>
-    withControlDirectory((controlDirectory) =>
-      Effect.scoped(
+    withControlDirectory((controlDirectory) => {
+      const lines: string[] = [];
+      return Effect.scoped(
         Effect.gen(function* exhaustedRecoveryTest() {
           const supervisor = yield* PluginSupervisor;
           const plugin = yield* supervisor.supervise(
@@ -2350,28 +2372,41 @@ it.effect(
           const call = yield* Effect.forkChild(
             plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS),
           );
-
-          yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
           const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
           if (firstLaunch === undefined) {
             return yield* Effect.die("first launch record missing");
           }
+          yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
           yield* awaitProcessExit(firstLaunch.pid);
+          yield* awaitCondition(() =>
+            lines.some(
+              (line) =>
+                line.includes('"event":"plugin.recovery_attempt"') &&
+                line.includes('"recovery_attempt":2'),
+            ),
+          );
           yield* TestClock.withLive(Effect.sleep(10));
           yield* TestClock.adjust(100);
-          yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 2);
           const secondLaunch = (yield* awaitLaunchCount(controlDirectory, 2))[1];
           if (secondLaunch === undefined) {
             return yield* Effect.die("second launch record missing");
           }
+          yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 2);
           yield* awaitProcessExit(secondLaunch.pid);
+          yield* awaitCondition(() =>
+            lines.some(
+              (line) =>
+                line.includes('"event":"plugin.recovery_attempt"') &&
+                line.includes('"recovery_attempt":3'),
+            ),
+          );
           yield* TestClock.withLive(Effect.sleep(10));
           yield* TestClock.adjust(500);
-          yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 3);
           const thirdLaunch = (yield* awaitLaunchCount(controlDirectory, 3))[2];
           if (thirdLaunch === undefined) {
             return yield* Effect.die("third launch record missing");
           }
+          yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 3);
           yield* awaitProcessExit(thirdLaunch.pid);
           yield* TestClock.withLive(Effect.sleep(10));
           const failure = yield* Fiber.join(call).pipe(Effect.flip);
@@ -2383,9 +2418,16 @@ it.effect(
           });
           expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(3);
           expect(yield* Effect.succeed("core-alive")).toBe("core-alive");
-        }).pipe(Effect.provide(PluginSupervisor.layer())),
-      ),
-    ),
+        }).pipe(
+          Effect.provide(PluginSupervisor.layer()),
+          Effect.provide(
+            configuredLoggingLayer(loggingConfig, (line) => {
+              lines.push(line);
+            }),
+          ),
+        ),
+      );
+    }),
   RECOVERY_TEST_TIMEOUT_MILLISECONDS,
 );
 
