@@ -1,40 +1,51 @@
 import SwiftUI
 
+private enum OAuthAuthorizationTVLayout {
+  static let contentSpacing: CGFloat = 32
+  static let contentPadding: CGFloat = 64
+  static let maximumContentWidth: CGFloat = 1_000
+}
+
 struct OAuthAuthorizationView: View {
+  @Environment(\.scenePhase) private var scenePhase
   @State private var retryGeneration = 0
   let feature: OAuthAuthorizationFeature
   let endpoint: NamaEndpoint
   let changeEndpoint: @MainActor () async -> Void
 
   var body: some View {
-    #if os(tvOS)
-      televisionBody
-    #else
-      formBody
-    #endif
+    platformBody
+      .task(
+        id: OAuthAuthorizationTaskID(
+          endpoint: endpoint,
+          retryGeneration: retryGeneration,
+          isActive: scenePhase == .active
+        )
+      ) {
+        guard scenePhase == .active else {
+          return
+        }
+        await feature.run(endpoint)
+      }
   }
 
   #if os(tvOS)
-    private var televisionBody: some View {
-      VStack(alignment: .leading, spacing: 32) {
+    private var platformBody: some View {
+      VStack(alignment: .leading, spacing: OAuthAuthorizationTVLayout.contentSpacing) {
         content
         HStack {
           recoveryActions
         }
       }
-      .padding(64)
-      .frame(maxWidth: 1_000, maxHeight: .infinity, alignment: .leading)
-      .task(
-        id: OAuthAuthorizationTaskID(
-          endpoint: endpoint,
-          retryGeneration: retryGeneration
-        )
-      ) {
-        await feature.run(endpoint)
-      }
+      .padding(OAuthAuthorizationTVLayout.contentPadding)
+      .frame(
+        maxWidth: OAuthAuthorizationTVLayout.maximumContentWidth,
+        maxHeight: .infinity,
+        alignment: .leading
+      )
     }
   #else
-    private var formBody: some View {
+    private var platformBody: some View {
       NavigationStack {
         Form {
           content
@@ -44,14 +55,6 @@ struct OAuthAuthorizationView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Authorize Nama")
-      }
-      .task(
-        id: OAuthAuthorizationTaskID(
-          endpoint: endpoint,
-          retryGeneration: retryGeneration
-        )
-      ) {
-        await feature.run(endpoint)
       }
     }
   #endif
@@ -67,19 +70,23 @@ struct OAuthAuthorizationView: View {
       }
 
     case .awaitingApproval(let requestedEndpoint, let userCode, _):
-      Section("Approve on the CLI") {
+      Section {
         Text(verbatim: userCode)
           .font(.system(.largeTitle, design: .monospaced, weight: .semibold))
-          .textSelection(.enabled)
+          .modifier(OAuthTextSelectionModifier())
           .accessibilityLabel("Device authorization user code")
           .accessibilityValue(userCode)
         Text("Run this command from a terminal where you are already signed in:")
         Text(verbatim: "nama auth approve-device \(userCode)")
           .font(.system(.body, design: .monospaced))
-          .textSelection(.enabled)
+          .modifier(OAuthTextSelectionModifier())
         EndpointText(endpoint: requestedEndpoint)
+      } header: {
+        Text("Approve on the CLI")
       } footer: {
-        Text("Nama will continue automatically after approval. No browser or password is required on this device.")
+        Text(
+          "Nama will continue automatically after approval. No browser or password is required on this device."
+        )
       }
 
     case .authorized(let status):
@@ -94,9 +101,9 @@ struct OAuthAuthorizationView: View {
 
     case .failed(let failedEndpoint, let failure):
       Section {
-        Label(failure.title, systemImage: "exclamationmark.triangle")
+        Label(authorizationTitle(for: failure), systemImage: "exclamationmark.triangle")
           .font(.headline)
-        Text(failure.message)
+        Text(authorizationMessage(for: failure))
         EndpointText(endpoint: failedEndpoint)
       }
     }
@@ -121,6 +128,7 @@ struct OAuthAuthorizationView: View {
 private struct OAuthAuthorizationTaskID: Hashable {
   let endpoint: NamaEndpoint
   let retryGeneration: Int
+  let isActive: Bool
 }
 
 private struct EndpointText: View {
@@ -130,40 +138,56 @@ private struct EndpointText: View {
     Text(verbatim: endpoint.absoluteString)
       .font(.footnote.monospaced())
       .foregroundStyle(.secondary)
-      .textSelection(.enabled)
+      .modifier(OAuthTextSelectionModifier())
       .accessibilityLabel("Nama endpoint")
       .accessibilityValue(endpoint.absoluteString)
   }
 }
 
-private extension OAuthAuthorizationFailure {
-  var title: LocalizedStringKey {
-    switch self {
-    case .accessDenied:
-      "Authorization denied"
-    case .authorizationExpired:
-      "Authorization expired"
-    case .invalidResponse:
-      "Nama could not authorize this device"
-    case .networkUnavailable:
-      "Nama is unavailable"
-    case .tokenStorageUnavailable:
-      "Authorization could not be saved"
-    }
+private struct OAuthTextSelectionModifier: ViewModifier {
+  func body(content: Content) -> some View {
+    #if os(tvOS)
+      content
+    #else
+      content.textSelection(.enabled)
+    #endif
   }
+}
 
-  var message: LocalizedStringKey {
-    switch self {
-    case .accessDenied:
-      "Start again when you are ready to approve this device."
-    case .authorizationExpired:
-      "The displayed user code is no longer valid. Request a new one."
-    case .invalidResponse:
-      "The authorization response was not compatible with this version of Nama."
-    case .networkUnavailable:
-      "Check that the Nama endpoint is reachable, then try again."
-    case .tokenStorageUnavailable:
-      "The existing authorization was preserved. Unlock this device and try again."
-    }
+private func authorizationTitle(for failure: OAuthAuthorizationFailure) -> LocalizedStringKey {
+  switch failure {
+  case .accessDenied:
+    "Authorization denied"
+
+  case .authorizationExpired:
+    "Authorization expired"
+
+  case .invalidResponse:
+    "Nama could not authorize this device"
+
+  case .networkUnavailable:
+    "Nama is unavailable"
+
+  case .tokenStorageUnavailable:
+    "Authorization could not be saved"
+  }
+}
+
+private func authorizationMessage(for failure: OAuthAuthorizationFailure) -> LocalizedStringKey {
+  switch failure {
+  case .accessDenied:
+    "Start again when you are ready to approve this device."
+
+  case .authorizationExpired:
+    "The displayed user code is no longer valid. Request a new one."
+
+  case .invalidResponse:
+    "The authorization response was not compatible with this version of Nama."
+
+  case .networkUnavailable:
+    "Check that the Nama endpoint is reachable, then try again."
+
+  case .tokenStorageUnavailable:
+    "The existing authorization was preserved. Unlock this device and try again."
   }
 }

@@ -8,6 +8,7 @@ struct NamaApp: App {
   private let tokenStore: KeychainOAuthTokenStore
   private let scopedAccessVerifier: NamaOAuthScopedAccessVerifier
   private let authorizationSession: OAuthAuthorizationSession
+
   init() {
     guard
       let version = Bundle.main.object(
@@ -73,11 +74,10 @@ private struct ConnectionWindow: View {
       if case .ready(let endpoint) = connection.state {
         OAuthAuthorizationView(
           feature: authorization,
-          endpoint: endpoint,
-          changeEndpoint: {
-            await connection.changeEndpoint()
-          }
-        )
+          endpoint: endpoint
+        ) {
+          await connection.changeEndpoint()
+        }
       } else {
         ConnectionRootView(feature: connection)
       }

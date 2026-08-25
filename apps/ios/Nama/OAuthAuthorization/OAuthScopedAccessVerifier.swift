@@ -24,22 +24,20 @@ nonisolated struct NamaOAuthScopedAccessVerifier: OAuthScopedAccessVerifying {
       endpoint: record.endpoint,
       configuration: sessionConfiguration
     )
+    let metadataInterceptor = InterceptorFactory { _ in
+      OAuthConsumerMetadataInterceptor(
+        accessToken: record.accessToken,
+        clientVersion: clientVersion,
+        platform: platform
+      )
+    }
     let protocolClient = ProtocolClient(
       httpClient: transport,
       config: ProtocolClientConfig(
         host: record.endpoint.absoluteString,
         networkProtocol: .connect,
         timeout: Self.requestTimeout,
-        interceptors: [
-          InterceptorFactory { _ in
-            OAuthConsumerMetadataInterceptor(
-              accessToken: record.accessToken,
-              clientVersion: clientVersion,
-              platform: platform
-            )
-            // swiftlint:disable:next trailing_comma
-          }
-        ]
+        interceptors: [metadataInterceptor]
       )
     )
     let client = Nama_Api_V1_LibraryServiceClient(client: protocolClient)
@@ -51,9 +49,11 @@ nonisolated struct NamaOAuthScopedAccessVerifier: OAuthScopedAccessVerifying {
     switch response.result {
     case .success:
       return
+
     case .failure(let error) where error.code == .unimplemented:
       // Authorization runs before the deliberately unimplemented library handler.
       return
+
     case .failure(let error):
       throw Self.map(error)
     }
@@ -68,6 +68,7 @@ nonisolated struct NamaOAuthScopedAccessVerifier: OAuthScopedAccessVerifying {
     switch error.code {
     case .canceled, .deadlineExceeded, .resourceExhausted, .unavailable:
       return .network
+
     case .ok, .unknown, .invalidArgument, .notFound, .alreadyExists, .permissionDenied,
       .failedPrecondition, .aborted, .outOfRange, .unimplemented, .internalError, .dataLoss,
       .unauthenticated:

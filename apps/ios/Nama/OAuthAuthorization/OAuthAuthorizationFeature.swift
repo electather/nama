@@ -1,6 +1,19 @@
 import Foundation
 import Observation
 
+private enum OAuthRefreshWaitResult {
+  case ready(OAuthAuthorizationStatus, generation: UInt64)
+  case retry
+  case stop
+}
+
+private enum OAuthRefreshRecordResolution {
+  case activate(EndpointBoundOAuthTokenRecord)
+  case refresh(EndpointBoundOAuthTokenRecord)
+  case retry
+  case stop
+}
+
 @MainActor
 @Observable
 final class OAuthAuthorizationFeature {
@@ -25,6 +38,10 @@ final class OAuthAuthorizationFeature {
   @ObservationIgnored let now: @Sendable () -> Date
   @ObservationIgnored let sleep: @Sendable (Duration) async throws -> Void
   @ObservationIgnored var attempt: UInt64 = 0
+  private static let refreshAdmissionRetryInterval: TimeInterval = 0.1
+  private static let refreshAdmissionRetryDelay: Duration = .seconds(
+    refreshAdmissionRetryInterval
+  )
 
   init(
     client: any OAuthAuthorizationClient,
@@ -111,79 +128,140 @@ final class OAuthAuthorizationFeature {
     let refreshOwner = UUID()
 
     while isCurrent(currentAttempt) {
-      guard let authorization = session.authorization else {
-        return
-      }
-      let generation = session.generation
-      let delay = max(0, authorization.accessTokenExpiresAt.timeIntervalSince(now()))
-      do {
-        try await sleep(.seconds(delay))
-      } catch {
-        return
-      }
-      guard isCurrent(currentAttempt) else {
-        return
-      }
-      guard
-        session.generation == generation,
-        session.authorization == authorization
-      else {
+      switch await waitForRefresh(attempt: currentAttempt) {
+      case .retry:
         continue
-      }
-      guard session.claimRefresh(owner: refreshOwner, generation: generation) else {
-        do {
-          try await sleep(.seconds(0.1))
-        } catch {
-          return
+
+      case .stop:
+        return
+
+      case .ready(let authorization, let generation):
+        if await processReadyRefresh(
+          authorization: authorization,
+          generation: generation,
+          refreshOwner: refreshOwner,
+          attempt: currentAttempt
+        ) {
+          continue
         }
-        continue
-      }
-      let mutationOwner = UUID()
-      guard await acquireMutation(owner: mutationOwner, attempt: currentAttempt) else {
-        session.releaseRefresh(owner: refreshOwner)
         return
       }
-      let snapshot = await tokenStore.load()
-      guard isCurrent(currentAttempt) else {
-        session.releaseMutation(owner: mutationOwner)
-        session.releaseRefresh(owner: refreshOwner)
-        return
-      }
-      guard
-        session.generation == generation,
-        session.authorization == authorization
-      else {
-        session.releaseMutation(owner: mutationOwner)
-        session.releaseRefresh(owner: refreshOwner)
-        continue
-      }
-      let record: EndpointBoundOAuthTokenRecord
-      switch snapshot {
-      case .record(let current) where authorization.matches(current):
-        record = current
-        session.releaseMutation(owner: mutationOwner)
-      case .record(let current):
-        session.releaseMutation(owner: mutationOwner)
-        session.releaseRefresh(owner: refreshOwner)
-        await activate(current, attempt: currentAttempt)
-        continue
-      case .missing, .damaged, .unavailable:
-        session.releaseMutation(owner: mutationOwner)
-        presentationState = .failed(authorization.endpoint, .tokenStorageUnavailable)
-        session.fail(
-          status: authorization,
-          failure: .tokenStorageUnavailable,
-          expectedGeneration: generation
-        )
-        session.releaseRefresh(owner: refreshOwner)
-        return
-      }
+    }
+  }
+
+  private func processReadyRefresh(
+    authorization: OAuthAuthorizationStatus,
+    generation: UInt64,
+    refreshOwner: UUID,
+    attempt currentAttempt: UInt64
+  ) async -> Bool {
+    guard session.claimRefresh(owner: refreshOwner, generation: generation) else {
+      return await waitForRefreshAdmission(attempt: currentAttempt)
+    }
+    switch await resolveRefreshRecord(
+      authorization: authorization,
+      generation: generation,
+      refreshOwner: refreshOwner,
+      attempt: currentAttempt
+    ) {
+    case .activate(let record):
+      await activate(record, attempt: currentAttempt)
+      return true
+
+    case .refresh(let record):
       await refresh(
         record,
         attempt: currentAttempt,
         expectedGeneration: generation
       )
       session.releaseRefresh(owner: refreshOwner)
+      return true
+
+    case .retry:
+      return true
+
+    case .stop:
+      return false
+    }
+  }
+
+  private func waitForRefresh(attempt currentAttempt: UInt64) async -> OAuthRefreshWaitResult {
+    guard let authorization = session.authorization else {
+      return .stop
+    }
+    let generation = session.generation
+    let delay = max(0, authorization.accessTokenExpiresAt.timeIntervalSince(now()))
+    do {
+      try await sleep(.seconds(delay))
+    } catch {
+      return .stop
+    }
+    guard isCurrent(currentAttempt) else {
+      return .stop
+    }
+    guard
+      session.generation == generation,
+      session.authorization == authorization
+    else {
+      return .retry
+    }
+    return .ready(authorization, generation: generation)
+  }
+
+  private func waitForRefreshAdmission(attempt currentAttempt: UInt64) async -> Bool {
+    do {
+      try await sleep(Self.refreshAdmissionRetryDelay)
+      return isCurrent(currentAttempt)
+    } catch {
+      return false
+    }
+  }
+
+  private func resolveRefreshRecord(
+    authorization: OAuthAuthorizationStatus,
+    generation: UInt64,
+    refreshOwner: UUID,
+    attempt currentAttempt: UInt64
+  ) async -> OAuthRefreshRecordResolution {
+    let mutationOwner = UUID()
+    guard await acquireMutation(owner: mutationOwner, attempt: currentAttempt) else {
+      session.releaseRefresh(owner: refreshOwner)
+      return .stop
+    }
+    let snapshot = await tokenStore.load()
+    guard isCurrent(currentAttempt) else {
+      session.releaseMutation(owner: mutationOwner)
+      session.releaseRefresh(owner: refreshOwner)
+      return .stop
+    }
+    guard
+      session.generation == generation,
+      session.authorization == authorization
+    else {
+      session.releaseMutation(owner: mutationOwner)
+      session.releaseRefresh(owner: refreshOwner)
+      return .retry
+    }
+    switch snapshot {
+    case .record(let current) where authorization.matches(current):
+      session.releaseMutation(owner: mutationOwner)
+      return .refresh(current)
+
+    case .record(let current):
+      session.releaseMutation(owner: mutationOwner)
+      session.releaseRefresh(owner: refreshOwner)
+      return .activate(current)
+
+    case .missing, .damaged, .unavailable:
+      session.releaseMutation(owner: mutationOwner)
+      presentationState = .failed(authorization.endpoint, .tokenStorageUnavailable)
+      session.fail(
+        status: authorization,
+        failure: .tokenStorageUnavailable,
+        expectedGeneration: generation
+      )
+      session.releaseRefresh(owner: refreshOwner)
+      return .stop
     }
   }
 }

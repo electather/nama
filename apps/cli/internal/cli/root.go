@@ -492,11 +492,12 @@ func (r *runtime) status(command *cobra.Command) error {
 		if err != nil {
 			return nil, err
 		}
-		result, err := app.Status(command.Context(), app.StatusInput{
-			Profile:       state.resolved.Profile,
-			ProfileServer: state.config.Profiles[state.resolved.Profile],
-			Server:        state.resolved.Server,
-		}, authClient, r.dependencies.Credentials)
+		result, err := app.Status(
+			command.Context(),
+			selectedSession(state),
+			authClient,
+			r.dependencies.Credentials,
+		)
 		if err != nil {
 			return nil, classifyLocalError(err)
 		}
@@ -516,10 +517,8 @@ func (r *runtime) approveDeviceAuthorization(command *cobra.Command, userCode st
 		result, err := app.ApproveDeviceAuthorization(
 			command.Context(),
 			app.ApproveDeviceAuthorizationInput{
-				Profile:       state.resolved.Profile,
-				ProfileServer: state.config.Profiles[state.resolved.Profile],
-				Server:        state.resolved.Server,
-				UserCode:      userCode,
+				Session:  selectedSession(state),
+				UserCode: userCode,
 			},
 			authClient,
 			r.dependencies.Credentials,
@@ -546,9 +545,7 @@ func (r *runtime) revokeAppleClientRefreshTokens(command *cobra.Command, yes boo
 		result, err := app.RevokeAppleClientRefreshTokens(
 			command.Context(),
 			app.RevokeAppleClientRefreshTokensInput{
-				Profile:       state.resolved.Profile,
-				ProfileServer: state.config.Profiles[state.resolved.Profile],
-				Server:        state.resolved.Server,
+				Session: selectedSession(state),
 			},
 			authClient,
 			r.dependencies.Credentials,
@@ -558,6 +555,14 @@ func (r *runtime) revokeAppleClientRefreshTokens(command *cobra.Command, yes boo
 		}
 		return result, nil
 	})
+}
+
+func selectedSession(state commandState) app.SelectedSession {
+	return app.SelectedSession{
+		Profile:       state.resolved.Profile,
+		ProfileServer: state.config.Profiles[state.resolved.Profile],
+		Server:        state.resolved.Server,
+	}
 }
 
 func (r *runtime) confirmAppleClientRevocation(

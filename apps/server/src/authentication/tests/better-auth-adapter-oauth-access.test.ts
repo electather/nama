@@ -77,17 +77,53 @@ it.effect("locally verifies an audience-bound Apple access JWT and returns its s
   }),
 );
 
+const verifiedClaims = Object.freeze({
+  aud: PUBLIC_URL,
+  exp: 1_800_000_000,
+  iss: PUBLIC_URL,
+});
 const rejectedClaims = [
   [
     "wrong client",
-    { client_id: "other-client", scope: REQUIRED_SCOPE, sub: PRINCIPAL_ID },
+    { ...verifiedClaims, client_id: "other-client", scope: REQUIRED_SCOPE, sub: PRINCIPAL_ID },
     "InvalidBearer",
   ],
-  ["missing subject", { client_id: "nama-apple", scope: REQUIRED_SCOPE }, "InvalidBearer"],
+  [
+    "missing subject",
+    { ...verifiedClaims, client_id: "nama-apple", scope: REQUIRED_SCOPE },
+    "InvalidBearer",
+  ],
   [
     "missing required scope",
-    { client_id: "nama-apple", scope: "nama:playback", sub: PRINCIPAL_ID },
+    {
+      ...verifiedClaims,
+      client_id: "nama-apple",
+      scope: "nama:playback",
+      sub: PRINCIPAL_ID,
+    },
     "PermissionDenied",
+  ],
+  [
+    "an audience array containing the resource",
+    {
+      ...verifiedClaims,
+      aud: [PUBLIC_URL, "https://other.nama.example/"],
+      client_id: "nama-apple",
+      scope: REQUIRED_SCOPE,
+      sub: PRINCIPAL_ID,
+    },
+    "InvalidBearer",
+  ],
+  [
+    "missing expiry",
+    {
+      aud: PUBLIC_URL,
+      client_id: "nama-apple",
+      iss: PUBLIC_URL,
+      scope: REQUIRED_SCOPE,
+      sub: PRINCIPAL_ID,
+    },
+    "InvalidBearer",
   ],
 ] as const;
 

@@ -104,8 +104,14 @@ const makeJwksFetch =
     }
   };
 
-const principalIdFromPayload = (payload: object): string | undefined => {
-  if (readProperty(payload, "client_id") !== APPLE_PUBLIC_CLIENT_ID) {
+const principalIdFromPayload = (payload: object, resource: string): string | undefined => {
+  const expiry = readProperty(payload, "exp");
+  if (
+    readProperty(payload, "aud") !== resource ||
+    typeof expiry !== "number" ||
+    !Number.isFinite(expiry) ||
+    readProperty(payload, "client_id") !== APPLE_PUBLIC_CLIENT_ID
+  ) {
     return undefined;
   }
   const subject = readProperty(payload, "sub");
@@ -122,12 +128,13 @@ const payloadHasScope = (payload: object, requiredScope: string): boolean => {
 
 const principalFromPayload = (
   payload: unknown,
+  resource: string,
   requiredScope: string,
 ): Effect.Effect<AuthenticatedPrincipal, OAuthAccessFailure> => {
   if (!isObjectValue(payload)) {
     return Effect.fail(invalidBearer);
   }
-  const subject = principalIdFromPayload(payload);
+  const subject = principalIdFromPayload(payload, resource);
   if (subject === undefined) {
     return Effect.fail(invalidBearer);
   }
@@ -169,9 +176,9 @@ const makeResolveOAuthAccess = (
               },
             ]),
           ),
-      }).pipe(Effect.flatMap((payload) => principalFromPayload(payload, requiredScope)));
+      }).pipe(Effect.flatMap((payload) => principalFromPayload(payload, resource, requiredScope)));
     });
 };
 
-export { makeOAuthRequestListener, makeResolveOAuthAccess };
+export { makeOAuthRequestListener, makeResolveOAuthAccess, readOAuthBearerToken };
 export type { AuthenticatedPrincipal, OAuthAccessFailure, PermissionDenied, ResolveOAuthAccess };

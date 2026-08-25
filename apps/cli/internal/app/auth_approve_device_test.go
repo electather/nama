@@ -34,10 +34,12 @@ func TestApproveDeviceAuthorizationUsesSelectedSessionBearer(t *testing.T) {
 	client := &approvalAuthServiceFake{}
 
 	result, err := ApproveDeviceAuthorization(t.Context(), ApproveDeviceAuthorizationInput{
-		Profile:       loginProfile,
-		ProfileServer: loginServer,
-		Server:        loginServer,
-		UserCode:      approvalUserCode,
+		Session: SelectedSession{
+			Profile:       loginProfile,
+			ProfileServer: loginServer,
+			Server:        loginServer,
+		},
+		UserCode: approvalUserCode,
 	}, client, store)
 
 	if err != nil {
@@ -79,9 +81,11 @@ func TestRevokeAppleClientRefreshTokensUsesSelectedAdministratorSession(t *testi
 	client := &revocationAuthServiceFake{}
 
 	result, err := RevokeAppleClientRefreshTokens(t.Context(), RevokeAppleClientRefreshTokensInput{
-		Profile:       loginProfile,
-		ProfileServer: loginServer,
-		Server:        loginServer,
+		Session: SelectedSession{
+			Profile:       loginProfile,
+			ProfileServer: loginServer,
+			Server:        loginServer,
+		},
 	}, client, store)
 
 	if err != nil {

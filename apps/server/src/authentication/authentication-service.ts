@@ -8,12 +8,12 @@ import type {
   InvalidCredentials,
   SignInInput,
 } from "./better-auth-adapter.ts";
+import { readOAuthBearerToken } from "./better-auth-oauth-private.ts";
 import type { AuthenticatedPrincipal, OAuthAccessFailure } from "./better-auth-oauth-private.ts";
 import { makeSignInLimiter } from "./sign-in-limiter.ts";
 import type { SignInLimiter } from "./sign-in-limiter.ts";
 
 const contextService = Context.Service;
-const OAUTH_JWT_SEGMENT_COUNT = 3;
 
 type ResolveAdministratorFailure = Exclude<AuthenticationFailure, InvalidCredentials>;
 type ResolveConsumerPrincipalFailure = ResolveAdministratorFailure | OAuthAccessFailure;
@@ -50,11 +50,6 @@ interface AuthenticationServiceDependencies {
 const sessionRevocationUnconfirmed: SessionRevocationUnconfirmed = Object.freeze({
   _tag: "SessionRevocationUnconfirmed",
 });
-
-const isOAuthAccessAuthorization = (authorization: string): boolean => {
-  const match = /^Bearer (?<token>[^\s]+)$/iu.exec(authorization);
-  return match?.groups?.["token"]?.split(".").length === OAUTH_JWT_SEGMENT_COUNT;
-};
 
 const makeSignIn =
   (betterAuthAdapter: BetterAuthAdapterService, signInLimiter: SignInLimiter) =>
@@ -103,7 +98,7 @@ const makeAuthenticationService = ({
       .resolveBearer(authorization)
       .pipe(Effect.map((resolvedBearer) => resolvedBearer.administrator));
   const resolveConsumerPrincipal = (authorization: string, requiredScope: string) => {
-    if (isOAuthAccessAuthorization(authorization)) {
+    if (readOAuthBearerToken(authorization) !== undefined) {
       return betterAuthAdapter.resolveOAuthAccess(authorization, requiredScope);
     }
     return resolvePrincipal(authorization);

@@ -35,7 +35,9 @@ struct OAuthAuthorizationLifecycleTests {
       tokenStore: store,
       scopedAccessVerifier: InMemoryOAuthScopedAccessVerifier(),
       now: { Date(timeIntervalSince1970: 1_000) },
-      sleep: { _ in }
+      sleep: { _ in
+        // Deterministic authorization proceeds without a wall-clock delay.
+      }
     )
 
     await feature.authorize(endpoint)
@@ -109,27 +111,8 @@ struct OAuthAuthorizationLifecycleTests {
   @Test("window-local tasks share active authorization without canceling another refresh loop")
   func windowLocalTasksShareActiveAuthorization() async throws {
     let endpoint = try NamaEndpoint("https://nama.example.test")
-    let active = EndpointBoundOAuthTokenRecord(
-      endpoint: endpoint,
-      accessToken: "active-access-token",
-      refreshToken: "current-refresh-token",
-      accessTokenExpiresAt: Date(timeIntervalSince1970: 1_100),
-      scope: OAuthConfiguration.consumerScopes,
-      tokenType: "Bearer"
-    )
-    let client = InMemoryOAuthAuthorizationClient(
-      deviceAuthorization: nil,
-      pollResults: [],
-      refreshResult: .success(
-        OAuthTokenBundle(
-          accessToken: "fresh-access-token",
-          refreshToken: "rotated-refresh-token",
-          expiresIn: 3_600,
-          scope: OAuthConfiguration.consumerScopes,
-          tokenType: "Bearer"
-        )
-      )
-    )
+    let active = activeLifecycleRecord(endpoint: endpoint)
+    let client = successfulRefreshClient()
     let store = InMemoryOAuthTokenStore(snapshot: .record(active))
     let session = OAuthAuthorizationSession()
     let firstSleep = GatedRefreshOAuthSleep()
@@ -225,4 +208,36 @@ struct OAuthAuthorizationLifecycleTests {
       Issue.record("retry did not restore authorization")
     }
   }
+}
+
+private enum LifecycleFixture {
+  static let accessTokenExpiresAt: TimeInterval = 1_100
+  static let refreshedTokenLifetime: TimeInterval = 3_600
+}
+
+private func activeLifecycleRecord(endpoint: NamaEndpoint) -> EndpointBoundOAuthTokenRecord {
+  EndpointBoundOAuthTokenRecord(
+    endpoint: endpoint,
+    accessToken: "active-access-token",
+    refreshToken: "current-refresh-token",
+    accessTokenExpiresAt: Date(timeIntervalSince1970: LifecycleFixture.accessTokenExpiresAt),
+    scope: OAuthConfiguration.consumerScopes,
+    tokenType: "Bearer"
+  )
+}
+
+private func successfulRefreshClient() -> InMemoryOAuthAuthorizationClient {
+  InMemoryOAuthAuthorizationClient(
+    deviceAuthorization: nil,
+    pollResults: [],
+    refreshResult: .success(
+      OAuthTokenBundle(
+        accessToken: "fresh-access-token",
+        refreshToken: "rotated-refresh-token",
+        expiresIn: LifecycleFixture.refreshedTokenLifetime,
+        scope: OAuthConfiguration.consumerScopes,
+        tokenType: "Bearer"
+      )
+    )
+  )
 }

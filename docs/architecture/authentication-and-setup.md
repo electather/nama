@@ -1,6 +1,6 @@
 # Authentication, setup, and OAuth authorization
 
-Status: issue #23 server setup and Administrator authentication, issue #24 CLI setup/sign-in/status, and issue #145's Better Auth authorization server, generated authenticated CLI approval, scoped JWT enforcement, broad client revocation, and Apple OAuth/Keychain implementation are checked in. Executable server and CLI flows are verified; universal-app build and actual-surface authorization evidence still require an Apple host. Issue #167 separately owns browser approval.
+Status: issue #23 server setup and Administrator authentication, issue #24 CLI setup/sign-in/status, and issue #145's Better Auth authorization server, generated authenticated CLI approval, scoped JWT enforcement, broad client revocation, and Apple OAuth/Keychain implementation are checked in. Executable server and CLI flows, Apple builds, and a signed Apple TV 4K simulator no-browser authorization and Keychain restoration flow are verified. Physical Apple hardware and other actual surfaces remain required release evidence; issue #167 separately owns browser approval.
 
 Nama owns public setup, Administrator authentication, and protected-resource authorization semantics. The implemented setup and CLI Administrator-authentication adapter remains private behind `SetupService` and `AuthService`; [ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md) deliberately exposes only the fixed Apple client's standard OAuth metadata, JWKS, device-code, token, refresh, and revocation routes, superseding that part of [ADR-0007](../adr/0007-private-better-auth-adapter.md). CLI approval remains a generated `AuthService` operation over the private adapter. Browser email/password and session routes remain private unless issue #167 implements its separate web-app surface.
 
@@ -163,8 +163,19 @@ grant. Multiple saved endpoint grants remain deferred.
 
 [ADR-0026](../adr/0026-standard-google-rpc-error-details.md) governs Connect application failure details, and [ADR-0027](../adr/0027-logical-operation-idempotency.md) keeps server-owned request correlation separate from logical-operation identity. The outer Node dispatch assigns server-owned `nama-request-id` to every delegated Connect response before decoding. Application-generated failures carry the same value in `google.rpc.RequestInfo`; malformed Connect input may fail before the application pipeline, so the response header is the correlation fallback. Terminal RPC logs contain only the request ID, method, Connect code, and duration. Better Auth HTTP endpoints retain their standard protocol errors but share the same credential and body redaction rules.
 
-Focused server and CLI coverage, disposable PostgreSQL, generated clients, compiled-command smoke tests, and package-entrypoint process coverage verify setup/authentication recovery plus authorization-server discovery, authenticated CLI approval, device-code exchange, local JWT enforcement, refresh rotation, and broad refresh-family revocation. Swift Testing coverage is checked in for returned-interval polling, refresh replacement, damaged-record quarantine, and Keychain policy, but Apple-platform build and actual-surface execution remain separate required evidence.
+Focused server and CLI coverage, disposable PostgreSQL, generated clients,
+compiled-command smoke tests, and package-entrypoint process coverage verify
+setup/authentication recovery plus authorization-server discovery,
+authenticated CLI approval, device-code exchange, local JWT enforcement,
+refresh rotation, and broad refresh-family revocation. Swift Testing coverage
+verifies returned-interval polling, expiry-driven refresh, replacement,
+damaged-record quarantine, and Keychain policy. A signed Apple TV 4K simulator
+run verifies local-HTTP acknowledgement, the displayed CLI-only code,
+generated-CLI approval, native token exchange, scoped consumer verification,
+Keychain commit, and relaunch restoration. Physical Apple hardware,
+expiry-driven actual-surface refresh, and the remaining Apple surfaces remain
+required evidence.
 
 ## Unfinished work
 
-Browser sign-in and device confirmation remain the separate issue #167 web-app target. CLI sign-out remains unfinished. Public signup, invitations, password recovery, dynamic client registration, authorization-code and client-credentials flows for the Apple public client, OIDC identity scopes, multiple roles, multiple saved endpoint grants, and a general web administration UI beyond issue #167 remain outside the target. Real Apple TV no-browser authorization, focus, accessibility, local-network privacy, and Keychain behavior must still be recorded on Apple hardware before release acceptance.
+Browser sign-in and device confirmation remain the separate issue #167 web-app target. CLI sign-out remains unfinished. Public signup, invitations, password recovery, dynamic client registration, authorization-code and client-credentials flows for the Apple public client, OIDC identity scopes, multiple roles, multiple saved endpoint grants, and a general web administration UI beyond issue #167 remain outside the target. Physical Apple TV authorization, focus, accessibility, local-network privacy, Keychain behavior, and actual-surface expiry refresh must still be recorded on Apple hardware before release acceptance.

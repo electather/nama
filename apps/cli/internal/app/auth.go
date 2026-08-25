@@ -32,10 +32,8 @@ type LoginResult struct {
 
 // ApproveDeviceAuthorizationInput contains the selected session and displayed user code.
 type ApproveDeviceAuthorizationInput struct {
-	Profile       string
-	ProfileServer string
-	Server        string
-	UserCode      string
+	Session  SelectedSession
+	UserCode string
 }
 
 // ApproveDeviceAuthorizationResult reports a completed explicit approval.
@@ -50,13 +48,7 @@ func ApproveDeviceAuthorization(ctx context.Context, input ApproveDeviceAuthoriz
 	if input.UserCode == "" {
 		return ApproveDeviceAuthorizationResult{}, clierror.InvalidArgument(errors.New("user code is required"))
 	}
-	credential, err := selectedSessionCredential(
-		ctx,
-		input.Profile,
-		input.ProfileServer,
-		input.Server,
-		credentials,
-	)
+	credential, err := selectedSessionCredential(ctx, input.Session, credentials)
 	if err != nil {
 		return ApproveDeviceAuthorizationResult{}, err
 	}
@@ -67,17 +59,15 @@ func ApproveDeviceAuthorization(ctx context.Context, input ApproveDeviceAuthoriz
 		return ApproveDeviceAuthorizationResult{}, clierror.Translate(err)
 	}
 	return ApproveDeviceAuthorizationResult{
-		Profile:  input.Profile,
-		Server:   input.Server,
+		Profile:  input.Session.Profile,
+		Server:   input.Session.Server,
 		Approved: true,
 	}, nil
 }
 
 // RevokeAppleClientRefreshTokensInput contains the selected Administrator session.
 type RevokeAppleClientRefreshTokensInput struct {
-	Profile       string
-	ProfileServer string
-	Server        string
+	Session SelectedSession
 }
 
 // RevokeAppleClientRefreshTokensResult reports broad fixed-client revocation.
@@ -89,13 +79,7 @@ type RevokeAppleClientRefreshTokensResult struct {
 
 // RevokeAppleClientRefreshTokens revokes every refresh-token family for the Apple public client.
 func RevokeAppleClientRefreshTokens(ctx context.Context, input RevokeAppleClientRefreshTokensInput, client apiv1.AuthServiceClient, credentials auth.CredentialStore) (RevokeAppleClientRefreshTokensResult, error) {
-	credential, err := selectedSessionCredential(
-		ctx,
-		input.Profile,
-		input.ProfileServer,
-		input.Server,
-		credentials,
-	)
+	credential, err := selectedSessionCredential(ctx, input.Session, credentials)
 	if err != nil {
 		return RevokeAppleClientRefreshTokensResult{}, err
 	}
@@ -105,21 +89,21 @@ func RevokeAppleClientRefreshTokens(ctx context.Context, input RevokeAppleClient
 		return RevokeAppleClientRefreshTokensResult{}, clierror.Translate(err)
 	}
 	return RevokeAppleClientRefreshTokensResult{
-		Profile: input.Profile,
-		Server:  input.Server,
+		Profile: input.Session.Profile,
+		Server:  input.Session.Server,
 		Revoked: true,
 	}, nil
 }
 
-func selectedSessionCredential(ctx context.Context, profile, profileServer, server string, credentials auth.CredentialStore) (auth.Credential, error) {
-	credential, found, err := credentials.Get(ctx, profile)
+func selectedSessionCredential(ctx context.Context, session SelectedSession, credentials auth.CredentialStore) (auth.Credential, error) {
+	credential, found, err := credentials.Get(ctx, session.Profile)
 	if err != nil {
 		return auth.Credential{}, credentialReadFailure(err)
 	}
 	if !found || credential.Token == "" {
 		return auth.Credential{}, clierror.New(clierror.CodeUnauthenticated, errors.New("authentication is required"))
 	}
-	if !credential.Injected && (profile == "" || profileServer != server || credential.Server != server) {
+	if !credential.Injected && (session.Profile == "" || session.ProfileServer != session.Server || credential.Server != session.Server) {
 		return auth.Credential{}, clierror.New(clierror.CodeUnauthenticated, errors.New("selected credential does not belong to the Nama endpoint"))
 	}
 	return credential, nil
@@ -178,8 +162,8 @@ func credentialReadFailure(err error) *clierror.Error {
 	return clierror.CredentialStoreUnavailable(err)
 }
 
-// StatusInput contains the resolved target and optional selected profile.
-type StatusInput struct {
+// SelectedSession contains the resolved target and optional selected profile.
+type SelectedSession struct {
 	Profile       string
 	ProfileServer string
 	Server        string
@@ -199,7 +183,7 @@ type StatusResult struct {
 }
 
 // Status reports the selected credential's current authentication state.
-func Status(ctx context.Context, input StatusInput, client apiv1.AuthServiceClient, credentials auth.CredentialStore) (StatusResult, error) {
+func Status(ctx context.Context, input SelectedSession, client apiv1.AuthServiceClient, credentials auth.CredentialStore) (StatusResult, error) {
 	result := StatusResult{Profile: input.Profile, Server: input.Server}
 	eligibleStoredCredential := input.Profile != "" && input.Server == input.ProfileServer
 

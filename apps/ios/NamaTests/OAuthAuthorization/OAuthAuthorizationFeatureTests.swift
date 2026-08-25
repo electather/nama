@@ -61,6 +61,13 @@ struct OAuthAuthorizationFeatureTests {
   @Test("a token rejected by the scoped consumer call is never committed")
   func rejectedScopedAccessIsNotCommitted() async throws {
     let endpoint = try NamaEndpoint("https://nama.example.test")
+    let invalidBundle = OAuthTokenBundle(
+      accessToken: "invalid-access-token",
+      refreshToken: "candidate-refresh-token",
+      expiresIn: 3_600,
+      scope: OAuthConfiguration.consumerScopes,
+      tokenType: "Bearer"
+    )
     let client = InMemoryOAuthAuthorizationClient(
       deviceAuthorization: OAuthDeviceAuthorization(
         deviceCode: "candidate-device-code",
@@ -69,17 +76,7 @@ struct OAuthAuthorizationFeatureTests {
         expiresIn: 600,
         interval: 5
       ),
-      pollResults: [
-        .authorized(
-          OAuthTokenBundle(
-            accessToken: "invalid-access-token",
-            refreshToken: "candidate-refresh-token",
-            expiresIn: 3_600,
-            scope: OAuthConfiguration.consumerScopes,
-            tokenType: "Bearer"
-          )
-        )
-      ]
+      pollResults: [.authorized(invalidBundle)]
     )
     let store = InMemoryOAuthTokenStore(snapshot: .missing)
     let feature = OAuthAuthorizationFeature(
@@ -87,7 +84,9 @@ struct OAuthAuthorizationFeatureTests {
       tokenStore: store,
       scopedAccessVerifier: InMemoryOAuthScopedAccessVerifier(error: .invalidResponse),
       now: { Date(timeIntervalSince1970: 1_000) },
-      sleep: { _ in }
+      sleep: { _ in
+        // Deterministic authorization proceeds without a wall-clock delay.
+      }
     )
 
     await feature.authorize(endpoint)
@@ -100,41 +99,22 @@ struct OAuthAuthorizationFeatureTests {
   func failedReplacementPreservesPreviousRecord() async throws {
     let previousEndpoint = try NamaEndpoint("https://old.nama.example.test")
     let candidateEndpoint = try NamaEndpoint("https://new.nama.example.test")
-    let previous = EndpointBoundOAuthTokenRecord(
+    let previous = tokenRecord(
       endpoint: previousEndpoint,
       accessToken: "old-access-token",
       refreshToken: "old-refresh-token",
-      accessTokenExpiresAt: Date(timeIntervalSince1970: 5_000),
-      scope: OAuthConfiguration.consumerScopes,
-      tokenType: "Bearer"
+      expiresAt: 5_000
     )
-    let client = InMemoryOAuthAuthorizationClient(
-      deviceAuthorization: OAuthDeviceAuthorization(
-        deviceCode: "candidate-device-code",
-        userCode: "WXYZ-1234",
-        verificationURI: candidateEndpoint.appending(path: "device"),
-        expiresIn: 600,
-        interval: 5
-      ),
-      pollResults: [
-        .authorized(
-          OAuthTokenBundle(
-            accessToken: "candidate-access-token",
-            refreshToken: "candidate-refresh-token",
-            expiresIn: 3_600,
-            scope: OAuthConfiguration.consumerScopes,
-            tokenType: "Bearer"
-          )
-        )
-      ]
-    )
+    let client = replacementClient(for: candidateEndpoint)
     let store = InMemoryOAuthTokenStore(snapshot: .record(previous), replaceError: .unavailable)
     let feature = OAuthAuthorizationFeature(
       client: client,
       tokenStore: store,
       scopedAccessVerifier: InMemoryOAuthScopedAccessVerifier(),
       now: { Date(timeIntervalSince1970: 1_000) },
-      sleep: { _ in }
+      sleep: { _ in
+        // Deterministic authorization proceeds without a wall-clock delay.
+      }
     )
 
     await feature.authorize(candidateEndpoint)
@@ -147,42 +127,19 @@ struct OAuthAuthorizationFeatureTests {
   func cancelledReplacementRestoresLatestRecord() async throws {
     let previousEndpoint = try NamaEndpoint("https://old.nama.example.test")
     let candidateEndpoint = try NamaEndpoint("https://new.nama.example.test")
-    let previous = EndpointBoundOAuthTokenRecord(
+    let previous = tokenRecord(
       endpoint: previousEndpoint,
       accessToken: "old-access-token",
       refreshToken: "old-refresh-token",
-      accessTokenExpiresAt: Date(timeIntervalSince1970: 5_000),
-      scope: OAuthConfiguration.consumerScopes,
-      tokenType: "Bearer"
+      expiresAt: 5_000
     )
-    let newer = EndpointBoundOAuthTokenRecord(
+    let newer = tokenRecord(
       endpoint: previousEndpoint,
       accessToken: "newer-access-token",
       refreshToken: "rotated-refresh-token",
-      accessTokenExpiresAt: Date(timeIntervalSince1970: 6_000),
-      scope: OAuthConfiguration.consumerScopes,
-      tokenType: "Bearer"
+      expiresAt: 6_000
     )
-    let client = InMemoryOAuthAuthorizationClient(
-      deviceAuthorization: OAuthDeviceAuthorization(
-        deviceCode: "candidate-device-code",
-        userCode: "WXYZ-1234",
-        verificationURI: candidateEndpoint.appending(path: "device"),
-        expiresIn: 600,
-        interval: 5
-      ),
-      pollResults: [
-        .authorized(
-          OAuthTokenBundle(
-            accessToken: "candidate-access-token",
-            refreshToken: "candidate-refresh-token",
-            expiresIn: 3_600,
-            scope: OAuthConfiguration.consumerScopes,
-            tokenType: "Bearer"
-          )
-        )
-      ]
-    )
+    let client = replacementClient(for: candidateEndpoint)
     let store = SuspendingReplacementOAuthTokenStore(record: previous)
     let verifier = GatedOAuthScopedAccessVerifier()
     let session = OAuthAuthorizationSession()
@@ -192,7 +149,9 @@ struct OAuthAuthorizationFeatureTests {
       scopedAccessVerifier: verifier,
       session: session,
       now: { Date(timeIntervalSince1970: 1_000) },
-      sleep: { _ in }
+      sleep: { _ in
+        // Deterministic authorization proceeds without a wall-clock delay.
+      }
     )
 
     let authorization = Task {
@@ -205,7 +164,7 @@ struct OAuthAuthorizationFeatureTests {
     await store.waitUntilReplacementStarts()
     authorization.cancel()
     await store.resumeReplacement()
-    await authorization.value
+    _ = await authorization.value
 
     #expect(await store.record == newer)
     #expect(session.authorization == OAuthAuthorizationStatus(record: newer))
@@ -234,7 +193,9 @@ struct OAuthAuthorizationFeatureTests {
       tokenStore: store,
       scopedAccessVerifier: InMemoryOAuthScopedAccessVerifier(),
       now: { Date(timeIntervalSince1970: 1_000) },
-      sleep: { _ in }
+      sleep: { _ in
+        // Deterministic authorization proceeds without a wall-clock delay.
+      }
     )
 
     await feature.authorize(endpoint)
@@ -243,4 +204,46 @@ struct OAuthAuthorizationFeatureTests {
     #expect(await client.requestedEndpoints == [endpoint])
     #expect(feature.state == .failed(endpoint, .accessDenied))
   }
+}
+
+private enum ReplacementFixture {
+  static let deviceAuthorizationLifetime: TimeInterval = 600
+  static let pollingInterval: TimeInterval = 5
+  static let tokenLifetime: TimeInterval = 3_600
+}
+
+private func tokenRecord(
+  endpoint: NamaEndpoint,
+  accessToken: String,
+  refreshToken: String,
+  expiresAt: TimeInterval
+) -> EndpointBoundOAuthTokenRecord {
+  EndpointBoundOAuthTokenRecord(
+    endpoint: endpoint,
+    accessToken: accessToken,
+    refreshToken: refreshToken,
+    accessTokenExpiresAt: Date(timeIntervalSince1970: expiresAt),
+    scope: OAuthConfiguration.consumerScopes,
+    tokenType: "Bearer"
+  )
+}
+
+private func replacementClient(for endpoint: NamaEndpoint) -> InMemoryOAuthAuthorizationClient {
+  let bundle = OAuthTokenBundle(
+    accessToken: "candidate-access-token",
+    refreshToken: "candidate-refresh-token",
+    expiresIn: ReplacementFixture.tokenLifetime,
+    scope: OAuthConfiguration.consumerScopes,
+    tokenType: "Bearer"
+  )
+  return InMemoryOAuthAuthorizationClient(
+    deviceAuthorization: OAuthDeviceAuthorization(
+      deviceCode: "candidate-device-code",
+      userCode: "WXYZ-1234",
+      verificationURI: endpoint.appending(path: "device"),
+      expiresIn: ReplacementFixture.deviceAuthorizationLifetime,
+      interval: ReplacementFixture.pollingInterval
+    ),
+    pollResults: [.authorized(bundle)]
+  )
 }

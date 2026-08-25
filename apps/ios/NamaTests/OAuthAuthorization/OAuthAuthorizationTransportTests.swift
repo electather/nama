@@ -3,13 +3,23 @@ import Testing
 
 @testable import Nama
 
+nonisolated private enum OAuthTransportFixture {
+  static let deviceAuthorizationCallCount = 1
+  static let initialTokenCallCount = 2
+  static let refreshedTokenCallCount = 3
+  static let initialTokenExpiresIn: TimeInterval = 100
+  static let successfulHTTPStatus = 200
+  static let unavailableHTTPStatus = 500
+  static let unimplementedHTTPStatus = 501
+}
+
 @Suite("OAuth authorization transports")
 @MainActor
 struct OAuthAuthorizationTransportTests {
   @Test("the concrete scoped verifier attaches the access JWT before the library handler")
   func concreteScopedVerifierUsesBearer() async throws {
     OAuthConnectStubURLProtocol.configure(
-      status: 501,
+      status: OAuthTransportFixture.unimplementedHTTPStatus,
       body: #"{"code":"unimplemented","message":"LibraryService.GetHome is not implemented"}"#
     )
     defer { OAuthConnectStubURLProtocol.reset() }
@@ -56,15 +66,16 @@ struct OAuthAuthorizationTransportTests {
 
     #expect(authorization.userCode == "ABCD-EFGH")
     #expect(
-      poll == .authorized(
-        OAuthTokenBundle(
-          accessToken: "initial-access-token",
-          refreshToken: "initial-refresh-token",
-          expiresIn: 100,
-          scope: OAuthConfiguration.consumerScopes,
-          tokenType: "Bearer"
+      poll
+        == .authorized(
+          OAuthTokenBundle(
+            accessToken: "initial-access-token",
+            refreshToken: "initial-refresh-token",
+            expiresIn: OAuthTransportFixture.initialTokenExpiresIn,
+            scope: OAuthConfiguration.consumerScopes,
+            tokenType: "Bearer"
+          )
         )
-      )
     )
     #expect(refreshed.accessToken == "refreshed-access-token")
     #expect(refreshed.refreshToken == "rotated-refresh-token")
@@ -72,7 +83,7 @@ struct OAuthAuthorizationTransportTests {
       await script.paths == ["/device/code", "/oauth2/token", "/oauth2/token"]
     )
     let bodies = await script.bodies
-    #expect(bodies.count == 3)
+    #expect(bodies.count == OAuthTransportFixture.refreshedTokenCallCount)
     #expect(bodies.contains { $0.contains("client_id=nama-apple") })
     #expect(bodies.contains { $0.contains("device_code=device-code-secret") })
     #expect(bodies.contains { $0.contains("grant_type=refresh_token") })
@@ -93,6 +104,7 @@ private actor ScriptedOAuthHTTPFlow {
     _ endpoint: NamaEndpoint,
     _ request: URLRequest
   ) async throws -> (Data, HTTPURLResponse) {
+    await Task.yield()
     guard
       let url = request.url,
       url.scheme == endpoint.url.scheme,
@@ -102,25 +114,31 @@ private actor ScriptedOAuthHTTPFlow {
       throw OAuthAuthorizationClientError.invalidResponse
     }
     paths.append(url.path)
-    bodies.append(request.httpBody.map { String(decoding: $0, as: UTF8.self) } ?? "")
+    bodies.append(request.httpBody.flatMap { String(data: $0, encoding: .utf8) } ?? "")
     let body: String
     switch paths.count {
-    case 1:
+    case OAuthTransportFixture.deviceAuthorizationCallCount:
       body =
-        #"{"device_code":"device-code-secret","user_code":"ABCD-EFGH","verification_uri":"\#(verificationURI)","expires_in":600,"interval":5}"#
-    case 2:
+        #"{"device_code":"device-code-secret","user_code":"ABCD-EFGH","#
+        + #""verification_uri":"\#(verificationURI)","expires_in":600,"interval":5}"#
+
+    case OAuthTransportFixture.initialTokenCallCount:
       body =
-        #"{"access_token":"initial-access-token","refresh_token":"initial-refresh-token","expires_in":100,"scope":"nama:library nama:playback nama:user-state","token_type":"Bearer"}"#
-    case 3:
+        #"{"access_token":"initial-access-token","refresh_token":"initial-refresh-token","#
+        + #""expires_in":100,"scope":"nama:library nama:playback nama:user-state","token_type":"Bearer"}"#
+
+    case OAuthTransportFixture.refreshedTokenCallCount:
       body =
-        #"{"access_token":"refreshed-access-token","refresh_token":"rotated-refresh-token","expires_in":3600,"scope":"nama:library nama:playback nama:user-state","token_type":"Bearer"}"#
+        #"{"access_token":"refreshed-access-token","refresh_token":"rotated-refresh-token","#
+        + #""expires_in":3600,"scope":"nama:library nama:playback nama:user-state","token_type":"Bearer"}"#
+
     default:
       throw OAuthAuthorizationClientError.invalidResponse
     }
     guard
       let response = HTTPURLResponse(
         url: url,
-        statusCode: 200,
+        statusCode: OAuthTransportFixture.successfulHTTPStatus,
         httpVersion: "HTTP/1.1",
         headerFields: ["content-type": "application/json"]
       )
@@ -131,9 +149,10 @@ private actor ScriptedOAuthHTTPFlow {
   }
 }
 
-nonisolated private final class OAuthConnectStubURLProtocol: URLProtocol, @unchecked Sendable {
+nonisolated private class OAuthConnectStubURLProtocol: URLProtocol, @unchecked Sendable {
   private static let lock = NSLock()
-  nonisolated(unsafe) private static var responseStatus = 500
+  nonisolated(unsafe) private static var responseStatus = OAuthTransportFixture
+    .unavailableHTTPStatus
   nonisolated(unsafe) private static var responseBody = ""
   nonisolated(unsafe) private static var requests: [URLRequest] = []
 
@@ -150,16 +169,13 @@ nonisolated private final class OAuthConnectStubURLProtocol: URLProtocol, @unche
   }
 
   static func reset() {
-    configure(status: 500, body: "")
+    configure(status: OAuthTransportFixture.unavailableHTTPStatus, body: "")
   }
 
-  // URLProtocol requires these overrides to remain class methods.
-  // swiftlint:disable:next static_over_final_class non_overridable_class_declaration
   override class func canInit(with _: URLRequest) -> Bool {
     true
   }
 
-  // swiftlint:disable:next static_over_final_class non_overridable_class_declaration
   override class func canonicalRequest(for request: URLRequest) -> URLRequest {
     request
   }
@@ -186,5 +202,7 @@ nonisolated private final class OAuthConnectStubURLProtocol: URLProtocol, @unche
     client?.urlProtocolDidFinishLoading(self)
   }
 
-  override func stopLoading() {}
+  override func stopLoading() {
+    // URLProtocol has no active work to stop in this synchronous fixture.
+  }
 }

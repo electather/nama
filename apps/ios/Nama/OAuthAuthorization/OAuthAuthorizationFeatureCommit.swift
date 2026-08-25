@@ -1,124 +1,207 @@
 import Foundation
 
+private struct OAuthCommitRollback {
+  let record: EndpointBoundOAuthTokenRecord?
+  let generation: UInt64
+}
+
 extension OAuthAuthorizationFeature {
+  private static let mutationRetryInterval: TimeInterval = 0.05
+  private static let mutationRetryDelay: Duration = .seconds(mutationRetryInterval)
+
   func commit(
     _ bundle: OAuthTokenBundle,
     for endpoint: NamaEndpoint,
+    attempt currentAttempt: UInt64,
     expectedCurrent: EndpointBoundOAuthTokenRecord? = nil,
-    expectedGeneration: UInt64? = nil,
-    attempt currentAttempt: UInt64
+    expectedGeneration: UInt64? = nil
   ) async {
-    guard isCurrent(currentAttempt) else {
-      return
-    }
     guard
-      !bundle.accessToken.isEmpty,
-      !bundle.refreshToken.isEmpty,
-      bundle.expiresIn > 0,
-      bundle.tokenType.caseInsensitiveCompare("Bearer") == .orderedSame,
-      Set(bundle.scope) == Set(OAuthConfiguration.consumerScopes),
-      bundle.scope.count == OAuthConfiguration.consumerScopes.count
+      isCurrent(currentAttempt),
+      let record = makeRecord(bundle, for: endpoint),
+      await verifyScopedAccess(record, attempt: currentAttempt)
     else {
-      presentationState = .failed(endpoint, .invalidResponse)
       return
     }
-    let record = EndpointBoundOAuthTokenRecord(
-      endpoint: endpoint,
-      accessToken: bundle.accessToken,
-      refreshToken: bundle.refreshToken,
-      accessTokenExpiresAt: now().addingTimeInterval(bundle.expiresIn),
-      scope: OAuthConfiguration.consumerScopes,
-      tokenType: "Bearer"
-    )
-    do {
-      try await scopedAccessVerifier.verify(record)
-    } catch {
-      if isCurrent(currentAttempt) {
-        presentationState = .failed(endpoint, failure(for: error))
-      }
-      return
-    }
-    guard isCurrent(currentAttempt) else {
-      return
-    }
+
     let mutationOwner = UUID()
     guard await acquireMutation(owner: mutationOwner, attempt: currentAttempt) else {
       return
     }
-    let snapshot = await tokenStore.load()
+    guard
+      let rollback = await loadCommitRollback(
+        owner: mutationOwner,
+        endpoint: endpoint,
+        attempt: currentAttempt
+      ),
+      await expectedCurrentMatches(
+        expectedCurrent,
+        rollback: rollback,
+        owner: mutationOwner,
+        attempt: currentAttempt,
+        expectedGeneration: expectedGeneration
+      ),
+      await persist(
+        record,
+        owner: mutationOwner,
+        endpoint: endpoint,
+        attempt: currentAttempt
+      )
+    else {
+      return
+    }
+
     guard isCurrent(currentAttempt) else {
-      session.releaseMutation(owner: mutationOwner)
-      return
-    }
-    let rollbackRecord: EndpointBoundOAuthTokenRecord?
-    switch snapshot {
-    case .record(let current):
-      rollbackRecord = current
-    case .missing:
-      rollbackRecord = nil
-    case .damaged, .unavailable:
-      session.releaseMutation(owner: mutationOwner)
-      presentationState = .failed(endpoint, .tokenStorageUnavailable)
-      return
-    }
-    if let expectedCurrent, rollbackRecord != expectedCurrent {
-      session.releaseMutation(owner: mutationOwner)
-      if let rollbackRecord {
-        await activate(rollbackRecord, attempt: currentAttempt)
-      } else {
-        presentationState = .failed(endpoint, .tokenStorageUnavailable)
-        session.fail(
-          record: expectedCurrent,
-          failure: .tokenStorageUnavailable,
-          expectedGeneration: expectedGeneration
-        )
-      }
-      return
-    }
-    let rollbackGeneration = session.generation
-    do {
-      try await tokenStore.replace(with: record)
-    } catch {
-      session.releaseMutation(owner: mutationOwner)
-      if isCurrent(currentAttempt) {
-        presentationState = .failed(endpoint, .tokenStorageUnavailable)
-      }
-      return
-    }
-    guard isCurrent(currentAttempt) else {
-      do {
-        try await tokenStore.restore(rollbackRecord, ifCurrent: record)
-      } catch {
-        let restoredSnapshot = await tokenStore.load()
-        let restored: Bool
-        switch (rollbackRecord, restoredSnapshot) {
-        case (nil, .missing):
-          restored = true
-        case (let expected?, .record(let current)):
-          restored = expected == current
-        default:
-          restored = false
-        }
-        if !restored {
-          let rollbackStatus: OAuthAuthorizationStatus
-          if let rollbackRecord {
-            rollbackStatus = OAuthAuthorizationStatus(record: rollbackRecord)
-          } else {
-            rollbackStatus = OAuthAuthorizationStatus(record: record)
-          }
-          session.fail(
-            status: rollbackStatus,
-            failure: .tokenStorageUnavailable,
-            expectedGeneration: rollbackGeneration
-          )
-        }
-      }
+      await restoreCancelledCommit(record, rollback: rollback)
       session.releaseMutation(owner: mutationOwner)
       return
     }
     session.publish(record)
     session.releaseMutation(owner: mutationOwner)
     presentationState = .authorized(OAuthAuthorizationStatus(record: record))
+  }
+
+  private func makeRecord(
+    _ bundle: OAuthTokenBundle,
+    for endpoint: NamaEndpoint
+  ) -> EndpointBoundOAuthTokenRecord? {
+    guard
+      bundle.expiresIn > 0,
+      let material = OAuthTokenMaterial(
+        accessToken: bundle.accessToken,
+        refreshToken: bundle.refreshToken,
+        scope: bundle.scope,
+        tokenType: bundle.tokenType
+      )
+    else {
+      presentationState = .failed(endpoint, .invalidResponse)
+      return nil
+    }
+    return EndpointBoundOAuthTokenRecord(
+      endpoint: endpoint,
+      accessToken: material.accessToken,
+      refreshToken: material.refreshToken,
+      accessTokenExpiresAt: now().addingTimeInterval(bundle.expiresIn),
+      scope: material.scope,
+      tokenType: material.tokenType
+    )
+  }
+
+  private func verifyScopedAccess(
+    _ record: EndpointBoundOAuthTokenRecord,
+    attempt currentAttempt: UInt64
+  ) async -> Bool {
+    do {
+      try await scopedAccessVerifier.verify(record)
+      return isCurrent(currentAttempt)
+    } catch {
+      if isCurrent(currentAttempt) {
+        presentationState = .failed(record.endpoint, failure(for: error))
+      }
+      return false
+    }
+  }
+
+  private func loadCommitRollback(
+    owner: UUID,
+    endpoint: NamaEndpoint,
+    attempt currentAttempt: UInt64
+  ) async -> OAuthCommitRollback? {
+    let snapshot = await tokenStore.load()
+    guard isCurrent(currentAttempt) else {
+      session.releaseMutation(owner: owner)
+      return nil
+    }
+    switch snapshot {
+    case .record(let current):
+      return OAuthCommitRollback(record: current, generation: session.generation)
+
+    case .missing:
+      return OAuthCommitRollback(record: nil, generation: session.generation)
+
+    case .damaged, .unavailable:
+      session.releaseMutation(owner: owner)
+      presentationState = .failed(endpoint, .tokenStorageUnavailable)
+      return nil
+    }
+  }
+
+  private func expectedCurrentMatches(
+    _ expectedCurrent: EndpointBoundOAuthTokenRecord?,
+    rollback: OAuthCommitRollback,
+    owner: UUID,
+    attempt currentAttempt: UInt64,
+    expectedGeneration: UInt64?
+  ) async -> Bool {
+    guard let expectedCurrent, rollback.record != expectedCurrent else {
+      return true
+    }
+    session.releaseMutation(owner: owner)
+    if let current = rollback.record {
+      await activate(current, attempt: currentAttempt)
+    } else {
+      presentationState = .failed(expectedCurrent.endpoint, .tokenStorageUnavailable)
+      session.fail(
+        record: expectedCurrent,
+        failure: .tokenStorageUnavailable,
+        expectedGeneration: expectedGeneration
+      )
+    }
+    return false
+  }
+
+  private func persist(
+    _ record: EndpointBoundOAuthTokenRecord,
+    owner: UUID,
+    endpoint: NamaEndpoint,
+    attempt currentAttempt: UInt64
+  ) async -> Bool {
+    do {
+      try await tokenStore.replace(with: record)
+      return true
+    } catch {
+      session.releaseMutation(owner: owner)
+      if isCurrent(currentAttempt) {
+        presentationState = .failed(endpoint, .tokenStorageUnavailable)
+      }
+      return false
+    }
+  }
+
+  private func restoreCancelledCommit(
+    _ candidate: EndpointBoundOAuthTokenRecord,
+    rollback: OAuthCommitRollback
+  ) async {
+    do {
+      try await tokenStore.restore(rollback.record, ifCurrent: candidate)
+    } catch {
+      let restoredSnapshot = await tokenStore.load()
+      guard !rollbackWasRestored(rollback.record, snapshot: restoredSnapshot) else {
+        return
+      }
+      let rollbackStatus = OAuthAuthorizationStatus(record: rollback.record ?? candidate)
+      session.fail(
+        status: rollbackStatus,
+        failure: .tokenStorageUnavailable,
+        expectedGeneration: rollback.generation
+      )
+    }
+  }
+
+  private func rollbackWasRestored(
+    _ rollbackRecord: EndpointBoundOAuthTokenRecord?,
+    snapshot: OAuthTokenStoreSnapshot
+  ) -> Bool {
+    switch (rollbackRecord, snapshot) {
+    case (nil, .missing):
+      true
+
+    case (let expected?, .record(let current)):
+      expected == current
+
+    default:
+      false
+    }
   }
 
   func activate(
@@ -149,9 +232,11 @@ extension OAuthAuthorizationFeature {
       session.publish(record)
       session.releaseMutation(owner: mutationOwner)
       presentationState = .authorized(OAuthAuthorizationStatus(record: record))
+
     case .record(let current):
       session.releaseMutation(owner: mutationOwner)
       await activate(current, attempt: currentAttempt)
+
     case .missing, .damaged, .unavailable:
       session.releaseMutation(owner: mutationOwner)
       presentationState = .failed(record.endpoint, .tokenStorageUnavailable)
@@ -168,7 +253,7 @@ extension OAuthAuthorizationFeature {
         return true
       }
       do {
-        try await sleep(.seconds(0.05))
+        try await sleep(Self.mutationRetryDelay)
       } catch {
         return false
       }
@@ -187,10 +272,13 @@ extension OAuthAuthorizationFeature {
     switch clientError {
     case .accessDenied:
       return .accessDenied
+
     case .expired:
       return .authorizationExpired
+
     case .invalidGrant, .invalidResponse:
       return .invalidResponse
+
     case .network:
       return .networkUnavailable
     }

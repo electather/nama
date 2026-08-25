@@ -1,7 +1,10 @@
 import Foundation
 
-nonisolated final class BetterAuthOAuthAuthorizationClient: OAuthAuthorizationClient, @unchecked Sendable {
+nonisolated final class BetterAuthOAuthAuthorizationClient: OAuthAuthorizationClient, Sendable {
   typealias Send = @Sendable (NamaEndpoint, URLRequest) async throws -> (Data, HTTPURLResponse)
+
+  private static let requestTimeout: TimeInterval = 10
+  private static let successfulStatusCodes = 200..<300
 
   private let send: Send
 
@@ -9,42 +12,57 @@ nonisolated final class BetterAuthOAuthAuthorizationClient: OAuthAuthorizationCl
     configuration: URLSessionConfiguration = .default,
     send: Send? = nil
   ) {
-    self.send = send ?? { endpoint, request in
-      let selectedConfiguration: URLSessionConfiguration
-      if endpoint.usesUnencryptedHTTP {
-        guard let proxyFreeConfiguration = configuration.copy() as? URLSessionConfiguration else {
-          preconditionFailure("URLSessionConfiguration did not preserve its type when copied")
-        }
-        proxyFreeConfiguration.connectionProxyDictionary = [
-          "HTTPEnable": false,
-          "HTTPSEnable": false,
-          "ProxyAutoConfigEnable": false,
-          "ProxyAutoDiscoveryEnable": false,
-          "SOCKSEnable": false,
-        ]
-        proxyFreeConfiguration.proxyConfigurations = []
-        selectedConfiguration = proxyFreeConfiguration
-      } else {
-        selectedConfiguration = configuration
+    self.send =
+      send ?? { endpoint, request in
+        try await Self.performRequest(
+          endpoint: endpoint,
+          request: request,
+          configuration: configuration
+        )
       }
-      let delegate = OAuthNoRedirectDelegate()
-      let session = URLSession(
-        configuration: selectedConfiguration,
-        delegate: delegate,
-        delegateQueue: nil
-      )
-      defer {
-        session.finishTasksAndInvalidate()
-      }
-      let (data, response) = try await session.data(for: request)
-      guard let httpResponse = response as? HTTPURLResponse else {
-        throw OAuthAuthorizationClientError.invalidResponse
-      }
-      return (data, httpResponse)
-    }
   }
 
-  func requestDeviceAuthorization(at endpoint: NamaEndpoint) async throws -> OAuthDeviceAuthorization {
+  private static func performRequest(
+    endpoint: NamaEndpoint,
+    request: URLRequest,
+    configuration: URLSessionConfiguration
+  ) async throws -> (Data, HTTPURLResponse) {
+    let selectedConfiguration: URLSessionConfiguration
+    if endpoint.usesUnencryptedHTTP {
+      guard let proxyFreeConfiguration = configuration.copy() as? URLSessionConfiguration else {
+        preconditionFailure("URLSessionConfiguration did not preserve its type when copied")
+      }
+      proxyFreeConfiguration.connectionProxyDictionary = [
+        "HTTPEnable": false,
+        "HTTPSEnable": false,
+        "ProxyAutoConfigEnable": false,
+        "ProxyAutoDiscoveryEnable": false,
+        "SOCKSEnable": false,
+      ]
+      proxyFreeConfiguration.proxyConfigurations = []
+      selectedConfiguration = proxyFreeConfiguration
+    } else {
+      selectedConfiguration = configuration
+    }
+    let delegate = OAuthNoRedirectDelegate()
+    let session = URLSession(
+      configuration: selectedConfiguration,
+      delegate: delegate,
+      delegateQueue: nil
+    )
+    defer {
+      session.finishTasksAndInvalidate()
+    }
+    let (data, response) = try await session.data(for: request)
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw OAuthAuthorizationClientError.invalidResponse
+    }
+    return (data, httpResponse)
+  }
+
+  func requestDeviceAuthorization(at endpoint: NamaEndpoint) async throws
+    -> OAuthDeviceAuthorization
+  {
     let request = try formRequest(
       endpoint: endpoint,
       path: "device/code",
@@ -55,7 +73,7 @@ nonisolated final class BetterAuthOAuthAuthorizationClient: OAuthAuthorizationCl
       ]
     )
     let (data, response) = try await execute(endpoint: endpoint, request: request)
-    guard (200..<300).contains(response.statusCode) else {
+    guard Self.successfulStatusCodes.contains(response.statusCode) else {
       throw OAuthAuthorizationClientError.invalidResponse
     }
     let payload: DeviceAuthorizationResponse
@@ -100,7 +118,7 @@ nonisolated final class BetterAuthOAuthAuthorizationClient: OAuthAuthorizationCl
       ]
     )
     let (data, response) = try await execute(endpoint: endpoint, request: request)
-    if (200..<300).contains(response.statusCode) {
+    if Self.successfulStatusCodes.contains(response.statusCode) {
       return .authorized(try tokenBundle(from: data))
     }
     return try pollFailure(from: data)
@@ -121,7 +139,7 @@ nonisolated final class BetterAuthOAuthAuthorizationClient: OAuthAuthorizationCl
       ]
     )
     let (data, response) = try await execute(endpoint: endpoint, request: request)
-    guard (200..<300).contains(response.statusCode) else {
+    guard Self.successfulStatusCodes.contains(response.statusCode) else {
       let oauthError = try? Self.decode(OAuthErrorResponse.self, from: data)
       if oauthError?.error == "invalid_grant" {
         throw OAuthAuthorizationClientError.invalidGrant
@@ -159,7 +177,7 @@ nonisolated final class BetterAuthOAuthAuthorizationClient: OAuthAuthorizationCl
     var request = URLRequest(url: endpoint.appending(path: path))
     request.httpMethod = "POST"
     request.httpBody = body
-    request.timeoutInterval = 10
+    request.timeoutInterval = Self.requestTimeout
     request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     return request
@@ -174,21 +192,22 @@ nonisolated final class BetterAuthOAuthAuthorizationClient: OAuthAuthorizationCl
     }
     let scopes = payload.scope.split(whereSeparator: \.isWhitespace).map(String.init)
     guard
-      !payload.accessToken.isEmpty,
-      !payload.refreshToken.isEmpty,
       payload.expiresIn > 0,
-      payload.tokenType.caseInsensitiveCompare("Bearer") == .orderedSame,
-      Set(scopes) == Set(OAuthConfiguration.consumerScopes),
-      scopes.count == OAuthConfiguration.consumerScopes.count
+      let material = OAuthTokenMaterial(
+        accessToken: payload.accessToken,
+        refreshToken: payload.refreshToken,
+        scope: scopes,
+        tokenType: payload.tokenType
+      )
     else {
       throw OAuthAuthorizationClientError.invalidResponse
     }
     return OAuthTokenBundle(
-      accessToken: payload.accessToken,
-      refreshToken: payload.refreshToken,
+      accessToken: material.accessToken,
+      refreshToken: material.refreshToken,
       expiresIn: TimeInterval(payload.expiresIn),
-      scope: OAuthConfiguration.consumerScopes,
-      tokenType: "Bearer"
+      scope: material.scope,
+      tokenType: material.tokenType
     )
   }
 
@@ -202,12 +221,16 @@ nonisolated final class BetterAuthOAuthAuthorizationClient: OAuthAuthorizationCl
     switch payload.error {
     case "authorization_pending":
       return .pending
+
     case "slow_down":
       return .slowDown
+
     case "access_denied":
       return .denied
+
     case "expired_token":
       return .expired
+
     default:
       throw OAuthAuthorizationClientError.invalidResponse
     }
@@ -233,7 +256,7 @@ nonisolated private struct DeviceAuthorizationResponse: Decodable {
     case userCode = "user_code"
     case verificationURI = "verification_uri"
     case expiresIn = "expires_in"
-    case interval
+    case interval = "interval"
   }
 }
 
@@ -248,7 +271,7 @@ nonisolated private struct TokenResponse: Decodable {
     case accessToken = "access_token"
     case refreshToken = "refresh_token"
     case expiresIn = "expires_in"
-    case scope
+    case scope = "scope"
     case tokenType = "token_type"
   }
 }
@@ -257,9 +280,7 @@ nonisolated private struct OAuthErrorResponse: Decodable {
   let error: String
 }
 
-nonisolated private final class OAuthNoRedirectDelegate: NSObject, URLSessionTaskDelegate,
-  @unchecked Sendable
-{
+nonisolated private final class OAuthNoRedirectDelegate: NSObject, URLSessionTaskDelegate {
   func urlSession(
     _: URLSession,
     task _: URLSessionTask,

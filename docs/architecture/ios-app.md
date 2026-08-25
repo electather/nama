@@ -3,10 +3,12 @@
 Status: the universal SwiftUI target, endpoint connection and restoration,
 acknowledged eligible local HTTP, foreground LAN discovery, native Better Auth
 device authorization, refresh rotation, and endpoint-bound Keychain token
-storage are implemented. Consumer media behavior and product playback remain
-target work. Apple-platform build and actual-surface OAuth authorization are
-still unverified in the current evidence table; implementation status is not a
-claim that those release rows pass.
+storage are implemented. Apple-platform builds and macOS-host tests pass. A
+signed Apple TV 4K simulator has completed local-HTTP acknowledgement,
+no-browser authorization through the generated CLI, scoped consumer
+verification, Keychain commit, and relaunch restoration. Consumer media
+behavior, physical Apple hardware, expiry-driven actual-surface refresh, and
+the remaining Apple surfaces remain unverified.
 
 ## Authority and fixed decisions
 
@@ -498,17 +500,16 @@ The previews and platform builds above remain inspection and compilation aids,
 not runtime evidence. Local acceptance has exercised only the scenarios
 recorded below; every omitted requirement remains **Unverified**.
 
-Actual-surface inspection on each row also requires source-specific
-cancellation, foreground cancellation, candidate deduplication, manual
-fallback, OAuth replacement, refresh, and restoration. The OAuth implementation
-has no recorded Apple build or actual-surface result and is therefore
-**Unverified** on every actual surface.
+The signed Apple TV 4K simulator authorization result below is simulator
+actual-surface evidence. It is not physical-device privacy, ATS, LAN,
+proxy-routing, remote-control, or Keychain-hardware proof. Actual-surface
+inspection on the remaining rows and expiry-driven refresh remain required.
 
 | Surface | Required inspection | Recorded result |
 | --- | --- | --- |
 | iPhone | Confirmation, persistent warning, blocked restoration, long endpoint, touch and keyboard focus, Dynamic Type, VoiceOver labels and order, contrast, and non-color-only meaning | **Partially verified** — an iPhone 17 Pro simulator rendered blocked restoration and the persistent failed local-HTTP warning with a long endpoint. The warning remained legible through the largest Dynamic Type category with Increase Contrast enabled and communicated its meaning through text and symbol. Confirmation, input focus, operation, and VoiceOver order remain **Unverified**. |
 | iPad | The iPhone inspection plus window resizing and cross-window policy behavior | **Partially verified** — an iPad Pro 13-inch simulator rendered the persistent failed local-HTTP warning and long endpoint without clipping. The remaining inspection is **Unverified**. |
-| Apple TV | Confirmation, persistent warning, blocked restoration, long endpoint, remote focus and operation, VoiceOver labels and order, contrast, and non-color-only meaning; Dynamic Type is not applicable | **Partially verified** — an Apple TV 4K simulator rendered the persistent failed local-HTTP warning and long endpoint with visible initial focus on Retry. Confirmation, blocked restoration, remote operation, and VoiceOver order remain **Unverified**. |
+| Apple TV | Confirmation, persistent warning, blocked restoration, long endpoint, remote focus and operation, VoiceOver labels and order, contrast, and non-color-only meaning; Dynamic Type is not applicable | **Partially verified** — a signed Apple TV 4K simulator confirmed acknowledged local HTTP against a live Nama server, displayed the device code, completed generated-CLI approval and native token exchange, reached the scoped consumer boundary, committed the endpoint-bound Keychain bundle, and restored authorization after relaunch. Expiry-driven refresh, foreground cancellation, blocked restoration, physical-remote operation, and VoiceOver order remain **Unverified**. |
 | Mac | Confirmation, persistent warning, blocked restoration, long endpoint, keyboard and pointer focus, window and cross-window behavior, Dynamic Type, VoiceOver labels and order, contrast, and non-color-only meaning | **Partially verified** — a locally Apple Development-signed sandboxed build on Mac hardware rendered confirmation, approved local HTTP against a live Nama server, the resulting setup-required warning, and the failed long-endpoint state. The accessibility tree exposed the visible labels and actions. Blocked restoration, keyboard and pointer focus, cross-window behavior, Dynamic Type, and VoiceOver order remain **Unverified**. |
 
 Simulator behavior, shared source, and built declarations are not Local Network

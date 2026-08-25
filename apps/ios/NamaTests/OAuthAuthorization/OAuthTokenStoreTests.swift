@@ -26,8 +26,8 @@ struct OAuthTokenStoreTests {
     #expect(events.map(\.name) == ["update", "add"])
     let attributes = try #require(events.last?.attributes)
     #expect(
-      (attributes[kSecAttrAccessible] as? String) ==
-        (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String)
+      (attributes[kSecAttrAccessible] as? String)
+        == (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String)
     )
     #expect(attributes[kSecAttrSynchronizable] as? Bool == false)
     let storedData = try #require(attributes[kSecValueData] as? Data)
@@ -43,10 +43,9 @@ struct OAuthTokenStoreTests {
       updateStatus: errSecSuccess,
       loadResult: (errSecSuccess, damaged)
     )
-    let store = KeychainOAuthTokenStore(
-      keychain: recorder.access,
-      quarantineAccount: { "damaged-test-record" }
-    )
+    let store = KeychainOAuthTokenStore(keychain: recorder.access) {
+      "damaged-test-record"
+    }
 
     try await store.quarantine(damaged)
 
@@ -57,12 +56,12 @@ struct OAuthTokenStoreTests {
   }
 }
 
-private struct OAuthKeychainEvent: @unchecked Sendable {
+nonisolated private struct OAuthKeychainEvent: @unchecked Sendable {
   let name: String
   let attributes: [CFString: Any]
 }
 
-private final class OAuthKeychainRecorder: @unchecked Sendable {
+nonisolated private final class OAuthKeychainRecorder: @unchecked Sendable {
   private let lock = NSLock()
   private let updateStatus: OSStatus
   private var recordedEvents: [OAuthKeychainEvent] = []
@@ -89,7 +88,7 @@ private final class OAuthKeychainRecorder: @unchecked Sendable {
       },
       update: { [weak self] query, attributes in
         var combined = query
-        attributes.forEach { key, value in
+        for (key, value) in attributes {
           combined[key] = value
         }
         self?.record("update", attributes: combined)

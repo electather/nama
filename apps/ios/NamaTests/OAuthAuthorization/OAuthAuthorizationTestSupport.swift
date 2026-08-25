@@ -1,10 +1,16 @@
 import Foundation
 
 @testable import Nama
+
+nonisolated private enum OAuthTestTiming {
+  static let completedSleepCycleCount = 2
+}
+
 actor RecordingOAuthSleep {
   private(set) var durations: [Duration] = []
 
-  func callAsFunction(_ duration: Duration) async throws {
+  func callAsFunction(_ duration: Duration) async {
+    await Task.yield()
     durations.append(duration)
   }
 }
@@ -13,8 +19,9 @@ actor TwoCycleOAuthSleep {
   private(set) var durations: [Duration] = []
 
   func callAsFunction(_ duration: Duration) async throws {
+    await Task.yield()
     durations.append(duration)
-    if durations.count == 2 {
+    if durations.count == OAuthTestTiming.completedSleepCycleCount {
       throw CancellationError()
     }
   }
@@ -32,7 +39,9 @@ actor GatedRefreshOAuthSleep {
       throw CancellationError()
     }
     started = true
-    startWaiters.forEach { $0.resume() }
+    for waiter in startWaiters {
+      waiter.resume()
+    }
     startWaiters.removeAll()
     await withCheckedContinuation { continuation in
       self.continuation = continuation
@@ -72,7 +81,9 @@ actor InMemoryOAuthAuthorizationClient: OAuthAuthorizationClient {
     self.refreshResult = refreshResult
   }
 
-  func requestDeviceAuthorization(at endpoint: NamaEndpoint) async throws -> OAuthDeviceAuthorization {
+  func requestDeviceAuthorization(at endpoint: NamaEndpoint) throws
+    -> OAuthDeviceAuthorization
+  {
     requestedEndpoints.append(endpoint)
     guard let deviceAuthorization else {
       throw OAuthAuthorizationClientError.invalidResponse
@@ -83,7 +94,7 @@ actor InMemoryOAuthAuthorizationClient: OAuthAuthorizationClient {
   func pollToken(
     at _: NamaEndpoint,
     deviceCode: String
-  ) async throws -> OAuthTokenPollResult {
+  ) throws -> OAuthTokenPollResult {
     polledDeviceCodes.append(deviceCode)
     guard !pollResults.isEmpty else {
       throw OAuthAuthorizationClientError.invalidResponse
@@ -94,7 +105,7 @@ actor InMemoryOAuthAuthorizationClient: OAuthAuthorizationClient {
   func refreshToken(
     at _: NamaEndpoint,
     refreshToken: String
-  ) async throws -> OAuthTokenBundle {
+  ) throws -> OAuthTokenBundle {
     refreshedTokens.append(refreshToken)
     return try refreshResult.get()
   }
@@ -121,11 +132,11 @@ actor InMemoryOAuthTokenStore: OAuthTokenStoring {
     }
   }
 
-  func load() async -> OAuthTokenStoreSnapshot {
+  func load() -> OAuthTokenStoreSnapshot {
     snapshot
   }
 
-  func replace(with candidate: EndpointBoundOAuthTokenRecord) async throws {
+  func replace(with candidate: EndpointBoundOAuthTokenRecord) throws {
     if let replaceError {
       throw replaceError
     }
@@ -135,7 +146,7 @@ actor InMemoryOAuthTokenStore: OAuthTokenStoring {
   func restore(
     _ previous: EndpointBoundOAuthTokenRecord?,
     ifCurrent candidate: EndpointBoundOAuthTokenRecord
-  ) async throws {
+  ) {
     guard record == candidate else {
       return
     }
@@ -143,7 +154,7 @@ actor InMemoryOAuthTokenStore: OAuthTokenStoring {
     snapshot = previous.map(OAuthTokenStoreSnapshot.record) ?? .missing
   }
 
-  func remove(ifCurrent expected: EndpointBoundOAuthTokenRecord) async throws {
+  func remove(ifCurrent expected: EndpointBoundOAuthTokenRecord) {
     guard record == expected else {
       return
     }
@@ -151,7 +162,7 @@ actor InMemoryOAuthTokenStore: OAuthTokenStoring {
     snapshot = .missing
   }
 
-  func quarantine(_ data: Data) async throws {
+  func quarantine(_ data: Data) {
     guard snapshot == .damaged(data) else {
       return
     }
@@ -173,13 +184,15 @@ actor SuspendingReplacementOAuthTokenStore: OAuthTokenStoring {
     self.record = record
   }
 
-  func load() async -> OAuthTokenStoreSnapshot {
+  func load() -> OAuthTokenStoreSnapshot {
     snapshot
   }
 
-  func replace(with candidate: EndpointBoundOAuthTokenRecord) async throws {
+  func replace(with candidate: EndpointBoundOAuthTokenRecord) async {
     replacementStarted = true
-    replacementStartWaiters.forEach { $0.resume() }
+    for waiter in replacementStartWaiters {
+      waiter.resume()
+    }
     replacementStartWaiters.removeAll()
     await withCheckedContinuation { continuation in
       replacementContinuation = continuation
@@ -191,7 +204,7 @@ actor SuspendingReplacementOAuthTokenStore: OAuthTokenStoring {
   func restore(
     _ previous: EndpointBoundOAuthTokenRecord?,
     ifCurrent candidate: EndpointBoundOAuthTokenRecord
-  ) async throws {
+  ) {
     guard record == candidate else {
       return
     }
@@ -199,7 +212,7 @@ actor SuspendingReplacementOAuthTokenStore: OAuthTokenStoring {
     snapshot = previous.map(OAuthTokenStoreSnapshot.record) ?? .missing
   }
 
-  func remove(ifCurrent expected: EndpointBoundOAuthTokenRecord) async throws {
+  func remove(ifCurrent expected: EndpointBoundOAuthTokenRecord) {
     guard record == expected else {
       return
     }
@@ -207,7 +220,7 @@ actor SuspendingReplacementOAuthTokenStore: OAuthTokenStoring {
     snapshot = .missing
   }
 
-  func quarantine(_ data: Data) async throws {
+  func quarantine(_ data: Data) {
     guard snapshot == .damaged(data) else {
       return
     }
@@ -243,7 +256,7 @@ actor InMemoryOAuthScopedAccessVerifier: OAuthScopedAccessVerifying {
     self.error = error
   }
 
-  func verify(_ record: EndpointBoundOAuthTokenRecord) async throws {
+  func verify(_ record: EndpointBoundOAuthTokenRecord) throws {
     records.append(record)
     if let error {
       throw error
@@ -256,9 +269,11 @@ actor GatedOAuthScopedAccessVerifier: OAuthScopedAccessVerifying {
   private var startWaiters: [CheckedContinuation<Void, Never>] = []
   private var continuation: CheckedContinuation<Void, Never>?
 
-  func verify(_: EndpointBoundOAuthTokenRecord) async throws {
+  func verify(_: EndpointBoundOAuthTokenRecord) async {
     started = true
-    startWaiters.forEach { $0.resume() }
+    for waiter in startWaiters {
+      waiter.resume()
+    }
     startWaiters.removeAll()
     await withCheckedContinuation { continuation in
       self.continuation = continuation
@@ -288,7 +303,7 @@ actor SequenceOAuthScopedAccessVerifier: OAuthScopedAccessVerifying {
     self.errors = errors
   }
 
-  func verify(_ record: EndpointBoundOAuthTokenRecord) async throws {
+  func verify(_ record: EndpointBoundOAuthTokenRecord) throws {
     records.append(record)
     guard !errors.isEmpty else {
       return

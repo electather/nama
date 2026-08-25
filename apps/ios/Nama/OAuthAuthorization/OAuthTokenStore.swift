@@ -7,7 +7,7 @@ nonisolated struct OAuthKeychainAccess: @unchecked Sendable {
   let update: ([CFString: Any], [CFString: Any]) -> OSStatus
   let delete: ([CFString: Any]) -> OSStatus
 
-  static let system = OAuthKeychainAccess(
+  static let system = Self(
     load: { query in
       var result: CFTypeRef?
       let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -43,11 +43,11 @@ actor KeychainOAuthTokenStore: OAuthTokenStoring {
     self.quarantineAccount = quarantineAccount
   }
 
-  func load() async -> OAuthTokenStoreSnapshot {
+  func load() -> OAuthTokenStoreSnapshot {
     loadSnapshot()
   }
 
-  func replace(with candidate: EndpointBoundOAuthTokenRecord) async throws {
+  func replace(with candidate: EndpointBoundOAuthTokenRecord) throws {
     guard !Task.isCancelled else {
       throw CancellationError()
     }
@@ -57,7 +57,7 @@ actor KeychainOAuthTokenStore: OAuthTokenStoring {
   func restore(
     _ previous: EndpointBoundOAuthTokenRecord?,
     ifCurrent candidate: EndpointBoundOAuthTokenRecord
-  ) async throws {
+  ) throws {
     guard loadSnapshot() == .record(candidate) else {
       return
     }
@@ -68,14 +68,14 @@ actor KeychainOAuthTokenStore: OAuthTokenStoring {
     }
   }
 
-  func remove(ifCurrent record: EndpointBoundOAuthTokenRecord) async throws {
+  func remove(ifCurrent record: EndpointBoundOAuthTokenRecord) throws {
     guard !Task.isCancelled, loadSnapshot() == .record(record) else {
       return
     }
     try removeRecord()
   }
 
-  func quarantine(_ data: Data) async throws {
+  func quarantine(_ data: Data) throws {
     guard loadSnapshot() == .damaged(data) else {
       return
     }
@@ -128,7 +128,7 @@ actor KeychainOAuthTokenStore: OAuthTokenStoring {
       throw OAuthTokenStoreError.unavailable
     }
     var addAttributes = Self.activeQuery(returnData: false)
-    valueAttributes.forEach { key, value in
+    for (key, value) in valueAttributes {
       addAttributes[key] = value
     }
     guard keychain.add(addAttributes) == errSecSuccess else {

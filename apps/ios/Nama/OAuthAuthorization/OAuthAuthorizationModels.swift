@@ -24,6 +24,34 @@ nonisolated struct OAuthDeviceAuthorization: Equatable, Sendable {
   let interval: TimeInterval
 }
 
+nonisolated struct OAuthTokenMaterial: Equatable, Sendable {
+  let accessToken: String
+  let refreshToken: String
+  let scope: [String]
+  let tokenType: String
+
+  init?(
+    accessToken: String,
+    refreshToken: String,
+    scope: [String],
+    tokenType: String
+  ) {
+    guard
+      !accessToken.isEmpty,
+      !refreshToken.isEmpty,
+      tokenType.caseInsensitiveCompare("Bearer") == .orderedSame,
+      Set(scope) == Set(OAuthConfiguration.consumerScopes),
+      scope.count == OAuthConfiguration.consumerScopes.count
+    else {
+      return nil
+    }
+    self.accessToken = accessToken
+    self.refreshToken = refreshToken
+    self.scope = OAuthConfiguration.consumerScopes
+    self.tokenType = "Bearer"
+  }
+}
+
 nonisolated struct OAuthTokenBundle: Equatable, Sendable {
   let accessToken: String
   let refreshToken: String
@@ -42,14 +70,30 @@ nonisolated struct EndpointBoundOAuthTokenRecord: Codable, Equatable, Sendable {
 
   private static let currentVersion = 1
 
-  private enum CodingKeys: String, CodingKey {
-    case version
-    case endpoint
-    case accessToken
-    case refreshToken
-    case accessTokenExpiresAt
-    case scope
-    case tokenType
+  private struct CodingKeys: CodingKey {
+    static let version = Self("version")
+    static let endpoint = Self("endpoint")
+    static let accessToken = Self("accessToken")
+    static let refreshToken = Self("refreshToken")
+    static let accessTokenExpiresAt = Self("accessTokenExpiresAt")
+    static let scope = Self("scope")
+    static let tokenType = Self("tokenType")
+
+    let stringValue: String
+    let intValue: Int?
+
+    private init(_ value: String) {
+      stringValue = value
+      intValue = nil
+    }
+
+    init?(stringValue value: String) {
+      self.init(value)
+    }
+
+    init?(intValue _: Int) {
+      nil
+    }
   }
 
   init(
@@ -74,30 +118,31 @@ nonisolated struct EndpointBoundOAuthTokenRecord: Codable, Equatable, Sendable {
       throw OAuthTokenRecordError.unsupportedVersion
     }
     let endpointText = try values.decode(String.self, forKey: .endpoint)
-    guard let endpoint = try? NamaEndpoint(endpointText) else {
+    guard let decodedEndpoint = try? NamaEndpoint(endpointText) else {
       throw OAuthTokenRecordError.invalid
     }
-    let accessToken = try values.decode(String.self, forKey: .accessToken)
-    let refreshToken = try values.decode(String.self, forKey: .refreshToken)
-    let accessTokenExpiresAt = try values.decode(Date.self, forKey: .accessTokenExpiresAt)
-    let scope = try values.decode([String].self, forKey: .scope)
-    let tokenType = try values.decode(String.self, forKey: .tokenType)
+    let decodedAccessToken = try values.decode(String.self, forKey: .accessToken)
+    let decodedRefreshToken = try values.decode(String.self, forKey: .refreshToken)
+    let decodedAccessTokenExpiresAt = try values.decode(Date.self, forKey: .accessTokenExpiresAt)
+    let decodedScope = try values.decode([String].self, forKey: .scope)
+    let decodedTokenType = try values.decode(String.self, forKey: .tokenType)
     guard
-      !accessToken.isEmpty,
-      !refreshToken.isEmpty,
-      tokenType.caseInsensitiveCompare("Bearer") == .orderedSame,
-      Set(scope) == Set(OAuthConfiguration.consumerScopes),
-      scope.count == OAuthConfiguration.consumerScopes.count
+      let material = OAuthTokenMaterial(
+        accessToken: decodedAccessToken,
+        refreshToken: decodedRefreshToken,
+        scope: decodedScope,
+        tokenType: decodedTokenType
+      )
     else {
       throw OAuthTokenRecordError.invalid
     }
     self.init(
-      endpoint: endpoint,
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-      accessTokenExpiresAt: accessTokenExpiresAt,
-      scope: OAuthConfiguration.consumerScopes,
-      tokenType: "Bearer"
+      endpoint: decodedEndpoint,
+      accessToken: material.accessToken,
+      refreshToken: material.refreshToken,
+      accessTokenExpiresAt: decodedAccessTokenExpiresAt,
+      scope: material.scope,
+      tokenType: material.tokenType
     )
   }
 
@@ -143,8 +188,12 @@ final class OAuthAuthorizationSession {
   @ObservationIgnored private var mutationOwner: UUID?
 
   func publish(_ record: EndpointBoundOAuthTokenRecord) {
+    let status = OAuthAuthorizationStatus(record: record)
+    guard authorization != status else {
+      return
+    }
     generation &+= 1
-    authorization = OAuthAuthorizationStatus(record: record)
+    authorization = status
     failureEndpoint = nil
     failure = nil
   }
@@ -249,9 +298,11 @@ nonisolated enum OAuthTokenPollResult: Equatable, Sendable {
 }
 
 nonisolated protocol OAuthAuthorizationClient: Sendable {
-  func requestDeviceAuthorization(at endpoint: NamaEndpoint) async throws -> OAuthDeviceAuthorization
+  func requestDeviceAuthorization(at endpoint: NamaEndpoint) async throws
+    -> OAuthDeviceAuthorization
   func pollToken(at endpoint: NamaEndpoint, deviceCode: String) async throws -> OAuthTokenPollResult
-  func refreshToken(at endpoint: NamaEndpoint, refreshToken: String) async throws -> OAuthTokenBundle
+  func refreshToken(at endpoint: NamaEndpoint, refreshToken: String) async throws
+    -> OAuthTokenBundle
 }
 
 nonisolated protocol OAuthScopedAccessVerifying: Sendable {
