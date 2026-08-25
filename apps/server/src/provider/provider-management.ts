@@ -39,6 +39,17 @@ import type { BundledProvider } from "./bundled-provider-registry.ts";
 import { PageTokenInvalid, makePageTokenCodec } from "./page-token.ts";
 import type { PageTokenCodec, PageTokenInvalidFailure } from "./page-token.ts";
 import {
+  ProviderActivity,
+  ProviderInstanceBusy,
+  makeProviderActivityAdmission,
+} from "./provider-activity.ts";
+import type {
+  InstanceActivityDeletionFence,
+  InstanceActivityDeletionFenceAcquire,
+  ProviderActivityAdmission,
+  ProviderInstanceBusyFailure,
+} from "./provider-activity.ts";
+import {
   configurationMatchesRestrictedSchema,
   isInstallationSchemaCompatible,
   normalizeDiscoveredPluginInfo,
@@ -217,7 +228,6 @@ const ProviderCredentialsUnavailable = taggedError("ProviderCredentialsUnavailab
   Record<string, never>
 >;
 const ProviderCommitAmbiguous = taggedError("ProviderCommitAmbiguous")<Record<string, never>>;
-const ProviderInstanceBusy = taggedError("ProviderInstanceBusy")<Record<string, never>>;
 
 type ProviderValidationFailure = InstanceType<typeof ProviderValidationFailed>;
 type ProviderResourceNotFoundFailure = InstanceType<typeof ProviderResourceNotFound>;
@@ -230,7 +240,6 @@ type RevisionMismatchFailure = InstanceType<typeof RevisionMismatch>;
 type ProviderUserChangedFailure = InstanceType<typeof ProviderUserChanged>;
 type ProviderCredentialsUnavailableFailure = InstanceType<typeof ProviderCredentialsUnavailable>;
 type ProviderCommitAmbiguousFailure = InstanceType<typeof ProviderCommitAmbiguous>;
-type ProviderInstanceBusyFailure = InstanceType<typeof ProviderInstanceBusy>;
 type ProviderMutationFailure =
   | IdempotencyKeyReuseFailure
   | ProviderAuthenticationFailure
@@ -284,88 +293,6 @@ type InstanceCutoverFence = (
   providerInstanceId: string,
   mode: PluginInstanceFenceMode,
 ) => Effect.Effect<InstanceAdmissionFence, PluginCallFailure, Scope.Scope>;
-
-interface InstanceActivityDeletionFence {
-  readonly open: Effect.Effect<void>;
-}
-
-type InstanceActivityDeletionFenceAcquire = (
-  providerInstanceId: string,
-) => Effect.Effect<InstanceActivityDeletionFence, ProviderInstanceBusyFailure>;
-
-interface ProviderActivitySlot {
-  active: number;
-  deletionFenced: boolean;
-  readonly semaphore: Semaphore.Semaphore;
-}
-
-interface ProviderActivityAdmission {
-  readonly fenceForDeletion: InstanceActivityDeletionFenceAcquire;
-  readonly run: ProviderManagementService["runProviderActivity"];
-}
-
-const makeProviderActivityAdmission = (): ProviderActivityAdmission => {
-  const slots = new Map<string, ProviderActivitySlot>();
-  const slotFor = (providerInstanceId: string): ProviderActivitySlot => {
-    const current = slots.get(providerInstanceId);
-    if (current !== undefined) {
-      return current;
-    }
-    const created = {
-      active: ZERO,
-      deletionFenced: false,
-      semaphore: Semaphore.makeUnsafe(WRITER_GATE_PERMITS),
-    };
-    slots.set(providerInstanceId, created);
-    return created;
-  };
-  const run: ProviderManagementService["runProviderActivity"] = (providerInstanceId, activity) => {
-    const slot = slotFor(providerInstanceId);
-    const acquire = slot.semaphore.withPermits(WRITER_GATE_PERMITS)(
-      Effect.suspend(() => {
-        if (slot.deletionFenced) {
-          return Effect.fail(new ProviderInstanceBusy({}));
-        }
-        return Effect.sync(() => {
-          slot.active += WRITER_GATE_PERMITS;
-        });
-      }),
-    );
-    const release = slot.semaphore.withPermits(WRITER_GATE_PERMITS)(
-      Effect.sync(() => {
-        slot.active -= WRITER_GATE_PERMITS;
-      }),
-    );
-    return Effect.acquireUseRelease(
-      acquire,
-      () => activity,
-      () => release,
-    );
-  };
-  const fenceForDeletion: InstanceActivityDeletionFenceAcquire = (providerInstanceId) => {
-    const slot = slotFor(providerInstanceId);
-    return slot.semaphore.withPermits(WRITER_GATE_PERMITS)(
-      Effect.suspend(() => {
-        if (slot.deletionFenced || slot.active > ZERO) {
-          return Effect.fail(new ProviderInstanceBusy({}));
-        }
-        slot.deletionFenced = true;
-        let fenceClosed = true;
-        return Effect.succeed({
-          open: slot.semaphore.withPermits(WRITER_GATE_PERMITS)(
-            Effect.sync(() => {
-              if (fenceClosed) {
-                fenceClosed = false;
-                slot.deletionFenced = false;
-              }
-            }),
-          ),
-        });
-      }),
-    );
-  };
-  return Object.freeze({ fenceForDeletion, run });
-};
 
 interface ProviderManagementService {
   readonly createProviderInstance: (
@@ -561,6 +488,7 @@ const providerConnectionTestFromResponse = (
 };
 
 interface ProviderManagementDependencies {
+  readonly activityAdmission?: ProviderActivityAdmission;
   readonly discover: ProviderDiscovery;
   readonly fenceInstance: InstanceCutoverFence;
   readonly masterKey: string;
@@ -2197,6 +2125,7 @@ const listProviderTypes = (
   });
 
 const makeProviderManagement = ({
+  activityAdmission: providedActivityAdmission,
   discover,
   fenceInstance,
   inspectConnection,
@@ -2224,7 +2153,7 @@ const makeProviderManagement = ({
     const instanceGates = new Map<string, Semaphore.Semaphore>();
     const ambiguousUpdateInstances = new Set<string>();
     const ambiguousDeleteFences = new Map<string, RetainedProviderDeleteFence>();
-    const activityAdmission = makeProviderActivityAdmission();
+    const activityAdmission = providedActivityAdmission ?? makeProviderActivityAdmission();
     const instanceGate = (providerInstanceId: string): Semaphore.Semaphore => {
       const current = instanceGates.get(providerInstanceId);
       if (current !== undefined) {
@@ -2303,7 +2232,9 @@ class ProviderManagement extends contextService<ProviderManagement, ProviderMana
       const config = yield* Config;
       const database = yield* Database;
       const supervisor = yield* PluginSupervisor;
+      const activityAdmission = yield* ProviderActivity;
       const service = yield* makeProviderManagement({
+        activityAdmission,
         discover: (provider) => discoverProvider(supervisor, provider),
         fenceInstance: (providerInstanceId, mode) =>
           supervisor.fenceInstance(providerInstanceId, mode),
@@ -2319,7 +2250,7 @@ class ProviderManagement extends contextService<ProviderManagement, ProviderMana
   );
 }
 
-export { ProviderManagement, makeProviderManagement };
+export { ProviderActivity, ProviderManagement, makeProviderManagement };
 export type {
   ConnectionInspection,
   ProviderConnectionLaunch,
@@ -2344,6 +2275,7 @@ export type {
   ProviderIncompatibleFailure,
   ProviderDiscovery,
   ProviderManagementDependencies,
+  ProviderActivityAdmission,
   ProviderManagementService,
   ProviderMutationFailure,
   ProviderPluginUnavailableFailure,

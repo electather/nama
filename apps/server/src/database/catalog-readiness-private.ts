@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 
-import { providerCatalogScanState } from "./catalog-item-schema.ts";
 import type { CatalogDatabase } from "./catalog-persistence-model-private.ts";
+import { providerCatalogScanState } from "./catalog-scan-schema.ts";
 import { providerInstance } from "./provider-schema.ts";
 
 const FIRST_ROW_INDEX = 0;

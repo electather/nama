@@ -163,6 +163,7 @@
       {
         "from": "composition",
         "allow": [
+          "catalog",
           "authentication",
           "catalog",
           "configuration",
@@ -211,6 +212,7 @@
       {
         "from": "integration",
         "allow": [
+          "catalog",
           "authentication",
           "configuration",
           "catalog",

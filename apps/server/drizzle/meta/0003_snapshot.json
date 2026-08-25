@@ -1,5 +1,5 @@
 {
-  "id": "72ca1823-1c79-4926-80e9-6805e8ee2b92",
+  "id": "1f8ea9b0-76f9-40e0-9dd1-0463b5675226",
   "prevId": "cfb5cc8a-5334-4690-8ced-5799e4a074de",
   "version": "7",
   "dialect": "postgresql",
@@ -945,13 +945,7 @@
           "primaryKey": false,
           "notNull": false
         },
-        "search_vector": {
-          "name": "search_vector",
-          "type": "tsvector",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''::tsvector"
-        },
+
         "title": {
           "name": "title",
           "type": "text",
@@ -966,23 +960,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "canonical_item_search_vector_index": {
-          "name": "canonical_item_search_vector_index",
-          "columns": [
-            {
-              "expression": "search_vector",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "gin",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
@@ -1121,6 +1099,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "consecutive_failure_count": {
+          "name": "consecutive_failure_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "completed_at": {
           "name": "completed_at",
           "type": "timestamp with time zone",
@@ -1225,6 +1210,10 @@
         "provider_catalog_scan_state_continuation_check": {
           "name": "provider_catalog_scan_state_continuation_check",
           "value": "\"provider_catalog_scan_state\".\"last_accepted_continuation\" is null or char_length(\"provider_catalog_scan_state\".\"last_accepted_continuation\") between 1 and 4096"
+        },
+        "provider_catalog_scan_state_failure_count_check": {
+          "name": "provider_catalog_scan_state_failure_count_check",
+          "value": "\"provider_catalog_scan_state\".\"consecutive_failure_count\" >= 0"
         },
         "provider_catalog_scan_state_failure_check": {
           "name": "provider_catalog_scan_state_failure_check",

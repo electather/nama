@@ -3,6 +3,7 @@ import { NodeFileSystem } from "@effect/platform-node";
 import { Cause, Clock, Effect, Exit, Layer } from "effect";
 
 import { makeSetupAuthenticationLayer } from "./authentication/setup-coordinator.ts";
+import { CatalogImport } from "./catalog/catalog-import.ts";
 import { CatalogQuery } from "./catalog/catalog-query-live.ts";
 import { Config } from "./config/config.ts";
 import { Database } from "./database/database.ts";
@@ -16,7 +17,7 @@ import {
   writeBootstrapFailure,
 } from "./logging/logging.ts";
 import { PluginSupervisor } from "./plugin/supervisor.ts";
-import { ProviderManagement } from "./provider/provider-management.ts";
+import { ProviderActivity, ProviderManagement } from "./provider/provider-management.ts";
 import { BootstrapToken } from "./setup/bootstrap-token.ts";
 
 const PRODUCTION_MIGRATIONS = `${import.meta.dirname}/../drizzle/`;
@@ -37,8 +38,14 @@ const serverLayer = (
   const databaseLayer = Database.layer(migrationsFolder).pipe(Layer.provide(configLayer));
   const foundationLayer = Layer.mergeAll(configLayer, databaseLayer);
   const pluginFoundationLayer = PluginSupervisor.layer().pipe(Layer.provideMerge(foundationLayer));
-  const providerFoundationLayer = ProviderManagement.layer.pipe(
+  const providerActivityFoundationLayer = ProviderActivity.layer.pipe(
     Layer.provideMerge(pluginFoundationLayer),
+  );
+  const catalogImportFoundationLayer = CatalogImport.layer.pipe(
+    Layer.provideMerge(providerActivityFoundationLayer),
+  );
+  const providerFoundationLayer = ProviderManagement.layer.pipe(
+    Layer.provideMerge(catalogImportFoundationLayer),
   );
   const catalogFoundationLayer = CatalogQuery.layer.pipe(
     Layer.provideMerge(providerFoundationLayer),
@@ -51,7 +58,10 @@ const serverLayer = (
 interface RunConfiguredOptions {
   readonly config: Readonly<Config["Service"]>;
   readonly migrationsFolder: string;
-  readonly serverRuntimeLayer?: Layer.Layer<BootstrapToken | HttpServer | RuntimeControl, unknown>;
+  readonly serverRuntimeLayer?: Layer.Layer<
+    BootstrapToken | CatalogImport | HttpServer | RuntimeControl,
+    unknown
+  >;
   readonly startedAt: number;
   readonly writeLogLine?: (line: string) => void;
 }
@@ -66,9 +76,12 @@ const runLifecycle = (state: LifecycleState, startedAt: number) =>
     const runtimeControl = yield* RuntimeControl;
     const httpServer = yield* HttpServer;
     const bootstrapToken = yield* BootstrapToken;
-    yield* bootstrapToken.activate;
-    yield* runtimeControl.markReady;
-    yield* httpServer.advertiseLan;
+    const catalogImport = yield* CatalogImport;
+    yield* bootstrapToken.activate.pipe(
+      Effect.andThen(runtimeControl.markReady),
+      Effect.andThen(catalogImport.start(runtimeControl.reportFatalFailure)),
+      Effect.andThen(httpServer.advertiseLan),
+    );
     const readyAt = yield* Clock.currentTimeMillis;
     yield* logEvent("server.ready", { durationMs: readyAt - startedAt });
     state.ready = true;

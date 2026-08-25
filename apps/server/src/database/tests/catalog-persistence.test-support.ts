@@ -4,8 +4,15 @@ import type { CatalogPersistence } from "../catalog-persistence.ts";
 import type { CatalogQueryStorage } from "../catalog-query-storage.ts";
 
 const unusedCatalogPersistence: CatalogPersistence = Object.freeze({
+  acceptPage: () => Effect.die("unexpected catalog page acceptance"),
+  beginScan: () => Effect.die("unexpected catalog scan admission"),
+  failScan: () => Effect.die("unexpected catalog scan failure"),
+  listScanCandidates: Effect.die("unexpected catalog scan candidate read"),
   loadItem: () => Effect.die("unexpected canonical catalog read"),
   observeItem: () => Effect.die("unexpected canonical catalog observation"),
+  pauseDisabledScans: () => Effect.die("unexpected disabled catalog scan reconciliation"),
+  resolvePageAcceptance: () => Effect.die("unexpected catalog page resolution"),
+  restartScan: () => Effect.die("unexpected catalog scan restart"),
 });
 
 const unusedCatalogQueries: CatalogQueryStorage = Object.freeze({
