@@ -14,6 +14,12 @@ the generated private Connect interface, supervised production plugin, and
 controlled provider fixtures. `LIBRARY_READ`, `ARTWORK_RESOLVE`,
 `WATCH_STATE_READ`, and `WATCHED_WRITE` are advertised.
 
+Initial catalog ingestion and all seven public `LibraryService` methods are
+implemented over stored canonical projections and verified through real Connect,
+PostgreSQL, and a supervised production Jellyfin scan. Ordinary reads remain
+provider-independent; artwork resolution alone exchanges a stored reference for
+a validated short-lived lease.
+
 Issue #145's Better Auth authorization-server routes, authenticated CLI
 approval, JWT-protected consumer access, broad client-grant revocation, Apple
 token ownership, and removal of the obsolete `DeviceService` contract are
@@ -22,7 +28,7 @@ confirmation.
 
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
-The core implements Setup and Auth workflows plus `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, `GetProviderInstance`, `TestProviderConfiguration`, `UpdateProviderInstance`, `TestProviderInstance`, and `DeleteProviderInstance`. It also implements private plugin process launch, bearer authentication, health/identity handshake, deadline and cancellation propagation, bounded recovery, cleanup, code-owned bundled discovery, restricted-schema acceptance, instance-local credential containment, durable installation reconciliation, one-shot candidate and exact-revision stored-instance inspection, encrypted provider credentials, immutable principal digests, revision-fenced observations, durable create/update/delete idempotency, supervised runtime cutover, and safe disabled-instance deletion against generated `nama.plugin.v1` clients. The remaining public and plugin method workflows are durable contracts, not evidence that their handlers, provider adapters, persistence flows, or scheduling exist.
+The core implements Setup and Auth workflows, `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, `GetProviderInstance`, `TestProviderConfiguration`, `UpdateProviderInstance`, `TestProviderInstance`, and `DeleteProviderInstance`, plus every `LibraryService` method over the stored canonical catalog. It also implements private plugin process launch, bearer authentication, health/identity handshake, deadline and cancellation propagation, bounded recovery, cleanup, code-owned bundled discovery, restricted-schema acceptance, instance-local credential containment, durable installation reconciliation, one-shot candidate and exact-revision stored-instance inspection, encrypted provider credentials, immutable principal digests, revision-fenced observations, durable create/update/delete idempotency, supervised runtime cutover, and safe disabled-instance deletion against generated `nama.plugin.v1` clients. The remaining public and plugin method workflows are durable contracts, not evidence that their handlers, provider adapters, persistence flows, or scheduling exist.
 
 ## Scope
 

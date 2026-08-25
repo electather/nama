@@ -1,7 +1,7 @@
 // oxlint-disable eslint/max-lines-per-function -- The thin generated-service mapping remains one complete provider-neutral route inventory.
 import { create } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
-import type { ServiceImpl } from "@connectrpc/connect";
+import type { ConnectRouter, ServiceImpl } from "@connectrpc/connect";
 import { Effect } from "effect";
 
 import {
@@ -11,12 +11,10 @@ import {
   ListProviderInstancesResponseSchema,
   ListProviderTypesResponseSchema,
   ProviderInstanceStatus,
+  ProviderService,
   UpdateProviderInstanceResponseSchema,
 } from "../../../../gen/ts/src/nama/api/v1/provider_pb.js";
-import type {
-  ProviderService,
-  UpdateProviderInstanceRequest,
-} from "../../../../gen/ts/src/nama/api/v1/provider_pb.js";
+import type { UpdateProviderInstanceRequest } from "../../../../gen/ts/src/nama/api/v1/provider_pb.js";
 import type { ProviderInstanceRecord } from "../database/provider-persistence.ts";
 import type { ProviderManagementService } from "../provider/provider-management.ts";
 import {
@@ -238,5 +236,12 @@ const createProviderServiceHandlers = ({
   },
 });
 
-export { createProviderServiceHandlers };
+const registerProviderConnectRoutes = (
+  router: ConnectRouter,
+  dependencies: ProviderServiceHandlerDependencies,
+): void => {
+  router.service(ProviderService, createProviderServiceHandlers(dependencies));
+};
+
+export { registerProviderConnectRoutes };
 export type { ProviderServiceHandlerDependencies };

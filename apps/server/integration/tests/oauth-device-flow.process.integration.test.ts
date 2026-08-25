@@ -1,5 +1,5 @@
 // oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/prefer-destructuring, typescript/no-unsafe-type-assertion -- This executable authorization flow keeps device polling, CLI approval, JWT access, refresh rotation, and broad revocation in one ordered real-process scenario.
-import { Code, ConnectError, createClient } from "@connectrpc/connect";
+import { Code, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { expect, it } from "@effect/vitest";
 import { LibraryService } from "@nama/api/nama/api/v1/library_pb.js";
@@ -106,19 +106,6 @@ const accessTokenClaims = (token: string): AccessTokenClaims => {
     throw new Error("access token payload is missing");
   }
   return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as AccessTokenClaims;
-};
-
-const expectAuthorizedConsumerRoute = async (invoke: () => Promise<unknown>): Promise<void> => {
-  try {
-    await invoke();
-  } catch (error: unknown) {
-    if (!(error instanceof ConnectError)) {
-      throw error;
-    }
-    expect(error.code).toBe(Code.Unimplemented);
-    return;
-  }
-  throw new Error("expected authenticated consumer method to reach its unimplemented handler");
 };
 
 it.live(
@@ -273,9 +260,7 @@ it.live(
               });
               const library = createClient(LibraryService, transport);
               yield* Effect.promise(() =>
-                expectAuthorizedConsumerRoute(() =>
-                  library.getHome({}, callOptions(`Bearer ${token.access_token}`)),
-                ),
+                library.getHome({}, callOptions(`Bearer ${token.access_token}`)),
               );
               yield* expectApplicationFailure({
                 expectedCode: Code.Unauthenticated,
@@ -327,9 +312,7 @@ it.live(
                 yield* Effect.promise(() => readJson<OAuthErrorResponse>(revokedRefreshResponse)),
               ).toMatchObject({ error: "invalid_grant" });
               yield* Effect.promise(() =>
-                expectAuthorizedConsumerRoute(() =>
-                  library.getHome({}, callOptions(`Bearer ${refreshed.access_token}`)),
-                ),
+                library.getHome({}, callOptions(`Bearer ${refreshed.access_token}`)),
               );
             }),
           (flow) => stopCleanly(flow.runningProcess),

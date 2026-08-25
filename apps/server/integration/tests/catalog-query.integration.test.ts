@@ -1,6 +1,9 @@
 // oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary, import/max-dependencies -- Disposable PostgreSQL catalog-query acceptance keeps each stateful setup and assertion sequence visible.
 import { create } from "@bufbuild/protobuf";
+import { Code, ConnectError, createClient } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-node";
 import { expect, it } from "@effect/vitest";
+import { ErrorInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
 import { Effect } from "effect";
 
 import {
@@ -8,6 +11,7 @@ import {
   GetMediaRequestSchema,
   GetMediaSourceRequestSchema,
   HomeSectionKind,
+  LibraryService,
   LibrarySort,
   ListLibraryRequestSchema,
   ListChildrenRequestSchema,
@@ -21,16 +25,21 @@ import {
   SourceAvailability,
 } from "../../../../gen/ts/src/nama/api/v1/media_pb.js";
 import { ArtworkAuthorizationScope } from "../../../../gen/ts/src/nama/plugin/v1/library_pb.js";
+import type { AuthenticationService } from "../../src/authentication/authentication-service.ts";
+import { CatalogQuery } from "../../src/catalog/catalog-query-live.ts";
 import { makeCatalogQuery } from "../../src/catalog/catalog-query.ts";
 import type { CatalogArtworkLeaseResolver } from "../../src/catalog/catalog-query.ts";
 import type { Database } from "../../src/database/database.ts";
+import { startServer } from "../../src/http/tests/http-server.test-support.ts";
 import {
   episodeObservation,
+  ADMINISTRATOR_ID,
   initializeCatalogDatabase,
   movieObservation,
   seasonObservation,
   showObservation,
   videoSource,
+  retargetProviderMapping,
 } from "./catalog-persistence.test-support.ts";
 import { productionMigrations, useDatabase, withPool } from "./database.test-support.ts";
 import { withIsolatedDatabase } from "./postgres.test-support.ts";
@@ -40,6 +49,50 @@ const FIRST_ROW_INDEX = 0;
 const MASTER_KEY = `base64:${Buffer.alloc(32, 41).toString("base64")}`;
 const PRINCIPAL_ID = "catalog-reader";
 const NOW = new Date("2026-08-25T12:00:00.000Z").getTime();
+const LIBRARY_BEARER = "Bearer catalog-reader";
+const OTHER_LIBRARY_BEARER = "Bearer another-catalog-reader";
+const requestOptions = { headers: { authorization: LIBRARY_BEARER } } as const;
+const otherRequestOptions = { headers: { authorization: OTHER_LIBRARY_BEARER } } as const;
+
+const authentication: AuthenticationService = Object.freeze({
+  approveDeviceAuthorization: () => Effect.die("unexpected device authorization approval"),
+  consumeGlobalSignInBudget: Effect.die("unexpected sign-in limit"),
+  consumeIdentitySignInBudget: () => Effect.die("unexpected sign-in limit"),
+  resolveAdministrator: () => Effect.die("unexpected administrator resolution"),
+  resolveConsumerPrincipal: (authorization: string) => {
+    if (authorization === OTHER_LIBRARY_BEARER) {
+      return Effect.succeed({ id: "another-principal" });
+    }
+    return Effect.succeed({ id: PRINCIPAL_ID });
+  },
+  resolvePrincipal: () => Effect.die("unexpected principal resolution"),
+  revokeAppleClientRefreshTokens: Effect.die("unexpected Apple client revocation"),
+  signIn: () => Effect.die("unexpected sign-in"),
+  signOut: () => Effect.die("unexpected sign-out"),
+});
+
+const startCatalogClient = (database: Database["Service"], catalogQuery: CatalogQuery["Service"]) =>
+  Effect.gen(function* startStoredCatalogClient() {
+    const server = yield* startServer(database, {
+      authentication,
+      catalogQuery: CatalogQuery.of(catalogQuery),
+    });
+    return createClient(
+      LibraryService,
+      createConnectTransport({ baseUrl: server.origin, httpVersion: "1.1" }),
+    );
+  });
+
+const captureConnectFailure = (invoke: () => Promise<unknown>) =>
+  Effect.tryPromise({ catch: (error) => error, try: invoke }).pipe(
+    Effect.flip,
+    Effect.map((failure) => {
+      if (!(failure instanceof ConnectError)) {
+        throw new TypeError("expected a Connect application failure");
+      }
+      return failure;
+    }),
+  );
 
 const markProviderHealthy = (databaseUrl: string, providerInstanceId: string) =>
   withPool(databaseUrl, (pool) =>
@@ -193,9 +246,9 @@ it.live("returns stored Movies and Shows with effective playability and default 
           );
           const show = yield* database.catalog.observeItem(showObservation(PROVIDER_INSTANCE_ID));
           const query = yield* makeStoredQuery(database);
-          const response = yield* query.getHome(
-            PRINCIPAL_ID,
-            create(GetHomeRequestSchema, { sectionSize: 20 }),
+          const client = yield* startCatalogClient(database, query);
+          const response = yield* Effect.promise(() =>
+            client.getHome({ sectionSize: 20 }, requestOptions),
           );
 
           expect(response.sections.map(({ id, kind, title }) => ({ id, kind, title }))).toEqual([
@@ -227,7 +280,7 @@ it.live("returns stored Movies and Shows with effective playability and default 
           expect(publicJson).not.toContain("catalog-query-provider");
 
           yield* markProviderUnavailable(databaseUrl, PROVIDER_INSTANCE_ID);
-          const outage = yield* query.getHome(PRINCIPAL_ID, create(GetHomeRequestSchema, {}));
+          const outage = yield* Effect.promise(() => client.getHome({}, requestOptions));
           expect(outage.sections[0]?.items[0]).toMatchObject({
             id: movie.id,
             playability: Playability.TEMPORARILY_UNAVAILABLE,
@@ -295,48 +348,54 @@ it.live("filters and keyset-paginates stored Library entries with bound expiring
             }),
           );
           const query = yield* makeStoredQuery(database, () => currentTime);
+          const client = yield* startCatalogClient(database, query);
           const firstPageRequest = create(ListLibraryRequestSchema, {
             filter: { watchFilter: WatchFilter.ANY },
             pageSize: 1,
             sort: LibrarySort.TITLE_ASC,
           });
-          const firstPage = yield* query.listLibrary(PRINCIPAL_ID, firstPageRequest);
+          const firstPage = yield* Effect.promise(() =>
+            client.listLibrary(firstPageRequest, requestOptions),
+          );
           expect(firstPage.items.map(({ title }) => title)).toEqual(["alpha"]);
           expect(firstPage.nextPageToken).not.toBe("");
           expect(firstPage.nextPageToken).not.toContain("private-list");
 
-          const secondPage = yield* query.listLibrary(
-            PRINCIPAL_ID,
-            create(ListLibraryRequestSchema, {
-              ...firstPageRequest,
-              pageToken: firstPage.nextPageToken,
-            }),
+          const secondPage = yield* Effect.promise(() =>
+            client.listLibrary(
+              { ...firstPageRequest, pageToken: firstPage.nextPageToken },
+              requestOptions,
+            ),
           );
           expect(secondPage.items.map(({ title }) => title)).toEqual(["Bravo"]);
 
-          const filtered = yield* query.listLibrary(
-            PRINCIPAL_ID,
-            create(ListLibraryRequestSchema, {
-              filter: {
-                genre: "Mystery",
-                kinds: [MediaKind.MOVIE],
-                playableOnly: true,
-                releaseYear: 2025,
-                watchFilter: WatchFilter.ANY,
+          const filtered = yield* Effect.promise(() =>
+            client.listLibrary(
+              {
+                filter: {
+                  genre: "Mystery",
+                  kinds: [MediaKind.MOVIE],
+                  playableOnly: true,
+                  releaseYear: 2025,
+                  watchFilter: WatchFilter.ANY,
+                },
+                pageSize: 50,
+                sort: LibrarySort.RELEASE_DATE_DESC,
               },
-              pageSize: 50,
-              sort: LibrarySort.RELEASE_DATE_DESC,
-            }),
+              requestOptions,
+            ),
           );
           expect(filtered.items.map(({ title }) => title)).toEqual(["alpha"]);
 
-          const complete = yield* query.listLibrary(
-            PRINCIPAL_ID,
-            create(ListLibraryRequestSchema, {
-              filter: { watchFilter: WatchFilter.ANY },
-              pageSize: 50,
-              sort: LibrarySort.TITLE_ASC,
-            }),
+          const complete = yield* Effect.promise(() =>
+            client.listLibrary(
+              {
+                filter: { watchFilter: WatchFilter.ANY },
+                pageSize: 50,
+                sort: LibrarySort.TITLE_ASC,
+              },
+              requestOptions,
+            ),
           );
           expect(complete.items.find(({ title }) => title === "Charlie")).toMatchObject({
             playability: Playability.NO_AVAILABLE_SOURCE,
@@ -353,28 +412,28 @@ it.live("filters and keyset-paginates stored Library entries with bound expiring
             .pipe(Effect.flip);
           expect(unavailableWatchState).toMatchObject({ _tag: "MediaStateUnavailable" });
 
-          const crossPrincipal = yield* query
-            .listLibrary(
-              "another-principal",
-              create(ListLibraryRequestSchema, {
-                ...firstPageRequest,
-                pageToken: firstPage.nextPageToken,
-              }),
-            )
-            .pipe(Effect.flip);
-          expect(crossPrincipal).toMatchObject({ _tag: "PageTokenInvalid" });
+          const crossPrincipal = yield* captureConnectFailure(() =>
+            client.listLibrary(
+              { ...firstPageRequest, pageToken: firstPage.nextPageToken },
+              otherRequestOptions,
+            ),
+          );
+          expect(crossPrincipal.code).toBe(Code.InvalidArgument);
+          expect(crossPrincipal.findDetails(ErrorInfoSchema)).toMatchObject([
+            { reason: "PAGE_TOKEN_INVALID" },
+          ]);
 
           currentTime += 15 * 60 * 1000 + 1;
-          const expired = yield* query
-            .listLibrary(
-              PRINCIPAL_ID,
-              create(ListLibraryRequestSchema, {
-                ...firstPageRequest,
-                pageToken: firstPage.nextPageToken,
-              }),
-            )
-            .pipe(Effect.flip);
-          expect(expired).toMatchObject({ _tag: "PageTokenInvalid" });
+          const expired = yield* captureConnectFailure(() =>
+            client.listLibrary(
+              { ...firstPageRequest, pageToken: firstPage.nextPageToken },
+              requestOptions,
+            ),
+          );
+          expect(expired.code).toBe(Code.InvalidArgument);
+          expect(expired.findDetails(ErrorInfoSchema)).toMatchObject([
+            { reason: "PAGE_TOKEN_INVALID" },
+          ]);
         }),
       );
     }),
@@ -388,7 +447,8 @@ it.live("distinguishes empty, incomplete, and previously completed catalogs", ()
       yield* useDatabase(databaseUrl, productionMigrations, (database) =>
         Effect.gen(function* queryEmptyCatalog() {
           const query = yield* makeStoredQuery(database);
-          const empty = yield* query.getHome(PRINCIPAL_ID, create(GetHomeRequestSchema, {}));
+          const client = yield* startCatalogClient(database, query);
+          const empty = yield* Effect.promise(() => client.getHome({}, requestOptions));
           expect(empty.sections.map(({ items }) => items)).toEqual([[], []]);
         }),
       );
@@ -425,16 +485,12 @@ it.live("distinguishes empty, incomplete, and previously completed catalogs", ()
       yield* useDatabase(databaseUrl, productionMigrations, (database) =>
         Effect.gen(function* queryLoadingCatalog() {
           const query = yield* makeStoredQuery(database);
-          const loading = yield* query.getHome(PRINCIPAL_ID, create(GetHomeRequestSchema, {})).pipe(
-            Effect.match({
-              onFailure: (failure) => failure,
-              onSuccess: () => ({ _tag: "UnexpectedCatalogReady" as const }),
-            }),
-          );
-          expect(loading).toMatchObject({
-            _tag: "CatalogNotReady",
-            retryDelayMilliseconds: 30_000,
-          });
+          const client = yield* startCatalogClient(database, query);
+          const loading = yield* captureConnectFailure(() => client.getHome({}, requestOptions));
+          expect(loading.code).toBe(Code.Unavailable);
+          expect(loading.findDetails(ErrorInfoSchema)).toMatchObject([
+            { reason: "CATALOG_NOT_READY" },
+          ]);
         }),
       );
 
@@ -460,9 +516,9 @@ it.live("distinguishes empty, incomplete, and previously completed catalogs", ()
       yield* useDatabase(databaseUrl, productionMigrations, (database) =>
         Effect.gen(function* queryPreviouslyCompletedCatalog() {
           const query = yield* makeStoredQuery(database);
-          const response = yield* query.getMedia(
-            PRINCIPAL_ID,
-            create(GetMediaRequestSchema, { mediaId: completedItem.id }),
+          const client = yield* startCatalogClient(database, query);
+          const response = yield* Effect.promise(() =>
+            client.getMedia({ mediaId: completedItem.id }, requestOptions),
           );
           expect(response.media?.summary?.id).toBe(completedItem.id);
         }),
@@ -471,11 +527,124 @@ it.live("distinguishes empty, incomplete, and previously completed catalogs", ()
   ),
 );
 
+it.live("removes one shared source and then the final source through public Library reads", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* publicSourceDeletion() {
+      const firstProviderId = "catalog-source-provider-a";
+      const secondProviderId = "catalog-source-provider-b";
+      yield* initializeCatalogDatabase(
+        databaseUrl,
+        [
+          { id: firstProviderId, priority: 1 },
+          { id: secondProviderId, priority: 2 },
+        ],
+        true,
+      );
+      yield* markProviderHealthy(databaseUrl, firstProviderId);
+      yield* markProviderHealthy(databaseUrl, secondProviderId);
+      yield* markCatalogComplete(databaseUrl, firstProviderId);
+      yield* markCatalogComplete(databaseUrl, secondProviderId);
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* deleteStoredSources() {
+          const first = yield* database.catalog.observeItem(
+            movieObservation(firstProviderId, {
+              itemReference: "private-shared-source-a",
+              sources: [
+                videoSource(
+                  "private-shared-source-a",
+                  "private-shared-part-a",
+                  "private-shared-track-a",
+                ),
+              ],
+              title: "Shared Source Movie",
+            }),
+          );
+          yield* database.catalog.observeItem(
+            movieObservation(secondProviderId, {
+              itemReference: "private-shared-source-b",
+              sources: [
+                videoSource(
+                  "private-shared-source-b",
+                  "private-shared-part-b",
+                  "private-shared-track-b",
+                ),
+              ],
+              title: "Provider Duplicate",
+            }),
+          );
+          yield* withPool(databaseUrl, (pool) =>
+            retargetProviderMapping(pool, secondProviderId, first.id),
+          );
+          const query = yield* makeStoredQuery(database);
+          const client = yield* startCatalogClient(database, query);
+          const beforeDeletion = yield* Effect.promise(() =>
+            client.getMedia({ mediaId: first.id }, requestOptions),
+          );
+          expect(beforeDeletion.media?.sourceSummaries).toHaveLength(2);
+
+          yield* withPool(databaseUrl, (pool) =>
+            Effect.promise(() =>
+              pool.query("UPDATE provider_instance SET enabled = false WHERE id = $1", [
+                secondProviderId,
+              ]),
+            ),
+          );
+          expect(
+            yield* database.providers.deleteInstance({
+              expectedRevision: `${secondProviderId}-revision`,
+              operation: {
+                administratorUserId: ADMINISTRATOR_ID,
+                canonicalRequest: new TextEncoder().encode(secondProviderId),
+                method: "nama.api.v1.ProviderService.DeleteProviderInstance",
+                operationId: "delete-second-source-provider",
+                serializedResult: {},
+              },
+              providerInstanceId: secondProviderId,
+            }),
+          ).toBe(true);
+          const afterOneDeletion = yield* Effect.promise(() =>
+            client.getMedia({ mediaId: first.id }, requestOptions),
+          );
+          expect(afterOneDeletion.media?.sourceSummaries).toHaveLength(1);
+
+          yield* withPool(databaseUrl, (pool) =>
+            Effect.promise(() =>
+              pool.query("UPDATE provider_instance SET enabled = false WHERE id = $1", [
+                firstProviderId,
+              ]),
+            ),
+          );
+          expect(
+            yield* database.providers.deleteInstance({
+              expectedRevision: `${firstProviderId}-revision`,
+              operation: {
+                administratorUserId: ADMINISTRATOR_ID,
+                canonicalRequest: new TextEncoder().encode(firstProviderId),
+                method: "nama.api.v1.ProviderService.DeleteProviderInstance",
+                operationId: "delete-final-source-provider",
+                serializedResult: {},
+              },
+              providerInstanceId: firstProviderId,
+            }),
+          ).toBe(true);
+          const finalSource = yield* captureConnectFailure(() =>
+            client.getMedia({ mediaId: first.id }, requestOptions),
+          );
+          expect(finalSource.code).toBe(Code.NotFound);
+          expect(finalSource.findDetails(ErrorInfoSchema)).toMatchObject([
+            { reason: "RESOURCE_NOT_FOUND" },
+          ]);
+        }),
+      );
+    }),
+  ),
+);
 it.live("ranks prefix search in PostgreSQL and keyset-paginates equal query state", () =>
   withIsolatedDatabase((databaseUrl) =>
     Effect.gen(function* storedSearch() {
       yield* initializeCatalogDatabase(databaseUrl, [{ id: PROVIDER_INSTANCE_ID, priority: 1 }]);
       yield* markProviderHealthy(databaseUrl, PROVIDER_INSTANCE_ID);
+
       yield* markCatalogComplete(databaseUrl, PROVIDER_INSTANCE_ID);
       yield* useDatabase(databaseUrl, productionMigrations, (database) =>
         Effect.gen(function* queryStoredSearch() {
@@ -542,11 +711,12 @@ it.live("ranks prefix search in PostgreSQL and keyset-paginates equal query stat
             database.catalog.observeItem(observation),
           );
           const query = yield* makeStoredQuery(database);
+          const client = yield* startCatalogClient(database, query);
           const request = create(SearchRequestSchema, {
             pageSize: 2,
             query: "  ORB  ",
           });
-          const firstPage = yield* query.search(PRINCIPAL_ID, request);
+          const firstPage = yield* Effect.promise(() => client.search(request, requestOptions));
           expect(firstPage.items.map(({ title }) => title)).toEqual([
             "Orbit Title",
             "Zulu Original",
@@ -554,32 +724,30 @@ it.live("ranks prefix search in PostgreSQL and keyset-paginates equal query stat
           expect(firstPage.nextPageToken).not.toBe("");
           expect(firstPage.nextPageToken).not.toContain("private-search");
 
-          const secondPage = yield* query.search(
-            PRINCIPAL_ID,
-            create(SearchRequestSchema, {
-              ...request,
-              pageToken: firstPage.nextPageToken,
-            }),
+          const secondPage = yield* Effect.promise(() =>
+            client.search({ ...request, pageToken: firstPage.nextPageToken }, requestOptions),
           );
           expect(secondPage.items.map(({ title }) => title)).toEqual(["Alpha Cast", "Alpha Genre"]);
 
-          const fuzzy = yield* query.search(
-            PRINCIPAL_ID,
-            create(SearchRequestSchema, { query: "orbot" }),
+          const fuzzy = yield* Effect.promise(() =>
+            client.search({ query: "orbot" }, requestOptions),
           );
           expect(fuzzy.items).toEqual([]);
 
-          const changedQuery = yield* query
-            .search(
-              PRINCIPAL_ID,
-              create(SearchRequestSchema, {
+          const changedQuery = yield* captureConnectFailure(() =>
+            client.search(
+              {
                 pageSize: 2,
                 pageToken: firstPage.nextPageToken,
                 query: "different",
-              }),
-            )
-            .pipe(Effect.flip);
-          expect(changedQuery).toMatchObject({ _tag: "PageTokenInvalid" });
+              },
+              requestOptions,
+            ),
+          );
+          expect(changedQuery.code).toBe(Code.InvalidArgument);
+          expect(changedQuery.findDetails(ErrorInfoSchema)).toMatchObject([
+            { reason: "PAGE_TOKEN_INVALID" },
+          ]);
         }),
       );
     }),

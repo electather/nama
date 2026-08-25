@@ -18,6 +18,7 @@ const PROVIDER_RETRY_DELAY_MILLISECONDS = 5000;
 type PublicErrorReason =
   | "ALREADY_INITIALIZED"
   | "AUTHENTICATION_FAILED"
+  | "CATALOG_NOT_READY"
   | "AUTHENTICATION_UNAVAILABLE"
   | "CREDENTIAL_INVALID"
   | "DEVICE_AUTHORIZATION_ACCESS_DENIED"
@@ -28,6 +29,8 @@ type PublicErrorReason =
   | "INTERNAL"
   | "NOT_INITIALIZED"
   | "PERMISSION_DENIED"
+  | "MEDIA_HAS_NO_CHILDREN"
+  | "MEDIA_STATE_UNAVAILABLE"
   | "IDEMPOTENCY_KEY_REUSED"
   | "PAGE_TOKEN_INVALID"
   | "PLUGIN_UNAVAILABLE"
@@ -45,6 +48,7 @@ type PublicErrorReason =
   | "REQUEST_CANCELLED"
   | "SESSION_REVOCATION_UNCONFIRMED"
   | "SETUP_IN_PROGRESS"
+  | "SOURCE_UNAVAILABLE"
   | "SETUP_UNAVAILABLE"
   | "VALIDATION_FAILED";
 
@@ -60,6 +64,7 @@ type TaggedFailureTag =
   | "BootstrapTokenBusyError"
   | "BootstrapTokenInvalidError"
   | "BootstrapTokenUnavailableError"
+  | "CatalogNotReady"
   | "DeadlineExceeded"
   | "DeviceAuthorizationAccessDenied"
   | "DeviceAuthorizationAlreadyProcessed"
@@ -68,6 +73,8 @@ type TaggedFailureTag =
   | "InvalidBearer"
   | "InvalidCredentials"
   | "MissingAuthorityInventory"
+  | "MediaHasNoChildren"
+  | "MediaStateUnavailable"
   | "NotInitialized"
   | "PermissionDenied"
   | "PageTokenInvalid"
@@ -84,6 +91,9 @@ type TaggedFailureTag =
   | "ProviderUserChanged"
   | "ProviderValidationFailed"
   | "PrivateAuthenticationDefect"
+  | "ResourceNotFound"
+  | "SearchQueryInvalid"
+  | "SourceUnavailable"
   | "RequestCancelled"
   | "RevisionMismatch"
   | "SessionRevocationUnconfirmed"
@@ -116,6 +126,10 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
     code: Code.Unavailable,
     reason: "SETUP_UNAVAILABLE",
   },
+  CatalogNotReady: {
+    code: Code.Unavailable,
+    reason: "CATALOG_NOT_READY",
+  },
   DeadlineExceeded: {
     code: Code.DeadlineExceeded,
     reason: "DEADLINE_EXCEEDED",
@@ -147,6 +161,14 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
   InvalidCredentials: {
     code: Code.Unauthenticated,
     reason: "AUTHENTICATION_FAILED",
+  },
+  MediaHasNoChildren: {
+    code: Code.FailedPrecondition,
+    reason: "MEDIA_HAS_NO_CHILDREN",
+  },
+  MediaStateUnavailable: {
+    code: Code.FailedPrecondition,
+    reason: "MEDIA_STATE_UNAVAILABLE",
   },
   MissingAuthorityInventory: {
     code: Code.PermissionDenied,
@@ -216,9 +238,17 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
     code: Code.Canceled,
     reason: "REQUEST_CANCELLED",
   },
+  ResourceNotFound: {
+    code: Code.NotFound,
+    reason: "RESOURCE_NOT_FOUND",
+  },
   RevisionMismatch: {
     code: Code.Aborted,
     reason: "REVISION_MISMATCH",
+  },
+  SearchQueryInvalid: {
+    code: Code.InvalidArgument,
+    reason: "VALIDATION_FAILED",
   },
   SessionRevocationUnconfirmed: {
     code: Code.Unavailable,
@@ -231,6 +261,10 @@ const TAGGED_FAILURE_MAPPINGS = Object.freeze({
   SetupCommitAmbiguous: {
     code: Code.Unavailable,
     reason: "SETUP_UNAVAILABLE",
+  },
+  SourceUnavailable: {
+    code: Code.Unavailable,
+    reason: "SOURCE_UNAVAILABLE",
   },
 } as const satisfies Record<TaggedFailureTag, TaggedFailureMapping>);
 
@@ -393,12 +427,49 @@ const providerValidationError = (requestId: string, failure: unknown): ConnectEr
   return createValidationError(requestId, violations);
 };
 
-const normalizeConnectFailure = (requestId: string, failure: unknown): ConnectError => {
-  const validation = providerValidationError(requestId, failure);
-  if (validation !== undefined) {
-    return validation;
+const catalogApplicationError = (
+  requestId: string,
+  failure: unknown,
+  tag: TaggedFailureTag | undefined,
+): ConnectError | undefined => {
+  if (tag === "SearchQueryInvalid") {
+    return createValidationError(requestId, [
+      {
+        description: "Enter a non-whitespace search query.",
+        field: "query",
+        reason: "INVALID_FORMAT",
+      },
+    ]);
   }
-  const tag = taggedFailureTag(failure);
+  if (tag !== "CatalogNotReady" || typeof failure !== "object" || failure === null) {
+    return undefined;
+  }
+  const retryDelayMilliseconds = dataPropertyValue(failure, "retryDelayMilliseconds");
+  if (
+    typeof retryDelayMilliseconds !== "number" ||
+    !Number.isSafeInteger(retryDelayMilliseconds) ||
+    retryDelayMilliseconds < ZERO_MILLISECONDS
+  ) {
+    return createApplicationError({ code: Code.Internal, reason: "INTERNAL", requestId });
+  }
+  return createApplicationError({
+    ...TAGGED_FAILURE_MAPPINGS.CatalogNotReady,
+    extraDetails: [
+      {
+        desc: RetryInfoSchema,
+        value: create(RetryInfoSchema, {
+          retryDelay: retryDelayFromMilliseconds(retryDelayMilliseconds),
+        }),
+      },
+    ],
+    requestId,
+  });
+};
+
+const taggedApplicationError = (
+  requestId: string,
+  tag: TaggedFailureTag | undefined,
+): ConnectError => {
   if (tag === undefined) {
     return createApplicationError({ code: Code.Internal, reason: "INTERNAL", requestId });
   }
@@ -416,11 +487,24 @@ const normalizeConnectFailure = (requestId: string, failure: unknown): ConnectEr
       requestId,
     });
   }
-
   return createApplicationError({
     ...TAGGED_FAILURE_MAPPINGS[tag],
     requestId,
   });
+};
+
+const normalizeConnectFailure = (requestId: string, failure: unknown): ConnectError => {
+  const validation = providerValidationError(requestId, failure);
+  if (validation !== undefined) {
+    return validation;
+  }
+  const tag = taggedFailureTag(failure);
+  const catalogError = catalogApplicationError(requestId, failure, tag);
+  if (catalogError !== undefined) {
+    return catalogError;
+  }
+
+  return taggedApplicationError(requestId, tag);
 };
 
 export { createRateLimitError, createValidationError, normalizeConnectFailure };
