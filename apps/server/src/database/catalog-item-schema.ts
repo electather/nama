@@ -14,6 +14,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import { tsvector } from "./catalog-column-types-private.ts";
 import { providerInstance } from "./provider-schema.ts";
 
 const canonicalItem = pgTable(
@@ -36,6 +37,9 @@ const canonicalItem = pgTable(
     releaseYear: bigint("release_year", { mode: "number" }),
     runtimeNanoseconds: integer("runtime_nanoseconds").notNull(),
     runtimeSeconds: bigint("runtime_seconds", { mode: "bigint" }).notNull(),
+    searchVector: tsvector("search_vector")
+      .default(sql`''::tsvector`)
+      .notNull(),
     seasonCount: bigint("season_count", { mode: "number" }),
     seasonNumber: bigint("season_number", { mode: "number" }),
     studios: text("studios")
@@ -81,6 +85,7 @@ const canonicalItem = pgTable(
     ),
     check("canonical_item_genres_check", sql`cardinality(${table.genres}) <= 50`),
     check("canonical_item_studios_check", sql`cardinality(${table.studios}) <= 50`),
+    index("canonical_item_search_vector_index").using("gin", table.searchVector),
     check(
       "canonical_item_counts_check",
       sql`(${table.seasonCount} is null or ${table.seasonCount} between 0 and 4294967295) and (${table.episodeCount} is null or ${table.episodeCount} between 0 and 4294967295)`,

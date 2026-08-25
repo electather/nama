@@ -3,6 +3,7 @@ import { NodeFileSystem } from "@effect/platform-node";
 import { Cause, Clock, Effect, Exit, Layer } from "effect";
 
 import { makeSetupAuthenticationLayer } from "./authentication/setup-coordinator.ts";
+import { CatalogQuery } from "./catalog/catalog-query-live.ts";
 import { Config } from "./config/config.ts";
 import { Database } from "./database/database.ts";
 import { HttpServer } from "./http/http-server.ts";
@@ -39,8 +40,11 @@ const serverLayer = (
   const providerFoundationLayer = ProviderManagement.layer.pipe(
     Layer.provideMerge(pluginFoundationLayer),
   );
+  const catalogFoundationLayer = CatalogQuery.layer.pipe(
+    Layer.provideMerge(providerFoundationLayer),
+  );
   return HttpServer.layer({ emitStopping }).pipe(
-    Layer.provideMerge(makeSetupAuthenticationLayer(providerFoundationLayer, RuntimeControl.layer)),
+    Layer.provideMerge(makeSetupAuthenticationLayer(catalogFoundationLayer, RuntimeControl.layer)),
   );
 };
 

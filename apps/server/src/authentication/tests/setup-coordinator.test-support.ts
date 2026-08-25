@@ -6,7 +6,7 @@ import { Pool } from "pg";
 
 import { Database } from "../../database/database.ts";
 import { databaseSchema } from "../../database/schema.ts";
-import { unusedCatalogPersistence } from "../../database/tests/catalog-persistence.test-support.ts";
+import { unusedCatalog } from "../../database/tests/catalog-persistence.test-support.ts";
 import { unusedProviderPersistence } from "../../database/tests/provider-persistence.test-support.ts";
 import type { RuntimeControl } from "../../lifecycle/runtime-control.ts";
 import { makeBootstrapToken } from "../../setup/bootstrap-token.ts";
@@ -119,7 +119,8 @@ const makeCoordinatorFixture = (
   const completeInitialization = options.completeInitialization ?? defaultCompleteInitialization;
   const database = Database.of({
     authentication: { completeInitialization, database: unusedAuthenticationDatabase },
-    catalog: unusedCatalogPersistence,
+    catalog: unusedCatalog.persistence,
+    catalogQueries: unusedCatalog.queries,
     checkReadiness: Effect.succeed(true),
     initialization,
     providers: unusedProviderPersistence,

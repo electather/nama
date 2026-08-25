@@ -1,0 +1,810 @@
+// oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary, import/max-dependencies -- Disposable PostgreSQL catalog-query acceptance keeps each stateful setup and assertion sequence visible.
+import { create } from "@bufbuild/protobuf";
+import { expect, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+import {
+  GetHomeRequestSchema,
+  GetMediaRequestSchema,
+  GetMediaSourceRequestSchema,
+  HomeSectionKind,
+  LibrarySort,
+  ListLibraryRequestSchema,
+  ListChildrenRequestSchema,
+  ResolveArtworkRequestSchema,
+  SearchRequestSchema,
+  WatchFilter,
+} from "../../../../gen/ts/src/nama/api/v1/library_pb.js";
+import {
+  MediaKind,
+  Playability,
+  SourceAvailability,
+} from "../../../../gen/ts/src/nama/api/v1/media_pb.js";
+import { ArtworkAuthorizationScope } from "../../../../gen/ts/src/nama/plugin/v1/library_pb.js";
+import { makeCatalogQuery } from "../../src/catalog/catalog-query.ts";
+import type { CatalogArtworkLeaseResolver } from "../../src/catalog/catalog-query.ts";
+import type { Database } from "../../src/database/database.ts";
+import {
+  episodeObservation,
+  initializeCatalogDatabase,
+  movieObservation,
+  seasonObservation,
+  showObservation,
+  videoSource,
+} from "./catalog-persistence.test-support.ts";
+import { productionMigrations, useDatabase, withPool } from "./database.test-support.ts";
+import { withIsolatedDatabase } from "./postgres.test-support.ts";
+
+const PROVIDER_INSTANCE_ID = "catalog-query-provider";
+const FIRST_ROW_INDEX = 0;
+const MASTER_KEY = `base64:${Buffer.alloc(32, 41).toString("base64")}`;
+const PRINCIPAL_ID = "catalog-reader";
+const NOW = new Date("2026-08-25T12:00:00.000Z").getTime();
+
+const markProviderHealthy = (databaseUrl: string, providerInstanceId: string) =>
+  withPool(databaseUrl, (pool) =>
+    Effect.promise(() =>
+      pool.query(
+        `INSERT INTO provider_instance_observation (
+           instance_revision, provider_instance_id, status, summary
+         ) VALUES ($1, $2, 'healthy', 'healthy')
+         ON CONFLICT (provider_instance_id) DO UPDATE
+         SET instance_revision = excluded.instance_revision,
+             status = excluded.status,
+             summary = excluded.summary`,
+        [`${providerInstanceId}-revision`, providerInstanceId],
+      ),
+    ),
+  );
+
+const markProviderUnavailable = (databaseUrl: string, providerInstanceId: string) =>
+  withPool(databaseUrl, (pool) =>
+    Effect.promise(() =>
+      pool.query(
+        `UPDATE provider_instance_observation
+         SET status = 'unavailable', summary = 'unavailable'
+         WHERE provider_instance_id = $1`,
+        [providerInstanceId],
+      ),
+    ),
+  );
+
+const markCatalogComplete = (databaseUrl: string, providerInstanceId: string) =>
+  withPool(databaseUrl, (pool) =>
+    Effect.promise(() =>
+      pool.query(
+        `INSERT INTO provider_catalog_scan_state (
+           captured_provider_revision, completed_at, core_run_id, provider_instance_id,
+           started_at, status, updated_at
+         ) VALUES ($1, transaction_timestamp(), 'completed-run', $2,
+           transaction_timestamp(), 'succeeded', transaction_timestamp())`,
+        [`${providerInstanceId}-revision`, providerInstanceId],
+      ),
+    ),
+  );
+
+const unexpectedArtworkResolution: CatalogArtworkLeaseResolver = () =>
+  Effect.die("unexpected artwork resolution");
+
+const makeStoredQuery = (
+  database: Database["Service"],
+  now: () => number = () => NOW,
+  resolveArtworkLease: CatalogArtworkLeaseResolver = unexpectedArtworkResolution,
+) =>
+  makeCatalogQuery({
+    catalog: database.catalogQueries,
+    masterKey: MASTER_KEY,
+    now,
+    resolveArtworkLease,
+  });
+
+it.live("stores and replaces the weighted simple full-text projection", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* storedSearchProjection() {
+      yield* initializeCatalogDatabase(databaseUrl, [{ id: PROVIDER_INSTANCE_ID, priority: 1 }]);
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        database.catalog.observeItem(
+          movieObservation(PROVIDER_INSTANCE_ID, {
+            credits: [{ name: "Cast Match", role: "actor" }],
+            genres: ["Genre Match"],
+            originalTitle: "Original Match",
+            title: "Title Match",
+          }),
+        ),
+      );
+
+      const initial = yield* withPool(databaseUrl, (pool) =>
+        Effect.promise(() =>
+          pool.query<{
+            readonly castRank: number;
+            readonly genreRank: number;
+            readonly originalRank: number;
+            readonly titleRank: number;
+          }>(`SELECT
+              ts_rank(search_vector, to_tsquery('simple', 'cast:*')) AS "castRank",
+              ts_rank(search_vector, to_tsquery('simple', 'genre:*')) AS "genreRank",
+              ts_rank(search_vector, to_tsquery('simple', 'original:*')) AS "originalRank",
+              ts_rank(search_vector, to_tsquery('simple', 'title:*')) AS "titleRank"
+            FROM canonical_item`),
+        ),
+      );
+      const ranks = initial.rows[FIRST_ROW_INDEX];
+      expect(ranks).toBeDefined();
+      expect(ranks?.titleRank).toBeGreaterThan(ranks?.originalRank ?? Number.POSITIVE_INFINITY);
+      expect(ranks?.originalRank).toBeGreaterThan(ranks?.castRank ?? Number.POSITIVE_INFINITY);
+      expect(ranks?.castRank).toBeGreaterThan(ranks?.genreRank ?? Number.POSITIVE_INFINITY);
+
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        database.catalog.observeItem(
+          movieObservation(PROVIDER_INSTANCE_ID, {
+            credits: [{ name: "Replacement Actor", role: "actor" }],
+            genres: ["Replacement Genre"],
+            originalTitle: "Replacement Original",
+            title: "Replacement Title",
+          }),
+        ),
+      );
+      const replacement = yield* withPool(databaseUrl, (pool) =>
+        Effect.promise(() =>
+          pool.query<{
+            readonly oldCastPresent: boolean;
+            readonly replacementPresent: boolean;
+          }>(`SELECT
+              search_vector @@ to_tsquery('simple', 'cast:*') AS "oldCastPresent",
+              search_vector @@ to_tsquery('simple', 'replacement:*') AS "replacementPresent"
+            FROM canonical_item`),
+        ),
+      );
+      expect(replacement.rows[FIRST_ROW_INDEX]).toEqual({
+        oldCastPresent: false,
+        replacementPresent: true,
+      });
+    }),
+  ),
+);
+
+it.live("returns stored Movies and Shows with effective playability and default sources", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* storedHome() {
+      yield* initializeCatalogDatabase(databaseUrl, [{ id: PROVIDER_INSTANCE_ID, priority: 1 }]);
+      yield* markProviderHealthy(databaseUrl, PROVIDER_INSTANCE_ID);
+      yield* markCatalogComplete(databaseUrl, PROVIDER_INSTANCE_ID);
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* queryStoredHome() {
+          const unavailableSource = {
+            ...videoSource(
+              "private-unavailable-source",
+              "private-unavailable-part",
+              "private-unavailable-track",
+            ),
+            availability: "provider_unavailable" as const,
+          };
+          const availableSource = videoSource(
+            "private-available-source",
+            "private-available-part",
+            "private-available-track",
+          );
+          const movie = yield* database.catalog.observeItem(
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              itemReference: "private-home-movie",
+              sources: [unavailableSource, availableSource],
+              title: "Home Movie",
+            }),
+          );
+          const show = yield* database.catalog.observeItem(showObservation(PROVIDER_INSTANCE_ID));
+          const query = yield* makeStoredQuery(database);
+          const response = yield* query.getHome(
+            PRINCIPAL_ID,
+            create(GetHomeRequestSchema, { sectionSize: 20 }),
+          );
+
+          expect(response.sections.map(({ id, kind, title }) => ({ id, kind, title }))).toEqual([
+            { id: "movies", kind: HomeSectionKind.MOVIES, title: "Movies" },
+            { id: "shows", kind: HomeSectionKind.SHOWS, title: "Shows" },
+          ]);
+          expect(response.sections[0]?.items).toHaveLength(1);
+          expect(response.sections[0]?.items[0]).toMatchObject({
+            id: movie.id,
+            kind: 1,
+            playability: Playability.PLAYABLE,
+            title: "Home Movie",
+          });
+          expect(response.sections[0]?.items[0]?.defaultSource).toMatchObject({
+            availability: SourceAvailability.AVAILABLE,
+            id: movie.sources[1]?.id,
+            isDefault: true,
+          });
+          expect(response.sections[1]?.items[0]).toMatchObject({
+            id: show.id,
+            title: "Catalog Show",
+          });
+
+          const publicJson = JSON.stringify(response, (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          );
+          expect(publicJson).not.toContain("private-home-movie");
+          expect(publicJson).not.toContain("private-available-source");
+          expect(publicJson).not.toContain("catalog-query-provider");
+
+          yield* markProviderUnavailable(databaseUrl, PROVIDER_INSTANCE_ID);
+          const outage = yield* query.getHome(PRINCIPAL_ID, create(GetHomeRequestSchema, {}));
+          expect(outage.sections[0]?.items[0]).toMatchObject({
+            id: movie.id,
+            playability: Playability.TEMPORARILY_UNAVAILABLE,
+          });
+          expect(outage.sections[0]?.items[0]?.defaultSource).toMatchObject({
+            availability: SourceAvailability.PROVIDER_UNAVAILABLE,
+            id: movie.sources[0]?.id,
+          });
+        }),
+      );
+    }),
+  ),
+);
+
+it.live("filters and keyset-paginates stored Library entries with bound expiring tokens", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* storedLibraryPagination() {
+      yield* initializeCatalogDatabase(databaseUrl, [{ id: PROVIDER_INSTANCE_ID, priority: 1 }]);
+      yield* markProviderHealthy(databaseUrl, PROVIDER_INSTANCE_ID);
+      yield* markCatalogComplete(databaseUrl, PROVIDER_INSTANCE_ID);
+      let currentTime = NOW;
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* queryStoredLibrary() {
+          yield* database.catalog.observeItem(
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              genres: ["Drama"],
+              itemReference: "private-list-bravo",
+              releaseDate: "2024-01-02",
+              releaseYear: 2024,
+              sources: [
+                videoSource("private-list-source-b", "private-list-part-b", "private-list-track-b"),
+              ],
+              title: "Bravo",
+            }),
+          );
+          yield* database.catalog.observeItem(
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              genres: ["Drama", "Mystery"],
+              itemReference: "private-list-alpha",
+              releaseDate: "2025-01-02",
+              releaseYear: 2025,
+              sources: [
+                videoSource("private-list-source-a", "private-list-part-a", "private-list-track-a"),
+              ],
+              title: "alpha",
+            }),
+          );
+          yield* database.catalog.observeItem(
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              genres: ["Comedy"],
+              itemReference: "private-list-charlie",
+              releaseDate: undefined,
+              releaseYear: undefined,
+              sources: [
+                {
+                  ...videoSource(
+                    "private-list-source-c",
+                    "private-list-part-c",
+                    "private-list-track-c",
+                  ),
+                  availability: "unsupported",
+                },
+              ],
+              title: "Charlie",
+            }),
+          );
+          const query = yield* makeStoredQuery(database, () => currentTime);
+          const firstPageRequest = create(ListLibraryRequestSchema, {
+            filter: { watchFilter: WatchFilter.ANY },
+            pageSize: 1,
+            sort: LibrarySort.TITLE_ASC,
+          });
+          const firstPage = yield* query.listLibrary(PRINCIPAL_ID, firstPageRequest);
+          expect(firstPage.items.map(({ title }) => title)).toEqual(["alpha"]);
+          expect(firstPage.nextPageToken).not.toBe("");
+          expect(firstPage.nextPageToken).not.toContain("private-list");
+
+          const secondPage = yield* query.listLibrary(
+            PRINCIPAL_ID,
+            create(ListLibraryRequestSchema, {
+              ...firstPageRequest,
+              pageToken: firstPage.nextPageToken,
+            }),
+          );
+          expect(secondPage.items.map(({ title }) => title)).toEqual(["Bravo"]);
+
+          const filtered = yield* query.listLibrary(
+            PRINCIPAL_ID,
+            create(ListLibraryRequestSchema, {
+              filter: {
+                genre: "Mystery",
+                kinds: [MediaKind.MOVIE],
+                playableOnly: true,
+                releaseYear: 2025,
+                watchFilter: WatchFilter.ANY,
+              },
+              pageSize: 50,
+              sort: LibrarySort.RELEASE_DATE_DESC,
+            }),
+          );
+          expect(filtered.items.map(({ title }) => title)).toEqual(["alpha"]);
+
+          const complete = yield* query.listLibrary(
+            PRINCIPAL_ID,
+            create(ListLibraryRequestSchema, {
+              filter: { watchFilter: WatchFilter.ANY },
+              pageSize: 50,
+              sort: LibrarySort.TITLE_ASC,
+            }),
+          );
+          expect(complete.items.find(({ title }) => title === "Charlie")).toMatchObject({
+            playability: Playability.NO_AVAILABLE_SOURCE,
+          });
+
+          const unavailableWatchState = yield* query
+            .listLibrary(
+              PRINCIPAL_ID,
+              create(ListLibraryRequestSchema, {
+                filter: { watchFilter: WatchFilter.UNWATCHED },
+                sort: LibrarySort.DATE_ADDED_DESC,
+              }),
+            )
+            .pipe(Effect.flip);
+          expect(unavailableWatchState).toMatchObject({ _tag: "MediaStateUnavailable" });
+
+          const crossPrincipal = yield* query
+            .listLibrary(
+              "another-principal",
+              create(ListLibraryRequestSchema, {
+                ...firstPageRequest,
+                pageToken: firstPage.nextPageToken,
+              }),
+            )
+            .pipe(Effect.flip);
+          expect(crossPrincipal).toMatchObject({ _tag: "PageTokenInvalid" });
+
+          currentTime += 15 * 60 * 1000 + 1;
+          const expired = yield* query
+            .listLibrary(
+              PRINCIPAL_ID,
+              create(ListLibraryRequestSchema, {
+                ...firstPageRequest,
+                pageToken: firstPage.nextPageToken,
+              }),
+            )
+            .pipe(Effect.flip);
+          expect(expired).toMatchObject({ _tag: "PageTokenInvalid" });
+        }),
+      );
+    }),
+  ),
+);
+
+it.live("distinguishes empty, incomplete, and previously completed catalogs", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* catalogReadiness() {
+      yield* initializeCatalogDatabase(databaseUrl, []);
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* queryEmptyCatalog() {
+          const query = yield* makeStoredQuery(database);
+          const empty = yield* query.getHome(PRINCIPAL_ID, create(GetHomeRequestSchema, {}));
+          expect(empty.sections.map(({ items }) => items)).toEqual([[], []]);
+        }),
+      );
+
+      const loadingProviderId = "catalog-loading-instance";
+      yield* initializeCatalogDatabase(databaseUrl, [{ id: loadingProviderId, priority: 1 }]);
+      yield* withPool(databaseUrl, (pool) =>
+        Effect.promise(() =>
+          pool.query(
+            `INSERT INTO provider_catalog_scan_state (
+               captured_provider_revision, completed_at, core_run_id, next_retry_at,
+               provider_instance_id, safe_failure_reason, started_at, status, updated_at
+             ) VALUES (
+               $1, $2, 'loading-run', $3, $4, 'provider_unavailable', $5, 'failed', $2
+             )`,
+            [
+              `${loadingProviderId}-revision`,
+              new Date(NOW),
+              new Date(NOW + 30_000),
+              loadingProviderId,
+              new Date(NOW - 60_000),
+            ],
+          ),
+        ),
+      );
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        database.catalog.observeItem(
+          movieObservation(loadingProviderId, {
+            itemReference: "private-partial-import",
+            title: "Partial Import Movie",
+          }),
+        ),
+      );
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* queryLoadingCatalog() {
+          const query = yield* makeStoredQuery(database);
+          const loading = yield* query.getHome(PRINCIPAL_ID, create(GetHomeRequestSchema, {})).pipe(
+            Effect.match({
+              onFailure: (failure) => failure,
+              onSuccess: () => ({ _tag: "UnexpectedCatalogReady" as const }),
+            }),
+          );
+          expect(loading).toMatchObject({
+            _tag: "CatalogNotReady",
+            retryDelayMilliseconds: 30_000,
+          });
+        }),
+      );
+
+      const completedProviderId = "catalog-completed-instance";
+      yield* initializeCatalogDatabase(databaseUrl, [{ id: completedProviderId, priority: 2 }]);
+      yield* markProviderHealthy(databaseUrl, completedProviderId);
+      yield* markCatalogComplete(databaseUrl, completedProviderId);
+      const completedItem = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        database.catalog.observeItem(
+          movieObservation(completedProviderId, {
+            itemReference: "private-completed-import",
+            title: "Completed Import Movie",
+          }),
+        ),
+      );
+      yield* withPool(databaseUrl, (pool) =>
+        Effect.promise(() =>
+          pool.query("UPDATE provider_instance SET enabled = false WHERE id = $1", [
+            completedProviderId,
+          ]),
+        ),
+      );
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* queryPreviouslyCompletedCatalog() {
+          const query = yield* makeStoredQuery(database);
+          const response = yield* query.getMedia(
+            PRINCIPAL_ID,
+            create(GetMediaRequestSchema, { mediaId: completedItem.id }),
+          );
+          expect(response.media?.summary?.id).toBe(completedItem.id);
+        }),
+      );
+    }),
+  ),
+);
+
+it.live("ranks prefix search in PostgreSQL and keyset-paginates equal query state", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* storedSearch() {
+      yield* initializeCatalogDatabase(databaseUrl, [{ id: PROVIDER_INSTANCE_ID, priority: 1 }]);
+      yield* markProviderHealthy(databaseUrl, PROVIDER_INSTANCE_ID);
+      yield* markCatalogComplete(databaseUrl, PROVIDER_INSTANCE_ID);
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* queryStoredSearch() {
+          const observations = [
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              credits: [],
+              genres: ["Drama"],
+              itemReference: "private-search-title",
+              originalTitle: undefined,
+              sources: [
+                videoSource(
+                  "private-search-title-source",
+                  "private-search-title-part",
+                  "private-search-title-track",
+                ),
+              ],
+              title: "Orbit Title",
+            }),
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              credits: [],
+              genres: ["Drama"],
+              itemReference: "private-search-original",
+              originalTitle: "Orbit Original",
+              sources: [
+                videoSource(
+                  "private-search-original-source",
+                  "private-search-original-part",
+                  "private-search-original-track",
+                ),
+              ],
+              title: "Zulu Original",
+            }),
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              credits: [{ name: "Orbit Actor", role: "actor" }],
+              genres: ["Drama"],
+              itemReference: "private-search-cast",
+              originalTitle: undefined,
+              sources: [
+                videoSource(
+                  "private-search-cast-source",
+                  "private-search-cast-part",
+                  "private-search-cast-track",
+                ),
+              ],
+              title: "Alpha Cast",
+            }),
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              credits: [],
+              genres: ["Orbit Genre"],
+              itemReference: "private-search-genre",
+              originalTitle: undefined,
+              sources: [
+                videoSource(
+                  "private-search-genre-source",
+                  "private-search-genre-part",
+                  "private-search-genre-track",
+                ),
+              ],
+              title: "Alpha Genre",
+            }),
+          ];
+          // oxlint-disable-next-line unicorn/no-array-method-this-argument -- Effect.forEach's callback is not an Array thisArg.
+          yield* Effect.forEach(observations, (observation) =>
+            database.catalog.observeItem(observation),
+          );
+          const query = yield* makeStoredQuery(database);
+          const request = create(SearchRequestSchema, {
+            pageSize: 2,
+            query: "  ORB  ",
+          });
+          const firstPage = yield* query.search(PRINCIPAL_ID, request);
+          expect(firstPage.items.map(({ title }) => title)).toEqual([
+            "Orbit Title",
+            "Zulu Original",
+          ]);
+          expect(firstPage.nextPageToken).not.toBe("");
+          expect(firstPage.nextPageToken).not.toContain("private-search");
+
+          const secondPage = yield* query.search(
+            PRINCIPAL_ID,
+            create(SearchRequestSchema, {
+              ...request,
+              pageToken: firstPage.nextPageToken,
+            }),
+          );
+          expect(secondPage.items.map(({ title }) => title)).toEqual(["Alpha Cast", "Alpha Genre"]);
+
+          const fuzzy = yield* query.search(
+            PRINCIPAL_ID,
+            create(SearchRequestSchema, { query: "orbot" }),
+          );
+          expect(fuzzy.items).toEqual([]);
+
+          const changedQuery = yield* query
+            .search(
+              PRINCIPAL_ID,
+              create(SearchRequestSchema, {
+                pageSize: 2,
+                pageToken: firstPage.nextPageToken,
+                query: "different",
+              }),
+            )
+            .pipe(Effect.flip);
+          expect(changedQuery).toMatchObject({ _tag: "PageTokenInvalid" });
+        }),
+      );
+    }),
+  ),
+);
+
+it.live("serves visible hierarchy, canonical details, and technical sources by Nama ID", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* storedHierarchy() {
+      yield* initializeCatalogDatabase(databaseUrl, [{ id: PROVIDER_INSTANCE_ID, priority: 1 }]);
+      yield* markProviderHealthy(databaseUrl, PROVIDER_INSTANCE_ID);
+      yield* markCatalogComplete(databaseUrl, PROVIDER_INSTANCE_ID);
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* queryStoredHierarchy() {
+          const season = yield* database.catalog.observeItem(
+            seasonObservation(PROVIDER_INSTANCE_ID),
+          );
+          const query = yield* makeStoredQuery(database);
+          const unresolved = yield* query
+            .getMedia(PRINCIPAL_ID, create(GetMediaRequestSchema, { mediaId: season.id }))
+            .pipe(Effect.flip);
+          expect(unresolved).toMatchObject({ _tag: "ResourceNotFound" });
+
+          const show = yield* database.catalog.observeItem(showObservation(PROVIDER_INSTANCE_ID));
+          const episode = yield* database.catalog.observeItem(
+            episodeObservation(PROVIDER_INSTANCE_ID),
+          );
+          const showMedia = yield* query.getMedia(
+            PRINCIPAL_ID,
+            create(GetMediaRequestSchema, { mediaId: show.id }),
+          );
+          expect(showMedia.media).toMatchObject({
+            kindDetails: {
+              case: "show",
+              value: { episodeCount: 10, seasonCount: 1 },
+            },
+            summary: {
+              id: show.id,
+              kind: MediaKind.SHOW,
+              title: "Catalog Show",
+            },
+          });
+
+          const showChildren = yield* query.listChildren(
+            PRINCIPAL_ID,
+            create(ListChildrenRequestSchema, { parentMediaId: show.id }),
+          );
+          expect(showChildren.items.map(({ id, title }) => ({ id, title }))).toEqual([
+            { id: season.id, title: "Season One" },
+          ]);
+          const seasonChildren = yield* query.listChildren(
+            PRINCIPAL_ID,
+            create(ListChildrenRequestSchema, { parentMediaId: season.id }),
+          );
+          expect(seasonChildren.items.map(({ id, title }) => ({ id, title }))).toEqual([
+            { id: episode.id, title: "Episode Two" },
+          ]);
+
+          const episodeMedia = yield* query.getMedia(
+            PRINCIPAL_ID,
+            create(GetMediaRequestSchema, { mediaId: episode.id }),
+          );
+          expect(episodeMedia.media?.parents.map(({ title }) => title)).toEqual([
+            "Catalog Show",
+            "Season One",
+          ]);
+          expect(episodeMedia.media?.kindDetails).toMatchObject({
+            case: "episode",
+            value: { episodeNumber: 2, seasonNumber: 1 },
+          });
+
+          const sourceId = episode.sources[0]?.id;
+          expect(sourceId).toBeDefined();
+          if (sourceId === undefined) {
+            throw new Error("episode source fixture is missing");
+          }
+          const source = yield* query.getMediaSource(
+            PRINCIPAL_ID,
+            create(GetMediaSourceRequestSchema, {
+              mediaId: episode.id,
+              sourceId,
+            }),
+          );
+          expect(source.source).toMatchObject({
+            id: sourceId,
+            mediaId: episode.id,
+            parts: [
+              {
+                container: "mkv",
+                order: 0,
+                tracks: [
+                  {
+                    details: {
+                      case: "video",
+                      value: { codec: "hevc", height: 2160, width: 3840 },
+                    },
+                    order: 0,
+                  },
+                ],
+              },
+            ],
+          });
+
+          const movie = yield* database.catalog.observeItem(
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              itemReference: "private-no-children-movie",
+              sources: [
+                videoSource(
+                  "private-no-children-source",
+                  "private-no-children-part",
+                  "private-no-children-track",
+                ),
+              ],
+            }),
+          );
+          const noChildren = yield* query
+            .listChildren(
+              PRINCIPAL_ID,
+              create(ListChildrenRequestSchema, { parentMediaId: movie.id }),
+            )
+            .pipe(Effect.flip);
+          expect(noChildren).toMatchObject({ _tag: "MediaHasNoChildren" });
+
+          const publicJson = JSON.stringify(
+            { episodeMedia, showChildren, source },
+            (_key, value: unknown) => (typeof value === "bigint" ? value.toString() : value),
+          );
+          expect(publicJson).not.toContain("private-episode");
+          expect(publicJson).not.toContain(PROVIDER_INSTANCE_ID);
+        }),
+      );
+    }),
+  ),
+);
+
+it.live("resolves only stored artwork mappings into validated short-lived locators", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* storedArtworkResolution() {
+      yield* initializeCatalogDatabase(databaseUrl, [{ id: PROVIDER_INSTANCE_ID, priority: 1 }]);
+      yield* markProviderHealthy(databaseUrl, PROVIDER_INSTANCE_ID);
+      yield* markCatalogComplete(databaseUrl, PROVIDER_INSTANCE_ID);
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* resolveStoredArtwork() {
+          const movie = yield* database.catalog.observeItem(
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              itemReference: "private-artwork-item",
+              sources: [
+                videoSource(
+                  "private-artwork-source",
+                  "private-artwork-part",
+                  "private-artwork-track",
+                ),
+              ],
+            }),
+          );
+          const artworkId = movie.artwork[0]?.id;
+          if (artworkId === undefined) {
+            throw new Error("artwork fixture is missing");
+          }
+          let resolutionCount = 0;
+          const query = yield* makeStoredQuery(
+            database,
+            () => NOW,
+            () => {
+              resolutionCount += 1;
+              return Effect.succeed({
+                $typeName: "nama.plugin.v1.ProviderArtworkLease",
+                accessExpiresAt: undefined,
+                allowedRedirectOrigins: ["https://artwork.example"],
+                authorizationScope: ArtworkAuthorizationScope.PUBLIC,
+                headers: [],
+                mimeType: "image/jpeg",
+                url: "https://artwork.example/poster.jpg",
+              });
+            },
+          );
+          yield* query.getHome(PRINCIPAL_ID, create(GetHomeRequestSchema, {}));
+          expect(resolutionCount).toBe(0);
+
+          const response = yield* query.resolveArtwork(
+            PRINCIPAL_ID,
+            create(ResolveArtworkRequestSchema, {
+              artworkId,
+              maxHeight: 900,
+              maxWidth: 600,
+            }),
+          );
+          expect(resolutionCount).toBe(1);
+          expect(response.locator).toMatchObject({
+            allowedRedirectOrigins: ["https://artwork.example"],
+            headers: [],
+            height: 1500,
+            refreshAt: {
+              nanos: 0,
+              seconds: BigInt(Math.floor((NOW + 5 * 60 * 1000) / 1000)),
+            },
+            url: "https://artwork.example/poster.jpg",
+            width: 1000,
+          });
+          expect(
+            JSON.stringify(response, (_key, value: unknown) =>
+              typeof value === "bigint" ? value.toString() : value,
+            ),
+          ).not.toContain("private-artwork");
+
+          const unsafeQuery = yield* makeStoredQuery(
+            database,
+            () => NOW,
+            () =>
+              Effect.succeed({
+                $typeName: "nama.plugin.v1.ProviderArtworkLease",
+                accessExpiresAt: undefined,
+                allowedRedirectOrigins: ["https://artwork.example"],
+                authorizationScope: ArtworkAuthorizationScope.PROVIDER_ACCOUNT,
+                headers: [],
+                mimeType: "image/jpeg",
+                url: "https://artwork.example/poster.jpg",
+              }),
+          );
+          const unsafe = yield* unsafeQuery
+            .resolveArtwork(PRINCIPAL_ID, create(ResolveArtworkRequestSchema, { artworkId }))
+            .pipe(Effect.flip);
+          expect(unsafe).toMatchObject({ _tag: "ResourceNotFound" });
+        }),
+      );
+    }),
+  ),
+);

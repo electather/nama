@@ -16,6 +16,7 @@ import type {
   CatalogItemObservation,
   CatalogTransaction,
 } from "./catalog-persistence-model-private.ts";
+import { refreshSearchProjection } from "./catalog-search-private.ts";
 import { providerInstance } from "./provider-schema.ts";
 
 const EMPTY_LENGTH = 0;
@@ -277,6 +278,7 @@ const replaceCanonicalItem = (
     await replaceExternalIdentifierEvidence(transaction, input);
     await replaceParentEvidence(transaction, input, projection.parentReferences);
     await replaceNestedCatalogRecords(transaction, input, canonicalItemId);
+    await refreshSearchProjection(transaction, canonicalItemId);
     const affectedItemIds = await repairHierarchy(transaction, input, canonicalItemId);
     await reconcileLibraryEntries(transaction, affectedItemIds);
     return canonicalItemId;

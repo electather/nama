@@ -142,6 +142,7 @@
       { "name": "entry", "patterns": ["src/main.ts"] },
       { "name": "composition", "patterns": ["src/app.ts", "src/tests/**/*.ts"] },
       { "name": "authentication", "patterns": ["src/authentication/**/*.ts"] },
+      { "name": "catalog", "patterns": ["src/catalog/**/*.ts"] },
       { "name": "configuration", "patterns": ["src/config/**/*.ts"] },
       { "name": "logging", "patterns": ["src/logging/**/*.ts"] },
       { "name": "database", "patterns": ["src/database/**/*.ts"] },
@@ -163,6 +164,7 @@
         "from": "composition",
         "allow": [
           "authentication",
+          "catalog",
           "configuration",
           "database",
           "lifecycle",
@@ -176,6 +178,10 @@
       {
         "from": "authentication",
         "allow": ["configuration", "database", "lifecycle", "setup"]
+      },
+      {
+        "from": "catalog",
+        "allow": ["configuration", "database", "plugin", "provider"]
       },
       { "from": "configuration", "allow": [] },
       { "from": "logging", "allow": ["configuration"] },
@@ -192,6 +198,7 @@
         "from": "transport",
         "allow": [
           "authentication",
+          "catalog",
           "configuration",
           "contracts",
           "database",
@@ -206,6 +213,7 @@
         "allow": [
           "authentication",
           "configuration",
+          "catalog",
           "contracts",
           "database",
           "lifecycle",

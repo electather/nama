@@ -1062,10 +1062,10 @@ const providerInstanceCursor = (
       input.pageToken.length === ZERO
         ? ""
         : pageTokens.decode({
-            administratorId: input.administratorId,
             method: LIST_PROVIDER_INSTANCES_METHOD,
             now,
             pageSize,
+            principalId: input.administratorId,
             query: NORMALIZED_PROVIDER_INSTANCE_QUERY,
             token: input.pageToken,
           }),
@@ -1107,11 +1107,11 @@ const listProviderInstances = (
       catch: pageTokenFailure,
       try: () =>
         pageTokens.encode({
-          administratorId: input.administratorId,
           cursor: instanceCursor(last),
           expiresAt: now + PAGE_TOKEN_LIFETIME_MILLISECONDS,
           method: LIST_PROVIDER_INSTANCES_METHOD,
           pageSize,
+          principalId: input.administratorId,
           query: NORMALIZED_PROVIDER_INSTANCE_QUERY,
         }),
     });
@@ -2133,10 +2133,10 @@ const providerTypeCursor = ({
         return "";
       }
       return pageTokens.decode({
-        administratorId: input.administratorId,
         method: LIST_PROVIDER_TYPES_METHOD,
         now,
         pageSize,
+        principalId: input.administratorId,
         query: NORMALIZED_PROVIDER_TYPE_QUERY,
         token: input.pageToken,
       });
@@ -2185,11 +2185,11 @@ const listProviderTypes = (
       catch: pageTokenFailure,
       try: () =>
         pageTokens.encode({
-          administratorId: input.administratorId,
           cursor: nextCursor,
           expiresAt: now + PAGE_TOKEN_LIFETIME_MILLISECONDS,
           method: LIST_PROVIDER_TYPES_METHOD,
           pageSize,
+          principalId: input.administratorId,
           query: NORMALIZED_PROVIDER_TYPE_QUERY,
         }),
     });

@@ -6,8 +6,8 @@ import { Context, Data, Effect, Layer, Redacted } from "effect";
 import { Pool } from "pg";
 
 import { Config } from "../config/config.ts";
-import { makeCatalogPersistence } from "./catalog-persistence.ts";
-import type { CatalogPersistence } from "./catalog-persistence.ts";
+import { makeCatalog } from "./catalog-persistence.ts";
+import type { CatalogPersistence, CatalogQueryStorage } from "./catalog-persistence.ts";
 import { reconcileDatabaseInitialization } from "./initialization.ts";
 import type { DatabaseInitialization } from "./initialization.ts";
 import { makeProviderPersistence } from "./provider-persistence.ts";
@@ -38,6 +38,7 @@ interface DatabaseAuthentication {
 interface DatabaseService {
   readonly authentication: DatabaseAuthentication;
   readonly catalog: CatalogPersistence;
+  readonly catalogQueries: CatalogQueryStorage;
   readonly initialization: DatabaseInitialization;
   readonly checkReadiness: Effect.Effect<boolean>;
   readonly providers: ProviderPersistence;
@@ -124,6 +125,7 @@ const makeDatabase = (migrationsFolder: string) =>
       try: () => migrate(database, { migrationsFolder }),
     });
     const initialization = yield* reconcileDatabaseInitialization(database);
+    const catalog = makeCatalog(database);
     const providerPersistence = yield* Effect.acquireRelease(
       makeProviderPersistence(database, config.security.masterKey),
       (owner) => Effect.sync(owner.close),
@@ -136,7 +138,8 @@ const makeDatabase = (migrationsFolder: string) =>
           completeInitialization(database, administratorUserId),
         database,
       },
-      catalog: makeCatalogPersistence(database),
+      catalog: catalog.persistence,
+      catalogQueries: catalog.queries,
       checkReadiness: makeReadinessProbe(pool),
       initialization,
       providers: providerPersistence.service,

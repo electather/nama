@@ -6,6 +6,8 @@ import type {
   CatalogDatabase,
   CatalogItemObservation,
 } from "./catalog-persistence-model-private.ts";
+import { makeCatalogQueryStorage } from "./catalog-query-storage.ts";
+import type { CatalogQueryStorage } from "./catalog-query-storage.ts";
 import { loadItem } from "./catalog-reads-private.ts";
 
 const makeCatalogPersistence = (database: CatalogDatabase) => ({
@@ -29,4 +31,20 @@ const makeCatalogPersistence = (database: CatalogDatabase) => ({
 });
 type CatalogPersistence = ReturnType<typeof makeCatalogPersistence>;
 
-export { type CatalogItemObservation, type CatalogPersistence, makeCatalogPersistence };
+interface CatalogOwner {
+  readonly persistence: CatalogPersistence;
+  readonly queries: CatalogQueryStorage;
+}
+
+const makeCatalog = (database: CatalogDatabase): CatalogOwner => ({
+  persistence: makeCatalogPersistence(database),
+  queries: makeCatalogQueryStorage(database),
+});
+
+export {
+  type CatalogItemObservation,
+  type CatalogOwner,
+  type CatalogPersistence,
+  type CatalogQueryStorage,
+  makeCatalog,
+};
