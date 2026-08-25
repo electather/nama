@@ -10,7 +10,7 @@ The CLI remains useful without an interactive terminal. Every operation has a co
 
 ## Scope and delivery
 
-The complete MVP management surface covers initial Administrator setup, authentication and server profiles, provider configuration, synchronization status and triggering, broad first-party OAuth grant revocation, health, and diagnostics. Command families enter with the server RPCs they exercise:
+The complete MVP management surface covers initial Administrator setup, authentication and server profiles, Apple device-code approval, provider configuration, synchronization status and triggering, broad first-party OAuth grant revocation, health, and diagnostics. Command families enter with the server boundaries they exercise:
 
 - Milestone 0 created the compilable Cobra boundary and proved that generated public clients are consumable.
 - Issue #24 implements the shared CLI foundation, named profiles, administrator setup, sign-in, and authentication status.
@@ -22,8 +22,9 @@ The complete MVP management surface covers initial Administrator setup, authenti
 - Issue #80 proves those commands as one restart and upgrade flow against the production server, PostgreSQL, supervisor, Jellyfin plugin, and a disposable Jellyfin server.
 - Issue #107 adds ordered restricted-schema prompts for human create and update while preserving complete file/stdin automation and JSON no-prompt behavior.
 - Issue #31 adds provider-neutral candidate and stored-instance connection tests while retaining provider-type listing as the installed capability-inspection surface.
+- Issue #145 adds `nama auth approve-device <user-code>` over the generated `AuthService.ApproveDeviceAuthorization` method plus broad fixed-client refresh-family revocation.
 
-The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no general management web application or CLI plugin framework in the MVP; Better Auth device authorization owns only its minimal browser sign-in and confirmation pages.
+The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no general management web application or CLI plugin framework in the MVP. Issue #145 makes Apple authorization complete through the CLI; issue #167 separately owns optional browser approval.
 
 ## Technology
 
@@ -76,7 +77,8 @@ nama
 ├── auth
 │   ├── login
 │   ├── logout
-│   └── status
+│   ├── status
+│   └── approve-device
 ├── profile
 ├── provider
 │   ├── type
@@ -98,15 +100,23 @@ nama
 └── schema
 ```
 
-Only commands backed by an implemented public RPC are added. Exact leaf commands, arguments, and flags are designed with those RPCs; this list reserves no unimplemented server behavior.
+Only commands backed by an implemented public RPC are added. Exact leaf
+commands, arguments, and flags are designed with those RPCs; this list reserves
+no other unimplemented server behavior.
 
-Issue #145 adds one destructive Administrator-authenticated operation under
-`nama auth` that revokes every Better Auth refresh-token family for the fixed
-first-party Apple client. Its exact leaf name and generated request are added
-only with the owning RPC. It does not approve device codes, list
-installations, or promise immediate invalidation of already-issued access JWTs;
-human mode confirms the broad effect, and non-interactive or JSON use requires
-`--yes`.
+`nama auth approve-device <user-code>` requires an active Administrator session
+for the selected endpoint and sends the code through the generated
+`AuthService.ApproveDeviceAuthorization` client with the existing signed bearer
+from its profile or `NAMA_TOKEN`. It does not ask for a password, mint a
+session, or call Better Auth directly. Terminal and JSON output map stable
+Connect failures without printing the session bearer or code in diagnostics.
+
+Issue #145 also adds one destructive Administrator-authenticated operation
+under `nama auth` that revokes every Better Auth refresh-token family for the
+fixed first-party Apple client. Its exact leaf name and generated request are
+added only with the owning RPC. It does not list installations or promise
+immediate invalidation of already-issued access JWTs; human mode confirms the
+broad effect, and non-interactive or JSON use requires `--yes`.
 
 Provider commands are generic `ProviderService` clients; no Jellyfin-specific
 public command family exists. Implemented create, update, and delete generate a

@@ -195,7 +195,7 @@ claim that the module compiles or runs:
 | --- | --- |
 | Application Session | Verified endpoint, OAuth authorization availability, authorization phase, and shared access-token expiry |
 | Connection | Explicit LAN discovery, manual endpoint entry, verification, and last-verified endpoint persistence |
-| OAuth Authorization | RFC 8628 request and polling, browser-verification presentation, endpoint-bound token commit, refresh, and revocation response |
+| OAuth Authorization | RFC 8628 request and polling, displayed CLI-approval code and instructions, endpoint-bound token commit, refresh, and revocation response |
 | Home | Product entry composition, including Continue Watching when Watch state exists |
 | Library | Provider-neutral browse, search, and bounded list loading |
 | Details | Movie, show, season, and episode presentation plus watched and playback intents |
@@ -251,8 +251,9 @@ transaction:
 1. verify the candidate endpoint without attaching existing tokens;
 2. request a Better Auth device authorization for the fixed public client,
    exact candidate resource, granular consumer scopes, and `offline_access`;
-3. present the user code and verification URI while polling no faster than the
-   returned interval;
+3. present the user code with instructions for an already authenticated
+   Administrator to run `nama auth approve-device <user-code>` against the same
+   endpoint, while polling no faster than the returned interval;
 4. exchange the approved device code for access and refresh tokens;
 5. durably store the complete endpoint-bound Keychain record; and
 6. only then delete the old bundle and publish the new authorization.

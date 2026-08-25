@@ -8,7 +8,7 @@ This roadmap turns Nama's architecture into the smallest sequence of releasable 
 
 - The core is TypeScript on Node.js 24 using pnpm, ESM, an exact-pinned Effect v4 beta, Drizzle ORM with PostgreSQL, Protobuf, ConnectRPC, and Buf.
 - `api.v1` is the public application RPC contract and `plugin.v1` is the separate provider contract. Generated SDKs, not handwritten parallel clients, consume both; Better Auth's standard OAuth HTTP contract is the deliberate authorization exception.
-- Better Auth remains private behind Nama-owned setup and CLI Administrator-authentication RPCs, while its OAuth authorization-server, browser-approval session, metadata, and JWKS routes are public. Neither the Go CLI nor the universal Apple app imports Better Auth implementation types.
+- Better Auth remains private behind Nama-owned setup, CLI Administrator-authentication, and device-approval RPCs, while its standard OAuth authorization-server metadata, JWKS, device-code, token, refresh, and revocation routes are public. Issue #145 exposes no browser email/password, session, verification, or approve/deny routes; issue #167 separately owns an optional browser approval surface over the shared internal service. Neither the Go CLI nor the universal Apple app imports Better Auth implementation types.
 - The Go `nama` CLI is the MVP management interface. It supports complete help, generated shell completion, stable exit codes, non-interactive flags, JSON output, and a repository Codex `SKILL.md`.
 - The production server target is Linux in Docker. Deployment is one Nama image containing the core and bundled plugin executables, plus PostgreSQL. macOS is both a server development target and a supported client platform.
 - Provider plugins are stateless, supervised subprocesses. They use ConnectRPC over Unix domain sockets and never access the database. The core owns configuration, secrets, cursors, retries, reconciliation, and all durable state.
@@ -153,8 +153,9 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
 
 - LAN discovery using mDNS/DNS-SD service `_nama._tcp`, plus manual Nama endpoint entry for LAN, VPN, and reverse-proxy deployments on every supported Apple platform.
 - Plain HTTP only for loopback, private/link-local addresses, reserved `localhost`/`.localhost` names, or `.local` names, with a clear warning. Public hostnames and addresses require HTTPS.
-- Better Auth OAuth Device Authorization for one migration-seeded native public Apple client: the app requests and displays a short-lived user code and verification URI, an authenticated Administrator approves or denies it through one minimal browser confirmation page, and the app polls Better Auth's OAuth token endpoint at the returned interval.
+- Better Auth OAuth Device Authorization for one migration-seeded native public Apple client: the app requests and displays a short-lived user code, an already authenticated Administrator runs `nama auth approve-device <user-code>` against the same endpoint, and the app polls Better Auth's OAuth token endpoint at the returned interval. The CLI sends the code through the generated `AuthService.ApproveDeviceAuthorization` Connect method; its handler invokes Better Auth's internal claim and approval APIs with the authenticated session context, without a browser, repeated password entry, loopback HTTP, or direct persistence access.
 - The client requests the exact Nama API resource with `nama:library`, `nama:playback`, `nama:user-state`, and `offline_access`. Connect verifies its access JWT locally by signature, issuer, audience, expiry, fixed client ID, and method-specific scope.
+- Issue #167 separately tracks browser sign-in and device confirmation as an alternative web-app surface. It does not gate the complete CLI-only Apple authorization path.
 - Better Auth persistence for device-code state, the fixed client, signing keys,
   and refresh-token families plus minimal canonical media, Library entries,
   exact provider-to-canonical mappings, and durable initial catalog-scan
@@ -177,11 +178,11 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
 
 ### Explicit non-goals
 
-- Android, a general web-management UI beyond the required sign-in and device-confirmation pages, separate Apple-platform codebases, offline downloads, live TV, AirPlay-specific features, custom video rendering, a second playback engine, or Nama media proxying.
+- Android, a general web-management UI beyond issue #167's separately tracked device-approval surface, separate Apple-platform codebases, offline downloads, live TV, AirPlay-specific features, custom video rendering, a second playback engine, or Nama media proxying.
 
 ### Exit criteria
 
-- On a fresh iPhone or iPad, Apple TV, and Mac, the user can discover a LAN server or enter its URL, authorize through the browser device flow, browse, search, open a movie or episode, and begin playback.
+- On a fresh iPhone or iPad, Apple TV, and Mac, the user can discover a LAN server or enter its URL, authorize by entering the displayed code in an already authenticated Go CLI, browse, search, open a movie or episode, and begin playback without a browser.
 - Supported fixtures direct-play through the selected engine on each platform; incompatible fixtures follow the expected Jellyfin fallback without sending media bytes through the core.
 - Administrator revocation stops every refresh-token family for the fixed Apple client; already-issued access JWTs remain valid only until Better Auth's pinned one-hour expiry.
 
@@ -336,7 +337,7 @@ Conditional work must pass the same architecture boundaries and may be cut witho
 
 ### Explicit v1 non-goals
 
-- Sonarr/Radarr acquisition, request workflows, offline downloads, deletion/media management, Android/web applications, separate Apple-platform clients, playlists, comments, notifications, recommendation ML, plugin marketplace, WASM runtime, native media scanning/serving/transcoding, live TV, high availability, or cloud-hosted control services.
+- Sonarr/Radarr acquisition, request workflows, offline downloads, deletion/media management, Android or general web applications beyond issue #167's device-approval surface, separate Apple-platform clients, playlists, comments, notifications, recommendation ML, plugin marketplace, WASM runtime, native media scanning/serving/transcoding, live TV, high availability, or cloud-hosted control services.
 
 ### v1 exit criteria
 

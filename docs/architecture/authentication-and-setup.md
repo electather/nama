@@ -1,8 +1,8 @@
 # Authentication, setup, and OAuth authorization
 
-Status: issue #23 server setup and Administrator authentication plus issue #24 CLI setup, sign-in, and status are implemented and verified. Issue #145 defines the accepted Better Auth OAuth authorization target; its runtime, wire-contract, browser, CLI, and Apple behavior remain unimplemented.
+Status: issue #23 server setup and Administrator authentication plus issue #24 CLI setup, sign-in, and status are implemented and verified. Issue #145 defines the accepted Better Auth OAuth authorization target with authenticated CLI approval; its runtime, wire-contract, CLI, and Apple behavior remain unimplemented. Issue #167 separately owns browser approval.
 
-Nama owns public setup, Administrator authentication, and protected-resource authorization semantics. The implemented setup and CLI Administrator-authentication adapter remains private behind `SetupService` and `AuthService`; the target OAuth authorization-server and browser-approval session routes are a deliberate public Better Auth boundary under [ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md), superseding the broader route prohibition in [ADR-0007](../adr/0007-private-better-auth-adapter.md).
+Nama owns public setup, Administrator authentication, and protected-resource authorization semantics. The implemented setup and CLI Administrator-authentication adapter remains private behind `SetupService` and `AuthService`; [ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md) deliberately exposes only the fixed Apple client's standard OAuth metadata, JWKS, device-code, token, refresh, and revocation routes, superseding that part of [ADR-0007](../adr/0007-private-better-auth-adapter.md). CLI approval remains a generated `AuthService` operation over the private adapter. Browser email/password and session routes remain private unless issue #167 implements its separate web-app surface.
 
 ## Implemented runtime boundary
 
@@ -34,17 +34,22 @@ Issue #145 adds the exact compatible Better Auth JWT, OAuth Provider, and OAuth
 Device Authorization plugins. Better Auth owns the RFC 8628 device-code
 records, issuance and polling endpoints, approval state, token issuance,
 refresh rotation, expiry, revocation endpoints, migrations, and cleanup. Nama
-does not wrap those endpoints in Connect or maintain parallel code, digest,
-delivery-envelope, approval-result, Device, or cleanup records.
+does not wrap the Apple client's device-code, token, or refresh protocol in
+Connect or maintain parallel code, digest, delivery-envelope, approval-result,
+Device, or cleanup records. The one Connect approval method is an
+Administrator management adapter over Better Auth's internal APIs.
 
-The existing listener publicly delegates Better Auth's authorization-server
-routes, OAuth authorization-server metadata, required protected-resource
-metadata, JWKS, and the native email/password and session routes required by
-browser approval. Better Auth's session cookie is public only to that browser
-flow; setup and CLI authentication retain their Nama Connect contracts. The
-implementation continues to suppress Better Auth logging and telemetry and
-never logs cookies, authorization headers, device or user codes, access tokens,
-refresh tokens, request bodies, or arbitrary OAuth parameters.
+The existing listener publicly delegates Better Auth's OAuth
+authorization-server metadata, required protected-resource metadata, JWKS,
+device-code issuance, token exchange, refresh, and revocation routes. It does
+not expose verification or approve/deny routes for issue #145. The generated
+`AuthService.ApproveDeviceAuthorization` method passes the authenticated
+Administrator session context through the private adapter to Better Auth's
+internal verification and approval APIs. Setup and CLI authentication retain
+their existing Nama Connect contracts. The implementation continues to
+suppress Better Auth logging and telemetry and never logs cookies,
+authorization headers, device or user codes, access tokens, refresh tokens,
+request bodies, or arbitrary OAuth parameters.
 
 Under ADR-0033's explicit transport exception, the existing acknowledged
 local-HTTP policy also applies to Administrator sign-in, device authorization,
@@ -74,21 +79,32 @@ encrypted credential-delivery envelope, operation replay record, custom
 device-authorization capacity, or cleanup scheduler. Access JWTs retain Better
 Auth's one-hour default and refresh tokens retain its 30-day default.
 
-## Target browser device authorization
+## Target CLI device authorization
 
 The Apple public client requests an OAuth device authorization directly from
-Better Auth and presents the returned user code and verification URI. It polls
+Better Auth and presents the returned user code with instructions for the
+already authenticated Administrator to run
+`nama auth approve-device <user-code>` against the same endpoint. It polls
 Better Auth's OAuth token endpoint with the device-code grant no faster than
 the returned interval. Approval yields an audience-bound JWT access token and,
 because `offline_access` was granted, a rotating refresh token.
 
-Nama serves only the browser surfaces required by that flow: Administrator
-sign-in and one device-confirmation page. Sign-in uses Better Auth's maintained
-email/password endpoint and browser session cookie; the same session claims and
-approves or denies the code. The confirmation page shows the entered code,
-fixed client, requested scopes, and resource and requires explicit approval or
-denial. The trusted first-party client does not add a second generic consent
-screen. A general web-management application remains out of scope.
+The CLI sends the user code through the generated
+`AuthService.ApproveDeviceAuthorization` method using its existing signed
+Administrator session bearer from the selected profile or `NAMA_TOKEN`. The
+handler invokes Better Auth's internal `deviceVerify` then `deviceApprove` APIs
+with the same session context. It does not ask for the password again, mint a
+second session, call Better Auth over loopback HTTP, manipulate Better Auth
+persistence, or reproduce its approval policy. Invoking the command with the
+displayed code is the explicit approval action. Invalid, expired,
+already-processed, and unauthorized results map to stable safe Connect
+failures.
+
+This is the installation Administrator authorizing the fixed Apple public
+client, not a new general consumer-user login model. Issue #167 separately owns
+browser sign-in and explicit device confirmation as an optional web-app surface
+over the same internal application service. The issue #145 flow remains
+complete without a browser.
 
 ## Target protected-resource authorization
 
@@ -140,8 +156,8 @@ grant. Multiple saved endpoint grants remain deferred.
 
 [ADR-0026](../adr/0026-standard-google-rpc-error-details.md) governs Connect application failure details, and [ADR-0027](../adr/0027-logical-operation-idempotency.md) keeps server-owned request correlation separate from logical-operation identity. The outer Node dispatch assigns server-owned `nama-request-id` to every delegated Connect response before decoding. Application-generated failures carry the same value in `google.rpc.RequestInfo`; malformed Connect input may fail before the application pipeline, so the response header is the correlation fallback. Terminal RPC logs contain only the request ID, method, Connect code, and duration. Better Auth HTTP endpoints retain their standard protocol errors but share the same credential and body redaction rules.
 
-Focused server and CLI coverage, disposable PostgreSQL, generated clients, compiled-command smoke tests, and package-entrypoint process coverage verify the implemented setup creation and restart repair, sign-in/current-user/sign-out, CLI setup recovery and credential replacement, forced session-deletion failure, rate limits, cancellation, correlation, public-error and log redaction, readiness, and fatal ambiguity handling. Issue #145 additionally requires executable authorization-server discovery, browser confirmation, device-code exchange, JWT enforcement, refresh rotation, broad client-grant revocation, and Apple Keychain flows before the OAuth target may be called implemented.
+Focused server and CLI coverage, disposable PostgreSQL, generated clients, compiled-command smoke tests, and package-entrypoint process coverage verify the implemented setup creation and restart repair, sign-in/current-user/sign-out, CLI setup recovery and credential replacement, forced session-deletion failure, rate limits, cancellation, correlation, public-error and log redaction, readiness, and fatal ambiguity handling. Issue #145 additionally requires executable authorization-server discovery, generated Connect CLI approval over the private Better Auth adapter, device-code exchange, JWT enforcement, refresh rotation, broad client-grant revocation, and Apple Keychain flows before the OAuth target may be called implemented.
 
 ## Unfinished work
 
-Better Auth OAuth Provider, public authorization-server routes, browser device confirmation, JWT-protected consumer access, broad Apple-client grant revocation, and Apple Keychain token ownership are not implemented. The current `DeviceService` Protobuf contract is obsolete target material and remains only until the implementation cutover removes it and regenerates every consumer. CLI sign-out remains unfinished. Public signup, invitations, password recovery, dynamic client registration, authorization-code and client-credentials grants, OIDC identity scopes, multiple roles, multiple saved endpoint grants, and a general web administration UI remain outside the target runtime.
+Better Auth OAuth Provider, public authorization-server routes, CLI device approval, JWT-protected consumer access, broad Apple-client grant revocation, and Apple Keychain token ownership are not implemented. Browser sign-in and device confirmation remain the separate issue #167 web-app target. The current `DeviceService` Protobuf contract is obsolete target material and remains only until the implementation cutover removes it and regenerates every consumer. CLI sign-out remains unfinished. Public signup, invitations, password recovery, dynamic client registration, authorization-code and client-credentials grants, OIDC identity scopes, multiple roles, multiple saved endpoint grants, and a general web administration UI beyond issue #167 remain outside the target runtime.
