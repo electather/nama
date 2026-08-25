@@ -16,7 +16,7 @@ Nama's target MVP is a self-hosted control plane, not a media relay. A TypeScrip
 
 ```text
 Apple app ── OAuth device grant ──┐
-Browser ──── OAuth approval ──────┤
+Go CLI ───── OAuth approval ──────┤
 Apple app ──────────────┐         ├──> Node core ───> Drizzle ORM ───> PostgreSQL
 Go CLI ── Connect api.v1├─────────┘        │
                         │                  └── Connect plugin.v1 over Unix socket
@@ -27,6 +27,8 @@ Apple player <──────────┴───────────
 ```
 
 The target installation is one private deployment with one administrator, Jellyfin as its first provider type, and one universal SwiftUI client for iPhone, iPad, Apple TV, and Mac on Apple platform version 26 or later. Multiple Jellyfin provider instances may supply watch-state input. The public and plugin contracts are real from the first vertical slice, while a marketplace, web console, generic workflow engine, distributed queue, and native media server are not part of the target architecture.
+
+The MVP authorization path is complete without a browser: an already authenticated Go CLI claims and approves the Apple app's displayed user code through Better Auth's native device endpoints. Issue #167 may add a narrow browser approval web app as an alternative; it does not become a prerequisite for Apple authorization or a general web console.
 
 The implemented baseline is narrower than that topology. `@nama/server` currently runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, readiness probing, exact health routes, Setup and administrator Auth RPCs through a private Better Auth adapter, the durable provider persistence/protection boundary, and an authenticated Effect-scoped plugin supervisor. Before binding, a code-owned bundled registry discovers the production Jellyfin plugin, validates its identity and restricted configuration schema, and reconciles the last accepted installation metadata. Authenticated provider-neutral RPCs and compiled CLI commands list provider types, then create, list, inspect, patch, disable, re-enable, and permanently delete disabled provider instances. Create verifies one isolated Jellyfin candidate and atomically commits encrypted credentials plus a principal digest. Update keeps metadata-only changes local, verifies candidate configuration or credential changes against the immutable principal, fences revisions, retires old runtime admission, and atomically commits the replacement snapshot. Delete rejects enabled or busy instances, closes core activity and plugin admission, proves supervised cleanup, and atomically removes instance-owned state while retaining its durable retry result. Better Auth routes remain unmounted; setup closes its durable marker transactionally; and sign-out confirms durable session revocation. Device pairing, provider-instance testing, Apple-client behavior, media capabilities, and playback remain target contracts rather than implemented capabilities.
 

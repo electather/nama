@@ -383,10 +383,14 @@ normalized persistence, initial scan state, item-aggregate transactions, and
 stored query behavior.
 
 The native listener dispatches exact health routes first, the configured Better
-Auth authorization-server, browser-session, and metadata paths second, and
-Connect application RPCs last. A reviewed Better Auth/Drizzle migration seeds the fixed native
-public Apple client. Nama adds no Pairing or Device owner, generic repository,
-crypto service, scheduler framework, or duplicate OAuth endpoint.
+Auth authorization-server, device-approval, and metadata paths second, and
+Connect application RPCs last. A reviewed Better Auth/Drizzle migration seeds
+the fixed native public Apple client. An already authenticated Go CLI claims
+and approves the displayed user code through Better Auth's native device routes
+using its existing signed Administrator bearer. Issue #145 exposes no browser
+email/password or session routes; issue #167 may add those later for its
+separate web approval surface. Nama adds no Pairing or Device owner, generic
+repository, crypto service, scheduler framework, or duplicate OAuth endpoint.
 
 Connect's default-deny inventory locally verifies Better Auth access JWT
 signature, issuer, exact resource audience, expiry, fixed client ID, and the
@@ -444,10 +448,11 @@ The server test gate must continue to exercise behavior, not only generated cont
 - real Connect and compiled-CLI provider-management flows with exact redacted
   output;
 - Better Auth authorization-server behavior against production migrations:
-  fixed public-client seeding, metadata and JWKS, browser code confirmation,
-  device-code polling, scoped audience-bound JWT issuance, refresh rotation,
-  expiry, broad client-grant revocation, wrong-issuer/audience/client/scope
-  rejection, and credential/code/token redaction;
+  fixed public-client seeding, metadata and JWKS, authenticated CLI code claim
+  and approval, device-code polling, scoped audience-bound JWT issuance,
+  refresh rotation, expiry, broad client-grant revocation,
+  wrong-issuer/audience/client/scope rejection, and credential/code/token
+  redaction;
 - one supervised production Jellyfin catalog scan through revision-fenced
   incremental commits, restart continuation, duplicate pages, out-of-order
   hierarchy, provider failure, disable/re-enable, and provider deletion; and

@@ -42,9 +42,12 @@ plugin child, proves recovery and application replacement, and requires a clean
 fixture; that fixture is not part of the application image and does not package
 Jellyfin Server for operators.
 
-Issue #145 adds Better Auth authorization-server, browser confirmation,
-metadata, JWKS, token, and revocation routes to the same published core
-listener. Nama deliberately retains its existing transport exception despite
+Issue #145 adds Better Auth authorization-server metadata, JWKS,
+device-authorization, token, and revocation routes to the same published core
+listener. The authenticated Go CLI uses those native device routes for approval;
+browser email/password and session routes remain outside issue #145 and belong
+to issue #167's separate web surface. Nama deliberately retains its existing
+transport exception despite
 Better Auth's production HTTPS guidance: loopback, private, link-local,
 `localhost`/`.localhost`, and `.local` endpoints may carry Administrator and
 OAuth credentials over HTTP only after the existing explicit warning and exact
