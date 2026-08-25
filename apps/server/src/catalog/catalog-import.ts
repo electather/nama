@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { Cause, Context, Effect, Layer } from "effect";
+import type { Scope } from "effect";
 
 import { Database } from "../database/database.ts";
 import { PluginSupervisor } from "../plugin/supervisor.ts";
@@ -15,17 +16,21 @@ import { scanCatalogCandidate } from "./catalog-import-runner.ts";
 import { listProviderCatalogPage } from "./catalog-provider-access.ts";
 
 const SCHEDULER_POLL_MILLISECONDS = 1000;
+const reportUnexpectedCause = (
+  cause: Cause.Cause<unknown>,
+  reportFatalFailure: ReportCatalogFatalFailure,
+): Effect.Effect<void> => {
+  if (Cause.hasInterruptsOnly(cause)) {
+    return Effect.void;
+  }
+  return reportFatalFailure(cause).pipe(Effect.asVoid);
+};
 const makeScheduler = (
-  scanEligible: Effect.Effect<void>,
+  scanEligible: Effect.Effect<void, never, Scope.Scope>,
   reportFatalFailure: ReportCatalogFatalFailure,
 ) =>
   Effect.forever(Effect.andThen(scanEligible, Effect.sleep(SCHEDULER_POLL_MILLISECONDS))).pipe(
-    Effect.catchCause((cause) => {
-      if (Cause.hasInterruptsOnly(cause)) {
-        return Effect.void;
-      }
-      return reportFatalFailure(cause).pipe(Effect.asVoid);
-    }),
+    Effect.catchCause((cause) => reportUnexpectedCause(cause, reportFatalFailure)),
   );
 
 const makeCatalogImport = (dependencies: CatalogImportDependencies): CatalogImportService => {
@@ -43,23 +48,30 @@ const makeCatalogImport = (dependencies: CatalogImportDependencies): CatalogImpo
         }),
       );
     });
-  const scanEligible = Effect.gen(function* scanEligibleCatalogs() {
-    const paused = yield* attempt(dependencies.catalog.pauseDisabledScans(dependencies.coreRunId));
-    if (paused.kind === "failure") {
-      yield* schedulingFailure;
-    }
-    const listed = yield* attempt(dependencies.catalog.listScanCandidates);
-    if (listed.kind === "failure") {
-      yield* schedulingFailure;
-      return;
-    }
-    const scheduled = Effect.forEach(
-      listed.success,
-      (candidate) => scanProvider(candidate.providerInstanceId),
-      { concurrency: "unbounded", discard: true },
-    );
-    yield* scheduled;
-  });
+  const scanEligible = (reportFatalFailure: ReportCatalogFatalFailure) =>
+    Effect.gen(function* scanEligibleCatalogs() {
+      const paused = yield* attempt(
+        dependencies.catalog.pauseDisabledScans(dependencies.coreRunId),
+      );
+      if (paused.kind === "failure") {
+        yield* schedulingFailure;
+      }
+      const listed = yield* attempt(dependencies.catalog.listScanCandidates);
+      if (listed.kind === "failure") {
+        yield* schedulingFailure;
+        return;
+      }
+      const scheduled = Effect.forEach(
+        listed.success,
+        (candidate) =>
+          scanProvider(candidate.providerInstanceId).pipe(
+            Effect.catchCause((cause) => reportUnexpectedCause(cause, reportFatalFailure)),
+            Effect.forkScoped,
+          ),
+        { concurrency: "unbounded", discard: true },
+      );
+      yield* scheduled;
+    });
   let started = false;
   const start: CatalogImportService["start"] = (reportFatalFailure) =>
     Effect.gen(function* startCatalogScheduler() {
@@ -67,10 +79,10 @@ const makeCatalogImport = (dependencies: CatalogImportDependencies): CatalogImpo
         return;
       }
       started = true;
-      const scheduler = makeScheduler(scanEligible, reportFatalFailure);
-      yield* Effect.forkChild(scheduler);
+      const scheduler = makeScheduler(scanEligible(reportFatalFailure), reportFatalFailure);
+      yield* Effect.forkScoped(scheduler);
     });
-  return Object.freeze({ scanEligible, start });
+  return Object.freeze({ start });
 };
 
 const contextService = Context.Service;

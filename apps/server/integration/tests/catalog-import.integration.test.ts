@@ -5,9 +5,10 @@ import { expect, it } from "@effect/vitest";
 import { ProviderItemReferenceSchema } from "@nama/api/nama/plugin/v1/common_pb.js";
 import { ListConsistency, ListItemsResponseSchema } from "@nama/api/nama/plugin/v1/library_pb.js";
 import { MediaKind, ProviderMediaItemSchema } from "@nama/api/nama/plugin/v1/media_pb.js";
-import { Deferred, Effect, Fiber } from "effect";
+import { Clock, Deferred, Effect } from "effect";
 
 import { makeCatalogImport } from "../../src/catalog/catalog-import.ts";
+import type { CatalogImportService } from "../../src/catalog/catalog-import.ts";
 import { PluginRpcError } from "../../src/plugin/errors.ts";
 import { initializeCatalogDatabase, movieObservation } from "./catalog-persistence.test-support.ts";
 import { productionMigrations, useDatabase, withPool } from "./database.test-support.ts";
@@ -17,6 +18,8 @@ const PROVIDER_INSTANCE_ID = "catalog-import-provider";
 const CAPTURED_REVISION = `${PROVIDER_INSTANCE_ID}-revision`;
 const CORE_RUN_ID = "catalog-import-core-run";
 const PROVIDER_DIGEST_BYTES = 32;
+const CATALOG_POLL_MILLISECONDS = 25;
+const CATALOG_WAIT_MILLISECONDS = 5000;
 
 const pluginItemReference = (itemId: string) => create(ProviderItemReferenceSchema, { itemId });
 
@@ -106,6 +109,63 @@ const scanFailure = (databaseUrl: string) =>
     ),
   );
 
+const pollCatalogStatus = (
+  databaseUrl: string,
+  expectedStatus: string,
+  deadline: number,
+): Effect.Effect<void> =>
+  Effect.gen(function* catalogStatusPoll() {
+    const snapshot = yield* catalogRows(databaseUrl);
+    if (snapshot.rows[0]?.status === expectedStatus) {
+      return;
+    }
+    const now = yield* Clock.currentTimeMillis;
+    if (now >= deadline) {
+      return yield* Effect.die(
+        new Error(`catalog scan did not reach ${expectedStatus} before the deadline`),
+      );
+    }
+    yield* Effect.sleep(CATALOG_POLL_MILLISECONDS);
+    yield* pollCatalogStatus(databaseUrl, expectedStatus, deadline);
+  });
+
+const waitForCatalogStatus = (databaseUrl: string, expectedStatus: string) =>
+  Clock.currentTimeMillis.pipe(
+    Effect.flatMap((now) =>
+      pollCatalogStatus(databaseUrl, expectedStatus, now + CATALOG_WAIT_MILLISECONDS),
+    ),
+  );
+
+const pollFailureCount = (
+  databaseUrl: string,
+  expectedCount: number,
+  deadline: number,
+): Effect.Effect<void> =>
+  Effect.gen(function* catalogFailurePoll() {
+    const failure = yield* scanFailure(databaseUrl);
+    if (failure.rows[0]?.consecutive_failure_count === expectedCount) {
+      return;
+    }
+    const now = yield* Clock.currentTimeMillis;
+    if (now >= deadline) {
+      return yield* Effect.die(
+        new Error(`catalog scan failure count did not reach ${expectedCount} before the deadline`),
+      );
+    }
+    yield* Effect.sleep(CATALOG_POLL_MILLISECONDS);
+    yield* pollFailureCount(databaseUrl, expectedCount, deadline);
+  });
+
+const waitForFailureCount = (databaseUrl: string, expectedCount: number) =>
+  Clock.currentTimeMillis.pipe(
+    Effect.flatMap((now) =>
+      pollFailureCount(databaseUrl, expectedCount, now + CATALOG_WAIT_MILLISECONDS),
+    ),
+  );
+
+const startImporter = (importer: CatalogImportService) =>
+  importer.start((cause: unknown) => Effect.die(cause));
+
 it.live("imports duplicate out-of-order pages into one published canonical hierarchy", () =>
   withIsolatedDatabase((databaseUrl) =>
     Effect.gen(function* initialCatalogImport() {
@@ -134,7 +194,12 @@ it.live("imports duplicate out-of-order pages into one published canonical hiera
           random: () => 0,
           runProviderActivity: passthroughActivity,
         });
-        return Effect.scoped(importer.scanEligible);
+        return Effect.scoped(
+          Effect.gen(function* runInitialCatalogImport() {
+            yield* startImporter(importer);
+            yield* waitForCatalogStatus(databaseUrl, "succeeded");
+          }),
+        );
       });
 
       expect(requests).toEqual(["begin", "continuation"]);
@@ -173,12 +238,12 @@ it.live("admits only one active scan for a provider across overlapping scheduler
         });
         return Effect.scoped(
           Effect.gen(function* overlappingScans() {
-            const first = yield* Effect.forkChild(importer.scanEligible);
+            yield* startImporter(importer);
             yield* Deferred.await(entered);
-            yield* importer.scanEligible;
+            yield* Effect.sleep(1100);
             expect(calls).toBe(1);
             yield* Deferred.succeed(release, undefined);
-            yield* Fiber.join(first);
+            yield* waitForCatalogStatus(databaseUrl, "succeeded");
           }),
         );
       });
@@ -224,7 +289,12 @@ it.live(
             random: () => 0,
             runProviderActivity: passthroughActivity,
           });
-          return Effect.scoped(importer.scanEligible);
+          return Effect.scoped(
+            Effect.gen(function* resumeCatalogImport() {
+              yield* startImporter(importer);
+              yield* waitForCatalogStatus(databaseUrl, "succeeded");
+            }),
+          );
         });
 
         expect(requests).toEqual(["continuation", "begin"]);
@@ -254,7 +324,12 @@ it.live("persists RetryInfo-bounded backoff and permanent safe failure classes",
           random: () => 0,
           runProviderActivity: passthroughActivity,
         });
-        return Effect.scoped(importer.scanEligible);
+        return Effect.scoped(
+          Effect.gen(function* recordRetryableFailure() {
+            yield* startImporter(importer);
+            yield* waitForFailureCount(databaseUrl, 1);
+          }),
+        );
       });
       const retry = yield* scanFailure(databaseUrl);
       expect(retry.rows[0]).toMatchObject({
@@ -281,7 +356,12 @@ it.live("persists RetryInfo-bounded backoff and permanent safe failure classes",
           random: () => 0,
           runProviderActivity: passthroughActivity,
         });
-        return Effect.scoped(importer.scanEligible);
+        return Effect.scoped(
+          Effect.gen(function* recordPermanentFailure() {
+            yield* startImporter(importer);
+            yield* waitForFailureCount(databaseUrl, 2);
+          }),
+        );
       });
       expect(yield* scanFailure(databaseUrl)).toMatchObject({
         rows: [
@@ -307,7 +387,12 @@ it.live("resets the running scan backoff after an accepted page", () =>
           random: () => 0,
           runProviderActivity: passthroughActivity,
         });
-        return Effect.scoped(importer.scanEligible);
+        return Effect.scoped(
+          Effect.gen(function* recordInitialFailure() {
+            yield* startImporter(importer);
+            yield* waitForFailureCount(databaseUrl, 1);
+          }),
+        );
       });
       yield* withPool(databaseUrl, (pool) =>
         Effect.promise(() =>
@@ -345,7 +430,12 @@ it.live("resets the running scan backoff after an accepted page", () =>
           random: () => 0,
           runProviderActivity: passthroughActivity,
         });
-        return Effect.scoped(importer.scanEligible);
+        return Effect.scoped(
+          Effect.gen(function* resumeFailedCatalogImport() {
+            yield* startImporter(importer);
+            yield* waitForFailureCount(databaseUrl, 1);
+          }),
+        );
       });
 
       const failure = yield* scanFailure(databaseUrl);
@@ -365,9 +455,15 @@ it.live("discovers provider instances created after importer construction", () =
     Effect.gen(function* newlyEligibleCatalogImport() {
       yield* initializeCatalogDatabase(databaseUrl, []);
       let calls = 0;
+      const firstPoll = yield* Deferred.make<void>();
       yield* useDatabase(databaseUrl, productionMigrations, (database) => {
         const importer = makeCatalogImport({
-          catalog: database.catalog,
+          catalog: {
+            ...database.catalog,
+            listScanCandidates: database.catalog.listScanCandidates.pipe(
+              Effect.tap(() => Deferred.succeed(firstPoll, undefined)),
+            ),
+          },
           coreRunId: CORE_RUN_ID,
           listPage: () => {
             calls += 1;
@@ -378,7 +474,8 @@ it.live("discovers provider instances created after importer construction", () =
         });
         return Effect.scoped(
           Effect.gen(function* laterProviderScan() {
-            yield* importer.scanEligible;
+            yield* startImporter(importer);
+            yield* Deferred.await(firstPoll);
             expect(calls).toBe(0);
             yield* withPool(databaseUrl, (pool) =>
               Effect.promise(() =>
@@ -392,7 +489,7 @@ it.live("discovers provider instances created after importer construction", () =
                 ),
               ),
             );
-            yield* importer.scanEligible;
+            yield* waitForCatalogStatus(databaseUrl, "succeeded");
           }),
         );
       });
@@ -420,9 +517,12 @@ it.live("propagates catalog scan interruption without persisting a false failure
           runProviderActivity: passthroughActivity,
         });
         return Effect.gen(function* interruptCatalogScan() {
-          const scan = yield* Effect.forkChild(importer.scanEligible);
-          yield* Deferred.await(entered);
-          yield* Fiber.interrupt(scan);
+          yield* Effect.scoped(
+            Effect.gen(function* runInterruptedCatalogScan() {
+              yield* startImporter(importer);
+              yield* Deferred.await(entered);
+            }),
+          );
           yield* Deferred.await(canceled);
         });
       });

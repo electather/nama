@@ -98,10 +98,15 @@ interface CatalogArtworkObservation {
   readonly width?: number | undefined;
 }
 
+interface CatalogProviderArtworkReference {
+  readonly artworkReference: string;
+  readonly itemReference: string;
+}
+
 interface CatalogCreditObservation {
   readonly characterName?: string | undefined;
   readonly name: string;
-  readonly portraitArtworkReference?: string | undefined;
+  readonly portraitArtworkReference?: CatalogProviderArtworkReference | undefined;
   readonly role: CatalogCreditRole;
 }
 
@@ -266,6 +271,7 @@ export {
   type CatalogMediaPartObservation,
   type CatalogMediaSourceObservation,
   type CatalogMediaTrackObservation,
+  type CatalogProviderArtworkReference,
   type CatalogPersistenceFailure,
   type CatalogSpatialAudioFormat,
   type CatalogSubtitleRepresentation,

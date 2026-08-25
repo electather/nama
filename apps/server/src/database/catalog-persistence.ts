@@ -13,7 +13,6 @@ import {
   acceptPage,
   beginScan,
   failScan,
-  freshness,
   listScanCandidates,
   pauseDisabledScans,
   resolvePageAcceptance,
@@ -22,7 +21,6 @@ import {
 import type {
   AcceptCatalogPageInput,
   BeginCatalogScanInput,
-  CatalogFreshness,
   CatalogPageAcceptance,
   CatalogScanCandidate,
   CatalogScanFailureReason,
@@ -43,7 +41,6 @@ interface CatalogPersistence {
   readonly failScan: (
     input: FailCatalogScanInput,
   ) => Effect.Effect<CatalogScanFailureRecording, CatalogPersistenceFailure>;
-  readonly freshness: Effect.Effect<CatalogFreshness, CatalogPersistenceFailure>;
   readonly listScanCandidates: Effect.Effect<
     readonly CatalogScanCandidate[],
     CatalogPersistenceFailure
@@ -70,7 +67,6 @@ type CatalogScanPersistence = Pick<
   | "acceptPage"
   | "beginScan"
   | "failScan"
-  | "freshness"
   | "listScanCandidates"
   | "pauseDisabledScans"
   | "resolvePageAcceptance"
@@ -93,10 +89,6 @@ const makeCatalogScanPersistence = (database: CatalogDatabase): CatalogScanPersi
       catch: catalogPersistenceFailure,
       try: () => failScan(database, input),
     }),
-  freshness: Effect.tryPromise({
-    catch: catalogPersistenceFailure,
-    try: () => freshness(database),
-  }),
   listScanCandidates: Effect.tryPromise({
     catch: catalogPersistenceFailure,
     try: () => listScanCandidates(database),
@@ -142,7 +134,6 @@ const makeCatalogPersistence = (database: CatalogDatabase): CatalogPersistence =
 export {
   type AcceptCatalogPageInput,
   type BeginCatalogScanInput,
-  type CatalogFreshness,
   type CatalogItemObservation,
   type CatalogPageAcceptance,
   type CatalogPersistence,

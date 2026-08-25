@@ -23,6 +23,10 @@ type CatalogSubtitleDetails = Extract<CatalogTrackDetails, { readonly type: "sub
 const INVALID_PAGE_MESSAGE = "invalid plugin catalog page";
 const DATE_YEAR_WIDTH = 4;
 const DATE_PART_WIDTH = 2;
+const MAXIMUM_DATE_YEAR = 9999;
+const FEBRUARY = 2;
+const COMMON_YEAR_FEBRUARY_DAYS = 28;
+const MAXIMUM_DAY_BY_MONTH = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
 const ZERO_DURATION = Object.freeze({ nanoseconds: 0, seconds: 0n });
 
 const ARTWORK_ROLE: Readonly<
@@ -116,14 +120,50 @@ const itemDuration = (item: ProviderMediaItem): CatalogItemObservation["runtime"
   return durationFromPlugin(item.runtime);
 };
 
+const isLeapYear = (year: number): boolean =>
+  year === 0 || (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0));
+
+const maximumDayFor = (year: number, month: number): number => {
+  const maximum = MAXIMUM_DAY_BY_MONTH[month];
+  if (maximum === undefined) {
+    return 0;
+  }
+  if (month === FEBRUARY && !isLeapYear(year)) {
+    return COMMON_YEAR_FEBRUARY_DAYS;
+  }
+  return maximum;
+};
+
+const validProtobufDate = ({ day, month, year }: ProtobufDate): boolean => {
+  if (
+    Math.min(year, month, day) < 0 ||
+    year > MAXIMUM_DATE_YEAR ||
+    month >= MAXIMUM_DAY_BY_MONTH.length ||
+    day > maximumDayFor(year, month)
+  ) {
+    return false;
+  }
+  if (year === 0) {
+    return month !== 0 && day !== 0;
+  }
+  return month !== 0 || day === 0;
+};
+
 const dateFromPlugin = (value: ProtobufDate | undefined): string | undefined => {
   if (value === undefined) {
     return undefined;
   }
-  const year = value.year.toString().padStart(DATE_YEAR_WIDTH, "0");
-  const month = value.month.toString().padStart(DATE_PART_WIDTH, "0");
-  const day = value.day.toString().padStart(DATE_PART_WIDTH, "0");
-  return `${year}-${month}-${day}`;
+  if (!validProtobufDate(value)) {
+    throw invalidPage();
+  }
+  const { day, month, year } = value;
+  if (year === 0 || month === 0 || day === 0) {
+    return undefined;
+  }
+  const formattedYear = year.toString().padStart(DATE_YEAR_WIDTH, "0");
+  const formattedMonth = month.toString().padStart(DATE_PART_WIDTH, "0");
+  const formattedDay = day.toString().padStart(DATE_PART_WIDTH, "0");
+  return `${formattedYear}-${formattedMonth}-${formattedDay}`;
 };
 
 export {

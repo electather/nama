@@ -18,10 +18,16 @@ import {
   SubtitleRepresentation,
 } from "@nama/api/nama/plugin/v1/media_pb.js";
 import type { ProviderMediaItem } from "@nama/api/nama/plugin/v1/media_pb.js";
-import { Effect, Fiber } from "effect";
+import { ProviderCapability as PluginProviderCapability } from "@nama/api/nama/plugin/v1/plugin_pb.js";
+import { Clock, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
+import { makeCatalogImport } from "../../src/catalog/catalog-import.ts";
+import { listProviderCatalogPage } from "../../src/catalog/catalog-provider-access.ts";
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
+import { initializeCatalogDatabase } from "./catalog-persistence.test-support.ts";
+import { productionMigrations, useDatabase, withPool } from "./database.test-support.ts";
+import { withIsolatedDatabase } from "./postgres.test-support.ts";
 
 const JELLYFIN_PLUGIN_PATH = join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts");
 const EXPIRED_CLOCK_PRELOAD_URL = `data:text/javascript,${encodeURIComponent(
@@ -42,6 +48,12 @@ const SINGLE_ITEM_COUNT = 1;
 const FIRST_CODE_UNIT_LENGTH = 1;
 const CATALOG_CONTINUATION_PROVIDER_REQUEST_COUNT = 2;
 const NO_PROVIDER_REQUESTS = 0;
+const CATALOG_IMPORT_POLL_MILLISECONDS = 25;
+const CATALOG_IMPORT_WAIT_MILLISECONDS = 10_000;
+const CATALOG_IMPORT_PROCESS_TIMEOUT_MILLISECONDS = 30_000;
+const CORE_CATALOG_PAGE_SIZE = 100;
+const CATALOG_PROVIDER_INSTANCE_ID = "provider-instance";
+const CATALOG_PROVIDER_REVISION = `${CATALOG_PROVIDER_INSTANCE_ID}-revision`;
 const API_KEY = "jellyfin-api-key-sentinel";
 const USER_ID = "user-identity";
 const MOVIE_ID = "movie-identity";
@@ -104,7 +116,11 @@ interface ObservedRequest {
 }
 
 interface ControlledJellyfin {
-  readonly catalog: { mode: CatalogResponseMode };
+  readonly catalog: {
+    hangAtStartIndex: number | undefined;
+    mode: CatalogResponseMode;
+    responses: readonly unknown[];
+  };
   readonly baseUrl: string;
   readonly cancellationObserved: Promise<void>;
   readonly failureBodyCancellationObserved: Promise<void>;
@@ -514,7 +530,11 @@ const acquireControlledJellyfin = Effect.acquireRelease(
     catch: (error) => error,
     try: async (): Promise<ControlledJellyfin> => {
       const requests: ObservedRequest[] = [];
-      const catalog: { mode: CatalogResponseMode } = { mode: "normal" };
+      const catalog: ControlledJellyfin["catalog"] = {
+        hangAtStartIndex: undefined,
+        mode: "normal",
+        responses: CATALOG_RESPONSES,
+      };
       const hangingRequest = Promise.withResolvers<void>();
       const cancellation = Promise.withResolvers<void>();
       const failureBodyObserved = Promise.withResolvers<void>();
@@ -569,9 +589,14 @@ const acquireControlledJellyfin = Effect.acquireRelease(
             return;
           }
           const startIndex = Number(endpoint.searchParams.get("startIndex"));
+          if (catalog.hangAtStartIndex === startIndex) {
+            hangingRequest.resolve();
+            response.once("close", cancellation.resolve);
+            return;
+          }
           const limit = Number(endpoint.searchParams.get("limit"));
           respondJson(response, {
-            Items: CATALOG_RESPONSES.slice(startIndex, startIndex + limit),
+            Items: catalog.responses.slice(startIndex, startIndex + limit),
             TotalRecordCount: 1,
           });
           return;
@@ -704,6 +729,137 @@ const superviseConfiguredJellyfin = (
       providerInstanceId: options.providerInstanceId ?? "provider-instance",
       revision: options.revision ?? "revision-1",
     },
+  );
+
+const passthroughActivity = <Success, Failure, Requirements>(
+  _providerInstanceId: string,
+  activity: Effect.Effect<Success, Failure, Requirements>,
+) => activity;
+
+interface PersistedCatalogImport {
+  readonly canonicalItemCount: number;
+  readonly hasContinuation: boolean | null;
+  readonly libraryEntryCount: number;
+  readonly mappingCount: number;
+  readonly nextRetryAt: Date | null;
+  readonly safeFailureReason: string | null;
+  readonly status: string | null;
+}
+
+const readPersistedCatalogImport = (databaseUrl: string) =>
+  withPool(databaseUrl, (pool) =>
+    Effect.promise(async (): Promise<PersistedCatalogImport> => {
+      const result = await pool.query<{
+        readonly canonical_item_count: number;
+        readonly has_continuation: boolean | null;
+        readonly library_entry_count: number;
+        readonly mapping_count: number;
+        readonly next_retry_at: Date | null;
+        readonly safe_failure_reason: string | null;
+        readonly status: string | null;
+      }>(
+        `SELECT
+           (SELECT count(*)::integer FROM canonical_item) AS canonical_item_count,
+           (SELECT last_accepted_continuation IS NOT NULL
+              FROM provider_catalog_scan_state
+              WHERE provider_instance_id = $1) AS has_continuation,
+           (SELECT count(*)::integer FROM library_entry) AS library_entry_count,
+           (SELECT count(*)::integer FROM provider_item_mapping
+              WHERE provider_instance_id = $1) AS mapping_count,
+           (SELECT next_retry_at FROM provider_catalog_scan_state
+              WHERE provider_instance_id = $1) AS next_retry_at,
+           (SELECT safe_failure_reason FROM provider_catalog_scan_state
+              WHERE provider_instance_id = $1) AS safe_failure_reason,
+           (SELECT status FROM provider_catalog_scan_state
+              WHERE provider_instance_id = $1) AS status`,
+        [CATALOG_PROVIDER_INSTANCE_ID],
+      );
+      const row = result.rows[0];
+      if (row === undefined) {
+        throw new Error("persisted catalog import snapshot is missing");
+      }
+      return {
+        canonicalItemCount: row.canonical_item_count,
+        hasContinuation: row.has_continuation,
+        libraryEntryCount: row.library_entry_count,
+        mappingCount: row.mapping_count,
+        nextRetryAt: row.next_retry_at,
+        safeFailureReason: row.safe_failure_reason,
+        status: row.status,
+      };
+    }),
+  );
+
+const pollPersistedCatalogImport = (
+  databaseUrl: string,
+  condition: (snapshot: PersistedCatalogImport) => boolean,
+  description: string,
+  deadline: number,
+): Effect.Effect<PersistedCatalogImport> =>
+  Effect.gen(function* persistedCatalogImportPoll() {
+    const snapshot = yield* readPersistedCatalogImport(databaseUrl);
+    if (condition(snapshot)) {
+      return snapshot;
+    }
+    const now = yield* Clock.currentTimeMillis;
+    if (now >= deadline) {
+      return yield* Effect.die(
+        new Error(`catalog import did not ${description}: ${JSON.stringify(snapshot)}`),
+      );
+    }
+    yield* Effect.sleep(CATALOG_IMPORT_POLL_MILLISECONDS);
+    return yield* pollPersistedCatalogImport(databaseUrl, condition, description, deadline);
+  });
+
+const waitForPersistedCatalogImport = (
+  databaseUrl: string,
+  condition: (snapshot: PersistedCatalogImport) => boolean,
+  description: string,
+) =>
+  Clock.currentTimeMillis.pipe(
+    Effect.flatMap((now) =>
+      pollPersistedCatalogImport(
+        databaseUrl,
+        condition,
+        description,
+        now + CATALOG_IMPORT_WAIT_MILLISECONDS,
+      ),
+    ),
+  );
+
+const readCanonicalStorage = (databaseUrl: string) =>
+  withPool(databaseUrl, (pool) =>
+    Effect.promise(async (): Promise<string> => {
+      const result = await pool.query<{ readonly stored_catalog: string }>(
+        `SELECT jsonb_build_object(
+           'items', (SELECT coalesce(jsonb_agg(to_jsonb(record)), '[]'::jsonb)
+                       FROM canonical_item AS record),
+           'library', (SELECT coalesce(jsonb_agg(to_jsonb(record)), '[]'::jsonb)
+                         FROM library_entry AS record),
+           'hierarchy', (SELECT coalesce(jsonb_agg(to_jsonb(record)), '[]'::jsonb)
+                           FROM canonical_hierarchy AS record),
+           'item_mappings', (SELECT coalesce(jsonb_agg(to_jsonb(record)), '[]'::jsonb)
+                               FROM provider_item_mapping AS record),
+           'external_ids', (SELECT coalesce(jsonb_agg(to_jsonb(record)), '[]'::jsonb)
+                              FROM provider_external_identifier AS record),
+           'artwork', (SELECT coalesce(jsonb_agg(to_jsonb(record)), '[]'::jsonb)
+                         FROM canonical_artwork AS record),
+           'credits', (SELECT coalesce(jsonb_agg(to_jsonb(record)), '[]'::jsonb)
+                         FROM canonical_credit AS record),
+           'sources', (SELECT coalesce(jsonb_agg(to_jsonb(record)), '[]'::jsonb)
+                         FROM media_source AS record),
+           'parts', (SELECT coalesce(jsonb_agg(to_jsonb(record)), '[]'::jsonb)
+                       FROM media_part AS record),
+           'tracks', (SELECT coalesce(jsonb_agg(to_jsonb(record)), '[]'::jsonb)
+                        FROM media_track AS record)
+         )::text AS stored_catalog`,
+      );
+      const storedCatalog = result.rows[0]?.stored_catalog;
+      if (storedCatalog === undefined) {
+        throw new Error("canonical storage snapshot is missing");
+      }
+      return storedCatalog;
+    }),
   );
 
 const assertOpaqueArtworkReferences = (item: ProviderMediaItem): void => {
@@ -1184,6 +1340,166 @@ it.effect("resumes a complete normalized catalog scan after plugin replacement",
   ),
 );
 
+it.live(
+  "persists and resumes a supervised production Jellyfin catalog scan",
+  () =>
+    withIsolatedDatabase((databaseUrl) =>
+      Effect.scoped(
+        Effect.gen(function* persistedJellyfinCatalogImportTest() {
+          yield* initializeCatalogDatabase(databaseUrl, [
+            { id: CATALOG_PROVIDER_INSTANCE_ID, priority: 1 },
+          ]);
+          const jellyfin = yield* acquireControlledJellyfin;
+          const supervisor = yield* PluginSupervisor;
+          const outOfOrderResponses = [
+            EPISODE_RESPONSE,
+            EPISODE_RESPONSE,
+            SEASON_RESPONSE,
+            SHOW_RESPONSE,
+            MOVIE_RESPONSE,
+          ] as const;
+          jellyfin.catalog.responses = Array.from(
+            { length: CORE_CATALOG_PAGE_SIZE + SINGLE_ITEM_COUNT },
+            (_value, index) => outOfOrderResponses[index % outOfOrderResponses.length],
+          );
+          jellyfin.catalog.hangAtStartIndex = CORE_CATALOG_PAGE_SIZE;
+
+          const failedImport = yield* useDatabase(databaseUrl, productionMigrations, (database) => {
+            let providerRevision = CATALOG_PROVIDER_REVISION;
+            const providers = {
+              ...database.providers,
+              loadInstallation: () =>
+                Effect.succeed({
+                  capabilities: [PluginProviderCapability.LIBRARY_READ],
+                  configurationSchema: {},
+                  contractMajor: 1,
+                  description: "Controlled production Jellyfin",
+                  displayName: "Jellyfin",
+                  pluginBuildVersion: "test",
+                  providerTypeId: "jellyfin",
+                  schemaProfileVersion: 1,
+                  schemaRevision: "1",
+                }),
+              loadInstance: (providerInstanceId: string) => {
+                if (providerInstanceId !== CATALOG_PROVIDER_INSTANCE_ID) {
+                  return Effect.die(new Error("unexpected catalog provider instance"));
+                }
+                return Effect.succeed({
+                  configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
+                  credentials: { api_key: API_KEY },
+                  displayName: "Controlled Jellyfin",
+                  enabled: true,
+                  id: CATALOG_PROVIDER_INSTANCE_ID,
+                  providerTypeId: "jellyfin",
+                  revision: providerRevision,
+                  syncPriority: 1,
+                });
+              },
+            };
+            const listPage = listProviderCatalogPage(providers, supervisor);
+            const makeImporter = (coreRunId: string) =>
+              makeCatalogImport({
+                catalog: database.catalog,
+                coreRunId,
+                listPage,
+                random: () => 0,
+                runProviderActivity: passthroughActivity,
+              });
+            const reportFatalFailure = (cause: unknown) => Effect.die(cause);
+
+            return Effect.gen(function* exercisePersistedJellyfinCatalogImport() {
+              yield* Effect.scoped(
+                Effect.gen(function* interruptAfterFirstPage() {
+                  yield* makeImporter("first-core-run").start(reportFatalFailure);
+                  yield* waitForPersistedCatalogImport(
+                    databaseUrl,
+                    (snapshot) =>
+                      snapshot.status === "running" && snapshot.hasContinuation === true,
+                    "persist its first continuation",
+                  );
+                  yield* Effect.promise(() => jellyfin.hangingRequestObserved);
+                }),
+              );
+              yield* Effect.promise(() => jellyfin.cancellationObserved);
+
+              const interrupted = yield* readPersistedCatalogImport(databaseUrl);
+              expect(interrupted).toMatchObject({
+                canonicalItemCount: 4,
+                hasContinuation: true,
+                libraryEntryCount: 4,
+                mappingCount: 4,
+                safeFailureReason: null,
+                status: "running",
+              });
+
+              jellyfin.catalog.hangAtStartIndex = undefined;
+              yield* Effect.scoped(
+                Effect.gen(function* resumePersistedContinuation() {
+                  yield* makeImporter("resumed-core-run").start(reportFatalFailure);
+                  yield* waitForPersistedCatalogImport(
+                    databaseUrl,
+                    (snapshot) => snapshot.status === "succeeded",
+                    "complete its resumed pass",
+                  );
+                }),
+              );
+
+              const completed = yield* readPersistedCatalogImport(databaseUrl);
+              expect(completed).toMatchObject({
+                canonicalItemCount: 4,
+                hasContinuation: false,
+                libraryEntryCount: 4,
+                mappingCount: 4,
+                safeFailureReason: null,
+                status: "succeeded",
+              });
+
+              providerRevision = `${CATALOG_PROVIDER_REVISION}-replacement`;
+              yield* withPool(databaseUrl, (pool) =>
+                Effect.promise(() =>
+                  pool.query(
+                    `UPDATE provider_instance
+                       SET revision = $2, updated_at = transaction_timestamp()
+                       WHERE id = $1`,
+                    [CATALOG_PROVIDER_INSTANCE_ID, providerRevision],
+                  ),
+                ),
+              );
+              jellyfin.catalog.mode = "unavailable";
+              yield* Effect.scoped(
+                Effect.gen(function* persistSafeProviderFailure() {
+                  yield* makeImporter("failure-core-run").start(reportFatalFailure);
+                  yield* waitForPersistedCatalogImport(
+                    databaseUrl,
+                    (snapshot) =>
+                      snapshot.status === "failed" &&
+                      snapshot.safeFailureReason === "provider_unavailable",
+                    "persist its safe provider failure",
+                  );
+                }),
+              );
+              return yield* readPersistedCatalogImport(databaseUrl);
+            });
+          });
+
+          expect(failedImport).toMatchObject({
+            canonicalItemCount: 4,
+            libraryEntryCount: 4,
+            mappingCount: 4,
+            safeFailureReason: "provider_unavailable",
+            status: "failed",
+          });
+          expect(failedImport.nextRetryAt).not.toBeNull();
+          const storedCatalog = yield* readCanonicalStorage(databaseUrl);
+          for (const sentinel of [API_KEY, PRIVATE_PATH, PROVIDER_ERROR_SENTINEL]) {
+            expect(storedCatalog).not.toContain(sentinel);
+            expect(JSON.stringify(failedImport)).not.toContain(sentinel);
+          }
+        }).pipe(Effect.provide(PluginSupervisor.layer())),
+      ),
+    ),
+  CATALOG_IMPORT_PROCESS_TIMEOUT_MILLISECONDS,
+);
 it.live(
   "applies catalog page bounds and rejects an empty continuation before provider reads",
   () =>

@@ -194,11 +194,12 @@ const readCatalogImport = (databaseUrl: string, providerInstanceId: string) =>
 const pollCatalogImport = (
   databaseUrl: string,
   providerInstanceId: string,
+  expectedStatus: string,
   deadline: number,
 ): Effect.Effect<CatalogImportSnapshot> =>
   Effect.gen(function* waitForCatalogImport() {
     const snapshot = yield* readCatalogImport(databaseUrl, providerInstanceId);
-    if (snapshot.status === "succeeded") {
+    if (snapshot.status === expectedStatus) {
       return snapshot;
     }
     if (
@@ -210,16 +211,25 @@ const pollCatalogImport = (
     }
     const now = yield* Clock.currentTimeMillis;
     if (now >= deadline) {
-      return yield* Effect.die(new Error("catalog import did not complete"));
+      return yield* Effect.die(new Error(`catalog import did not reach ${expectedStatus}`));
     }
     yield* Effect.sleep(CATALOG_IMPORT_POLL_MILLISECONDS);
-    return yield* pollCatalogImport(databaseUrl, providerInstanceId, deadline);
+    return yield* pollCatalogImport(databaseUrl, providerInstanceId, expectedStatus, deadline);
   });
 
-const waitForCatalogImport = (databaseUrl: string, providerInstanceId: string) =>
+const waitForCatalogImport = (
+  databaseUrl: string,
+  providerInstanceId: string,
+  expectedStatus = "succeeded",
+) =>
   Clock.currentTimeMillis.pipe(
     Effect.flatMap((now) =>
-      pollCatalogImport(databaseUrl, providerInstanceId, now + CATALOG_IMPORT_WAIT_MILLISECONDS),
+      pollCatalogImport(
+        databaseUrl,
+        providerInstanceId,
+        expectedStatus,
+        now + CATALOG_IMPORT_WAIT_MILLISECONDS,
+      ),
     ),
   );
 
@@ -1258,6 +1268,18 @@ it.live(
               cliResults.push(restartedDisabled);
               expectNamaSuccess(restartedDisabled);
               expect(providerInstanceFromNama(restartedDisabled)).toEqual(disabledInstance);
+              const pausedCatalog = yield* waitForCatalogImport(
+                databaseUrl,
+                providerInstanceId,
+                "paused",
+              );
+              expect(pausedCatalog).toMatchObject({
+                canonicalItemCount: importedCatalog.canonicalItemCount,
+                libraryEntryCount: importedCatalog.libraryEntryCount,
+                mappingCount: importedCatalog.mappingCount,
+                safeFailureReason: null,
+                status: "paused",
+              });
 
               const reenableArguments = [
                 "provider",
@@ -1280,6 +1302,17 @@ it.live(
               const reenabledInstance = providerInstanceFromNama(reenabled);
               expect(reenabledInstance).toMatchObject({ enabled: true, status: "unavailable" });
               const reenabledRevision = requiredString(reenabledInstance, "revision");
+              const reimportedCatalog = yield* waitForCatalogImport(
+                databaseUrl,
+                providerInstanceId,
+              );
+              expect(reimportedCatalog).toMatchObject({
+                canonicalItemCount: importedCatalog.canonicalItemCount,
+                libraryEntryCount: importedCatalog.libraryEntryCount,
+                mappingCount: importedCatalog.mappingCount,
+                safeFailureReason: null,
+                status: "succeeded",
+              });
               const disableForDeletionArguments = [
                 "provider",
                 "instance",
@@ -1322,6 +1355,15 @@ it.live(
               cliResults.push(deleted);
               expectNamaSuccess(deleted);
               expect(dataFromNama(deleted)).toEqual({ operation_id: CREATE_OPERATION_ID });
+              const deletedCatalog = yield* readCatalogImport(databaseUrl, providerInstanceId);
+              expect(deletedCatalog).toMatchObject({
+                canonicalItemCount: importedCatalog.canonicalItemCount,
+                libraryEntryCount: 0,
+                mappingCount: 0,
+                nextRetryAt: null,
+                safeFailureReason: null,
+                status: null,
+              });
 
               runningProcess = yield* restartProcess({
                 currentProcess: runningProcess,

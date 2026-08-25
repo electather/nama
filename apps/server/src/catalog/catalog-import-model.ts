@@ -44,8 +44,9 @@ interface CatalogImportDependencies {
 type ReportCatalogFatalFailure = (cause: unknown) => Effect.Effect<boolean>;
 
 interface CatalogImportService {
-  readonly scanEligible: Effect.Effect<void>;
-  readonly start: (reportFatalFailure: ReportCatalogFatalFailure) => Effect.Effect<void>;
+  readonly start: (
+    reportFatalFailure: ReportCatalogFatalFailure,
+  ) => Effect.Effect<void, never, Scope.Scope>;
 }
 
 export {

@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import type {
   ProviderArtwork,
   ProviderAudioTrack,
@@ -40,6 +42,27 @@ type CatalogCommonObservation = Omit<
   | "showReference"
 >;
 
+const uniqueNestedObservations = <Input, Observation>(
+  values: readonly Input[],
+  mapObservation: (value: Input) => Observation,
+  referenceOf: (observation: Observation) => string,
+): readonly Observation[] => {
+  const observationsByReference = new Map<string, Observation>();
+  for (const value of values) {
+    const observation = mapObservation(value);
+    const reference = referenceOf(observation);
+    const existing = observationsByReference.get(reference);
+    if (existing !== undefined) {
+      if (!isDeepStrictEqual(existing, observation)) {
+        throw invalidPage();
+      }
+      continue;
+    }
+    observationsByReference.set(reference, observation);
+  }
+  return [...observationsByReference.values()];
+};
+
 const itemId = (item: ProviderMediaItem): string => required(item.itemReference).itemId;
 
 const ownedArtworkReference = (artwork: ProviderArtwork, ownerItemId: string): string => {
@@ -63,13 +86,16 @@ const artworkObservation = (artwork: ProviderArtwork, ownerItemId: string) => {
   };
 };
 
-const creditObservation = (credit: ProviderMediaCredit, ownerItemId: string) => {
+const creditObservation = (credit: ProviderMediaCredit) => {
   const role = required(CREDIT_ROLE[credit.role]);
   const portrait = credit.portraitArtworkReference;
-  if (portrait !== undefined && required(portrait.itemReference).itemId !== ownerItemId) {
-    throw invalidPage();
-  }
-  const portraitReference = portrait?.artworkId;
+  const portraitReference =
+    portrait === undefined
+      ? undefined
+      : {
+          artworkReference: portrait.artworkId,
+          itemReference: required(portrait.itemReference).itemId,
+        };
   return {
     ...optional("characterName", credit.characterName),
     name: credit.name,
@@ -176,7 +202,11 @@ const partObservation = (part: ProviderMediaPart, ownerItemId: string, ownerSour
     partReference: reference.partId,
     runtime: durationFromPlugin(part.runtime),
     ...optional("sizeBytes", part.sizeBytes),
-    tracks: part.tracks.map((track) => trackObservation(track, owner)),
+    tracks: uniqueNestedObservations(
+      part.tracks,
+      (track) => trackObservation(track, owner),
+      (track) => track.trackReference,
+    ),
   };
 };
 
@@ -189,7 +219,11 @@ const sourceObservation = (source: ProviderMediaSource, ownerItemId: string) => 
     availability: required(SOURCE_AVAILABILITY[source.availability]),
     ...optional("bitRateBps", source.bitRateBps),
     ...optional("label", source.label),
-    parts: source.parts.map((part) => partObservation(part, ownerItemId, reference.sourceId)),
+    parts: uniqueNestedObservations(
+      source.parts,
+      (part) => partObservation(part, ownerItemId, reference.sourceId),
+      (part) => part.partReference,
+    ),
     runtime: durationFromPlugin(source.runtime),
     sourceReference: reference.sourceId,
   };
@@ -202,9 +236,13 @@ const commonObservation = (
 ): CatalogCommonObservation => {
   const ownerItemId = itemId(item);
   return {
-    artwork: item.artwork.map((artwork) => artworkObservation(artwork, ownerItemId)),
+    artwork: uniqueNestedObservations(
+      item.artwork,
+      (artwork) => artworkObservation(artwork, ownerItemId),
+      (artwork) => artwork.artworkReference,
+    ),
     ...optional("contentRating", item.contentRating),
-    credits: item.credits.map((credit) => creditObservation(credit, ownerItemId)),
+    credits: item.credits.map(creditObservation),
     externalIdentifiers: item.externalIdentifiers.map((identifier) => ({
       namespace: identifier.namespace,
       value: identifier.value,
@@ -216,7 +254,11 @@ const commonObservation = (
     providerInstanceId,
     ...optional("releaseYear", item.releaseYear),
     runtime: itemDuration(item),
-    sources: item.sources.map((source) => sourceObservation(source, ownerItemId)),
+    sources: uniqueNestedObservations(
+      item.sources,
+      (source) => sourceObservation(source, ownerItemId),
+      (source) => source.sourceReference,
+    ),
     studios: [...item.studios],
     ...optional("synopsis", item.synopsis),
     ...optional("tagline", item.tagline),

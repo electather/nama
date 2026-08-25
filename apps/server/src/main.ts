@@ -1,5 +1,5 @@
 import { NodeRuntime } from "@effect/platform-node";
-import { Cause, Exit, Runtime } from "effect";
+import { Cause, Effect, Exit, Runtime } from "effect";
 
 import { app } from "./app.ts";
 
@@ -16,7 +16,7 @@ const teardown = <Error, Value>(
   Runtime.defaultTeardown(exit, onExit);
 };
 
-NodeRuntime.runMain(app, {
+NodeRuntime.runMain(Effect.scoped(app), {
   disableErrorReporting: true,
   teardown,
 });

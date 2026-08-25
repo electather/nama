@@ -15,7 +15,6 @@ const SINGLE_ROW_LIMIT = 1;
 const ZERO = 0;
 const SQL_NULL = sql`null`;
 
-type CatalogFreshness = "empty" | "not_ready" | "ready";
 type CatalogPageAcceptance = "accepted" | "stale";
 type CatalogScanFailureRecording = "recorded" | "stale";
 type CatalogScanFailureReason =
@@ -146,7 +145,6 @@ export {
 export type {
   AcceptCatalogPageInput,
   BeginCatalogScanInput,
-  CatalogFreshness,
   CatalogPageAcceptance,
   CatalogScanCandidate,
   CatalogScanFailureReason,

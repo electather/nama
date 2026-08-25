@@ -51,13 +51,12 @@ const catalogCounts = (databaseUrl: string) =>
     ),
   );
 
-it.live("resumes one durable scan and exposes catalog freshness without run history", () =>
+it.live("resumes one durable scan without run history", () =>
   withIsolatedDatabase((databaseUrl) =>
     Effect.gen(function* durableCatalogScanState() {
       yield* initializeScanDatabase(databaseUrl);
       yield* useDatabase(databaseUrl, productionMigrations, (database) =>
         Effect.gen(function* exerciseScanState() {
-          expect(yield* database.catalog.freshness).toBe("not_ready");
           expect(yield* database.catalog.listScanCandidates).toEqual([
             { providerInstanceId: PROVIDER_INSTANCE_ID, revision: CAPTURED_REVISION },
           ]);
@@ -86,7 +85,6 @@ it.live("resumes one durable scan and exposes catalog freshness without run hist
               revision: CAPTURED_REVISION,
             }),
           ).toBe("accepted");
-          expect(yield* database.catalog.freshness).toBe("not_ready");
 
           const resumed = yield* database.catalog.beginScan({
             coreRunId: RESTARTED_CORE_RUN_ID,
@@ -108,7 +106,6 @@ it.live("resumes one durable scan and exposes catalog freshness without run hist
               revision: CAPTURED_REVISION,
             }),
           ).toBe("accepted");
-          expect(yield* database.catalog.freshness).toBe("ready");
           expect(
             yield* database.catalog.beginScan({
               coreRunId: "third-core-run",

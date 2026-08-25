@@ -1,5 +1,6 @@
 // oxlint-disable eslint/max-lines-per-function, eslint/no-magic-numbers, eslint/prefer-destructuring -- The literal full plugin aggregate and independently derived canonical expectation remain side by side as one protocol fixture.
 import { create } from "@bufbuild/protobuf";
+import { DateSchema } from "@nama/api/google/type/date_pb.js";
 import {
   ProviderArtworkReferenceSchema,
   ProviderItemReferenceSchema,
@@ -61,7 +62,7 @@ const fullMovie = () =>
         name: "Example Actor",
         portraitArtworkReference: create(ProviderArtworkReferenceSchema, {
           artworkId: "private-portrait",
-          itemReference: itemReference(),
+          itemReference: itemReference("private-person"),
         }),
         role: MediaCreditRole.ACTOR,
       },
@@ -154,7 +155,10 @@ describe("catalogPageFromPlugin", () => {
             {
               characterName: "Ada",
               name: "Example Actor",
-              portraitArtworkReference: "private-portrait",
+              portraitArtworkReference: {
+                artworkReference: "private-portrait",
+                itemReference: "private-person",
+              },
               role: "actor",
             },
           ],
@@ -289,6 +293,113 @@ describe("catalogPageFromPlugin", () => {
           consistency: ListConsistency.BEST_EFFORT_SCAN,
           items: [mismatched],
           nextPageToken: "impossible-next-page",
+        }),
+      ),
+    ).toThrow("invalid plugin catalog page");
+  });
+
+  it.each([
+    ["year only", { day: 0, month: 0, year: 2026 }],
+    ["year and month", { day: 0, month: 8, year: 2026 }],
+    ["month and day", { day: 25, month: 8, year: 0 }],
+  ])("omits a contract-valid partial %s date", (_description, releaseDate) => {
+    const movie = fullMovie();
+    if (movie.kindDetails.case !== "movie") {
+      throw new Error("movie details fixture is absent");
+    }
+    movie.kindDetails.value.releaseDate = create(DateSchema, releaseDate);
+
+    const page = catalogPageFromPlugin(
+      PROVIDER_INSTANCE_ID,
+      CORE_RUN_ID,
+      create(ListItemsResponseSchema, {
+        complete: true,
+        consistency: ListConsistency.BEST_EFFORT_SCAN,
+        items: [movie],
+      }),
+    );
+
+    expect(page.items[0]).not.toHaveProperty("releaseDate");
+  });
+
+  it.each([
+    ["an out-of-range month", { day: 1, month: 13, year: 2026 }],
+    ["an impossible leap day", { day: 29, month: 2, year: 2025 }],
+  ])("rejects %s before persistence", (_description, releaseDate) => {
+    const movie = fullMovie();
+    if (movie.kindDetails.case !== "movie") {
+      throw new Error("movie details fixture is absent");
+    }
+    movie.kindDetails.value.releaseDate = create(DateSchema, releaseDate);
+
+    expect(() =>
+      catalogPageFromPlugin(
+        PROVIDER_INSTANCE_ID,
+        CORE_RUN_ID,
+        create(ListItemsResponseSchema, {
+          complete: true,
+          consistency: ListConsistency.BEST_EFFORT_SCAN,
+          items: [movie],
+        }),
+      ),
+    ).toThrow("invalid plugin catalog page");
+  });
+
+  it("coalesces exact duplicate nested provider references", () => {
+    const movie = fullMovie();
+    const artwork = movie.artwork[0];
+    const source = movie.sources[0];
+    const part = source?.parts[0];
+    const track = part?.tracks[0];
+    if (
+      artwork === undefined ||
+      source === undefined ||
+      part === undefined ||
+      track === undefined
+    ) {
+      throw new Error("complete movie fixture is absent");
+    }
+    movie.artwork.push(artwork);
+    part.tracks.push(track);
+    source.parts.push(part);
+    movie.sources.push(source);
+
+    const page = catalogPageFromPlugin(
+      PROVIDER_INSTANCE_ID,
+      CORE_RUN_ID,
+      create(ListItemsResponseSchema, {
+        complete: true,
+        consistency: ListConsistency.BEST_EFFORT_SCAN,
+        items: [movie],
+      }),
+    );
+
+    const mapped = page.items[0];
+    const mappedSource = mapped?.sources[0];
+    const mappedPart = mappedSource?.parts[0];
+    expect(mapped?.artwork).toHaveLength(1);
+    expect(mapped?.sources).toHaveLength(1);
+    expect(mappedSource?.parts).toHaveLength(1);
+    expect(mappedPart?.tracks).toHaveLength(1);
+  });
+
+  it("rejects conflicting observations for one nested provider reference", () => {
+    const movie = fullMovie();
+    const conflictingSource = fullMovie().sources[0];
+    if (conflictingSource === undefined) {
+      throw new Error("movie source fixture is absent");
+    }
+    conflictingSource.label = "Conflicting source";
+    movie.sources.push(conflictingSource);
+
+    expect(() =>
+      catalogPageFromPlugin(
+        PROVIDER_INSTANCE_ID,
+        CORE_RUN_ID,
+        create(ListItemsResponseSchema, {
+          complete: true,
+          consistency: ListConsistency.BEST_EFFORT_SCAN,
+          items: [movie],
         }),
       ),
     ).toThrow("invalid plugin catalog page");

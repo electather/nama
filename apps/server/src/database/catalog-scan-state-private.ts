@@ -14,7 +14,6 @@ import {
 } from "./catalog-scan-model-private.ts";
 import type {
   BeginCatalogScanInput,
-  CatalogFreshness,
   CatalogScanCandidate,
   CatalogScanFailureRecording,
   CatalogScanLease,
@@ -222,26 +221,4 @@ const pauseDisabledScans = async (database: CatalogDatabase, coreRunId: string):
     `);
 };
 
-const freshness = async (database: CatalogDatabase): Promise<CatalogFreshness> => {
-  const rows = await database
-    .select({
-      completedCount: sql<number>`count(*) filter (where ${providerCatalogScanState.status} = 'succeeded' and ${providerCatalogScanState.capturedProviderRevision} = ${providerInstance.revision})::integer`,
-      enabledCount: sql<number>`count(*)::integer`,
-    })
-    .from(providerInstance)
-    .leftJoin(
-      providerCatalogScanState,
-      eq(providerCatalogScanState.providerInstanceId, providerInstance.id),
-    )
-    .where(eq(providerInstance.enabled, true));
-  const counts = rows[FIRST_ROW];
-  if (counts === undefined || counts.enabledCount === ZERO) {
-    return "empty";
-  }
-  if (counts.completedCount > ZERO) {
-    return "ready";
-  }
-  return "not_ready";
-};
-
-export { beginScan, failScan, freshness, listScanCandidates, pauseDisabledScans };
+export { beginScan, failScan, listScanCandidates, pauseDisabledScans };

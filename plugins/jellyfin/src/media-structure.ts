@@ -95,7 +95,12 @@ const normalizeJellyfinItemStructure = (
         kind: MediaKind.MOVIE,
         kindDetails: normalizedMovieDetails(item),
         primaryArtworkRole: ArtworkRole.POSTER,
-        sources: normalizeJellyfinSources(item["MediaSources"], itemId, item["LocationType"]),
+        sources: normalizeJellyfinSources(
+          item["MediaSources"],
+          itemId,
+          item["LocationType"],
+          item["RunTimeTicks"],
+        ),
       };
     }
     case "Series": {
@@ -119,7 +124,12 @@ const normalizeJellyfinItemStructure = (
         kind: MediaKind.EPISODE,
         kindDetails: normalizedEpisodeDetails(item),
         primaryArtworkRole: ArtworkRole.THUMBNAIL,
-        sources: normalizeJellyfinSources(item["MediaSources"], itemId, item["LocationType"]),
+        sources: normalizeJellyfinSources(
+          item["MediaSources"],
+          itemId,
+          item["LocationType"],
+          item["RunTimeTicks"],
+        ),
       };
     }
     default: {

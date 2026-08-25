@@ -22,10 +22,16 @@ const providerArtworkMapping = pgTable(
     canonicalItemId: uuid("canonical_item_id").notNull(),
     itemReference: text("item_reference").notNull(),
     providerInstanceId: text("provider_instance_id").notNull(),
+    targetItemReference: text("target_item_reference").notNull(),
   },
   (table) => [
     primaryKey({
-      columns: [table.providerInstanceId, table.itemReference, table.artworkReference],
+      columns: [
+        table.providerInstanceId,
+        table.itemReference,
+        table.targetItemReference,
+        table.artworkReference,
+      ],
     }),
     unique("provider_artwork_mapping_identity_owner_unique").on(
       table.artworkId,
@@ -35,6 +41,7 @@ const providerArtworkMapping = pgTable(
       table.providerInstanceId,
       table.itemReference,
       table.artworkReference,
+      table.targetItemReference,
       table.canonicalItemId,
       table.artworkId,
     ),
@@ -52,6 +59,10 @@ const providerArtworkMapping = pgTable(
     check(
       "provider_artwork_mapping_reference_check",
       sql`char_length(${table.artworkReference}) between 1 and 256`,
+    ),
+    check(
+      "provider_artwork_mapping_target_reference_check",
+      sql`char_length(${table.targetItemReference}) between 1 and 256`,
     ),
   ],
 );
@@ -71,6 +82,7 @@ const canonicalArtwork = pgTable(
     providerInstanceId: text("provider_instance_id").notNull(),
     role: text("role").notNull(),
     textPresence: text("text_presence").notNull(),
+    targetItemReference: text("target_item_reference").notNull(),
     width: bigint("width", { mode: "number" }),
   },
   (table) => [
@@ -79,6 +91,7 @@ const canonicalArtwork = pgTable(
         table.providerInstanceId,
         table.itemReference,
         table.artworkReference,
+        table.targetItemReference,
         table.canonicalItemId,
         table.id,
       ],
@@ -86,6 +99,7 @@ const canonicalArtwork = pgTable(
         providerArtworkMapping.providerInstanceId,
         providerArtworkMapping.itemReference,
         providerArtworkMapping.artworkReference,
+        providerArtworkMapping.targetItemReference,
         providerArtworkMapping.canonicalItemId,
         providerArtworkMapping.artworkId,
       ],

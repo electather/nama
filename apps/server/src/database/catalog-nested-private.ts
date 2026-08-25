@@ -13,11 +13,14 @@ import {
 import type { PartWithOwner, TrackWithOwner } from "./catalog-deep-identities-private.ts";
 import {
   collectActiveArtwork,
-  portraitArtworkId,
+  artworkIdentityId,
   upsertArtworkMappings,
   upsertSourceMappings,
 } from "./catalog-nested-identities-private.ts";
-import type { ActiveArtwork } from "./catalog-nested-identities-private.ts";
+import type {
+  ActiveArtwork,
+  ArtworkIdsByTargetReference,
+} from "./catalog-nested-identities-private.ts";
 import type {
   CatalogItemObservation,
   CatalogTransaction,
@@ -27,7 +30,7 @@ import { mediaTrack } from "./catalog-track-schema.ts";
 
 interface ArtworkProjectionInput {
   readonly artwork: readonly ActiveArtwork[];
-  readonly artworkIds: ReadonlyMap<string, string>;
+  readonly artworkIds: ArtworkIdsByTargetReference;
   readonly canonicalItemId: string;
   readonly input: CatalogItemObservation;
   readonly transaction: CatalogTransaction;
@@ -41,7 +44,13 @@ const insertActiveArtworkAndCredits = async ({
   transaction,
 }: ArtworkProjectionInput): Promise<void> => {
   const artworkRows = artwork.map((entry) => {
-    const id = artworkIds.get(entry.artworkReference);
+    const id = artworkIdentityId(
+      {
+        artworkReference: entry.artworkReference,
+        itemReference: entry.targetItemReference,
+      },
+      artworkIds,
+    );
     if (id === undefined) {
       throw new Error("provider artwork identity mapping is missing");
     }
@@ -56,13 +65,17 @@ const insertActiveArtworkAndCredits = async ({
       providerInstanceId: input.providerInstanceId,
       role: entry.role,
       textPresence: entry.textPresence,
+      targetItemReference: entry.targetItemReference,
       width: entry.width,
     };
   });
   await insertBatches(artworkRows, (batch) => transaction.insert(canonicalArtwork).values(batch));
 
   const creditRows = input.credits.map((credit, displayOrder) => {
-    const portraitId = portraitArtworkId(credit.portraitArtworkReference, artworkIds);
+    const portraitId =
+      credit.portraitArtworkReference === undefined
+        ? undefined
+        : artworkIdentityId(credit.portraitArtworkReference, artworkIds);
     return {
       canonicalItemId,
       characterName: credit.characterName,
@@ -235,7 +248,7 @@ const clearActiveNestedProjection = async (
 
 interface NestedIdentityState {
   readonly artwork: readonly ActiveArtwork[];
-  readonly artworkIds: ReadonlyMap<string, string>;
+  readonly artworkIds: ArtworkIdsByTargetReference;
   readonly partIds: ReadonlyMap<string, string>;
   readonly parts: readonly PartWithOwner[];
   readonly sourceIds: ReadonlyMap<string, string>;

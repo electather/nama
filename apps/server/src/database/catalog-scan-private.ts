@@ -2,14 +2,12 @@ export { acceptPage, resolvePageAcceptance, restartScan } from "./catalog-scan-p
 export {
   beginScan,
   failScan,
-  freshness,
   listScanCandidates,
   pauseDisabledScans,
 } from "./catalog-scan-state-private.ts";
 export type {
   AcceptCatalogPageInput,
   BeginCatalogScanInput,
-  CatalogFreshness,
   CatalogPageAcceptance,
   CatalogScanCandidate,
   CatalogScanFailureReason,

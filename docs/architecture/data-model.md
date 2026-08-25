@@ -67,6 +67,9 @@ or artwork reference exists. A refreshed item may remove a nested resource from
 the active public projection while retaining an inactive reference mapping, so
 the same reference reuses its Nama ID if it returns. Provider-instance deletion
 removes that instance's mappings permanently.
+Credit portraits remain owned by the canonical media aggregate while their
+private artwork mapping separately retains the provider person or other target
+item reference required for later resolution.
 
 Each accepted catalog item commits as one complete aggregate and publishes
 incrementally; a full scan is not staged as a false provider snapshot. Seasons

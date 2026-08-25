@@ -43,7 +43,6 @@ const makeCatalogImportLayer = (onStart: LifecycleCallback = () => {}) =>
   Layer.succeed(
     CatalogImport,
     CatalogImport.of({
-      scanEligible: Effect.void,
       start: () => Effect.sync(onStart),
     }),
   );

@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 
 import { providerArtworkMapping } from "./catalog-artwork-schema.ts";
 import { insertBatches } from "./catalog-batches-private.ts";
 import type {
   CatalogArtworkObservation,
   CatalogCreditObservation,
+  CatalogProviderArtworkReference,
   CatalogItemObservation,
   CatalogTransaction,
 } from "./catalog-persistence-model-private.ts";
@@ -14,35 +15,61 @@ import { providerSourceMapping } from "./catalog-source-schema.ts";
 
 const EMPTY_LENGTH = 0;
 
+type ArtworkIdsByTargetReference = ReadonlyMap<string, ReadonlyMap<string, string>>;
+
 interface ActiveArtwork extends CatalogArtworkObservation {
   readonly displayOrder: number;
+  readonly targetItemReference: string;
 }
+
+const retainArtworkReference = (
+  retainedReferences: Map<string, Set<string>>,
+  reference: CatalogProviderArtworkReference,
+): boolean => {
+  const retainedForTarget = retainedReferences.get(reference.itemReference);
+  if (retainedForTarget?.has(reference.artworkReference) === true) {
+    return false;
+  }
+  if (retainedForTarget === undefined) {
+    retainedReferences.set(reference.itemReference, new Set([reference.artworkReference]));
+  } else {
+    retainedForTarget.add(reference.artworkReference);
+  }
+  return true;
+};
 
 const appendPortraitArtwork = (
   artwork: ActiveArtwork[],
-  retainedReferences: Set<string>,
+  retainedReferences: Map<string, Set<string>>,
   credit: CatalogCreditObservation,
 ): void => {
   const reference = credit.portraitArtworkReference;
-  if (reference === undefined || retainedReferences.has(reference)) {
+  if (reference === undefined || !retainArtworkReference(retainedReferences, reference)) {
     return;
   }
-  retainedReferences.add(reference);
   artwork.push({
-    artworkReference: reference,
+    artworkReference: reference.artworkReference,
     displayOrder: artwork.length,
     role: "portrait",
+    targetItemReference: reference.itemReference,
     textPresence: "unknown",
   });
 };
 
 const collectActiveArtwork = (input: CatalogItemObservation): readonly ActiveArtwork[] => {
-  const retainedReferences = new Set<string>();
+  const retainedReferences = new Map<string, Set<string>>();
   const artwork: ActiveArtwork[] = [];
   for (const observation of input.artwork) {
-    if (!retainedReferences.has(observation.artworkReference)) {
-      retainedReferences.add(observation.artworkReference);
-      artwork.push({ ...observation, displayOrder: artwork.length });
+    const reference = {
+      artworkReference: observation.artworkReference,
+      itemReference: input.itemReference,
+    };
+    if (retainArtworkReference(retainedReferences, reference)) {
+      artwork.push({
+        ...observation,
+        displayOrder: artwork.length,
+        targetItemReference: input.itemReference,
+      });
     }
   }
   for (const credit of input.credits) {
@@ -61,13 +88,14 @@ const upsertArtworkMappings = async ({
   readonly canonicalItemId: string;
   readonly input: CatalogItemObservation;
   readonly transaction: CatalogTransaction;
-}): Promise<ReadonlyMap<string, string>> => {
+}): Promise<ArtworkIdsByTargetReference> => {
   const candidates = artwork.map((entry) => ({
     artworkId: randomUUID(),
     artworkReference: entry.artworkReference,
     canonicalItemId,
     itemReference: input.itemReference,
     providerInstanceId: input.providerInstanceId,
+    targetItemReference: entry.targetItemReference,
   }));
   await insertBatches(candidates, (batch) =>
     transaction.insert(providerArtworkMapping).values(batch).onConflictDoNothing(),
@@ -75,21 +103,38 @@ const upsertArtworkMappings = async ({
   if (artwork.length === EMPTY_LENGTH) {
     return new Map();
   }
-  const references = artwork.map((entry) => entry.artworkReference);
   const rows = await transaction
     .select({
       artworkId: providerArtworkMapping.artworkId,
       artworkReference: providerArtworkMapping.artworkReference,
+      targetItemReference: providerArtworkMapping.targetItemReference,
     })
     .from(providerArtworkMapping)
     .where(
       and(
         eq(providerArtworkMapping.providerInstanceId, input.providerInstanceId),
         eq(providerArtworkMapping.itemReference, input.itemReference),
-        inArray(providerArtworkMapping.artworkReference, references),
+        eq(providerArtworkMapping.canonicalItemId, canonicalItemId),
+        or(
+          ...artwork.map((entry) =>
+            and(
+              eq(providerArtworkMapping.targetItemReference, entry.targetItemReference),
+              eq(providerArtworkMapping.artworkReference, entry.artworkReference),
+            ),
+          ),
+        ),
       ),
     );
-  return new Map(rows.map((row) => [row.artworkReference, row.artworkId]));
+  const artworkIds = new Map<string, Map<string, string>>();
+  for (const row of rows) {
+    const idsForTarget = artworkIds.get(row.targetItemReference);
+    if (idsForTarget === undefined) {
+      artworkIds.set(row.targetItemReference, new Map([[row.artworkReference, row.artworkId]]));
+    } else {
+      idsForTarget.set(row.artworkReference, row.artworkId);
+    }
+  }
+  return artworkIds;
 };
 
 const upsertSourceMappings = async (
@@ -127,19 +172,15 @@ const upsertSourceMappings = async (
   return new Map(rows.map((row) => [row.sourceReference, row.sourceId]));
 };
 
-const portraitArtworkId = (
-  reference: string | undefined,
-  artworkIds: ReadonlyMap<string, string>,
-): string | undefined => {
-  if (reference === undefined) {
-    return undefined;
-  }
-  return artworkIds.get(reference);
-};
+const artworkIdentityId = (
+  reference: CatalogProviderArtworkReference,
+  artworkIds: ArtworkIdsByTargetReference,
+): string | undefined => artworkIds.get(reference.itemReference)?.get(reference.artworkReference);
 export {
+  type ArtworkIdsByTargetReference,
   type ActiveArtwork,
   collectActiveArtwork,
-  portraitArtworkId,
+  artworkIdentityId,
   upsertArtworkMappings,
   upsertSourceMappings,
 };
