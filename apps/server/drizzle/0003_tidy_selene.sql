@@ -1,0 +1,2 @@
+ALTER TABLE "provider_catalog_scan_state" ADD COLUMN "consecutive_failure_count" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "provider_catalog_scan_state" ADD CONSTRAINT "provider_catalog_scan_state_failure_count_check" CHECK ("provider_catalog_scan_state"."consecutive_failure_count" >= 0);

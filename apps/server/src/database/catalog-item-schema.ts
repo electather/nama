@@ -14,7 +14,10 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import type { CatalogScanStatus } from "./catalog-scan-types-private.ts";
 import { providerInstance } from "./provider-schema.ts";
+
+const ZERO = 0;
 
 const canonicalItem = pgTable(
   "canonical_item",
@@ -235,6 +238,7 @@ const providerCatalogScanState = pgTable(
   {
     capturedProviderRevision: text("captured_provider_revision").notNull(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    consecutiveFailureCount: integer("consecutive_failure_count").default(ZERO).notNull(),
     coreRunId: text("core_run_id").notNull(),
     lastAcceptedContinuation: text("last_accepted_continuation"),
     nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
@@ -243,7 +247,7 @@ const providerCatalogScanState = pgTable(
       .references(() => providerInstance.id, { onDelete: "cascade" }),
     safeFailureReason: text("safe_failure_reason"),
     startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
-    status: text("status").notNull(),
+    status: text("status").$type<CatalogScanStatus>().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
@@ -262,6 +266,10 @@ const providerCatalogScanState = pgTable(
     check(
       "provider_catalog_scan_state_continuation_check",
       sql`${table.lastAcceptedContinuation} is null or char_length(${table.lastAcceptedContinuation}) between 1 and 4096`,
+    ),
+    check(
+      "provider_catalog_scan_state_failure_count_check",
+      sql`${table.consecutiveFailureCount} >= 0`,
     ),
     check(
       "provider_catalog_scan_state_failure_check",

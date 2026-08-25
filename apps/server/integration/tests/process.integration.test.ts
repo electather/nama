@@ -41,7 +41,7 @@ const DATABASE_PATH_PREFIX_LENGTH = 1;
 const UNAVAILABLE_PORT = "1";
 const SIGNAL_TEST_TIMEOUT_MILLISECONDS = 20_000;
 const FAILURE_TEST_TIMEOUT_MILLISECONDS = 10_000;
-const PRODUCTION_MIGRATION_COUNT = "3";
+const PRODUCTION_MIGRATION_COUNT = "5";
 const INTEGRITY_USERS = [
   ["integrity-user-one", "Integrity One", "integrity-one@example.test"],
   ["integrity-user-two", "Integrity Two", "integrity-two@example.test"],

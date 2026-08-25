@@ -263,23 +263,28 @@ const replaceParentEvidence = async (
   }
 };
 
+const replaceCanonicalItemInTransaction = async (
+  transaction: CatalogTransaction,
+  input: CatalogItemObservation,
+): Promise<string> => {
+  const projection = catalogProjection(input);
+  const canonicalItemId = await resolveExactMapping(transaction, input, projection);
+  await transaction
+    .update(canonicalItem)
+    .set(projection.item)
+    .where(and(eq(canonicalItem.id, canonicalItemId), eq(canonicalItem.kind, input.kind)));
+  await replaceExternalIdentifierEvidence(transaction, input);
+  await replaceParentEvidence(transaction, input, projection.parentReferences);
+  await replaceNestedCatalogRecords(transaction, input, canonicalItemId);
+  const affectedItemIds = await repairHierarchy(transaction, input, canonicalItemId);
+  await reconcileLibraryEntries(transaction, affectedItemIds);
+  return canonicalItemId;
+};
+
 const replaceCanonicalItem = (
   database: CatalogDatabase,
   input: CatalogItemObservation,
 ): Promise<string> =>
-  database.transaction(async (transaction) => {
-    const projection = catalogProjection(input);
-    const canonicalItemId = await resolveExactMapping(transaction, input, projection);
-    await transaction
-      .update(canonicalItem)
-      .set(projection.item)
-      .where(and(eq(canonicalItem.id, canonicalItemId), eq(canonicalItem.kind, input.kind)));
-    await replaceExternalIdentifierEvidence(transaction, input);
-    await replaceParentEvidence(transaction, input, projection.parentReferences);
-    await replaceNestedCatalogRecords(transaction, input, canonicalItemId);
-    const affectedItemIds = await repairHierarchy(transaction, input, canonicalItemId);
-    await reconcileLibraryEntries(transaction, affectedItemIds);
-    return canonicalItemId;
-  });
+  database.transaction((transaction) => replaceCanonicalItemInTransaction(transaction, input));
 
-export { replaceCanonicalItem };
+export { replaceCanonicalItem, replaceCanonicalItemInTransaction };

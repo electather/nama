@@ -108,6 +108,7 @@ const expectLifecycleOrder = (
     "listener.bound",
     "bootstrap.activated",
     "runtime.ready",
+    "catalog.started",
     "lan.started",
     "listener.released",
   ]);

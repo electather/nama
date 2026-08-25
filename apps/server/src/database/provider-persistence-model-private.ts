@@ -25,7 +25,6 @@ interface ProviderInstallationInput {
   readonly schemaProfileVersion: number;
   readonly schemaRevision: string;
 }
-
 interface ProviderInstallationListInput {
   readonly afterProviderTypeId?: string;
   readonly limit: number;
@@ -289,6 +288,7 @@ export {
   type ProviderPersistenceFailure,
   type StoredProviderInstance,
   ProviderOperationKeyReused,
+  ProviderCredentialsUnavailable,
   ProviderInstanceLimitReached,
   ProviderRevisionMismatch,
   ProviderSyncPriorityConflict,

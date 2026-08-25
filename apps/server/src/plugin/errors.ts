@@ -1,7 +1,12 @@
-import type { Code } from "@connectrpc/connect";
+import type { Code, ConnectError } from "@connectrpc/connect";
+import { RetryInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
 import { Data } from "effect";
 
 const taggedError = Data.TaggedError;
+const ZERO = 0;
+const ZERO_SECONDS = 0n;
+const MILLISECONDS_PER_SECOND = 1000;
+const NANOSECONDS_PER_MILLISECOND = 1_000_000;
 
 type PluginUnavailableReason =
   | "authentication_failed"
@@ -23,6 +28,7 @@ const PluginUnavailable = taggedError("PluginUnavailable")<{
 const PluginDeadlineExceeded = taggedError("PluginDeadlineExceeded")<EmptyTaggedErrorFields>;
 const PluginRpcError = taggedError("PluginRpcError")<{
   readonly code: Code;
+  readonly retryAfterMilliseconds?: number;
 }>;
 const PluginSupervisorBoundaryError = taggedError(
   "PluginSupervisorBoundaryError",
@@ -37,6 +43,29 @@ type PluginRpcFailure = InstanceType<typeof PluginRpcError>;
 type PluginSupervisorBoundaryFailure = InstanceType<typeof PluginSupervisorBoundaryError>;
 type PluginSupervisorCleanupFailure = InstanceType<typeof PluginSupervisorCleanupError>;
 
+const retryAfterMillisecondsFrom = (error: ConnectError): number | undefined => {
+  try {
+    const retryDelay = error.findDetails(RetryInfoSchema).at(ZERO)?.retryDelay;
+    if (
+      retryDelay === undefined ||
+      retryDelay.seconds < ZERO_SECONDS ||
+      retryDelay.nanos < ZERO ||
+      retryDelay.nanos >= NANOSECONDS_PER_MILLISECOND * MILLISECONDS_PER_SECOND
+    ) {
+      return undefined;
+    }
+    const milliseconds =
+      Number(retryDelay.seconds) * MILLISECONDS_PER_SECOND +
+      Math.ceil(retryDelay.nanos / NANOSECONDS_PER_MILLISECOND);
+    if (Number.isSafeInteger(milliseconds)) {
+      return milliseconds;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const unavailable = (reason: PluginUnavailableReason): PluginUnavailableFailure =>
   new PluginUnavailable({ reason });
 
@@ -47,6 +76,7 @@ export {
   PluginSupervisorCleanupError,
   PluginUnavailable,
   unavailable,
+  retryAfterMillisecondsFrom,
 };
 export type {
   PluginDeadlineFailure,

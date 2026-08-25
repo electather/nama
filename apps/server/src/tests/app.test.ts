@@ -2,6 +2,7 @@ import { expect, it } from "@effect/vitest";
 import { Deferred, Effect, Exit, Fiber, Layer, Redacted } from "effect";
 
 import { runConfigured } from "../app.ts";
+import { CatalogImport } from "../catalog/catalog-import.ts";
 import { Config } from "../config/config.ts";
 import { HttpServer } from "../http/http-server.ts";
 import { RuntimeControl } from "../lifecycle/runtime-control.ts";
@@ -38,6 +39,13 @@ const fatalLoggingConfig = Config.of({
 type LifecycleCallback = () => void;
 
 const discardLogLine = (_line: string): void => {};
+const makeCatalogImportLayer = (onStart: LifecycleCallback = () => {}) =>
+  Layer.succeed(
+    CatalogImport,
+    CatalogImport.of({
+      start: () => Effect.sync(onStart),
+    }),
+  );
 
 const makeSuccessfulBootstrapToken = () =>
   makeBootstrapToken("setup-eligible", {
@@ -89,6 +97,7 @@ const makeBootstrapActivationFailureFixture = () => {
   );
   const runtimeLayer = Layer.mergeAll(
     Layer.succeed(BootstrapToken, BootstrapToken.of(bootstrapToken)),
+    makeCatalogImportLayer(),
     listenerLayer,
     Layer.succeed(RuntimeControl, runtimeControl),
   );
@@ -132,6 +141,9 @@ const makeLifecycleOrderFixture = () =>
     });
     const runtimeLayer = Layer.mergeAll(
       listenerLayer,
+      makeCatalogImportLayer(() => {
+        events.push("catalog.started");
+      }),
       Layer.succeed(BootstrapToken, activatedBootstrapToken),
       Layer.succeed(RuntimeControl, runtimeControl),
     );
@@ -173,6 +185,7 @@ const makeFatalRuntimeFixture = () =>
     );
     const bootstrapLayer = Layer.succeed(BootstrapToken, BootstrapToken.of(bootstrapToken));
     const runtimeLayer = Layer.mergeAll(
+      makeCatalogImportLayer(),
       bootstrapLayer,
       listenerLayer,
       Layer.succeed(RuntimeControl, runtimeControl),
@@ -211,26 +224,25 @@ it.effect("emits only one tagged startup failure after bootstrap activation fail
   }),
 );
 
-it.effect(
-  "starts LAN advertisement after runtime readiness before waiting for fatal lifecycle completion",
-  () =>
-    Effect.gen(function* lifecycleOrderTest() {
-      const fixture = yield* makeLifecycleOrderFixture();
-      const root = yield* Effect.forkChild(runTestApp(fixture.runtimeLayer, discardLogLine));
+it.effect("starts catalog import and LAN advertisement after runtime readiness", () =>
+  Effect.gen(function* lifecycleOrderTest() {
+    const fixture = yield* makeLifecycleOrderFixture();
+    const root = yield* Effect.forkChild(runTestApp(fixture.runtimeLayer, discardLogLine));
 
-      return yield* Effect.gen(function* observeLifecycleOrder() {
-        yield* fixture.awaitReady;
-        yield* Effect.yieldNow;
-        expect(fixture.events).toEqual([
-          "listener.bound",
-          "bootstrap.activated",
-          "runtime.ready",
-          "lan.started",
-        ]);
-        yield* fixture.completeFatal;
-        expectLifecycleOrder(yield* Fiber.await(root), fixture.events);
-      }).pipe(Effect.ensuring(Fiber.interrupt(root)));
-    }),
+    return yield* Effect.gen(function* observeLifecycleOrder() {
+      yield* fixture.awaitReady;
+      yield* Effect.yieldNow;
+      expect(fixture.events).toEqual([
+        "listener.bound",
+        "bootstrap.activated",
+        "runtime.ready",
+        "catalog.started",
+        "lan.started",
+      ]);
+      yield* fixture.completeFatal;
+      expectLifecycleOrder(yield* Fiber.await(root), fixture.events);
+    }).pipe(Effect.ensuring(Fiber.interrupt(root)));
+  }),
 );
 
 it.effect("logs and tears down exactly once when runtime control fails after readiness", () =>

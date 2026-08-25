@@ -61,8 +61,8 @@ explicit watched/unwatched writes, anonymous artwork resolution, user-facing
 provider connection tests, and the local Linux application image are
 implemented. The Docker gate drives the real image through canonical Compose,
 the compiled Go CLI, the pinned Jellyfin fixture, plugin-child recovery,
-application replacement, and graceful shutdown. Core media ingestion remains
-unimplemented.
+application replacement, and graceful shutdown. Core initial catalog ingestion
+is implemented; public stored Library reads remain unimplemented.
 
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.
 

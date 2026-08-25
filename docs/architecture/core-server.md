@@ -373,14 +373,14 @@ returns its original safe response without replaying provider work. Unrelated
 provider instances and authentication remain available whenever their owners
 and PostgreSQL are healthy.
 
-## Target OAuth authorization and canonical-catalog runtime
+## OAuth authorization target and canonical-catalog runtime
 
-Issues #145 and #36 add two owners without changing the one-pool database
-boundary. Better Auth's JWT, OAuth Provider, and OAuth Device Authorization
-plugins own the authorization-server routes, device-code state, fixed public
-client, signing keys, and token lifecycle. Canonical catalog owns exact mapping,
-normalized persistence, initial scan state, item-aggregate transactions, and
-stored query behavior.
+The one-pool database boundary supports two distinct owners. Better Auth's JWT,
+OAuth Provider, and OAuth Device Authorization plugins will own the
+authorization-server routes, device-code state, fixed public client, signing
+keys, and token lifecycle. Canonical catalog owns exact mapping, normalized
+persistence, initial scan state, and item-aggregate transactions; stored query
+behavior remains target work.
 
 The native listener dispatches exact health routes first, the configured Better
 Auth OAuth and metadata paths second, and Connect application RPCs last. A
@@ -408,11 +408,14 @@ one-hour expiry.
 
 After runtime readiness, Canonical catalog starts one background initial scan
 for each enabled provider instance lacking a completed pass. Provider
-availability never changes process readiness. One persisted current scan per
-instance resumes a valid continuation after restart, serializes page acceptance
-with continuation advancement, and retries only safe availability failures on
-persisted bounded backoff. Every page uses the provider-management scoped
-activity gate and current-revision condition; a stale page cannot commit after
+availability never changes process readiness, and expected provider failures
+remain persisted scan outcomes. An unexpected scheduler defect reports through
+the fatal runtime owner instead of silently stopping later imports. One
+persisted current scan per instance resumes a valid continuation after restart,
+serializes page acceptance with continuation advancement, and retries only safe
+availability failures on persisted bounded backoff. Every page uses the
+provider-management scoped activity gate and current-revision condition; a
+stale page cannot commit after
 configuration cutover, disable, or delete.
 
 Catalog item commits are idempotent by exact provider mapping and replace one
@@ -423,6 +426,8 @@ item. Provider delete removes its catalog mappings and sources inside the
 existing fenced delete transaction. It removes a Library entry only when no
 source remains and never deletes the internal canonical item or Nama-owned user
 state.
+
+### Target stored catalog reads
 
 Stored catalog reads use PostgreSQL filtering, ordering, pagination, hierarchy,
 and full-text search. They make no provider call except artwork resolution,

@@ -221,14 +221,14 @@ const reconcileLibraryEntries = async (
   await deleteUnpublishableEntries(transaction, canonicalItemIdsJson);
   await publishEligibleEntries(transaction, canonicalItemIdsJson);
 };
-const canonicalItemIdsWithProviderSources = async (
+const canonicalItemIdsWithProviderMappings = async (
   transaction: CatalogTransaction,
   providerInstanceId: string,
 ): Promise<readonly string[]> => {
   const affectedRows = await transaction
-    .selectDistinct({ canonicalItemId: mediaSource.canonicalItemId })
-    .from(mediaSource)
-    .where(eq(mediaSource.providerInstanceId, providerInstanceId));
+    .selectDistinct({ canonicalItemId: providerItemMapping.canonicalItemId })
+    .from(providerItemMapping)
+    .where(eq(providerItemMapping.providerInstanceId, providerInstanceId));
   return affectedRows.map((row) => row.canonicalItemId);
 };
 
@@ -249,10 +249,14 @@ const removeOrphanedLibraryEntries = async (
         select 1 from ${mediaSource} as source
         where source.canonical_item_id = entry.canonical_item_id
       )
+      and not exists (
+        select 1 from ${providerItemMapping} as mapping
+        where mapping.canonical_item_id = entry.canonical_item_id
+      )
   `);
 };
 export {
-  canonicalItemIdsWithProviderSources,
+  canonicalItemIdsWithProviderMappings,
   removeOrphanedLibraryEntries,
   repairHierarchy,
   reconcileLibraryEntries,
