@@ -20,6 +20,35 @@ import { integrationUrl, withIsolatedDatabase } from "./postgres.test-support.ts
 const FIRST_ROW_INDEX = 0;
 const PROBE_BOUND_MILLISECONDS = 3000;
 const SINGLE_ROW_COUNT = 1;
+const PRODUCTION_MIGRATION_COUNT = "3";
+const PRODUCTION_TABLE_NAMES = [
+  "account",
+  "canonical_artwork",
+  "canonical_credit",
+  "canonical_hierarchy",
+  "canonical_item",
+  "library_entry",
+  "media_part",
+  "media_source",
+  "media_track",
+  "nama_server_state",
+  "provider_artwork_mapping",
+  "provider_catalog_scan_state",
+  "provider_credential",
+  "provider_external_identifier",
+  "provider_installation",
+  "provider_instance",
+  "provider_instance_observation",
+  "provider_item_mapping",
+  "provider_item_parent_reference",
+  "provider_operation_result",
+  "provider_part_mapping",
+  "provider_source_mapping",
+  "provider_track_mapping",
+  "session",
+  "user",
+  "verification",
+] as const;
 
 const namaConnectionCount = (databaseUrl: string) =>
   withPool(databaseUrl, (observer) =>
@@ -70,18 +99,9 @@ it.live("creates all production tables and one uninitialized server singleton", 
         }),
       );
 
-      expect(result.tables.map(({ table_name: tableName }) => tableName)).toEqual([
-        "account",
-        "nama_server_state",
-        "provider_credential",
-        "provider_installation",
-        "provider_instance",
-        "provider_instance_observation",
-        "provider_operation_result",
-        "session",
-        "user",
-        "verification",
-      ]);
+      expect(result.tables.map(({ table_name: tableName }) => tableName)).toEqual(
+        PRODUCTION_TABLE_NAMES,
+      );
       expect(result.state).toEqual([
         expect.objectContaining({
           initialized_at_type: "timestamp with time zone",
@@ -125,9 +145,9 @@ it.live("upgrades the prior zero-entry production journal exactly once", () =>
       expect(yield* migrationCount()).toBe("0");
 
       yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
-      expect(yield* migrationCount()).toBe("2");
+      expect(yield* migrationCount()).toBe(PRODUCTION_MIGRATION_COUNT);
       yield* useDatabase(databaseUrl, productionMigrations, (database) => database.checkReadiness);
-      expect(yield* migrationCount()).toBe("2");
+      expect(yield* migrationCount()).toBe(PRODUCTION_MIGRATION_COUNT);
     }),
   ),
 );
