@@ -225,6 +225,11 @@ navigation and presentation intents; installation-scoped modules handle only
 genuinely shared behavior. Details does not own Playback, OAuth Authorization
 does not mutate Home, and no application event bus or notification-driven
 control flow connects feature owners.
+For Milestone 4, Details presents playability and source choice and emits a
+typed playback intent. It does not plan, open, render, or control playback;
+those responsibilities remain with Playback. Details exposes no watched or
+resume behavior until Watch State exists, and browse acceptance does not depend
+on executing the playback intent.
 
 Networking, persistence, presentation, fixtures, and platform-specific files
 stay with their owning feature while only that feature uses them. A
@@ -254,8 +259,21 @@ views -> feature owners -> narrow interfaces -> concrete adapters
 
 The interface is the caller and test surface. Feature interfaces describe
 behavior, cancellation, safe failures, and ordering constraints rather than
-mirroring generated RPC methods. The core is the only media data source in the
-MVP, so the application adds no generic repository layer.
+mirroring generated RPC methods. Home, Library, Details, and artwork loading use
+narrow feature-specific interfaces over shared app-owned opaque media identity,
+summary, artwork-reference, playability, and source-summary values. Details
+projections, queries, page state, and failures remain feature-owned. One
+concrete generated-client adapter may implement several feature interfaces, but
+generated messages and Connect failures do not cross it. The core is the only
+media data source in the MVP, so the application adds no generic repository
+layer.
+
+Milestone 4 browse delivery proceeds from executable public `LibraryService`
+handlers through the Apple media boundary and artwork loader. Home,
+Library/Search, and Details/hierarchy/source behavior can then complete behind
+their feature interfaces before scene-local navigation integrates them.
+Universal actual-surface and stored-catalog acceptance closes the slice. This
+sequence creates no platform-specific feature fork or empty package.
 
 ## Session, windows, and navigation
 
@@ -341,17 +359,26 @@ Every window shares the installation authorization but owns its navigation,
 selection, presentation, searches, and in-flight feature work. iPhone and Apple
 TV naturally remain effectively single-window.
 
-Navigation uses typed, scene-local destinations and selections. A platform root
-may present the same semantics through a stack, split view, tab structure, or
-Apple TV focus hierarchy. The architecture does not prescribe exact tabs,
-sidebar sections, or toolbar layout before the owning product feature exists,
-and it adds no global router.
+The semantic top-level destinations are Home and Library. Search is a
+Library-owned mode, and selecting any Home, Library, Search, or child-list item
+opens a typed Details destination. iPhone presents Home and Library in a
+two-item `TabView`, while iPad and Mac use a `NavigationSplitView` sidebar and
+content-detail selection. Compact iPad windows collapse to stack behavior.
+Apple TV uses a focusable top-level Home and Library tab structure with a
+navigation stack inside each destination. These containers preserve the same
+feature intents and add no global router.
 
-Restoration may retain only safe durable context such as a selected section or
-opaque canonical item ID. The app restores it only after scoped authorization
-is re-established. Forms, failures, generated messages, locators, playback plans,
-and playback sessions are never restored. External deep links remain deferred
-until an accepted ingress use case exists.
+A newly authorized or unrestored window opens Home, whose Movies section
+precedes Shows. A first direct Library visit selects Movies with
+`TITLE_ASC`; restored state and Home's See All action override those defaults.
+
+Each iPadOS or macOS window may restore its top-level destination, Library kind
+and sort, and an optional selected opaque canonical item ID after scoped
+authorization is re-established. The app reloads a selected item from the core.
+Search mode and query clear on restoration. Forms, failures, results, page
+tokens, generated messages, locators, artwork, playback plans, and playback
+sessions are never restored. External deep links remain deferred until an
+accepted ingress use case exists.
 
 One running app process owns at most one active playback session. Starting
 playback from another window replaces and safely closes the previous session,
@@ -378,11 +405,13 @@ work may leave the main actor only after measurement establishes the need and
 its inputs and result are safe `Sendable` values. Views perform no I/O,
 decoding, sorting, filtering, or other expensive work in `body`.
 
-Each active feature owns its load and refresh policy. Identity-keyed tasks
-cancel when the endpoint, session, selection, or query changes. Returning to
-the foreground lets only visible stale features refresh; it does not trigger a
-global refresh storm or hidden prefetch. An authorization-identity change
-invalidates all values derived from the previous grant.
+Each active feature loads once for its current endpoint, authorization identity,
+selection, and query, preserves confirmed values during explicit refresh, and
+cancels work when that identity changes. Returning to the foreground
+revalidates only a visible previously loaded feature; it does not reload on
+ordinary back navigation or trigger hidden polling. Search reruns only for a
+user query, explicit refresh, or retry. An authorization-identity change
+invalidates every value derived from the previous grant.
 
 The Apple application schedules no catalog synchronization, reconciliation, or
 general retries in the background; the core owns those responsibilities.
@@ -573,6 +602,48 @@ features need the same semantics. Opaque identifiers are compared and returned;
 the application never parses, sorts, or synthesizes them. Provider identifiers,
 SDK types, and generated transport values never become product model values.
 
+Milestone 4 Library browsing exposes one persistent Movies-or-Shows selection
+and offers the contract's title, release-date, and date-added sorts. Genre,
+release-year, and playable-only controls remain unexposed until a concrete
+navigation need justifies them.
+
+Search covers movies, shows, seasons, and episodes. It trims input, starts a
+request after an approximately 300-millisecond debounce for any nonempty query,
+cancels obsolete requests, and returns to an idle state when cleared. Results
+preserve server ranking and order.
+
+Home item selection opens Details. Each section's See All action opens Library
+with the matching kind and `DATE_ADDED_DESC` sort. An empty section is omitted;
+when both sections are empty, Home presents one empty state.
+
+Browsing follows the canonical hierarchy one level at a time: Show Details
+lists seasons, Season Details lists episodes, and Episode Details is independently
+addressable. A direct season or episode Search result opens its own Details
+surface with canonical parent context.
+
+Home presents bounded horizontal media shelves, Library uses an adaptive poster
+grid, and mixed-kind Search uses information-rich rows that expose kind, year,
+and available season or episode position. Lean summaries contain no parent
+references; canonical parent names load only after the person opens Details.
+
+Movie, show, and season collections prefer poster artwork; episode rows prefer
+thumbnails. Details may combine a backdrop and poster, while only credits use
+portraits. Textless artwork is preferred. A logo may support the composition
+but never replaces the rendered title or accessibility label. Missing artwork
+uses a quiet title-bearing placeholder with stable dimensions.
+
+Details begins with canonical identity, artwork, and concise metadata. A
+playable movie or episode then presents its primary Play action, followed by
+synopsis and supporting metadata. A show or season makes its canonical children
+the primary continuation. Genres, credits, studios, and technical source
+inspection remain subordinate and load only when their surface needs them.
+
+Details keeps Directors and Writers visible as concise metadata and presents a
+bounded ordered Cast row with portraits when available. See All reveals the
+complete ordered credits without a modal. Long synopsis text may expand in
+place without displacing Play or canonical children from the initial task
+hierarchy.
+
 Home, browse, search, and child lists consume lean summaries. Details and
 technical source values load only when their surface requires them. Large lists
 use bounded server-driven pages or continuation tokens once the public contract
@@ -580,12 +651,55 @@ supplies them. Each feature owns page state per session and query, preserves
 server order, deduplicates only by opaque Nama identity, cancels obsolete page
 requests, and retries a failed page without discarding confirmed pages.
 
+Touch and pointer surfaces request the next page when the person approaches the
+end of confirmed content. Apple TV presents a stable focusable Load More item
+instead. Both invoke the same page intent; appended items retain identity and
+server order, and loading or failure appears after confirmed content without
+stealing selection or focus.
+
+A playable movie or episode's primary Play action uses its canonical default
+source. Details exposes a typed Sources child destination when multiple source
+summaries exist or the default is unavailable. That destination presents
+neutral quality and availability, loads selected source parts and tracks only
+on demand, and returns an explicit opaque source ID in the playback intent only
+after deliberate selection. It is not a modal, menu, or inline dump of every
+technical value.
+
+Play appears only for `PLAYABLE`. `TEMPORARILY_UNAVAILABLE` replaces it with an
+explanatory status and Retry, while `NO_AVAILABLE_SOURCE` presents “No playable
+source” without a dead control. Collection items retain a concise availability
+indicator rather than hiding the canonical item.
+
 Artwork views receive no locator URL. A Nama-owned artwork loader accepts an
-artwork reference, resolves and fetches within the locator security policy, and
-returns decoded presentation data. Its initial cache is bounded and
-memory-only, keyed by the artwork reference rather than a locator. Persistent
-`URLCache` or disk image caching requires a later design for retention,
-secret-bearing cache keys, invalidation, and offline behavior.
+artwork reference and requested size bucket, resolves and fetches within the
+locator security policy, and returns decoded presentation data. It loads
+visible artwork plus a small scroll lookahead, retains a decoded-cost-limited
+memory cache keyed by artwork reference and size bucket rather than locator,
+and purges on memory pressure or authorization-identity change. Work outside
+the useful lookahead is canceled; backdrops and portraits load only when their
+Details region becomes relevant. Persistent `URLCache` or disk image caching
+requires a later design for retention, secret-bearing cache keys, invalidation,
+and offline behavior.
+
+`CATALOG_NOT_READY` presents a dedicated loading state using the server's retry
+guidance and an explicit Retry action; a legitimately empty Library presents a
+distinct empty state. A later-page failure retains confirmed items and offers
+inline Retry. Provider or source unavailability remains local playability
+information rather than a global blocker. Missing or unsafe artwork falls back
+to the mandatory title without failing the containing item.
+
+Search idle presents “Search your library” and names movies, shows, seasons,
+and episodes. An empty result presents “No results for ‘…’” with Clear Search;
+a Search failure presents “Search is unavailable” with Try Again while
+preserving the query. Initial catalog import presents “Your library is being
+prepared,” while a legitimate empty catalog presents “Your library is empty”
+with Refresh and no unauthorized provider-management action.
+
+Ordinary initial loads use static redacted placeholders shaped like the final
+shelves, grid items, rows, or Details regions rather than replacing the surface
+with a central spinner. They use no perpetual shimmer. Later-page progress stays
+inline below confirmed items, and state transitions remain short,
+reduced-motion-safe, and structural rather than decorative.
 
 Watch State publishes stable confirmed changes across Home, Details, Playback,
 and windows. A watched/unwatched mutation may expose an explicit pending state,
@@ -631,10 +745,13 @@ Accessibility is part of each feature's interface and acceptance. Each feature
 defines labelled actions, reading and focus order, Dynamic Type behavior where
 supported, keyboard/pointer/remote operation, high-contrast behavior,
 reduced-motion handling, long-content behavior, and visible alternatives to
-gestures. Apple TV focus restoration and Mac keyboard commands are platform
-behavior, not optional polish. Self-contained previews cover meaningful
-loading, empty, content, long-content, pending, and failure states without live
-services or credentials.
+gestures. Apple TV initially focuses the first actionable item in the first
+nonempty section, restores selection by opaque canonical item ID when returning
+from Details, falls back to the nearest surviving sibling, and never lets page
+insertion steal focus. Mac exposes conventional Home, Library, Search, Refresh,
+and Back commands rather than hidden gestures. Self-contained previews cover
+meaningful loading, empty, content, long-content, pending, and failure states
+without live services or credentials.
 
 ## Playback boundary
 
@@ -757,6 +874,31 @@ Each module interface is both its caller and automated test surface:
   behavior; and
 - deterministic previews cover visual states without live network, Keychain,
   or provider dependencies.
+
+Provider-neutral browse acceptance additionally requires:
+
+- feature tests for load, replacement cancellation, stale completion, Search
+  debounce, paging and retry, refresh, empty and failure states, and
+  identity-based selection and focus;
+- adapter and artwork tests for every consumed generated request and response,
+  validation bounds, authorization and safe failure mapping, scoped headers,
+  redirects, expiry, cancellation, memory pressure, title fallback, and absence
+  of generated or provider values beyond the adapter;
+- deterministic previews for loading, catalog preparation, legitimate empty,
+  content, long content, no results, later-page failure, unavailable source,
+  and missing artwork;
+- actual-surface inspection on iPhone and iPad simulators, Apple TV simulator
+  with focus interaction, and an Apple Development-signed sandboxed Mac app;
+  and
+- one real flow on every supported app presentation through OAuth-authorized
+  production clients, the production server, PostgreSQL, supervised production
+  Jellyfin catalog import, public `LibraryService`, Home, Library, Search,
+  movie/show/season/episode Details, source inspection, and artwork fetch.
+
+The browse slice ends after the Details feature emits a verified typed playback
+intent; it does not plan, open, render, or control playback. Physical-device
+playback, Local Network privacy, and playback-engine evidence remain explicitly
+unverified here and belong to their owning acceptance work.
 
 UI automation is added only when a critical interaction cannot be defended
 reliably through a module interface and actual-surface verification. Platform
