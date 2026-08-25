@@ -46,7 +46,7 @@ human-code or polling-token digest, master-key domain, encrypted credential
 delivery, logical-operation replay record, custom authorization capacity row,
 or startup/minute cleanup loop.
 
-## Target canonical catalog persistence
+## Canonical catalog persistence
 
 The stored catalog is a typed relational projection, not a serialized plugin
 message or provider payload. Its record graph covers canonical items, Library
@@ -77,9 +77,10 @@ omission. Explicit removal of a final source removes the Library entry while
 retaining the internal canonical item and its Nama-owned state.
 
 The scan-state row retains the captured provider revision, core run ID, status,
-last accepted continuation, safe failure reason, timestamps, and next retry
-time. Page acceptance and continuation advancement share one transaction and
-apply only while that provider revision remains current and enabled. Restart
+last accepted continuation, consecutive failure count, safe failure reason,
+timestamps, and next retry time. Page acceptance and continuation advancement
+share one transaction and apply only while that provider revision remains
+current and enabled. Restart
 resumes a valid continuation or begins again; disable pauses scanning without
 removing stored media, and re-enable starts a fresh pass.
 

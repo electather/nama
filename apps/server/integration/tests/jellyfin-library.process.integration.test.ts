@@ -1356,6 +1356,9 @@ it.live(
             )
             .pipe(Effect.flip);
           expect(failure).toMatchObject({ _tag: "PluginRpcError", code });
+          if (mode === "unavailable") {
+            expect(failure).toMatchObject({ retryAfterMilliseconds: 5000 });
+          }
           const serializedFailure = JSON.stringify(failure);
           expect(serializedFailure).not.toContain(API_KEY);
           expect(serializedFailure).not.toContain(PRIVATE_PATH);

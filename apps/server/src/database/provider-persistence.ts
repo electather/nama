@@ -25,8 +25,12 @@ import {
   cleanupExpiredOperationResults,
   readOperationResult,
 } from "./provider-operation-results-private.ts";
-import { persistenceFailure } from "./provider-persistence-model-private.ts";
+import {
+  ProviderCredentialsUnavailable,
+  persistenceFailure,
+} from "./provider-persistence-model-private.ts";
 import type {
+  ProviderCredentialsFailure,
   ProviderInstallationInput,
   ProviderInstallationListInput,
   ProviderInstanceInput,
@@ -96,6 +100,7 @@ const makeProviderPersistence = (
   });
 
 export {
+  type ProviderCredentialsFailure,
   type ProviderInstallationInput,
   type ProviderInstallationListInput,
   type ProviderInstanceListInput,
@@ -105,6 +110,7 @@ export {
   type ProviderPersistenceFailure,
   type StoredProviderInstance,
   type StoredProviderInstallation,
+  ProviderCredentialsUnavailable,
   persistenceFailure,
   makeProviderPersistence,
 };
