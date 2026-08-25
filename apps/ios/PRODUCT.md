@@ -18,7 +18,7 @@ Nama's universal Apple application provides one native, dependable client
 across Apple platforms. This connection flow turns an explicitly discovered,
 manually entered, or restored transport address into a verified, restorable
 Nama endpoint without guessing identity, weakening platform security, or
-promising unimplemented pairing and media behavior. Success means the person
+promising unimplemented OAuth authorization and media behavior. Success means the person
 always sees an honest, actionable connection state.
 
 ## Brand Personality
@@ -27,7 +27,7 @@ Calm, direct, trustworthy. Nama should feel native to each Apple platform, make 
 
 ## Anti-references
 
-Do not resemble an integration dashboard, ornamental setup wizard, generic card grid, or provider-branded client. Avoid decorative Liquid Glass, hidden gestures, speculative Home or pairing placeholders, raw networking diagnostics, and custom controls where a standard platform control already communicates the action.
+Do not resemble an integration dashboard, ornamental setup wizard, generic card grid, or provider-branded client. Avoid decorative Liquid Glass, hidden gestures, speculative Home or authorization placeholders, raw networking diagnostics, and custom controls where a standard platform control already communicates the action.
 
 ## Design Principles
 

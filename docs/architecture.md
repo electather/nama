@@ -12,17 +12,18 @@ This document is Nama's canonical architecture entry point and ADR index. Read [
 
 ## System shape
 
-Nama's target MVP is a self-hosted control plane, not a media relay. A TypeScript core owns identity, configuration, the canonical media model, watch state, reconciliation, and authorization. Provider plugins translate between that model and external services. Native clients and the Go CLI use one versioned Protobuf/ConnectRPC contract. During playback the provider sends media directly to the client; the core only selects and authorizes the source.
+Nama's target MVP is a self-hosted control plane, not a media relay. A TypeScript core owns identity, configuration, the canonical media model, watch state, reconciliation, and authorization. Provider plugins translate between that model and external services. Application APIs use the versioned Protobuf/ConnectRPC contract; Better Auth's standard OAuth HTTP endpoints authorize the Apple public client. During playback the provider sends media directly to the client; the core only selects and authorizes the source.
 
 ```text
-Apple app ──────────────┐
-Go CLI ── Connect api.v1├──> Node core ───> Drizzle ORM ───> PostgreSQL
-                        │        │
-                        │        └── Connect plugin.v1 over Unix socket
-                        │                         │
-                        │                  Jellyfin plugin ───> Jellyfin API
-                        │                         │
-Apple player <──────────┴──────── playable URL ──┘
+Apple app ── OAuth device grant ──┐
+Browser ──── OAuth approval ──────┤
+Apple app ──────────────┐         ├──> Node core ───> Drizzle ORM ───> PostgreSQL
+Go CLI ── Connect api.v1├─────────┘        │
+                        │                  └── Connect plugin.v1 over Unix socket
+                        │                                   │
+                        │                            Jellyfin plugin ───> Jellyfin API
+                        │                                   │
+Apple player <──────────┴────────────────── playable URL ──┘
 ```
 
 The target installation is one private deployment with one administrator, Jellyfin as its first provider type, and one universal SwiftUI client for iPhone, iPad, Apple TV, and Mac on Apple platform version 26 or later. Multiple Jellyfin provider instances may supply watch-state input. The public and plugin contracts are real from the first vertical slice, while a marketplace, web console, generic workflow engine, distributed queue, and native media server are not part of the target architecture.
@@ -90,12 +91,12 @@ shares them across windows, and reverifies the endpoint once per window after
 launch. Missing, partial, stale, or mismatched acknowledgement asks again
 rather than authorizing another endpoint. Safe failures retain the endpoint; a
 legacy forbidden HTTP value remains visible in a blocked HTTPS-required state
-until explicit Change Endpoint. Pairing and all media behavior remain
-unimplemented.
+until explicit Change Endpoint. Better Auth OAuth authorization and all media
+behavior remain unimplemented.
 
 ## Architectural decision records
 
-Accepted ADRs record only the choices and rationale below; their linked living architecture and contracts retain current shape and required behavior.
+ADRs record the choices and rationale below; superseded records remain linked as history, while living architecture and contracts retain current shape and required behavior.
 
 1. [ADR-0001 — Use one Effect application graph for the core](adr/0001-effect-application-graph.md)
 2. [ADR-0002 — Own HTTP lifecycle with one native Node listener](adr/0002-native-node-http-lifecycle.md)
@@ -126,15 +127,16 @@ Accepted ADRs record only the choices and rationale below; their linked living a
 27. [ADR-0027 — Separate request correlation from durable logical-operation idempotency](adr/0027-logical-operation-idempotency.md)
 28. [ADR-0028 — Domain-separate provider credential and principal protection](adr/0028-domain-separated-provider-protection.md)
 29. [ADR-0029 — Require Apple platform version 26](adr/0029-apple-platform-26-minimum.md)
-30. [ADR-0030 — Keep one active pairing per Apple app installation](adr/0030-one-active-apple-pairing.md)
-31. [ADR-0031 — Separate Device credential verification from Pairing delivery](adr/0031-separate-device-verification-from-pairing-delivery.md)
+30. [ADR-0030 — Keep one active pairing per Apple app installation (superseded by ADR-0033)](adr/0030-one-active-apple-pairing.md)
+31. [ADR-0031 — Separate Device credential verification from Pairing delivery (superseded by ADR-0033)](adr/0031-separate-device-verification-from-pairing-delivery.md)
 32. [ADR-0032 — Use AetherEngine 6.21.0 with a bounded MVP security exception](adr/0032-aetherengine-mvp-security-exception.md)
+33. [ADR-0033 — Use Better Auth OAuth device authorization](adr/0033-better-auth-oauth-device-authorization.md)
 
 ## Invariants
 
 1. The core is the source of truth for Nama-owned user and watch state; plugins never become hidden databases. See [ADR-0006](adr/0006-stateless-supervised-plugin-subprocesses.md), [ADR-0022](adr/0022-canonical-provider-neutral-media-model.md), and [ADR-0023](adr/0023-canonical-watch-state-reconciliation.md).
 2. Remote provider resource IDs, errors, SDK types, and provider-specific consumer shapes stop at plugin boundaries. Installed provider type IDs and schema-driven configuration are authenticated Nama management resources; public consumers otherwise see Nama concepts. See [ADR-0005](adr/0005-provider-neutral-public-api.md) and [ADR-0019](adr/0019-restricted-schema-driven-provider-configuration.md).
-3. Protobuf is the source of truth for every supported client, CLI, and plugin RPC; authentication is not a second client SDK. See [ADR-0003](adr/0003-protobuf-connectrpc-boundary.md), [ADR-0004](adr/0004-independent-public-plugin-protobuf-packages.md), and [ADR-0007](adr/0007-private-better-auth-adapter.md).
+3. Protobuf is the source of truth for every supported Nama client, CLI, and plugin RPC. Better Auth's standard OAuth authorization-server endpoints are the deliberate public authentication exception and are not mirrored through Protobuf. See [ADR-0003](adr/0003-protobuf-connectrpc-boundary.md), [ADR-0004](adr/0004-independent-public-plugin-protobuf-packages.md), [ADR-0007](adr/0007-private-better-auth-adapter.md), and [ADR-0033](adr/0033-better-auth-oauth-device-authorization.md).
 4. Media bytes do not pass through the core in normal playback. Locators remain short-lived and restricted to core-validated redirect origins; the selected Apple MVP engine carries the bounded logging and header-replay exceptions recorded in ADR-0032. See [ADR-0013](adr/0013-origin-scoped-short-lived-locators.md) and [ADR-0032](adr/0032-aetherengine-mvp-security-exception.md).
 5. A plugin may be restarted or replaced without losing correctness; schedules, credentials, cursors, and reconciliation state belong to the core. See [ADR-0006](adr/0006-stateless-supervised-plugin-subprocesses.md) and [ADR-0024](adr/0024-best-effort-provider-scans.md).
 6. Playback-engine types do not escape the universal Apple app's playback adapter. See [ADR-0012](adr/0012-single-playback-engine-adapter.md).
@@ -145,11 +147,8 @@ Accepted ADRs record only the choices and rationale below; their linked living a
 11. Clients branch on Connect code and stable reason; application failures use standard Google RPC details. See [ADR-0026](adr/0026-standard-google-rpc-error-details.md).
 12. Request correlation is distinct from durable logical-operation idempotency. See [ADR-0027](adr/0027-logical-operation-idempotency.md).
 13. Recoverable provider credentials use versioned authenticated encryption under a provider-specific derived key, while immutable provider-principal bindings retain only keyed, instance-bound digests. See [ADR-0028](adr/0028-domain-separated-provider-protection.md).
-14. One universal Apple app installation has one active endpoint-bound Device credential. Windows share that pairing while retaining independent transient state, and a replacement becomes active only after fresh Pairing commits durably. See [ADR-0030](adr/0030-one-active-apple-pairing.md).
-15. Active Device credentials are verified through non-recoverable,
-    domain-separated digests, while only an unexpired approved Pairing may
-    retain an encrypted delivery copy for replay-safe polling. See
-    [ADR-0031](adr/0031-separate-device-verification-from-pairing-delivery.md).
+14. One universal Apple app installation has one active endpoint-bound OAuth token bundle. Windows share that authorization while retaining independent transient state, and a replacement becomes active only after the candidate bundle commits durably. See [ADR-0033](adr/0033-better-auth-oauth-device-authorization.md).
+15. Better Auth owns device-code state, token issuance, refresh rotation, expiry, revocation endpoints, and cleanup. Connect verifies fixed-client, audience-bound, method-scoped access JWTs locally; Nama adds only broad Administrator revocation of the fixed client's refresh-token families. See [ADR-0033](adr/0033-better-auth-oauth-device-authorization.md).
 
 ## Subsystem architecture
 
@@ -158,7 +157,7 @@ Accepted ADRs record only the choices and rationale below; their linked living a
 - [Plugin system](architecture/plugin-system.md)
 - [Canonical data model](architecture/data-model.md)
 - [Watch-state synchronization](architecture/state-sync.md)
-- [Authentication, setup, and pairing](architecture/authentication-and-setup.md)
+- [Authentication, setup, and OAuth authorization](architecture/authentication-and-setup.md)
 - [Management CLI](architecture/cli.md)
 - [Universal Apple application](architecture/ios-app.md)
 - [Playback](architecture/playback.md)

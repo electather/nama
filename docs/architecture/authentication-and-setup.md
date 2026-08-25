@@ -1,14 +1,14 @@
-# Authentication, setup, and pairing
+# Authentication, setup, and OAuth authorization
 
-Status: issue #23 server setup and administrator authentication plus issue #24 CLI setup, sign-in, and status are implemented and verified. Device pairing and Apple-client behavior remain unfinished.
+Status: issue #23 server setup and Administrator authentication plus issue #24 CLI setup, sign-in, and status are implemented and verified. Issue #145 defines the accepted Better Auth OAuth authorization target; its runtime, wire-contract, browser, CLI, and Apple behavior remain unimplemented.
 
-Nama owns the public setup and authentication semantics. Better Auth is a private server-side implementation detail used only by the runtime-loaded adapter behind `SetupService` and `AuthService`; generated auth persistence alone is not the boundary ([ADR-0007](../adr/0007-private-better-auth-adapter.md)).
+Nama owns public setup, Administrator authentication, and protected-resource authorization semantics. The implemented setup and CLI Administrator-authentication adapter remains private behind `SetupService` and `AuthService`; the target OAuth authorization-server and browser-approval session routes are a deliberate public Better Auth boundary under [ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md), superseding the broader route prohibition in [ADR-0007](../adr/0007-private-better-auth-adapter.md).
 
 ## Implemented runtime boundary
 
-The private adapter is the only production module that loads Better Auth. Better Auth routes, cookies, request and response models, errors, raw sessions, and secrets never cross that boundary and are never mounted. It uses the shared PostgreSQL pool through the database module's narrow Drizzle capability, while `better-auth.config.ts` remains tooling-only and the committed generated auth schema remains its sole model source. The adapter derives a 32-byte secret from the redacted master key with HKDF-SHA-256 and context `nama/better-auth/v1`, encodes it as unpadded base64url, enables email/password and signed bearer credentials, disables automatic sign-in, logging, and telemetry, and leaves Better Auth's session lifecycle unchanged.
+The private adapter is currently the only production module that loads Better Auth. Better Auth routes, cookies, request and response models, errors, raw sessions, and secrets are not mounted in the implemented runtime. The adapter uses the shared PostgreSQL pool through the database module's narrow Drizzle capability, while `better-auth.config.ts` remains tooling-only and the committed generated auth schema remains its sole model source. It derives a 32-byte secret from the redacted master key with HKDF-SHA-256 and context `nama/better-auth/v1`, encodes it as unpadded base64url, enables email/password and signed bearer credentials, disables automatic sign-in, logging, and telemetry, and leaves Better Auth's Administrator-session lifecycle unchanged.
 
-Under [ADR-0025](../adr/0025-default-deny-rpc-authorization.md), all generated public descriptors are registered behind the default-deny method inventory, so authorization precedes an unimplemented handler. The implemented runtime supports `SetupService.GetStatus`, `SetupService.CreateAdministrator`, `AuthService.SignIn`, `AuthService.GetCurrentUser`, and `AuthService.SignOut`. Device descriptors have no pairing or device-credential behavior.
+Under [ADR-0025](../adr/0025-default-deny-rpc-authorization.md), all generated public descriptors are registered behind the default-deny method inventory, so authorization precedes an unimplemented handler. The implemented runtime supports `SetupService.GetStatus`, `SetupService.CreateAdministrator`, `AuthService.SignIn`, `AuthService.GetCurrentUser`, and `AuthService.SignOut`. The unimplemented `DeviceService` descriptors remain generated only until issue #145 removes the obsolete contract.
 
 ## Durable setup and recovery ([ADR-0008](../adr/0008-fail-closed-setup-reconciliation.md))
 
@@ -28,94 +28,120 @@ Under [ADR-0009](../adr/0009-confirm-durable-session-revocation.md), `SignOut` i
 
 The Go CLI implements named profile targeting, setup followed by sign-in, later sign-in, and authentication status over these RPCs. It keeps bearer credentials only in the native credential facility, binds each record to its canonical full server target, and never falls back to a plaintext file. Malformed and legacy unbound records never attach; a successful deletion makes them an absent credential that setup or login may replace, while deletion failure is a typed, fail-closed credential-cleanup error. A process-injected bearer is eligible for authentication status without native-store access and is never persisted or deleted; setup and login reject while the injection is active so they cannot orphan a newly issued bearer. Lost non-wire setup responses are recovered by status without replaying administrator creation. Once recovery confirms initialization, sign-in and credential storage use a separate fresh bounded settlement context even if the original caller context expired; known wire application failures still return directly. Malformed sign-in responses with a usable bearer are revoked. Failed local credential storage restores the prior native state and revokes the new session, and an unconfirmed revocation takes precedence over the storage error.
 
-## Target Pairing and Device authentication
+## Target Better Auth authorization server
 
-Device pairing separates an eight-character uppercase unambiguous Base32 human
-code from independent high-entropy polling and Device secrets. The displayed
-code is grouped `XXXX-XXXX`; approval accepts case-insensitive input after
-removing spaces and hyphens. A Pairing lasts ten minutes and advertises a
-five-second poll interval. The first status poll is eligible after that
-interval; PostgreSQL time and a durable `next_poll_at` enforce later polls
-across restart without extending the gate after an early request.
+Issue #145 adds the exact compatible Better Auth JWT, OAuth Provider, and OAuth
+Device Authorization plugins. Better Auth owns the RFC 8628 device-code
+records, issuance and polling endpoints, approval state, token issuance,
+refresh rotation, expiry, revocation endpoints, migrations, and cleanup. Nama
+does not wrap those endpoints in Connect or maintain parallel code, digest,
+delivery-envelope, approval-result, Device, or cleanup records.
 
-`BeginPairing` trims surrounding Unicode whitespace from the Device display
-name, rejects an empty result, and otherwise preserves it exactly. A
-process-local global window admits at most 20 begins per ten seconds, while a
-database-serialized installation limit admits at most 100 unexpired Pairings.
-The server trusts neither forwarded addresses nor client metadata as an
-identity for this public limit.
+The existing listener publicly delegates Better Auth's authorization-server
+routes, OAuth authorization-server metadata, required protected-resource
+metadata, JWKS, and the native email/password and session routes required by
+browser approval. Better Auth's session cookie is public only to that browser
+flow; setup and CLI authentication retain their Nama Connect contracts. The
+implementation continues to suppress Better Auth logging and telemetry and
+never logs cookies, authorization headers, device or user codes, access tokens,
+refresh tokens, request bodies, or arbitrary OAuth parameters.
 
-Polling and Device credentials use distinct versioned token prefixes followed
-by independent 32-byte random unpadded-base64url secrets. Authentication
-dispatches by exact prefix and never tries one secret against another credential
-store. Human codes, polling tokens, and active Device bearers are verified only
-through separate domain-derived keyed digests. Under
-[ADR-0031](../adr/0031-separate-device-verification-from-pairing-delivery.md),
-an approved Pairing alone retains a separately encrypted copy of the Device
-bearer until Pairing expiry so repeated matching polls return the same logical
-Device and credential after a lost response.
+Under ADR-0033's explicit transport exception, the existing acknowledged
+local-HTTP policy also applies to Administrator sign-in, device authorization,
+token exchange, refresh, and bearer-protected Connect calls. Loopback, private,
+link-local, `localhost`/`.localhost`, and `.local` endpoints may use HTTP after
+the existing warning and exact endpoint acknowledgement; public names and
+addresses require HTTPS. This is a deliberate deviation from Better Auth's
+production HTTPS guidance, not a claim that HTTP provides transport secrecy.
 
-One approval transaction locks the unexpired Pairing, creates exactly one
-Device and verifier, commits the encrypted delivery, and stores the
-Administrator-scoped operation result. The winning operation ID replays its
-original response for 24 hours. Another operation against the consumed code
-fails `PAIRING_ALREADY_APPROVED`; malformed, unknown, or no-longer-retained
-codes fail `PAIRING_CODE_INVALID`; a retained expired Pairing fails
-`PAIRING_EXPIRED`.
+A reviewed Better Auth/Drizzle migration deterministically seeds one code-owned
+first-party Apple OAuth client. It is a native public client with
+`token_endpoint_auth_method: none`, no client secret, and only the device-code
+and refresh-token grants. Better Auth's cached-trusted-client facility prevents
+CRUD changes to it. Dynamic client registration, authorization-code and
+client-credentials grants, and OIDC identity scopes remain disabled.
 
-At expiry, pending and approved Pairings project `EXPIRED` and never return a
-credential. Encrypted delivery is cleared through bounded startup and
-once-per-minute cleanup; digest-backed expiry evidence remains for 24 hours.
-Device credentials have no scheduled MVP expiry and remain valid until
-revocation. The public `BearerCredential.expires_at` is therefore absent for a
-Device credential; removing its current validation requirement is target
-contract work, not implemented behavior.
+The client requests one resource equal to the exact canonical Nama API
+endpoint and the scopes `nama:library`, `nama:playback`, `nama:user-state`, and
+`offline_access`. It does not request `openid`, profile claims, or an ID token.
+The resource binds the JWT audience; it does not turn the transport endpoint
+into deployment identity.
 
-Revocation atomically timestamps and retains the Device, removes its verifier,
-and clears any undelivered credential. It blocks every new authenticated
-request immediately while already admitted bounded work may finish. Every
-malformed, unknown, or revoked Device bearer has the same
-`UNAUTHENTICATED/CREDENTIAL_INVALID` shape. An invalid Pairing identity, token,
-or token class has the single `UNAUTHENTICATED/AUTHENTICATION_FAILED` shape;
-only a matching retained request can observe `EXPIRED`.
+Better Auth's pinned-version defaults own device-code storage, collision
+handling, polling, access- and refresh-token persistence, rotation, expiry,
+revocation, and cleanup. The target adds no Nama-specific HMAC domains,
+encrypted credential-delivery envelope, operation replay record, custom
+device-authorization capacity, or cleanup scheduler. Access JWTs retain Better
+Auth's one-hour default and refresh tokens retain its 30-day default.
 
-Successful Device-authenticated consumer work updates approximate
-`last_seen_at` at most once per 15 minutes. That diagnostic write never grants
-authority and its safe logged failure does not invalidate a request whose
-credential was already verified. Pairing polls and Administrator requests do
-not update it.
+## Target browser device authorization
 
-## Target Apple Device credential ownership
+The Apple public client requests an OAuth device authorization directly from
+Better Auth and presents the returned user code and verification URI. It polls
+Better Auth's OAuth token endpoint with the device-code grant no faster than
+the returned interval. Approval yields an audience-bound JWT access token and,
+because `offline_access` was granted, a rotating refresh token.
 
-Under [ADR-0030](../adr/0030-one-active-apple-pairing.md), one universal Apple
-app installation has one active endpoint-bound Device credential, shared by
-every window. This is client policy over the existing public `DeviceService`
-contract: the Nama endpoint remains a transport address rather than deployment
-identity, and changing it requires fresh verification and Pairing without
-replaying the active credential.
+Nama serves only the browser surfaces required by that flow: Administrator
+sign-in and one device-confirmation page. Sign-in uses Better Auth's maintained
+email/password endpoint and browser session cookie; the same session claims and
+approves or denies the code. The confirmation page shows the entered code,
+fixed client, requested scopes, and resource and requires explicit approval or
+denial. The trusted first-party client does not add a second generic consent
+screen. A general web-management application remains out of scope.
 
-The Apple app stores the last verified canonical endpoint without credentials
-in `UserDefaults`. Pairing stores one versioned Keychain record containing both
-the Device credential and its exact canonical endpoint, protected with
-`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and excluded from iCloud Keychain
-sync. A paired session is restored entirely from that record and is never
-assembled by combining Keychain material with an independent defaults value.
+## Target protected-resource authorization
 
-Endpoint replacement verifies and pairs the candidate without the active
-credential, commits the new Keychain record, and only then retires the previous
-pairing. Cancellation or failure before that commit preserves the active
-pairing. An unknown or damaged record fails closed into visible re-pairing; a
-definitive invalid or revoked Device credential clears or quarantines paired
-state, while ordinary offline and transient failures preserve it. These are
-target requirements; Device runtime handlers and Apple Keychain behavior remain
-unimplemented.
+Connect remains the protected resource API. Its default-deny method inventory
+locally verifies every OAuth access JWT's signature through the Better Auth
+JWKS, issuer, exact audience, expiry, fixed client ID, and required scope:
+
+| Scope | Authorized method group |
+| --- | --- |
+| `nama:library` | `LibraryService.*` |
+| `nama:playback` | `PlaybackService.*` |
+| `nama:user-state` | `UserStateService.*` |
+
+Administrator sessions continue to authorize management methods and may call
+consumer methods. OAuth access tokens never authorize setup, Administrator
+authentication, health, provider management, synchronization, grant
+management, or plugin methods. A malformed, expired, wrong-issuer,
+wrong-audience, wrong-client, or insufficient-scope token fails before handler
+validation without revealing protected field details.
+
+Locally verified JWTs are self-contained and cannot be revoked server-side.
+Revoking refresh authority therefore stops renewal while an already-issued JWT
+remains valid for at most its one-hour expiry. Better Auth's device grant does
+not create an OAuth consent row, so consent deletion cannot revoke a lost
+installation's offline grant. The one intentional application-owned gap is a
+narrow Administrator CLI operation that revokes every Better Auth refresh-token
+family for the fixed Apple client. It does not identify, list, or revoke
+individual installations.
+
+## Target Apple OAuth token ownership
+
+One universal Apple app installation owns one active endpoint-bound OAuth token
+bundle, shared by every window. The last verified endpoint without credentials
+remains in `UserDefaults`. A versioned Keychain record contains the exact
+canonical Nama endpoint, refresh token, and current access-token material,
+uses `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, and is excluded from
+iCloud Keychain synchronization. Authorization state is restored entirely from
+that record and is never assembled from unrelated defaults.
+
+Endpoint replacement verifies and authorizes the candidate without attaching
+the active token, commits the candidate's complete Keychain bundle, and only
+then deletes the previous bundle. Cancellation or failure before that commit
+preserves the active authorization. An unknown or damaged record, definitive
+refresh failure, or expired refresh authority fails closed into visible device
+authorization; ordinary offline and transient failures preserve the stored
+grant. Multiple saved endpoint grants remain deferred.
 
 ## Correlation, safety, and verification
 
-[ADR-0026](../adr/0026-standard-google-rpc-error-details.md) governs application failure details, and [ADR-0027](../adr/0027-logical-operation-idempotency.md) keeps server-owned request correlation separate from logical-operation identity. The outer Node dispatch assigns server-owned `nama-request-id` to every delegated Connect response before decoding. Application-generated failures carry the same value in `google.rpc.RequestInfo`; malformed Connect input may fail before the application pipeline, so the response header is the correlation fallback. Terminal RPC logs contain only the request ID, method, Connect code, and duration. Public errors and logs never expose credentials, identities, passwords, bootstrap tokens, database detail, or Better Auth data.
+[ADR-0026](../adr/0026-standard-google-rpc-error-details.md) governs Connect application failure details, and [ADR-0027](../adr/0027-logical-operation-idempotency.md) keeps server-owned request correlation separate from logical-operation identity. The outer Node dispatch assigns server-owned `nama-request-id` to every delegated Connect response before decoding. Application-generated failures carry the same value in `google.rpc.RequestInfo`; malformed Connect input may fail before the application pipeline, so the response header is the correlation fallback. Terminal RPC logs contain only the request ID, method, Connect code, and duration. Better Auth HTTP endpoints retain their standard protocol errors but share the same credential and body redaction rules.
 
-Focused server and CLI coverage, disposable PostgreSQL, generated clients, compiled-command smoke tests, and package-entrypoint process coverage verify setup creation and restart repair, sign-in/current-user/sign-out, CLI setup recovery and credential replacement, forced session-deletion failure, rate limits, cancellation, correlation, public-error and log redaction, readiness, and fatal ambiguity handling. A local macOS flow additionally verifies setup and stored-session status through Keychain; it is not portable keyring coverage.
+Focused server and CLI coverage, disposable PostgreSQL, generated clients, compiled-command smoke tests, and package-entrypoint process coverage verify the implemented setup creation and restart repair, sign-in/current-user/sign-out, CLI setup recovery and credential replacement, forced session-deletion failure, rate limits, cancellation, correlation, public-error and log redaction, readiness, and fatal ambiguity handling. Issue #145 additionally requires executable authorization-server discovery, browser confirmation, device-code exchange, JWT enforcement, refresh rotation, broad client-grant revocation, and Apple Keychain flows before the OAuth target may be called implemented.
 
 ## Unfinished work
 
-Device pairing—including human codes, polling tokens, approval, device credentials, listing, and revocation—is not implemented. CLI sign-out and Apple-client discovery, pairing, and credential storage remain unfinished. Public signup, invitations, password recovery, OAuth/OIDC, multiple roles, and a web administration UI remain outside the implemented runtime.
+Better Auth OAuth Provider, public authorization-server routes, browser device confirmation, JWT-protected consumer access, broad Apple-client grant revocation, and Apple Keychain token ownership are not implemented. The current `DeviceService` Protobuf contract is obsolete target material and remains only until the implementation cutover removes it and regenerates every consumer. CLI sign-out remains unfinished. Public signup, invitations, password recovery, dynamic client registration, authorization-code and client-credentials grants, OIDC identity scopes, multiple roles, multiple saved endpoint grants, and a general web administration UI remain outside the target runtime.
