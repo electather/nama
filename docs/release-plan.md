@@ -7,8 +7,8 @@ This roadmap turns Nama's architecture into the smallest sequence of releasable 
 ## Fixed constraints
 
 - The core is TypeScript on Node.js 24 using pnpm, ESM, an exact-pinned Effect v4 beta, Drizzle ORM with PostgreSQL, Protobuf, ConnectRPC, and Buf.
-- `api.v1` is the public client contract. `plugin.v1` is the separate provider contract. Generated SDKs, not handwritten parallel clients, consume both contracts.
-- Better Auth is private to the core behind Nama-owned setup and authentication RPCs. Neither the Go CLI nor the universal Apple app imports Better Auth types.
+- `api.v1` is the public application RPC contract and `plugin.v1` is the separate provider contract. Generated SDKs, not handwritten parallel clients, consume both; Better Auth's standard OAuth HTTP contract is the deliberate authorization exception.
+- Better Auth remains private behind Nama-owned setup and CLI Administrator-authentication RPCs, while its OAuth authorization-server, browser-approval session, metadata, and JWKS routes are public. Neither the Go CLI nor the universal Apple app imports Better Auth implementation types.
 - The Go `nama` CLI is the MVP management interface. It supports complete help, generated shell completion, stable exit codes, non-interactive flags, JSON output, and a repository Codex `SKILL.md`.
 - The production server target is Linux in Docker. Deployment is one Nama image containing the core and bundled plugin executables, plus PostgreSQL. macOS is both a server development target and a supported client platform.
 - Provider plugins are stateless, supervised subprocesses. They use ConnectRPC over Unix domain sockets and never access the database. The core owns configuration, secrets, cursors, retries, reconciliation, and all durable state.
@@ -45,7 +45,7 @@ Create the smallest buildable monorepo skeleton and establish the two contracts 
 
 - pnpm workspace for the TypeScript core, generated TypeScript code, and JavaScript tooling.
 - Independent native tooling for Go, Protobuf/Buf, and Docker, plus committed generated Swift bindings for the future client; no application target is created only to make the boundary appear complete.
-- `api.v1` services: `HealthService`, `SetupService`, `AuthService`, `DeviceService`, `ProviderService`, `LibraryService`, `PlaybackService`, `UserStateService`, and `SyncService`.
+- `api.v1` services: `HealthService`, `SetupService`, `AuthService`, `ProviderService`, `LibraryService`, `PlaybackService`, `UserStateService`, and `SyncService`.
 - `plugin.v1` services: `HealthService`, `PluginService`, `LibraryService`, `PlaybackService`, and `WatchStateService`.
 - Provider-independent identifiers and minimal movie/show/season/episode, source, artwork, track, playback descriptor, and user-state messages.
 - Buf linting, deterministic generation, and breaking-change checks in CI.
@@ -94,7 +94,7 @@ Make a fresh deployment securely configurable without a web application.
 ### Included
 
 - Effect-based Node.js core with liveness/readiness endpoints, structured logs, TOML configuration plus five explicit environment overrides, graceful shutdown, and automatically applied Drizzle-managed PostgreSQL migrations.
-- Minimal persistence for reviewed Better Auth tables and a permanent server-initialization marker; plugin, pairing, media, and sync schemas are added only by the milestones that exercise them.
+- Minimal persistence for reviewed Better Auth tables and a permanent server-initialization marker; plugin, OAuth authorization, media, and sync schemas are added only by the milestones that exercise them.
 - On an unconfigured server, generate a high-entropy, single-use bootstrap token and print it to the operator console. It remains valid until used or process restart; restart replaces it. Creating the first administrator permanently disables setup mode.
 - App-owned Connect setup/auth RPCs backed by Better Auth: create administrator, sign in, current user, and sign out.
 - `nama` CLI commands to target a server, complete first setup, sign in, inspect status, and render human-readable or JSON output.
@@ -143,22 +143,24 @@ provider writes.
 - Killing the plugin cannot crash the core or corrupt state; a later operation starts a clean process and succeeds within the retry policy.
 - Socket files are inaccessible outside the intended runtime user/directory, and the plugin has no PostgreSQL credentials.
 
-## Milestone 4: iOS app pairing, browsing, and direct playback
+## Milestone 4: Apple OAuth authorization, browsing, and direct playback
 
 ### Goal
 
-Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect to Nama, pair, browse Jellyfin, open details, and watch media.
+Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect to Nama, authorize the first-party Apple public client, browse Jellyfin, open details, and watch media.
 
 ### Included
 
 - LAN discovery using mDNS/DNS-SD service `_nama._tcp`, plus manual Nama endpoint entry for LAN, VPN, and reverse-proxy deployments on every supported Apple platform.
 - Plain HTTP only for loopback, private/link-local addresses, reserved `localhost`/`.localhost` names, or `.local` names, with a clear warning. Public hostnames and addresses require HTTPS.
-- Netflix-style device flow: the app requests and displays a short-lived code; an authenticated administrator approves it with `nama devices approve`; the app receives a revocable device session. Codes are rate-limited, single-use, and contain no reusable secret.
-- Persistence for pairing requests, Device credentials, minimal canonical
-  media, Library entries, exact provider-to-canonical mappings, and durable
-  initial catalog-scan checkpoints begins in this milestone. Enabled provider
-  instances populate the stored catalog through background best-effort scans;
-  consumer reads never proxy live provider payloads.
+- Better Auth OAuth Device Authorization for one migration-seeded native public Apple client: the app requests and displays a short-lived user code and verification URI, an authenticated Administrator approves or denies it through one minimal browser confirmation page, and the app polls Better Auth's OAuth token endpoint at the returned interval.
+- The client requests the exact Nama API resource with `nama:library`, `nama:playback`, `nama:user-state`, and `offline_access`. Connect verifies its access JWT locally by signature, issuer, audience, expiry, fixed client ID, and method-specific scope.
+- Better Auth persistence for device-code state, the fixed client, signing keys,
+  and refresh-token families plus minimal canonical media, Library entries,
+  exact provider-to-canonical mappings, and durable initial catalog-scan
+  checkpoints begins in this milestone. Enabled provider instances populate the
+  stored catalog through background best-effort scans; consumer reads never
+  proxy live provider payloads.
 - Provider-neutral Home/library browsing for movies and shows, basic search of
   available stored media, media details, artwork, seasons, and episodes.
 - A thin `NamaPlayer` adapter around exact-pinned AetherEngine `6.21.0` and its
@@ -169,19 +171,19 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
   accepted MVP limitations: local engine Release logs may contain complete
   short-lived locator URLs, and the engine may replay locator headers between
   core-allowlisted origins.
-- The app reports the current device's real playback capabilities. Selection order is direct play, direct stream/remux, selective stream conversion, then full transcode. User-selected quality may request transcoding explicitly.
+- The app reports the current player's real playback capabilities. Selection order is direct play, direct stream/remux, selective stream conversion, then full transcode. User-selected quality may request transcoding explicitly.
 - Playback from provider-issued URLs, play/pause, seek, audio/subtitle selection, visible loading/failure states, and recovery to the details screen.
 - Accessibility and input basics for each platform: focus order, readable labels, Dynamic Type where supported, contrast, keyboard, pointer, touch, and remote interaction, with no critical action available only through an undiscoverable gesture.
 
 ### Explicit non-goals
 
-- Android, web UI, separate Apple-platform codebases, offline downloads, live TV, AirPlay-specific features, custom video rendering, a second playback engine, or Nama media proxying.
+- Android, a general web-management UI beyond the required sign-in and device-confirmation pages, separate Apple-platform codebases, offline downloads, live TV, AirPlay-specific features, custom video rendering, a second playback engine, or Nama media proxying.
 
 ### Exit criteria
 
-- On a fresh iPhone or iPad, Apple TV, and Mac, the user can discover a LAN server or enter its URL, approve the device in the CLI, browse, search, open a movie or episode, and begin playback.
+- On a fresh iPhone or iPad, Apple TV, and Mac, the user can discover a LAN server or enter its URL, authorize through the browser device flow, browse, search, open a movie or episode, and begin playback.
 - Supported fixtures direct-play through the selected engine on each platform; incompatible fixtures follow the expected Jellyfin fallback without sending media bytes through the core.
-- Device revocation immediately prevents new authenticated RPCs.
+- Administrator revocation stops every refresh-token family for the fixed Apple client; already-issued access JWTs remain valid only until Better Auth's pinned one-hour expiry.
 
 ## Milestone 5: Canonical progress and continuous two-way Jellyfin sync
 
@@ -215,14 +217,14 @@ Make Nama, rather than Jellyfin, own reliable resume and watched state while rem
 
 ### Release contents
 
-Milestones 0-5 form the MVP. It supports one administrator, one or more configured Jellyfin instances, universal iOS app pairing across iOS, tvOS, and macOS, provider-neutral browse/search/details, broad direct playback with controlled fallback, and canonical two-way progress/watch-state synchronization.
+Milestones 0-5 form the MVP. It supports one Administrator, one or more configured Jellyfin instances, universal Apple OAuth authorization across iOS, tvOS, and macOS, provider-neutral browse/search/details, broad direct playback with controlled fallback, and canonical two-way progress/watch-state synchronization.
 
 ### Release acceptance
 
 - A documented Docker Compose deployment brings up the Nama image and PostgreSQL with persistent volumes, health checks, and no privileged container requirement.
 - The complete empty-install-to-playback journey works using the CLI and the iOS app on iPhone or iPad, Apple TV, and Mac without editing the database or calling provider APIs manually.
 - Backup and restore of Nama's database/configuration is documented and exercised once; provider media is outside Nama's backup scope.
-- Authentication, setup, pairing, URL validation, secret handling, plugin IPC, and authorization have focused negative-path tests.
+- Authentication, setup, OAuth device authorization, JWT scope enforcement, URL validation, secret handling, plugin IPC, and authorization have focused negative-path tests.
 - Public and plugin schemas pass lint/breaking checks; core and CLI checks pass; iOS, tvOS, and macOS app builds pass; and the representative physical-device playback matrix passes.
 - Fresh-install, upgrade-from-previous-migration, restart-during-sync, provider-unavailable, and database-unavailable scenarios fail visibly and recover without data corruption.
 
@@ -292,9 +294,9 @@ Advance from a private appliance to the multi-user platform described by the pro
 - Invitation-only account creation; public registration remains disabled.
 - Minimal Admin, Member, and Viewer roles with explicit core-enforced permissions.
 - Per-user library/resource grants and only the stream/request limits required by current features.
-- Independent per-user history, progress, watched state, pairing, and device/session revocation.
-- Explicit administrator mapping when a provider identity is needed for per-user synchronization; no inferred identity linking.
-- CLI management for users, invitations, grants, roles, sessions, devices, and mappings, with JSON parity and confirmations for destructive actions.
+- Independent per-user history, progress, watched state, OAuth grants, and session revocation.
+- Explicit Administrator mapping when a provider identity is needed for per-user synchronization; no inferred identity linking.
+- CLI management for users, invitations, grants, roles, sessions, and mappings, with JSON parity and confirmations for destructive actions.
 
 ### Explicit non-goals
 

@@ -10,7 +10,7 @@ The CLI remains useful without an interactive terminal. Every operation has a co
 
 ## Scope and delivery
 
-The complete MVP management surface covers initial administrator setup, authentication and server profiles, provider configuration, synchronization status and triggering, device approval, health, and diagnostics. Command families enter with the server RPCs they exercise:
+The complete MVP management surface covers initial Administrator setup, authentication and server profiles, provider configuration, synchronization status and triggering, broad first-party OAuth grant revocation, health, and diagnostics. Command families enter with the server RPCs they exercise:
 
 - Milestone 0 created the compilable Cobra boundary and proved that generated public clients are consumable.
 - Issue #24 implements the shared CLI foundation, named profiles, administrator setup, sign-in, and authentication status.
@@ -23,7 +23,7 @@ The complete MVP management surface covers initial administrator setup, authenti
 - Issue #107 adds ordered restricted-schema prompts for human create and update while preserving complete file/stdin automation and JSON no-prompt behavior.
 - Issue #31 adds provider-neutral candidate and stored-instance connection tests while retaining provider-type listing as the installed capability-inspection surface.
 
-The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no management web application or CLI plugin framework in the MVP.
+The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no general management web application or CLI plugin framework in the MVP; Better Auth device authorization owns only its minimal browser sign-in and confirmation pages.
 
 ## Technology
 
@@ -92,8 +92,6 @@ nama
 ├── sync
 │   ├── status
 │   └── run
-├── devices
-│   └── approve
 ├── health
 ├── diagnostics
 ├── completion
@@ -101,6 +99,14 @@ nama
 ```
 
 Only commands backed by an implemented public RPC are added. Exact leaf commands, arguments, and flags are designed with those RPCs; this list reserves no unimplemented server behavior.
+
+Issue #145 adds one destructive Administrator-authenticated operation under
+`nama auth` that revokes every Better Auth refresh-token family for the fixed
+first-party Apple client. Its exact leaf name and generated request are added
+only with the owning RPC. It does not approve device codes, list
+installations, or promise immediate invalidation of already-issued access JWTs;
+human mode confirms the broad effect, and non-interactive or JSON use requires
+`--yes`.
 
 Provider commands are generic `ProviderService` clients; no Jellyfin-specific
 public command family exists. Implemented create, update, and delete generate a

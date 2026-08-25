@@ -373,26 +373,28 @@ returns its original safe response without replaying provider work. Unrelated
 provider instances and authentication remain available whenever their owners
 and PostgreSQL are healthy.
 
-## Target Pairing and canonical-catalog runtime
+## Target OAuth authorization and canonical-catalog runtime
 
-Issue #36 adds two deep core owners without changing the one-pool database
-boundary. Pairing owns human-code and polling state, Device credential
-protection, approval idempotency, revocation, bounded cleanup, and
-Device-authenticated request context. Canonical catalog owns exact mapping,
+Issues #145 and #36 add two owners without changing the one-pool database
+boundary. Better Auth's JWT, OAuth Provider, and OAuth Device Authorization
+plugins own the authorization-server routes, device-code state, fixed public
+client, signing keys, and token lifecycle. Canonical catalog owns exact mapping,
 normalized persistence, initial scan state, item-aggregate transactions, and
-stored query behavior. The database module exposes only their narrow
-transactions; Connect handlers remain mappings and no generic repository,
-crypto service, scheduler framework, or second activity gate is introduced.
+stored query behavior.
 
-Pairing approval is a database-only mutation. A possible commit is resolved
-from the Administrator-scoped operation result before any retry; a missing or
-unavailable resolution never mints another Device. `BeginPairing` remains
-non-idempotent, status polling is repeatable through the matching polling
-credential, and revocation is convergent. Distinct master-key-derived contexts
-protect code digests, polling digests, Device verification, encrypted delivery,
-and approval request fingerprints. Key loss, moved ciphertext, unsupported
-versions, and failed authentication remain fail-closed and require fresh
-Pairing rather than fallback or credential recovery.
+The native listener dispatches exact health routes first, the configured Better
+Auth authorization-server, browser-session, and metadata paths second, and
+Connect application RPCs last. A reviewed Better Auth/Drizzle migration seeds the fixed native
+public Apple client. Nama adds no Pairing or Device owner, generic repository,
+crypto service, scheduler framework, or duplicate OAuth endpoint.
+
+Connect's default-deny inventory locally verifies Better Auth access JWT
+signature, issuer, exact resource audience, expiry, fixed client ID, and the
+method-specific library, playback, or user-state scope. Administrator session
+resolution stays separate and is never a fallback for a rejected OAuth JWT.
+The only application-owned authorization mutation revokes every Better Auth
+refresh-token family for the fixed Apple client; issued JWTs remain valid until
+their pinned one-hour expiry.
 
 After runtime readiness, Canonical catalog starts one background initial scan
 for each enabled provider instance lacking a completed pass. Provider
@@ -441,10 +443,11 @@ The server test gate must continue to exercise behavior, not only generated cont
   server/user/API-key connection;
 - real Connect and compiled-CLI provider-management flows with exact redacted
   output;
-- Pairing persistence against production migrations: digest and envelope domain
-  separation, nonce uniqueness, collision retry, expiry, durable polling gates,
-  concurrent approval, operation replay, ambiguous completion, bounded cleanup,
-  revocation, wrong-key and tamper failure, and sentinel redaction;
+- Better Auth authorization-server behavior against production migrations:
+  fixed public-client seeding, metadata and JWKS, browser code confirmation,
+  device-code polling, scoped audience-bound JWT issuance, refresh rotation,
+  expiry, broad client-grant revocation, wrong-issuer/audience/client/scope
+  rejection, and credential/code/token redaction;
 - one supervised production Jellyfin catalog scan through revision-fenced
   incremental commits, restart continuation, duplicate pages, out-of-order
   hierarchy, provider failure, disable/re-enable, and provider deletion; and
@@ -470,4 +473,4 @@ operation rows.
 
 ## Deferred work
 
-Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. User-facing provider connection-test commands, Jellyfin media behavior, pairing, playback, and synchronization belong to their owning milestones.
+Configuration reload, startup retries, multiple administrators, signup, password recovery, dynamic OAuth client registration, authorization-code and client-credentials grants, OIDC identity scopes, roles, a general web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. User-facing provider connection-test commands, Jellyfin media behavior, Better Auth OAuth authorization, playback, and synchronization belong to their owning milestones.

@@ -42,6 +42,15 @@ plugin child, proves recovery and application replacement, and requires a clean
 fixture; that fixture is not part of the application image and does not package
 Jellyfin Server for operators.
 
+Issue #145 adds Better Auth authorization-server, browser confirmation,
+metadata, JWKS, token, and revocation routes to the same published core
+listener. Nama deliberately retains its existing transport exception despite
+Better Auth's production HTTPS guidance: loopback, private, link-local,
+`localhost`/`.localhost`, and `.local` endpoints may carry Administrator and
+OAuth credentials over HTTP only after the existing explicit warning and exact
+endpoint acknowledgement; public names and addresses require HTTPS. Operators
+accept local-network interception risk when enabling that exception.
+
 TLS, ingress, image publication, signing, provenance, release versioning,
 backup/restore, Kubernetes, and hostile-plugin sandboxing remain outside this
 implemented deployment boundary.

@@ -4,7 +4,7 @@
 establishes the shared PostgreSQL and Drizzle persistence boundary. Persistence
 stores Nama-owned users, server and plugin configuration, canonical media
 records, provider-to-canonical identifier mappings, Library entries, playback
-progress, watched state, Device pairing, and per-source synchronization replicas
+progress, watched state, OAuth authorization state, and per-source synchronization replicas
 and checkpoints.
 
 Canonical media records and their provider-to-canonical mappings are Nama-owned;
@@ -14,33 +14,37 @@ the model clients depend on
 Synchronization replicas and checkpoints are evidence for reconciling
 Nama-owned watch state, not canonical state themselves
 ([ADR-0023](../adr/0023-canonical-watch-state-reconciliation.md)).
-Device credential verification and temporary Pairing delivery use separate
-protected records under
-[ADR-0031](../adr/0031-separate-device-verification-from-pairing-delivery.md).
+OAuth authorization persistence is Better Auth-owned under
+[ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md).
 
-## Target Pairing and Device persistence
+## Target OAuth authorization persistence
 
-Pairing persistence has four independently retained record families:
+The pinned Better Auth JWT, OAuth Provider, and OAuth Device Authorization
+schemas own the authorization-server records. Nama generates and reviews their
+Drizzle migration but does not reproduce their models behind a generic
+repository or parallel credential store.
 
-- Pairing requests retain the Nama pairing identity, display name, keyed human
-  code and polling-token digests, expiry and next-poll times, approval state,
-  optional Device link, and only the temporary encrypted credential delivery;
-- Devices retain their public identity, display name, creation and approximate
-  last-seen times, and durable revocation state;
-- Device credentials retain one versioned, domain-separated keyed digest per
-  active Device; and
-- Pairing approval results retain the Administrator, method, operation ID,
-  authenticated request fingerprint, safe Device response, and 24-hour expiry
-  independently of the Pairing request.
+The target record families are:
 
-Approval creates the Device, credential verifier, encrypted delivery, Pairing
-state, and operation result atomically. The delivery envelope uses a fresh
-96-bit AES-256-GCM nonce and authenticated data binding its version, Pairing,
-Device, and credential version. It becomes inaccessible at Pairing expiry and
-is cleared by bounded startup and once-per-minute cleanup. Revocation retains
-the Device but removes its verifier and any undelivered credential. Expired
-Pairing identity and digest evidence remains for 24 hours so a matching poller
-can observe `EXPIRED`; cleanup never cascades into an active Device.
+- Better Auth device-code records for RFC 8628 request, user-code, approval,
+  polling, expiry, client, scope, and resource state;
+- one migration-seeded native public OAuth client for the first-party Apple
+  application, protected through Better Auth's cached-trusted-client policy;
+- Better Auth refresh-token families for `offline_access`, using the plugin's
+  supported storage, rotation, replay, expiry, and revocation behavior; and
+- Better Auth JWT signing keys exposed through its JWKS endpoint.
+
+JWT access tokens are self-contained and are not stored. The OAuth device grant
+does not create an `oauthConsent` row, so consent records are not the authority
+for Apple authorization or revocation. The narrow Administrator revoke-all
+operation acts on Better Auth's refresh-token families for the fixed client and
+does not introduce a Nama Device, grant, verifier, delivery, last-seen, or
+approval-result table.
+
+Better Auth owns expiry and bounded cleanup for its records. Nama adds no
+human-code or polling-token digest, master-key domain, encrypted credential
+delivery, logical-operation replay record, custom authorization capacity row,
+or startup/minute cleanup loop.
 
 ## Target canonical catalog persistence
 
