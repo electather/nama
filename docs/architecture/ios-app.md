@@ -6,9 +6,11 @@ device authorization, refresh rotation, and endpoint-bound Keychain token
 storage are implemented. Apple-platform builds and macOS-host tests pass. A
 signed Apple TV 4K simulator has completed local-HTTP acknowledgement,
 no-browser authorization through the generated CLI, scoped consumer
-verification, Keychain commit, and relaunch restoration. Consumer media
-behavior, physical Apple hardware, expiry-driven actual-surface refresh, and
-the remaining Apple surfaces remain unverified.
+verification, Keychain commit, and relaunch restoration. The production
+`NamaPlayer` boundary is implemented and one controlled SDR HLS fixture passes
+through its macOS-hosted real-engine test. Product consumer media behavior,
+physical Apple hardware, expiry-driven actual-surface refresh, and the
+remaining Apple surfaces remain unverified.
 
 ## Authority and fixed decisions
 
@@ -136,6 +138,12 @@ device authorization:
   plus `offline_access`, refuses redirects, and applies the connection module's
   proxy-free policy to acknowledged eligible local HTTP. Browser verification
   and Better Auth browser session routes are not part of this surface.
+- `NamaPlayer` and `NamaPlayerSurface` contain exact-pinned AetherEngine
+  `6.21.0` behind Nama-owned request, state, clock, track, video, control, and
+  failure values. The target and tests import no engine type outside that
+  boundary. The complete Swift package closure is locked, notices are bundled,
+  and the artifact and relinking review is recorded in
+  [aetherengine-distribution.md](aetherengine-distribution.md).
 
 The Swift Testing target covers endpoint normalization and every approved and
 forbidden address-class boundary, mapped and scoped IPv6, local DNS label and
@@ -158,8 +166,9 @@ a long endpoint, persistent ready and failure warnings, and blocked
 restoration. They make the states available for actual-surface inspection but
 are not runtime evidence. `check:ios` lints Swift formatting, runs the test
 target through its macOS host, inspects the built ATS shape, and performs
-signing-disabled iOS, tvOS, and macOS builds. These checks do not prove
-physical-device privacy prompts, focus, accessibility, or playback behavior.
+signing-disabled iOS, tvOS, and macOS builds. The real-player test proves one
+controlled macOS-hosted SDR HLS render and control flow. Generic builds do not
+prove physical-device privacy prompts, focus, accessibility, or playback.
 
 This baseline implements endpoint eligibility, endpoint-bound persistent
 local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP

@@ -1,0 +1,27 @@
+Nama Apple Application — Third-Party Playback Notices
+
+AetherEngine 6.21.0
+Copyright (C) 2026 Vincent Herbst.
+Licensed under GNU LGPL version 3 with the bundled Apple Store / DRM Exception.
+Exact source: https://github.com/superuser404notfound/AetherEngine/tree/87868c1c88ca4ae613180c4cfb5d68c07dde0298
+License and exception: AetherEngine-LICENSE.txt
+GNU GPL version 3 text incorporated by LGPL version 3: GPL-3.0.txt
+
+FFmpegBuild 2.4.3
+Copyright belongs to the respective FFmpeg, dav1d, zimg, libzvbi, and packaging contributors.
+Exact source and build scripts: https://github.com/superuser404notfound/FFmpegBuild/tree/b2185fa842b829cd53d182a5e9a53182c1d9c84c
+The distributed FFmpegBuild frameworks are dynamic frameworks. Do not merge them into the Nama executable. Recipients may replace them with interface-compatible modified versions.
+Licenses:
+- FFmpeg libraries and FFmpegBuild packaging: LGPL-2.1-or-later — FFmpegBuild-LGPL-2.1.txt
+- libzvbi library sources: LGPL-2.0-or-later, conveyed under LGPL-2.1; ure.c retains its MIT notice in the corresponding source
+- dav1d: BSD-2-Clause — dav1d-BSD-2-Clause.txt
+- zimg: WTFPL — zimg-WTFPL.txt
+The FFmpegBuild configuration disables GPL and LGPL-v3 components. Its build script excludes libzvbi's GPL source files and publishes the replacement stubs.
+
+LibDovi 2.0.0
+Copyright (c) 2026 Vincent Herbst; libdovi copyright (c) quietvoid and contributors.
+Exact source and build scripts: https://github.com/superuser404notfound/LibDovi/tree/89be93431c2a5f2e54fb77e93059071b8d2ddb3a
+Consumed under the MIT option. License: LibDovi-LICENSE.txt
+
+Corresponding source and relinking
+Nama's application source and build configuration are published at https://github.com/electather/nama. The exact third-party revisions above and the complete resolved Swift dependency closure are recorded in the repository's Package.resolved and playback distribution record. Preserve these notices, source links, dynamic framework boundaries, and license files with every distributed Apple artifact.
