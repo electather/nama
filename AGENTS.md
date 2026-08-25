@@ -39,6 +39,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - In handwritten server ESM source, use `.ts` on relative imports; retain generator-owned `.js` imports in generated packages.
 - Do not use TypeScript parameter properties in Node 24 strip-only executable paths.
 - Keep the committed Drizzle compatibility patch declaration-only; never change its runtime JavaScript or weaken strict TypeScript, including through `skipLibCheck`.
+- In Drizzle raw catalog subqueries, interpolate physical tables in `from` clauses and qualify correlated outer columns explicitly; interpolating `alias(...)` there emits the alias as a nonexistent relation.
 - Do not claim a server, plugin runtime, authentication, or Jellyfin integration exists because generated clients and contract tests compile. Verify an executable entrypoint, handlers, persistence, and startup behavior.
 - Force the pinned Jellyfin 10.11.11 integration services to `linux/amd64` on Apple Silicon, and require `StartupWizardCompleted` in their healthcheck; its arm64 image exits 132 and its public endpoint becomes reachable before startup data is complete.
 - Give PostgreSQL activity-state integration polls enough wall-clock time for a cold `nama-server` process to reach migrations under the parallel repository check; a one-second poll expires before lock admission.
@@ -46,6 +47,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - For `google.protobuf.Struct` field-level Protovalidate CEL, use `this.size()`, not `this.fields.size()`; Protovalidate-ES exposes the WKT as a JSON object and the latter fails at runtime.
 - Pin AetherEngine `6.21.0` and its complete resolved dependency closure. ADR-0032 permits only its local Release locator-URL logging and locator-header replay between core-allowlisted origins for the MVP; never widen that exception.
 - Do not claim generic Apple-platform builds prove runtime behavior; inspect the actual universal application on every affected platform and keep unrun physical-device rows explicit.
+- Use an Apple Development-signed sandboxed macOS build for actual-surface acceptance; an ad hoc-signed sandboxed build can stay alive without creating a window and is not runtime proof.
 - Scope each universal-app connection feature to one window; when its scene leaves the foreground, cancel only the active verification, and treat a remote Connect `canceled` response as a safe visible failure rather than local cancellation.
 - Keep array-valued `NSBonjourServices` in the Apple app's partial Info property list; generated `INFOPLIST_KEY_*` build settings do not emit the Bonjour array.
 - Never copy a restored endpoint into the live manual-entry binding; its `onChange` intentionally cancels active verification as a user edit.

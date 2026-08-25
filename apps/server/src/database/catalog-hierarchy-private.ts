@@ -162,27 +162,21 @@ const repairHierarchy = async (
 };
 
 const libraryEligibility = sql`
-  exists (
-    select 1 from ${mediaSource}
-    where ${mediaSource.canonicalItemId} = ${canonicalItem.id}
-  )
-  and (
-    ${canonicalItem.kind} in ('movie', 'show')
-    or (${canonicalItem.kind} = 'season' and exists (
-      select 1 from ${canonicalHierarchy}
-      where ${canonicalHierarchy.childItemId} = ${canonicalItem.id}
-        and ${canonicalHierarchy.relationship} = 'show'
-    ))
-    or (${canonicalItem.kind} = 'episode' and exists (
-      select 1 from ${canonicalHierarchy}
-      where ${canonicalHierarchy.childItemId} = ${canonicalItem.id}
-        and ${canonicalHierarchy.relationship} = 'show'
-    ) and exists (
-      select 1 from ${canonicalHierarchy}
-      where ${canonicalHierarchy.childItemId} = ${canonicalItem.id}
-        and ${canonicalHierarchy.relationship} = 'season'
-    ))
-  )
+  ${canonicalItem.kind} in ('movie', 'show')
+  or (${canonicalItem.kind} = 'season' and exists (
+    select 1 from ${canonicalHierarchy}
+    where ${canonicalHierarchy.childItemId} = ${canonicalItem.id}
+      and ${canonicalHierarchy.relationship} = 'show'
+  ))
+  or (${canonicalItem.kind} = 'episode' and exists (
+    select 1 from ${canonicalHierarchy}
+    where ${canonicalHierarchy.childItemId} = ${canonicalItem.id}
+      and ${canonicalHierarchy.relationship} = 'show'
+  ) and exists (
+    select 1 from ${canonicalHierarchy}
+    where ${canonicalHierarchy.childItemId} = ${canonicalItem.id}
+      and ${canonicalHierarchy.relationship} = 'season'
+  ))
 `;
 
 const deleteUnpublishableEntries = async (
@@ -227,7 +221,7 @@ const reconcileLibraryEntries = async (
   await deleteUnpublishableEntries(transaction, canonicalItemIdsJson);
   await publishEligibleEntries(transaction, canonicalItemIdsJson);
 };
-const catalogItemIdsOwnedByProvider = async (
+const canonicalItemIdsWithProviderSources = async (
   transaction: CatalogTransaction,
   providerInstanceId: string,
 ): Promise<readonly string[]> => {
@@ -258,7 +252,7 @@ const removeOrphanedLibraryEntries = async (
   `);
 };
 export {
-  catalogItemIdsOwnedByProvider,
+  canonicalItemIdsWithProviderSources,
   removeOrphanedLibraryEntries,
   repairHierarchy,
   reconcileLibraryEntries,

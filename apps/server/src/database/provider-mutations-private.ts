@@ -3,7 +3,7 @@ import { and, eq, inArray, max, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
 import {
-  catalogItemIdsOwnedByProvider,
+  canonicalItemIdsWithProviderSources,
   removeOrphanedLibraryEntries,
 } from "./catalog-hierarchy-private.ts";
 import {
@@ -739,7 +739,7 @@ const deleteInstance = (
           if (current.enabled) {
             return false;
           }
-          const catalogItemIds = await catalogItemIdsOwnedByProvider(
+          const catalogItemIds = await canonicalItemIdsWithProviderSources(
             transaction,
             input.providerInstanceId,
           );

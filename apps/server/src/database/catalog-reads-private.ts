@@ -1,38 +1,49 @@
-import { asc, eq, getTableColumns, inArray } from "drizzle-orm";
+import { asc, eq, getTableColumns } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { canonicalArtwork, canonicalCredit } from "./catalog-artwork-schema.ts";
 import { canonicalHierarchy, canonicalItem, libraryEntry } from "./catalog-item-schema.ts";
+import type { PartsBySource } from "./catalog-nested-reads-private.ts";
+import { loadPartsBySource } from "./catalog-nested-reads-private.ts";
 import type {
   CatalogDatabase,
   CatalogTransaction,
   StoredCatalogArtwork,
   StoredCatalogCredit,
   StoredCatalogItem,
-  StoredCatalogMediaPart,
   StoredCatalogMediaSource,
-  StoredCatalogMediaTrack,
   StoredCatalogParent,
 } from "./catalog-persistence-model-private.ts";
+import type { ArtworkReadRow } from "./catalog-read-model-private.ts";
 import {
   availability,
   creditRole,
   mediaKind,
   storedArtwork,
-  trackDetails,
 } from "./catalog-read-model-private.ts";
-import { mediaPart, mediaSource } from "./catalog-source-schema.ts";
-import { mediaTrack } from "./catalog-track-schema.ts";
+import { mediaSource } from "./catalog-source-schema.ts";
 
-const EMPTY_LENGTH = 0;
 const FIRST_ROW = 0;
 const SINGLE_ROW_LIMIT = 1;
 
+const artworkSelection = {
+  height: canonicalArtwork.height,
+  id: canonicalArtwork.id,
+  locale: canonicalArtwork.locale,
+  role: canonicalArtwork.role,
+  textPresence: canonicalArtwork.textPresence,
+  width: canonicalArtwork.width,
+};
+
+type SourceRow = Pick<
+  typeof mediaSource.$inferSelect,
+  "availability" | "bitRateBps" | "id" | "label" | "runtimeNanoseconds" | "runtimeSeconds"
+>;
 type CatalogItemRow = typeof canonicalItem.$inferSelect & {
   readonly libraryCreatedAt: Date | null;
 };
 interface CreditRow {
-  readonly artwork: typeof canonicalArtwork.$inferSelect | null;
+  readonly artwork: ArtworkReadRow | null;
   readonly characterName: string | null;
   readonly displayOrder: number;
   readonly name: string;
@@ -45,14 +56,10 @@ interface ParentRow {
   readonly title: string;
 }
 interface RelatedRows {
-  readonly artwork: readonly (typeof canonicalArtwork.$inferSelect)[];
+  readonly artwork: readonly ArtworkReadRow[];
   readonly credits: readonly CreditRow[];
   readonly parents: readonly ParentRow[];
-  readonly sources: readonly (typeof mediaSource.$inferSelect)[];
-}
-interface NestedRows {
-  readonly parts: readonly (typeof mediaPart.$inferSelect)[];
-  readonly tracks: readonly (typeof mediaTrack.$inferSelect)[];
+  readonly sources: readonly SourceRow[];
 }
 
 const loadItemRow = async (
@@ -70,7 +77,7 @@ const loadItemRow = async (
 
 const loadArtworkRows = (database: CatalogTransaction, canonicalItemId: string) =>
   database
-    .select()
+    .select(artworkSelection)
     .from(canonicalArtwork)
     .where(eq(canonicalArtwork.canonicalItemId, canonicalItemId))
     .orderBy(asc(canonicalArtwork.displayOrder));
@@ -78,7 +85,7 @@ const loadArtworkRows = (database: CatalogTransaction, canonicalItemId: string) 
 const loadCreditRows = (database: CatalogTransaction, canonicalItemId: string) =>
   database
     .select({
-      artwork: canonicalArtwork,
+      artwork: artworkSelection,
       characterName: canonicalCredit.characterName,
       displayOrder: canonicalCredit.displayOrder,
       name: canonicalCredit.name,
@@ -106,7 +113,14 @@ const loadParentRows = (database: CatalogTransaction, canonicalItemId: string) =
 
 const loadSourceRows = (database: CatalogTransaction, canonicalItemId: string) =>
   database
-    .select()
+    .select({
+      availability: mediaSource.availability,
+      bitRateBps: mediaSource.bitRateBps,
+      id: mediaSource.id,
+      label: mediaSource.label,
+      runtimeNanoseconds: mediaSource.runtimeNanoseconds,
+      runtimeSeconds: mediaSource.runtimeSeconds,
+    })
     .from(mediaSource)
     .where(eq(mediaSource.canonicalItemId, canonicalItemId))
     .orderBy(asc(mediaSource.sourceOrder));
@@ -122,33 +136,8 @@ const loadRelatedRows = async (
   return { artwork, credits, parents, sources };
 };
 
-const loadNestedRows = async (
-  database: CatalogTransaction,
-  sources: RelatedRows["sources"],
-): Promise<NestedRows> => {
-  let parts: readonly (typeof mediaPart.$inferSelect)[] = [];
-  const sourceIds = sources.map((source) => source.id);
-  if (sourceIds.length > EMPTY_LENGTH) {
-    parts = await database
-      .select()
-      .from(mediaPart)
-      .where(inArray(mediaPart.sourceId, sourceIds))
-      .orderBy(asc(mediaPart.partOrder));
-  }
-  let tracks: readonly (typeof mediaTrack.$inferSelect)[] = [];
-  const partIds = parts.map((part) => part.id);
-  if (partIds.length > EMPTY_LENGTH) {
-    tracks = await database
-      .select()
-      .from(mediaTrack)
-      .where(inArray(mediaTrack.partId, partIds))
-      .orderBy(asc(mediaTrack.trackOrder));
-  }
-  return { parts, tracks };
-};
-
 const creditPortraitArtwork = (
-  activeArtwork: typeof canonicalArtwork.$inferSelect | null,
+  activeArtwork: ArtworkReadRow | null,
   artworkById: ReadonlyMap<string, StoredCatalogArtwork>,
 ): StoredCatalogArtwork | undefined => {
   if (!activeArtwork) {
@@ -186,40 +175,11 @@ const storedParents = (rows: RelatedRows["parents"]): readonly StoredCatalogPare
     };
   });
 
-const storedPart = (
-  part: typeof mediaPart.$inferSelect,
-  tracksByPart: ReadonlyMap<string, (typeof mediaTrack.$inferSelect)[]>,
-): StoredCatalogMediaPart => ({
-  bitRateBps: part.bitRateBps ?? undefined,
-  container: part.container,
-  id: part.id,
-  order: part.partOrder,
-  runtime: { nanoseconds: part.runtimeNanoseconds, seconds: part.runtimeSeconds },
-  sizeBytes: part.sizeBytes ?? undefined,
-  tracks: (tracksByPart.get(part.id) ?? []).map((track): StoredCatalogMediaTrack => ({
-    details: trackDetails(track),
-    id: track.id,
-    order: track.trackOrder,
-  })),
-});
-
-const storedPartsBySource = (nested: NestedRows): ReadonlyMap<string, StoredCatalogMediaPart[]> => {
-  const tracksByPart = Map.groupBy(nested.tracks, (track) => track.partId);
-  const partRowsBySource = Map.groupBy(nested.parts, (part) => part.sourceId);
-  return new Map(
-    [...partRowsBySource].map(([sourceId, parts]) => [
-      sourceId,
-      parts.map((part) => storedPart(part, tracksByPart)),
-    ]),
-  );
-};
-
 const storedSources = (
   rows: RelatedRows["sources"],
-  nested: NestedRows,
-): readonly StoredCatalogMediaSource[] => {
-  const partsBySource = storedPartsBySource(nested);
-  return rows.map((source) => ({
+  partsBySource: PartsBySource,
+): readonly StoredCatalogMediaSource[] =>
+  rows.map((source) => ({
     availability: availability(source.availability),
     bitRateBps: source.bitRateBps ?? undefined,
     id: source.id,
@@ -227,7 +187,6 @@ const storedSources = (
     parts: partsBySource.get(source.id) ?? [],
     runtime: { nanoseconds: source.runtimeNanoseconds, seconds: source.runtimeSeconds },
   }));
-};
 
 const storedMetadata = (item: CatalogItemRow) => ({
   contentRating: item.contentRating ?? undefined,
@@ -250,7 +209,7 @@ const storedKindDetails = (item: CatalogItemRow) => ({
 const storedItem = (
   item: CatalogItemRow,
   related: RelatedRows,
-  nested: NestedRows,
+  partsBySource: PartsBySource,
 ): StoredCatalogItem => {
   const artwork = related.artwork.map((row) => storedArtwork(row));
   return {
@@ -264,7 +223,7 @@ const storedItem = (
     libraryCreatedAt: item.libraryCreatedAt ?? undefined,
     parents: storedParents(related.parents),
     runtime: { nanoseconds: item.runtimeNanoseconds, seconds: item.runtimeSeconds },
-    sources: storedSources(related.sources, nested),
+    sources: storedSources(related.sources, partsBySource),
     studios: item.studios,
     title: item.title,
   };
@@ -279,8 +238,11 @@ const loadItemSnapshot = async (
     return undefined;
   }
   const related = await loadRelatedRows(transaction, canonicalItemId);
-  const nested = await loadNestedRows(transaction, related.sources);
-  return storedItem(item, related, nested);
+  const partsBySource = await loadPartsBySource(
+    transaction,
+    related.sources.map((source) => source.id),
+  );
+  return storedItem(item, related, partsBySource);
 };
 
 const loadItem = (

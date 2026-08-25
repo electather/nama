@@ -418,6 +418,30 @@ it.live("atomically replaces aggregates while retaining inactive nested identiti
   ),
 );
 
+it.live("preserves the Library entry while every source is temporarily omitted", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* sourceFreeRefresh() {
+      yield* initializeCatalogDatabase(databaseUrl, [{ id: "provider-refresh", priority: 1 }]);
+      const first = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        database.catalog.observeItem(movieObservation("provider-refresh")),
+      );
+      const libraryCreatedAt = first.libraryCreatedAt?.getTime();
+      expect(libraryCreatedAt).toBeDefined();
+
+      const omitted = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        database.catalog.observeItem(movieObservation("provider-refresh", { sources: [] })),
+      );
+      expect(omitted.sources).toEqual([]);
+      expect(omitted.libraryCreatedAt?.getTime()).toBe(libraryCreatedAt);
+
+      const restored = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        database.catalog.observeItem(movieObservation("provider-refresh")),
+      );
+      expect(restored.libraryCreatedAt?.getTime()).toBe(libraryCreatedAt);
+    }),
+  ),
+);
+
 it.live("publishes unresolved seasons and episodes only after kind-correct hierarchy repair", () =>
   withIsolatedDatabase((databaseUrl) =>
     Effect.gen(function* unresolvedHierarchyRepair() {

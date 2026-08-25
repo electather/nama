@@ -4,9 +4,7 @@ import { replaceCanonicalItem } from "./catalog-mutations-private.ts";
 import { catalogPersistenceFailure } from "./catalog-persistence-model-private.ts";
 import type {
   CatalogDatabase,
-  CatalogDuration,
   CatalogItemObservation,
-  CatalogMediaSourceObservation,
 } from "./catalog-persistence-model-private.ts";
 import { loadItem } from "./catalog-reads-private.ts";
 
@@ -31,10 +29,4 @@ const makeCatalogPersistence = (database: CatalogDatabase) => ({
 });
 type CatalogPersistence = ReturnType<typeof makeCatalogPersistence>;
 
-export {
-  type CatalogDuration,
-  type CatalogItemObservation,
-  type CatalogMediaSourceObservation,
-  type CatalogPersistence,
-  makeCatalogPersistence,
-};
+export { type CatalogItemObservation, type CatalogPersistence, makeCatalogPersistence };

@@ -130,7 +130,33 @@ const subtitleRepresentation = (value: string | undefined): CatalogSubtitleRepre
   }
 };
 
-const storedArtwork = (row: typeof canonicalArtwork.$inferSelect): StoredCatalogArtwork => ({
+type ArtworkReadRow = Pick<
+  typeof canonicalArtwork.$inferSelect,
+  "height" | "id" | "locale" | "role" | "textPresence" | "width"
+>;
+type TrackReadRow = Pick<
+  typeof mediaTrack.$inferSelect,
+  | "bitDepth"
+  | "channelCount"
+  | "channelLayout"
+  | "codec"
+  | "dynamicRange"
+  | "frameRate"
+  | "height"
+  | "isCommentary"
+  | "isDefault"
+  | "isForced"
+  | "isHearingImpaired"
+  | "language"
+  | "representation"
+  | "sampleRateHz"
+  | "spatialFormat"
+  | "title"
+  | "type"
+  | "width"
+>;
+
+const storedArtwork = (row: ArtworkReadRow): StoredCatalogArtwork => ({
   height: row.height ?? undefined,
   id: row.id,
   locale: row.locale ?? undefined,
@@ -139,7 +165,7 @@ const storedArtwork = (row: typeof canonicalArtwork.$inferSelect): StoredCatalog
   width: row.width ?? undefined,
 });
 
-const trackDetails = (row: typeof mediaTrack.$inferSelect): CatalogTrackDetailsObservation => {
+const trackDetails = (row: TrackReadRow): CatalogTrackDetailsObservation => {
   switch (row.type) {
     case "audio": {
       return {
@@ -185,4 +211,12 @@ const trackDetails = (row: typeof mediaTrack.$inferSelect): CatalogTrackDetailsO
   }
 };
 
-export { availability, creditRole, mediaKind, storedArtwork, trackDetails };
+export {
+  type ArtworkReadRow,
+  type TrackReadRow,
+  availability,
+  creditRole,
+  mediaKind,
+  storedArtwork,
+  trackDetails,
+};

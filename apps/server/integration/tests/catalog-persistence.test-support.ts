@@ -1,13 +1,11 @@
 import { Effect } from "effect";
 import type { Pool } from "pg";
 
-import type {
-  CatalogDuration,
-  CatalogItemObservation,
-  CatalogMediaSourceObservation,
-} from "../../src/database/catalog-persistence.ts";
+import type { CatalogItemObservation } from "../../src/database/catalog-persistence.ts";
 import { insertFixtureUser } from "./database-constraint.test-support.ts";
 import { productionMigrations, useDatabase, withPool } from "./database.test-support.ts";
+
+type CatalogDuration = CatalogItemObservation["runtime"];
 
 const ADMINISTRATOR_ID = "catalog-administrator";
 const PROVIDER_TYPE_ID = "catalog-test-provider";
@@ -88,7 +86,7 @@ const videoSource = (
   sourceReference = SOURCE_REFERENCE,
   partReference = PART_REFERENCE,
   trackReference = TRACK_REFERENCE,
-): CatalogMediaSourceObservation => ({
+): CatalogItemObservation["sources"][number] => ({
   availability: "available",
   bitRateBps: 8_000_000n,
   label: "Primary",
@@ -121,7 +119,7 @@ const videoSource = (
   sourceReference,
 });
 
-const audioSource = (): CatalogMediaSourceObservation => ({
+const audioSource = (): CatalogItemObservation["sources"][number] => ({
   availability: "available",
   label: "Commentary",
   parts: [

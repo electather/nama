@@ -151,78 +151,17 @@ private struct DiscoveryCandidateButton: View {
     case candidate
     case permissionDenied
     case failed
-    case requiresHTTPS
 
-    static let holdDurationSeconds = 3_600
-    static let holdDuration = Duration.seconds(holdDurationSeconds)
-    static let candidateEndpoint: NamaEndpoint = {
-      do {
-        return try NamaEndpoint("https://nama-living-room.example.com")
-      } catch {
-        preconditionFailure("Preview endpoint must be valid")
-      }
-    }()
-
-    static let httpsRequiredEndpoint = HTTPSRequiredEndpoint(
-      "http://nama-in-the-living-room-with-an-intentionally-long-hostname.example.com/reverse-proxy/"
+    static let candidateEndpoint = makeConnectionPreviewEndpoint(
+      "https://nama-living-room.example.com"
     )
-  }
-
-  nonisolated private struct PreviewDiscovery: NamaDiscovering {
-    let event: NamaDiscoveryEvent?
-
-    func browse() -> AsyncStream<NamaDiscoveryEvent> {
-      AsyncStream { continuation in
-        if let event {
-          continuation.yield(event)
-        }
-      }
-    }
-  }
-
-  nonisolated private struct PreviewVerifier: ConnectionVerifying {
-    func verify(_: NamaEndpoint) -> ConnectionVerificationResult {
-      .ready
-    }
-  }
-
-  private actor PreviewEndpointStore: VerifiedEndpointStoring {
-    private var endpoint: NamaEndpoint?
-    private var generation: UInt64 = 0
-
-    func snapshot() -> VerifiedEndpointStoreSnapshot {
-      VerifiedEndpointStoreSnapshot(
-        endpoint: endpoint.map(RestoredNamaEndpoint.eligible),
-        generation: generation
-      )
-    }
-
-    func save(
-      _ endpoint: NamaEndpoint,
-      ifUnchangedSince snapshot: VerifiedEndpointStoreSnapshot
-    ) -> Bool {
-      guard snapshot.generation == generation else {
-        return false
-      }
-      self.endpoint = endpoint
-      return true
-    }
-
-    func isCurrent(_ snapshot: VerifiedEndpointStoreSnapshot) -> Bool {
-      snapshot.generation == generation
-    }
-
-    func clear() {
-      generation &+= 1
-      endpoint = nil
-    }
   }
 
   @MainActor
   private func previewFeature(_ preview: DiscoveryPreview) -> ConnectionFeature {
     let event: NamaDiscoveryEvent?
     switch preview {
-    case .inactive, .scanning, .empty, .requiresHTTPS:
+    case .inactive, .scanning, .empty:
       event = nil
 
     case .candidate:
@@ -240,22 +179,10 @@ private struct DiscoveryCandidateButton: View {
       event = .failed(.unavailable)
     }
 
-    let feature = ConnectionFeature(
-      verifier: PreviewVerifier(),
-      discovery: PreviewDiscovery(event: event),
-      endpointStore: PreviewEndpointStore()
-    ) { _ in
-      if preview == .empty {
-        return
-      }
-      try await Task.sleep(for: DiscoveryPreview.holdDuration)
-    }
-
-    if preview == .requiresHTTPS {
-      feature.setPreviewState(.requiresHTTPS(DiscoveryPreview.httpsRequiredEndpoint))
-      return feature
-    }
-
+    let feature = makeConnectionPreviewFeature(
+      discoveryEvent: event,
+      completesDiscoveryScan: preview == .empty
+    )
     feature.flowDidEnter()
     if preview != .inactive {
       feature.activateDiscovery()
@@ -286,14 +213,4 @@ private struct DiscoveryCandidateButton: View {
   #Preview("Discovery — Failure") {
     ConnectionRootView(feature: previewFeature(.failed))
   }
-
-  #if os(tvOS)
-    #Preview("HTTPS required — Apple TV") {
-      ConnectionRootView(feature: previewFeature(.requiresHTTPS))
-    }
-  #else
-    #Preview("HTTPS required — Form") {
-      ConnectionRootView(feature: previewFeature(.requiresHTTPS))
-    }
-  #endif
 #endif
