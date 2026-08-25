@@ -595,11 +595,13 @@ Technical tracks returned by `GetMediaSource` are descriptive and not selectable
 `GetHome` returns ordered `HomeSection` values with stable `id`, display
 `title`, `kind`, and ordered `MediaSummary` items. Initial section kinds are
 `CONTINUE_WATCHING`, `MOVIES`, and `SHOWS`; Milestone 4 returns only Movies and
-Shows, while Milestone 5 adds Continue Watching after canonical user state
-exists. The default section size is 20 and maximum is 50. Home is intentionally
-a bounded snapshot with no per-section pagination contract.
-`RECENTLY_ADDED` remains conditional and is added only after navigation evidence
-requires it.
+Shows. Each Milestone 4 section selects the newest Library entries of its kind
+using the same deterministic `DATE_ADDED_DESC` ordering as `ListLibrary`.
+Milestone 5 adds Continue Watching after canonical user state exists. The
+default section size is 20 and maximum is 50. Home is intentionally a bounded
+discovery snapshot, while Library is the exhaustive paginated surface. A
+combined `RECENTLY_ADDED` section remains conditional and is added only after
+navigation evidence requires it.
 
 `ListLibrary` accepts a small `LibraryFilter` rather than a generic query
 language:
@@ -614,6 +616,8 @@ Milestone 4 supports `ANY`; the other watch filters fail
 `MEDIA_STATE_UNAVAILABLE` until Milestone 5 stores canonical user state. Initial
 `LibrarySort` values are `TITLE_ASC`, `RELEASE_DATE_DESC`, and
 `DATE_ADDED_DESC`.
+
+An omitted Search kinds filter searches movies, shows, seasons, and episodes.
 
 Search matches a stored PostgreSQL `simple` full-text projection over normalized
 title, original title, cast names, and genres. Title has the highest weight,
