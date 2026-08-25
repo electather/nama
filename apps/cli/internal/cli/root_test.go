@@ -915,6 +915,124 @@ func TestSetupAndLoginSelectNonInteractiveSecretsWithoutLeakingThem(t *testing.T
 	}
 }
 
+func TestAuthApproveDeviceUsesExistingBearerWithoutReadingAPasswordOrLeakingCodes(t *testing.T) {
+	const (
+		profile  = "work"
+		server   = "https://nama.example.test"
+		bearer   = "session-bearer-secret"
+		userCode = "ABCD-EFGH"
+	)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	credentials := &cliCredentialStoreFake{
+		credential: auth.Credential{Token: bearer, Server: server},
+		exists:     true,
+	}
+	authClient := &cliAuthServiceFake{}
+	dependencies := testCLIDependencies(configPath, nil, false, credentials, nil, authClient)
+	setProfile(t, dependencies, profile, server)
+
+	stdout, stderr, err := executeCLI(
+		t,
+		dependencies,
+		"must-not-be-read\n",
+		"auth",
+		"approve-device",
+		userCode,
+		"--profile",
+		profile,
+		"--output",
+		"json",
+	)
+	if err != nil {
+		t.Fatalf("auth approve-device error = %v", err)
+	}
+	if len(stderr) != 0 {
+		t.Errorf("auth approve-device stderr = %q, want empty", stderr)
+	}
+	if got, want := decodeCLIData(t, stdout)["approved"], true; got != want {
+		t.Errorf("auth approve-device approved = %#v, want %t", got, want)
+	}
+	if authClient.approveDeviceRequest == nil {
+		t.Fatal("auth approve-device did not call ApproveDeviceAuthorization")
+	}
+	if got := authClient.approveDeviceRequest.Msg.GetUserCode(); got != userCode {
+		t.Errorf("auth approve-device user code = %q, want %q", got, userCode)
+	}
+	if got := authClient.approveDeviceRequest.Header().Get("Authorization"); got != "Bearer "+bearer {
+		t.Errorf("auth approve-device authorization = %q, want selected bearer", got)
+	}
+	for _, stream := range [][]byte{stdout, stderr} {
+		if bytes.Contains(stream, []byte(bearer)) || bytes.Contains(stream, []byte(userCode)) {
+			t.Errorf("auth approve-device stream leaked bearer or user code: %q", stream)
+		}
+	}
+}
+
+func TestAuthRevokeAppleClientRequiresConfirmationAndUsesAdministratorBearer(t *testing.T) {
+	const (
+		profile = "work"
+		server  = "https://nama.example.test"
+		bearer  = "administrator-bearer-secret"
+	)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	credentials := &cliCredentialStoreFake{
+		credential: auth.Credential{Token: bearer, Server: server},
+		exists:     true,
+	}
+	authClient := &cliAuthServiceFake{}
+	dependencies := testCLIDependencies(configPath, nil, false, credentials, nil, authClient)
+	setProfile(t, dependencies, profile, server)
+
+	stdout, stderr, err := executeCLI(
+		t,
+		dependencies,
+		"",
+		"auth",
+		"revoke-apple-client",
+		"--profile",
+		profile,
+		"--output",
+		"json",
+	)
+	requireCLIError(t, err, clierror.CodeInvalidArgument, 2)
+	if len(stdout) != 0 || len(stderr) == 0 {
+		t.Errorf("unconfirmed revocation stdout=%q stderr=%q, want only an error", stdout, stderr)
+	}
+	if authClient.revokeAppleClientRequest != nil {
+		t.Fatal("unconfirmed revocation called the server")
+	}
+
+	stdout, stderr, err = executeCLI(
+		t,
+		dependencies,
+		"",
+		"auth",
+		"revoke-apple-client",
+		"--yes",
+		"--profile",
+		profile,
+		"--output",
+		"json",
+	)
+	if err != nil {
+		t.Fatalf("confirmed auth revocation error = %v", err)
+	}
+	if len(stderr) != 0 {
+		t.Errorf("confirmed auth revocation stderr = %q, want empty", stderr)
+	}
+	if got, want := decodeCLIData(t, stdout)["revoked"], true; got != want {
+		t.Errorf("confirmed auth revocation revoked = %#v, want %t", got, want)
+	}
+	if authClient.revokeAppleClientRequest == nil {
+		t.Fatal("confirmed auth revocation did not call RevokeAppleClientRefreshTokens")
+	}
+	if got := authClient.revokeAppleClientRequest.Header().Get("Authorization"); got != "Bearer "+bearer {
+		t.Errorf("auth revocation authorization = %q, want selected bearer", got)
+	}
+	requireNoCLILeak(t, stdout, bearer)
+	requireNoCLILeak(t, stderr, bearer)
+}
+
 func TestRootFlagsAndEnvironmentResolveBeforeProfileDefaults(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	credentials := &cliCredentialStoreFake{}
@@ -1092,6 +1210,8 @@ func TestRootHelpVersionAndJSONDiscoveryRules(t *testing.T) {
 		"nama profile set",
 		"nama setup",
 		"nama auth login",
+		"nama auth approve-device",
+		"nama auth revoke-apple-client",
 	} {
 		if !bytes.Contains(stdout, []byte(text)) {
 			t.Errorf("root help does not contain %q:\n%s", text, stdout)
@@ -1182,6 +1302,8 @@ func TestCommandHelpDescribesEveryImplementedOperation(t *testing.T) {
 		{path: []string{"setup"}, want: []string{"Administrator", "--display-name", "--email", "NAMA_BOOTSTRAP_TOKEN", "stdin", "nama setup"}},
 		{path: []string{"auth"}, want: []string{"Administrator authentication"}},
 		{path: []string{"auth", "login"}, want: []string{"Administrator email", "password", "stdin", "nama auth login"}},
+		{path: []string{"auth", "approve-device"}, want: []string{"user code", "NAMA_TOKEN", "nama auth approve-device"}},
+		{path: []string{"auth", "revoke-apple-client"}, want: []string{"refresh-token", "--yes", "nama auth revoke-apple-client"}},
 		{path: []string{"auth", "status"}, want: []string{"NAMA_TOKEN", "nama auth status"}},
 		{path: []string{"completion"}, want: []string{"Bash", "Zsh", "Fish", "PowerShell", "<shell>", "nama completion bash"}},
 	}
@@ -1341,7 +1463,7 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 	if len(stderr) != 0 {
 		t.Errorf("human schema stderr = %q, want empty", stderr)
 	}
-	for _, command := range []string{"nama", "nama auth login", "nama completion", "nama profile set", "nama provider instance create", "nama provider instance delete", "nama provider instance test", "nama provider instance update", "nama provider type list", "nama provider type test", "nama schema"} {
+	for _, command := range []string{"nama", "nama auth approve-device", "nama auth login", "nama auth revoke-apple-client", "nama completion", "nama profile set", "nama provider instance create", "nama provider instance delete", "nama provider instance test", "nama provider instance update", "nama provider type list", "nama provider type test", "nama schema"} {
 		if !bytes.Contains(human, []byte(command)) {
 			t.Errorf("human schema inventory omits %q:\n%s", command, human)
 		}
@@ -1370,7 +1492,9 @@ func TestSchemaReportsTheCanonicalCommandAndExitContract(t *testing.T) {
 	wantPaths := []string{
 		"nama",
 		"nama auth",
+		"nama auth approve-device",
 		"nama auth login",
+		"nama auth revoke-apple-client",
 		"nama auth status",
 		"nama completion",
 		"nama help",
@@ -2581,12 +2705,15 @@ func (f *cliSetupServiceFake) CreateAdministrator(_ context.Context, request *co
 }
 
 type cliAuthServiceFake struct {
-	signIn             *apiv1.SignInResponse
-	signInErr          error
-	signInRequest      *connect.Request[apiv1.SignInRequest]
-	currentUser        *apiv1.GetCurrentUserResponse
-	currentUserErr     error
-	currentUserRequest *connect.Request[apiv1.GetCurrentUserRequest]
+	apiv1.UnimplementedAuthServiceHandler
+	signIn                   *apiv1.SignInResponse
+	signInErr                error
+	signInRequest            *connect.Request[apiv1.SignInRequest]
+	currentUser              *apiv1.GetCurrentUserResponse
+	currentUserErr           error
+	currentUserRequest       *connect.Request[apiv1.GetCurrentUserRequest]
+	approveDeviceRequest     *connect.Request[apiv1.ApproveDeviceAuthorizationRequest]
+	revokeAppleClientRequest *connect.Request[apiv1.RevokeAppleClientRefreshTokensRequest]
 }
 
 func (f *cliAuthServiceFake) SignIn(_ context.Context, request *connect.Request[apiv1.SignInRequest]) (*connect.Response[apiv1.SignInResponse], error) {
@@ -2603,6 +2730,16 @@ func (f *cliAuthServiceFake) GetCurrentUser(_ context.Context, request *connect.
 		return nil, f.currentUserErr
 	}
 	return connect.NewResponse(f.currentUser), nil
+}
+
+func (f *cliAuthServiceFake) ApproveDeviceAuthorization(_ context.Context, request *connect.Request[apiv1.ApproveDeviceAuthorizationRequest]) (*connect.Response[apiv1.ApproveDeviceAuthorizationResponse], error) {
+	f.approveDeviceRequest = request
+	return connect.NewResponse(&apiv1.ApproveDeviceAuthorizationResponse{}), nil
+}
+
+func (f *cliAuthServiceFake) RevokeAppleClientRefreshTokens(_ context.Context, request *connect.Request[apiv1.RevokeAppleClientRefreshTokensRequest]) (*connect.Response[apiv1.RevokeAppleClientRefreshTokensResponse], error) {
+	f.revokeAppleClientRequest = request
+	return connect.NewResponse(&apiv1.RevokeAppleClientRefreshTokensResponse{}), nil
 }
 
 func (*cliAuthServiceFake) SignOut(context.Context, *connect.Request[apiv1.SignOutRequest]) (*connect.Response[apiv1.SignOutResponse], error) {

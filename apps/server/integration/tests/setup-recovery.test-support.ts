@@ -149,11 +149,20 @@ const insertAdministratorAndCredential = async (
       VALUES (${administrator.id}, ${name}, ${email.toLowerCase()}, ${false})
     `);
     await transaction.execute(sql`
-      INSERT INTO account (id, account_id, provider_id, user_id, password, updated_at)
+      INSERT INTO account (
+        id,
+        account_id,
+        provider_id,
+        issuer,
+        user_id,
+        password,
+        updated_at
+      )
       VALUES (
         ${CREDENTIAL_ACCOUNT_ID},
         ${administrator.id},
         ${CREDENTIAL_PROVIDER_ID},
+        ${"local:credential"},
         ${administrator.id},
         ${credentialPasswordHash},
         transaction_timestamp()
@@ -179,8 +188,12 @@ const makeCommittedAdapter = (
 
   return Object.freeze({
     adapter: Object.freeze({
+      approveDeviceAuthorization: () => Effect.fail(PRIVATE_AUTHENTICATION_DEFECT),
       createAdministrator,
+      oauthRequestListener: () => {},
       resolveBearer: () => Effect.fail(PRIVATE_AUTHENTICATION_DEFECT),
+      resolveOAuthAccess: () => Effect.fail(PRIVATE_AUTHENTICATION_DEFECT),
+      revokeAppleClientRefreshTokens: Effect.fail(PRIVATE_AUTHENTICATION_DEFECT),
       signIn: () => Effect.fail(PRIVATE_AUTHENTICATION_DEFECT),
       signOut: () => Effect.fail(PRIVATE_AUTHENTICATION_DEFECT),
     }),

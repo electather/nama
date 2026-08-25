@@ -83,8 +83,12 @@ const makeTestClock = (initialMilliseconds: number = INITIAL_TIME_MILLISECONDS):
 
 const makeAdapter = (overrides: Partial<BetterAuthAdapterService> = {}): BetterAuthAdapterService =>
   Object.freeze({
+    approveDeviceAuthorization: () => Effect.die("unexpected approveDeviceAuthorization call"),
     createAdministrator: () => Effect.die("unexpected createAdministrator call"),
+    oauthRequestListener: () => {},
     resolveBearer: () => Effect.die("unexpected resolveBearer call"),
+    resolveOAuthAccess: () => Effect.die("unexpected resolveOAuthAccess call"),
+    revokeAppleClientRefreshTokens: Effect.die("unexpected revokeAppleClientRefreshTokens call"),
     signIn: () => Effect.die("unexpected signIn call"),
     signOut: () => Effect.die("unexpected signOut call"),
     ...overrides,

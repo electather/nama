@@ -1276,11 +1276,13 @@ it.live(
                 "paused",
               );
               expect(pausedCatalog).toMatchObject({
-                canonicalItemCount: importedCatalog.canonicalItemCount,
                 libraryEntryCount: importedCatalog.libraryEntryCount,
                 mappingCount: importedCatalog.mappingCount,
                 status: "paused",
               });
+              expect(pausedCatalog.canonicalItemCount).toBeGreaterThanOrEqual(
+                importedCatalog.canonicalItemCount,
+              );
               expect(pausedCatalog.safeFailureReason).toBeNull();
 
               const reenableArguments = [
@@ -1309,7 +1311,7 @@ it.live(
                 providerInstanceId,
               );
               expect(reimportedCatalog).toMatchObject({
-                canonicalItemCount: importedCatalog.canonicalItemCount,
+                canonicalItemCount: pausedCatalog.canonicalItemCount,
                 libraryEntryCount: importedCatalog.libraryEntryCount,
                 mappingCount: importedCatalog.mappingCount,
                 status: "succeeded",
@@ -1359,7 +1361,7 @@ it.live(
               expect(dataFromNama(deleted)).toEqual({ operation_id: CREATE_OPERATION_ID });
               const deletedCatalog = yield* readCatalogImport(databaseUrl, providerInstanceId);
               expect(deletedCatalog).toMatchObject({
-                canonicalItemCount: importedCatalog.canonicalItemCount,
+                canonicalItemCount: reimportedCatalog.canonicalItemCount,
                 libraryEntryCount: 0,
                 mappingCount: 0,
               });

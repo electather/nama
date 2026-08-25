@@ -1,9 +1,13 @@
 import { Effect } from "effect";
 
 type RuntimeModuleId =
+  | "@better-auth/oauth-provider"
   | "better-auth"
   | "better-auth/adapters/drizzle"
-  | "better-auth/plugins/bearer";
+  | "better-auth/node"
+  | "better-auth/oauth2"
+  | "better-auth/plugins/bearer"
+  | "better-auth/plugins/jwt";
 type RuntimeModuleLoader = (moduleId: RuntimeModuleId) => unknown;
 type RuntimeFunction = (...arguments_: readonly unknown[]) => unknown;
 

@@ -5,9 +5,11 @@ import { Effect } from "effect";
 import { expect, test } from "vitest";
 
 import {
+  ApproveDeviceAuthorizationRequestSchema,
   AuthService,
   GetCurrentUserRequestSchema,
   GetCurrentUserResponseSchema,
+  RevokeAppleClientRefreshTokensRequestSchema,
   SignInRequestSchema,
   SignOutRequestSchema,
 } from "../../../../../gen/ts/src/nama/api/v1/auth_pb.js";
@@ -48,8 +50,10 @@ const NO_ELAPSED_MILLISECONDS = 0;
 const INITIALIZED_STATUS = true;
 const FIRST_LOOKUP_COUNT = 0;
 const EXPECTED_LOOKUP_COUNT = 1;
+const EXPECTED_REVOCATION_COUNT = 1;
 const SIGN_OUT_NOT_CONFIRMED = false;
 const SIGN_OUT_CONFIRMED = true;
+const USER_CODE = "ABCD-EFGH";
 
 interface CurrentUserTracker {
   readonly handlerResponses: unknown[];
@@ -223,6 +227,59 @@ const makeSignOutFixture = () => {
     tracker,
   });
 };
+const makeApproveDeviceAuthorizationFixture = () => {
+  const received: Readonly<{ authorization: string; userCode: string }>[] = [];
+  const receivedSignals: AbortSignal[] = [];
+  const handlers: Partial<ServiceImpl<typeof AuthService>> = createAuthServiceHandlers({
+    authentication: makeRpcAuthenticationService({
+      approveDeviceAuthorization: (authorization, userCode) =>
+        Effect.sync(() => {
+          received.push({ authorization, userCode });
+        }),
+    }),
+    requestRuntime: makeRpcRequestRuntime(receivedSignals),
+  });
+  const context = makeHandlerContext({
+    method: AuthService.method.approveDeviceAuthorization,
+    requestHeader: new Headers({ authorization: AUTHORIZATION }),
+    service: AuthService,
+    signal: new AbortController().signal,
+  });
+  return {
+    approveDeviceAuthorization: required(handlers.approveDeviceAuthorization),
+    context,
+    received,
+    receivedSignals,
+    request: create(ApproveDeviceAuthorizationRequestSchema, { userCode: USER_CODE }),
+  };
+};
+const makeRevokeAppleClientRefreshTokensFixture = () => {
+  const receivedSignals: AbortSignal[] = [];
+  const tracker = { revocations: 0 };
+  const authentication = {
+    ...makeRpcAuthenticationService(),
+    revokeAppleClientRefreshTokens: Effect.sync(() => {
+      tracker.revocations += 1;
+    }),
+  };
+  const handlers: Partial<ServiceImpl<typeof AuthService>> = createAuthServiceHandlers({
+    authentication,
+    requestRuntime: makeRpcRequestRuntime(receivedSignals),
+  });
+  const context = makeHandlerContext({
+    method: AuthService.method.revokeAppleClientRefreshTokens,
+    requestHeader: new Headers({ authorization: AUTHORIZATION }),
+    service: AuthService,
+    signal: new AbortController().signal,
+  });
+  return {
+    context,
+    receivedSignals,
+    request: create(RevokeAppleClientRefreshTokensRequestSchema),
+    revoke: required(handlers.revokeAppleClientRefreshTokens),
+    tracker,
+  };
+};
 
 test("maps signed-in administrator, bearer, and exact protobuf expiry through the request runtime", async () => {
   const fixture = makeSignInFixture();
@@ -265,6 +322,23 @@ test("forwards the presented Authorization value and waits for confirmed sign-ou
   expect(fixture.tracker.receivedAuthorizations).toStrictEqual([AUTHORIZATION]);
   expect(response).toStrictEqual({});
   expect(fixture.tracker.receivedSignals).toStrictEqual([fixture.context.signal]);
+});
+
+test("approves a user code with the exact presented session bearer", async () => {
+  const fixture = makeApproveDeviceAuthorizationFixture();
+  const response = await fixture.approveDeviceAuthorization(fixture.request, fixture.context);
+
+  expect(response).toStrictEqual({});
+  expect(fixture.received).toStrictEqual([{ authorization: AUTHORIZATION, userCode: USER_CODE }]);
+  expect(fixture.receivedSignals).toStrictEqual([fixture.context.signal]);
+});
+test("revokes the fixed Apple client's refresh-token families through the request runtime", async () => {
+  const fixture = makeRevokeAppleClientRefreshTokensFixture();
+  const response = await fixture.revoke(fixture.request, fixture.context);
+
+  expect(response).toStrictEqual({});
+  expect(fixture.tracker.revocations).toBe(EXPECTED_REVOCATION_COUNT);
+  expect(fixture.receivedSignals).toStrictEqual([fixture.context.signal]);
 });
 
 test("lets tagged setup and authentication service failures reject unchanged", async () => {

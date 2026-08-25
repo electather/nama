@@ -24,18 +24,16 @@ nonisolated struct NamaSetupStatusVerifier: ConnectionVerifying {
       endpoint: endpoint,
       configuration: sessionConfiguration
     )
+    let metadataInterceptor = InterceptorFactory { _ in
+      ClientMetadataInterceptor(clientVersion: clientVersion, platform: platform)
+    }
     let protocolClient = ProtocolClient(
       httpClient: transport,
       config: ProtocolClientConfig(
         host: endpoint.absoluteString,
         networkProtocol: .connect,
         timeout: Self.requestTimeout,
-        interceptors: [
-          InterceptorFactory { _ in
-            ClientMetadataInterceptor(clientVersion: clientVersion, platform: platform)
-            // swiftlint:disable:next trailing_comma
-          }
-        ]
+        interceptors: [metadataInterceptor]
       )
     )
     let client = Nama_Api_V1_SetupServiceClient(client: protocolClient)

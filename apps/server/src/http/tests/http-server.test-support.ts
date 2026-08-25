@@ -4,6 +4,8 @@ import { Context, Effect, Exit, Layer, Logger, Option, Redacted, Scope } from "e
 
 import { Authentication } from "../../authentication/authentication-service.ts";
 import type { AuthenticationService } from "../../authentication/authentication-service.ts";
+import { BetterAuthAdapter } from "../../authentication/better-auth-adapter.ts";
+import type { BetterAuthAdapterService } from "../../authentication/better-auth-adapter.ts";
 import { SetupCoordinator } from "../../authentication/setup-coordinator.ts";
 import type { SetupCoordinatorService } from "../../authentication/setup-coordinator.ts";
 import { Config } from "../../config/config.ts";
@@ -61,6 +63,7 @@ const messageText = (message: unknown): string => {
 
 interface ServerLayerOptions {
   readonly authentication?: AuthenticationService;
+  readonly betterAuthAdapter?: BetterAuthAdapterService;
   readonly emitStopping?: () => Effect.Effect<void>;
   readonly host?: string;
   readonly lanDiscovery?: boolean;
@@ -77,9 +80,23 @@ const testAuthenticationDatabase: Database["Service"]["authentication"]["databas
 );
 
 const defaultAuthentication = Authentication.of({
+  approveDeviceAuthorization: () => Effect.die("unexpected device authorization approval"),
   consumeGlobalSignInBudget: noSignInLimit,
   consumeIdentitySignInBudget: () => noSignInLimit,
   resolveAdministrator: () => Effect.die("unexpected administrator resolution"),
+  resolveConsumerPrincipal: () => Effect.die("unexpected consumer principal resolution"),
+  resolvePrincipal: () => Effect.die("unexpected principal resolution"),
+  revokeAppleClientRefreshTokens: Effect.die("unexpected Apple client revocation"),
+  signIn: () => Effect.die("unexpected administrator sign-in"),
+  signOut: () => Effect.die("unexpected administrator sign-out"),
+});
+const defaultBetterAuthAdapter = BetterAuthAdapter.of({
+  approveDeviceAuthorization: () => Effect.die("unexpected device authorization approval"),
+  createAdministrator: () => Effect.die("unexpected administrator creation"),
+  oauthRequestListener: () => {},
+  resolveBearer: () => Effect.die("unexpected bearer resolution"),
+  resolveOAuthAccess: () => Effect.die("unexpected OAuth access resolution"),
+  revokeAppleClientRefreshTokens: Effect.die("unexpected Apple client revocation"),
   signIn: () => Effect.die("unexpected administrator sign-in"),
   signOut: () => Effect.die("unexpected administrator sign-out"),
 });
@@ -117,6 +134,7 @@ const makeHttpServerTestDependencies = (
   runtimeControlLayer: Layer.Layer<RuntimeControl>,
 ) =>
   Layer.mergeAll(
+    Layer.succeed(BetterAuthAdapter, defaultBetterAuthAdapter),
     Layer.succeed(Authentication, defaultAuthentication),
     Layer.succeed(Config, config),
     Layer.succeed(Database, database),
@@ -133,6 +151,7 @@ const makeDatabase = (
     authentication: {
       completeInitialization: () => Effect.die("unexpected database initialization"),
       database: testAuthenticationDatabase,
+      revokeAppleClientRefreshTokens: Effect.die("unexpected Apple client revocation"),
     },
     catalog: unusedCatalogPersistence,
     catalogQueries: unusedCatalogQueries,
@@ -164,6 +183,7 @@ const serverLayerWithDatabase = (
     }
   });
   const dependencies = Layer.mergeAll(
+    Layer.succeed(BetterAuthAdapter, options.betterAuthAdapter ?? defaultBetterAuthAdapter),
     Layer.succeed(Authentication, options.authentication ?? defaultAuthentication),
     Layer.succeed(Config, serverConfig(port, options)),
     databaseLayer,

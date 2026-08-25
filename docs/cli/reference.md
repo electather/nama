@@ -31,6 +31,8 @@ Examples
   nama profile set local --server https://nama.example.test
   nama setup --profile local --display-name "Nama Administrator" --email admin@example.test
   nama auth login --profile local --email admin@example.test
+  nama auth approve-device ABCD-EFGH --profile local
+  nama auth revoke-apple-client --profile local
   nama auth status --profile local
 
 ### Arguments
@@ -75,6 +77,40 @@ None.
 
 None.
 
+## `nama auth approve-device`
+
+Approve Apple device authorization
+
+Approve the displayed Apple device-authorization user code for the current signed-in user. Uses the selected profile credential or NAMA_TOKEN and never reads a password.
+
+### Arguments
+
+| Name | Type | Required | Variadic | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- |
+| `user-code` | `string` | yes | no | — | User code displayed by the Apple app |
+
+### Effective flags
+
+| Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |
+| `--output` | `string` | no | inherited | `NAMA_OUTPUT` | `human` | `human`, `json` | Select human or json output (env: NAMA_OUTPUT) |
+| `--profile` | `string` | no | inherited | `NAMA_PROFILE` | `` | — | Select a server profile (env: NAMA_PROFILE) |
+| `--server` | `string` | no | inherited | `NAMA_SERVER` | `` | — | Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER) |
+| `--version` | `bool` | no | inherited | — | `false` | — | Print the Nama CLI semantic version |
+
+### Conditional inputs
+
+| Name | Type | Required | Secret | Description |
+| --- | --- | --- | --- | --- |
+| `bearer` | `string` | no | yes | Signed Nama session bearer credential |
+
+Sources:
+
+- `bearer`:
+  - kind `environment`; source `NAMA_TOKEN`; condition `always`
+  - kind `native_credential_store`; source `operating_system`; condition `NAMA_TOKEN_unset`
+
 ## `nama auth login`
 
 Sign in as an Administrator
@@ -113,6 +149,39 @@ Sources:
   - kind `stdin_line`; source `stdin`; condition `nonterminal`
   - kind `rejected`; source `terminal_stdin`; condition `json_terminal`
 
+## `nama auth revoke-apple-client`
+
+Revoke Apple refresh tokens
+
+Revoke every refresh-token family for the fixed Apple public client. Existing access tokens remain valid until expiry. Interactive human use prompts for confirmation; JSON and non-interactive use require --yes.
+
+### Arguments
+
+None.
+
+### Effective flags
+
+| Flag | Type | Required | Scope | Environment | Default | Allowed values | Description |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `--help` | `bool` | no | inherited | — | `false` | — | Show help for a command |
+| `--output` | `string` | no | inherited | `NAMA_OUTPUT` | `human` | `human`, `json` | Select human or json output (env: NAMA_OUTPUT) |
+| `--profile` | `string` | no | inherited | `NAMA_PROFILE` | `` | — | Select a server profile (env: NAMA_PROFILE) |
+| `--server` | `string` | no | inherited | `NAMA_SERVER` | `` | — | Override with an absolute HTTP(S) server URL without credentials, query, or fragment; plain HTTP is limited to loopback, private, link-local, or .local targets (env: NAMA_SERVER) |
+| `--version` | `bool` | no | inherited | — | `false` | — | Print the Nama CLI semantic version |
+| `--yes` | `bool` | no | local | — | `false` | — | Confirm broad Apple refresh-token revocation without prompting |
+
+### Conditional inputs
+
+| Name | Type | Required | Secret | Description |
+| --- | --- | --- | --- | --- |
+| `bearer` | `string` | no | yes | Signed Nama session bearer credential |
+
+Sources:
+
+- `bearer`:
+  - kind `environment`; source `NAMA_TOKEN`; condition `always`
+  - kind `native_credential_store`; source `operating_system`; condition `NAMA_TOKEN_unset`
+
 ## `nama auth status`
 
 Report authentication status
@@ -137,7 +206,7 @@ None.
 
 | Name | Type | Required | Secret | Description |
 | --- | --- | --- | --- | --- |
-| `bearer` | `string` | no | yes | Administrator bearer credential |
+| `bearer` | `string` | no | yes | Signed Nama session bearer credential |
 
 Sources:
 

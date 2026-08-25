@@ -3,7 +3,6 @@ import { Code } from "@connectrpc/connect";
 import { expect, test } from "vitest";
 
 import { AuthService, SignInRequestSchema } from "../../../../../gen/ts/src/nama/api/v1/auth_pb.js";
-import { DeviceService } from "../../../../../gen/ts/src/nama/api/v1/device_pb.js";
 import { SetupService } from "../../../../../gen/ts/src/nama/api/v1/setup_pb.js";
 import { createRequestPipeline } from "../request-pipeline.ts";
 import type { RequestPipelineDependencies } from "../request-pipeline.ts";
@@ -36,10 +35,6 @@ const CREATE_ADMINISTRATOR_REQUEST = withRequestId(
 const SIGN_IN_REQUEST = withRequestId(
   AuthService.method.signIn,
   create(SignInRequestSchema, { email: SIGN_IN_EMAIL, password: SIGN_IN_PASSWORD }),
-);
-const BEGIN_PAIRING_REQUEST = withRequestId(
-  DeviceService.method.beginPairing,
-  create(DeviceService.method.beginPairing.input),
 );
 
 const INVOKE_NEXT_PARAMETER = 2;
@@ -86,7 +81,6 @@ test("applies configured and setup-eligible state gates before downstream pipeli
   const setupGateCases = [
     [true, CREATE_ADMINISTRATOR_REQUEST, "ALREADY_INITIALIZED"],
     [false, SIGN_IN_REQUEST, "NOT_INITIALIZED"],
-    [false, BEGIN_PAIRING_REQUEST, "NOT_INITIALIZED"],
   ] as const;
   const setupGateChecks = setupGateCases.map(([initialized, request, reason]) => {
     const setupCoordinator = makeTestSetupCoordinator(initialized, trace);
@@ -100,7 +94,7 @@ test("applies configured and setup-eligible state gates before downstream pipeli
   });
 
   await Promise.all(setupGateChecks);
-  expect(trace).toStrictEqual(["state", "state", "state"]);
+  expect(trace).toStrictEqual(["state", "state"]);
 });
 
 test("keeps public SignIn and bootstrap CreateAdministrator outside administrator bearer lookup", async () => {

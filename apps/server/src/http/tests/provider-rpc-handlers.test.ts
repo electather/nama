@@ -30,9 +30,13 @@ const CREATED_AT = new Date("2026-08-19T12:00:00.000Z");
 const DEFAULT_SYNC_PRIORITY = 1;
 const LIBRARY_READ_CAPABILITY = ProviderCapability.LIBRARY_READ;
 const authentication: AuthenticationService = Object.freeze({
+  approveDeviceAuthorization: () => Effect.die("unexpected device authorization approval"),
   consumeGlobalSignInBudget: Effect.die("unexpected sign-in limit"),
   consumeIdentitySignInBudget: () => Effect.die("unexpected sign-in limit"),
   resolveAdministrator: () => Effect.succeed(ADMINISTRATOR),
+  resolveConsumerPrincipal: () => Effect.die("unexpected consumer principal resolution"),
+  resolvePrincipal: () => Effect.die("unexpected principal resolution"),
+  revokeAppleClientRefreshTokens: Effect.die("unexpected Apple client revocation"),
   signIn: () => Effect.die("unexpected sign-in"),
   signOut: () => Effect.die("unexpected sign-out"),
 });

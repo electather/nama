@@ -3,6 +3,7 @@ import type { RequestListener } from "node:http";
 import { expect, it } from "@effect/vitest";
 import { Effect, Exit, Layer, Redacted, Scope } from "effect";
 
+import { BetterAuthAdapter } from "../../authentication/better-auth-adapter.ts";
 import { Config } from "../../config/config.ts";
 import { Database } from "../../database/database.ts";
 import { RuntimeControl } from "../../lifecycle/runtime-control.ts";
@@ -23,6 +24,7 @@ import {
 } from "./network.test-support.ts";
 
 const HTTP_DELEGATED = 418;
+const HTTP_OAUTH_DELEGATED = 202;
 const NO_DATABASE_PROBES = 0;
 const ONE_DATABASE_PROBE = 1;
 const REQUEST_ID_HEADER = "nama-request-id";
@@ -191,6 +193,59 @@ it.live("delegates unmatched requests without probing database readiness", () =>
     const response = yield* Effect.promise(() => fetch(`${server.origin}/delegated`));
     yield* expectEmptyResponse(response, HTTP_DELEGATED);
     expect(probes).toBe(NO_DATABASE_PROBES);
+  }),
+);
+// oxlint-disable-next-line eslint/max-lines-per-function -- The route matrix keeps every public and blocked OAuth path beside its delegation assertions.
+it.live("delegates only the required public OAuth authorization-server routes", () =>
+  Effect.gen(function* oauthRouteDelegationTest() {
+    const delegatedTargets: string[] = [];
+    const betterAuthAdapter = BetterAuthAdapter.of({
+      approveDeviceAuthorization: () => Effect.die("unexpected device authorization approval"),
+      createAdministrator: () => Effect.die("unexpected administrator creation"),
+      oauthRequestListener: (request, response) => {
+        delegatedTargets.push(`${request.method ?? ""} ${request.url ?? ""}`);
+        response.statusCode = HTTP_OAUTH_DELEGATED;
+        response.end();
+      },
+      resolveBearer: () => Effect.die("unexpected bearer resolution"),
+      resolveOAuthAccess: () => Effect.die("unexpected OAuth access resolution"),
+      revokeAppleClientRefreshTokens: Effect.die("unexpected Apple client revocation"),
+      signIn: () => Effect.die("unexpected administrator sign-in"),
+      signOut: () => Effect.die("unexpected administrator sign-out"),
+    });
+    const server = yield* startServer(makeDatabase(Effect.succeed(true)), {
+      betterAuthAdapter,
+    });
+
+    const allowed = yield* Effect.all([
+      Effect.promise(() => fetch(`${server.origin}/.well-known/oauth-authorization-server`)),
+      Effect.promise(() => fetch(`${server.origin}/.well-known/oauth-protected-resource`)),
+      Effect.promise(() => fetch(`${server.origin}/jwks`)),
+      Effect.promise(() => fetch(`${server.origin}/device/code`, { method: "POST" })),
+      Effect.promise(() => fetch(`${server.origin}/oauth2/token`, { method: "POST" })),
+      Effect.promise(() => fetch(`${server.origin}/oauth2/revoke`, { method: "POST" })),
+    ] as const);
+    const blocked = yield* Effect.all([
+      Effect.promise(() => fetch(`${server.origin}/device?user_code=private-code`)),
+      Effect.promise(() => fetch(`${server.origin}/device/approve`, { method: "POST" })),
+      Effect.promise(() => fetch(`${server.origin}/device/deny`, { method: "POST" })),
+      Effect.promise(() => fetch(`${server.origin}/sign-in/email`, { method: "POST" })),
+      Effect.promise(() => fetch(`${server.origin}/get-session`)),
+      Effect.promise(() => fetch(`${server.origin}/oauth2/authorize`)),
+    ] as const);
+
+    expect(allowed.map((response) => response.status)).toEqual(
+      Array.from({ length: allowed.length }, () => HTTP_OAUTH_DELEGATED),
+    );
+    expect(blocked.every((response) => response.status !== HTTP_OAUTH_DELEGATED)).toBe(true);
+    expect(delegatedTargets).toEqual([
+      "GET /.well-known/oauth-authorization-server",
+      "GET /.well-known/oauth-protected-resource",
+      "GET /jwks",
+      "POST /device/code",
+      "POST /oauth2/token",
+      "POST /oauth2/revoke",
+    ]);
   }),
 );
 

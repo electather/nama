@@ -20,18 +20,27 @@ import { integrationUrl, withIsolatedDatabase } from "./postgres.test-support.ts
 const FIRST_ROW_INDEX = 0;
 const PROBE_BOUND_MILLISECONDS = 3000;
 const SINGLE_ROW_COUNT = 1;
-const PRODUCTION_MIGRATION_COUNT = "6";
+const PRODUCTION_MIGRATION_COUNT = "7";
 const PRODUCTION_TABLE_NAMES = [
   "account",
   "canonical_artwork",
   "canonical_credit",
   "canonical_hierarchy",
   "canonical_item",
+  "device_code",
+  "jwks",
   "library_entry",
   "media_part",
   "media_source",
   "media_track",
   "nama_server_state",
+  "oauth_access_token",
+  "oauth_client",
+  "oauth_client_assertion",
+  "oauth_client_resource",
+  "oauth_consent",
+  "oauth_refresh_token",
+  "oauth_resource",
   "provider_artwork_mapping",
   "provider_catalog_scan_state",
   "provider_credential",

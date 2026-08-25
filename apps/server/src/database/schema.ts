@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
 import { check, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
-import { account, session, user, verification } from "./auth-schema.ts";
+// oxlint-disable-next-line import/no-namespace -- Better Auth's generated tables must be supplied to Drizzle as one schema object.
+import * as authenticationSchema from "./auth-schema.ts";
 import {
   canonicalArtwork,
   canonicalCredit,
@@ -34,9 +35,12 @@ import {
 const namaServerState = pgTable(
   "nama_server_state",
   {
-    administratorUserId: text("administrator_user_id").references(() => user.id, {
-      onDelete: "restrict",
-    }),
+    administratorUserId: text("administrator_user_id").references(
+      () => authenticationSchema.user.id,
+      {
+        onDelete: "restrict",
+      },
+    ),
     initializedAt: timestamp("initialized_at", { withTimezone: true }),
     key: text("key").primaryKey(),
   },
@@ -49,7 +53,8 @@ const namaServerState = pgTable(
   ],
 );
 
-const authenticationDatabaseSchema = { account, namaServerState, session, user, verification };
+const generatedAuthenticationSchema = authenticationSchema;
+const authenticationDatabaseSchema = { ...generatedAuthenticationSchema, namaServerState };
 const databaseSchema = {
   ...authenticationDatabaseSchema,
   canonicalArtwork,
@@ -82,4 +87,4 @@ export * from "./catalog-scan-schema.ts";
 export * from "./catalog-source-schema.ts";
 export * from "./catalog-track-schema.ts";
 export * from "./provider-schema.ts";
-export { databaseSchema, namaServerState };
+export { databaseSchema, generatedAuthenticationSchema, namaServerState };

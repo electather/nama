@@ -1,3 +1,4 @@
+// oxlint-disable import/max-dependencies -- The database composition boundary owns one pool and wires migrations, authentication, catalog, initialization, and provider persistence.
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -6,10 +7,13 @@ import { Context, Data, Effect, Layer, Redacted } from "effect";
 import { Pool } from "pg";
 
 import { Config } from "../config/config.ts";
+import { APPLE_PUBLIC_CLIENT_ID } from "../config/oauth.ts";
+import { oauthRefreshToken } from "./auth-schema.ts";
 import { makeCatalog } from "./catalog-persistence.ts";
 import type { CatalogPersistence, CatalogQueryStorage } from "./catalog-persistence.ts";
 import { reconcileDatabaseInitialization } from "./initialization.ts";
 import type { DatabaseInitialization } from "./initialization.ts";
+import { reconcileOAuthConfiguration } from "./oauth-configuration-persistence.ts";
 import { makeProviderPersistence } from "./provider-persistence.ts";
 import type { ProviderPersistence } from "./provider-persistence.ts";
 import { databaseSchema, namaServerState } from "./schema.ts";
@@ -23,6 +27,10 @@ const contextService = Context.Service;
 const DatabaseConnectionError = taggedError("DatabaseConnectionError");
 const MigrationError = taggedError("MigrationError");
 const DatabaseInitializationCompletionError = taggedError("DatabaseInitializationCompletionError");
+const DatabaseAuthenticationMutationError = taggedError("DatabaseAuthenticationMutationError");
+type DatabaseAuthenticationMutationFailure = InstanceType<
+  typeof DatabaseAuthenticationMutationError
+>;
 type DatabaseInitializationCompletionFailure = InstanceType<
   typeof DatabaseInitializationCompletionError
 >;
@@ -33,6 +41,10 @@ interface DatabaseAuthentication {
   readonly completeInitialization: (
     administratorUserId: string,
   ) => Effect.Effect<void, DatabaseInitializationCompletionFailure>;
+  readonly revokeAppleClientRefreshTokens: Effect.Effect<
+    void,
+    DatabaseAuthenticationMutationFailure
+  >;
 }
 
 interface DatabaseService {
@@ -99,6 +111,40 @@ const completeInitialization = (
         }
       }),
   });
+const revokeAppleClientRefreshTokens = (
+  database: DatabaseDrizzle,
+): Effect.Effect<void, DatabaseAuthenticationMutationFailure> =>
+  Effect.tryPromise({
+    catch: () => new DatabaseAuthenticationMutationError({}),
+    try: async () => {
+      await database
+        .update(oauthRefreshToken)
+        .set({ revoked: sql`transaction_timestamp()` })
+        .where(
+          and(
+            eq(oauthRefreshToken.clientId, APPLE_PUBLIC_CLIENT_ID),
+            isNull(oauthRefreshToken.revoked),
+          ),
+        );
+    },
+  });
+
+const prepareDatabase = (
+  database: DatabaseDrizzle,
+  migrationsFolder: string,
+  publicUrl: Config["Service"]["server"]["publicUrl"],
+) =>
+  Effect.gen(function* prepareDatabaseEffect() {
+    yield* Effect.tryPromise({
+      catch: () => new MigrationError(undefined),
+      try: () => migrate(database, { migrationsFolder }),
+    });
+    yield* Effect.tryPromise({
+      catch: () => new MigrationError(undefined),
+      try: () => reconcileOAuthConfiguration(database, publicUrl),
+    });
+    return yield* reconcileDatabaseInitialization(database);
+  });
 
 const makeDatabase = (migrationsFolder: string) =>
   Effect.gen(function* makeDatabaseService() {
@@ -120,11 +166,11 @@ const makeDatabase = (migrationsFolder: string) =>
 
     yield* verifyConnection(pool);
     const database = drizzle(pool, { logger: false, schema: databaseSchema });
-    yield* Effect.tryPromise({
-      catch: () => new MigrationError(undefined),
-      try: () => migrate(database, { migrationsFolder }),
-    });
-    const initialization = yield* reconcileDatabaseInitialization(database);
+    const initialization = yield* prepareDatabase(
+      database,
+      migrationsFolder,
+      config.server.publicUrl,
+    );
     const catalog = makeCatalog(database);
     const providerPersistence = yield* Effect.acquireRelease(
       makeProviderPersistence(database, config.security.masterKey),
@@ -137,6 +183,7 @@ const makeDatabase = (migrationsFolder: string) =>
         completeInitialization: (administratorUserId) =>
           completeInitialization(database, administratorUserId),
         database,
+        revokeAppleClientRefreshTokens: revokeAppleClientRefreshTokens(database),
       },
       catalog: catalog.persistence,
       catalogQueries: catalog.queries,

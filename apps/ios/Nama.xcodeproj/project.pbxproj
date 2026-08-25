@@ -34,6 +34,19 @@
 		100000000000000000000025 /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000028 /* ConnectionState.swift */; };
 		100000000000000000000026 /* ConnectionVerification.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000029 /* ConnectionVerification.swift */; };
 		100000000000000000000027 /* Nama.icon in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000030 /* Nama.icon */; };
+		100000000000000000000028 /* OAuthAuthorizationFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000031 /* OAuthAuthorizationFeatureTests.swift */; };
+		100000000000000000000029 /* OAuthAuthorizationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000032 /* OAuthAuthorizationModels.swift */; };
+		100000000000000000000030 /* OAuthAuthorizationFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000033 /* OAuthAuthorizationFeature.swift */; };
+		100000000000000000000031 /* OAuthAuthorizationHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000034 /* OAuthAuthorizationHTTPClient.swift */; };
+		100000000000000000000032 /* OAuthTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000035 /* OAuthTokenStore.swift */; };
+		100000000000000000000033 /* OAuthAuthorizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000036 /* OAuthAuthorizationView.swift */; };
+		100000000000000000000034 /* OAuthScopedAccessVerifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000037 /* OAuthScopedAccessVerifier.swift */; };
+		100000000000000000000035 /* OAuthAuthorizationLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000038 /* OAuthAuthorizationLifecycleTests.swift */; };
+		100000000000000000000036 /* OAuthAuthorizationTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000039 /* OAuthAuthorizationTransportTests.swift */; };
+		100000000000000000000037 /* OAuthTokenStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000040 /* OAuthTokenStoreTests.swift */; };
+		100000000000000000000038 /* OAuthAuthorizationTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000041 /* OAuthAuthorizationTestSupport.swift */; };
+		100000000000000000000039 /* OAuthAuthorizationFeatureCommit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000042 /* OAuthAuthorizationFeatureCommit.swift */; };
+		100000000000000000000040 /* OAuthAuthorizationFeatureFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000043 /* OAuthAuthorizationFeatureFlow.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -77,6 +90,19 @@
 		200000000000000000000028 /* ConnectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionState.swift; sourceTree = "<group>"; };
 		200000000000000000000029 /* ConnectionVerification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionVerification.swift; sourceTree = "<group>"; };
 		200000000000000000000030 /* Nama.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = Nama.icon; sourceTree = "<group>"; };
+		200000000000000000000031 /* OAuthAuthorizationFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationFeatureTests.swift; sourceTree = "<group>"; };
+		200000000000000000000032 /* OAuthAuthorizationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationModels.swift; sourceTree = "<group>"; };
+		200000000000000000000033 /* OAuthAuthorizationFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationFeature.swift; sourceTree = "<group>"; };
+		200000000000000000000034 /* OAuthAuthorizationHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationHTTPClient.swift; sourceTree = "<group>"; };
+		200000000000000000000035 /* OAuthTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthTokenStore.swift; sourceTree = "<group>"; };
+		200000000000000000000036 /* OAuthAuthorizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationView.swift; sourceTree = "<group>"; };
+		200000000000000000000037 /* OAuthScopedAccessVerifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthScopedAccessVerifier.swift; sourceTree = "<group>"; };
+		200000000000000000000038 /* OAuthAuthorizationLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationLifecycleTests.swift; sourceTree = "<group>"; };
+		200000000000000000000039 /* OAuthAuthorizationTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationTransportTests.swift; sourceTree = "<group>"; };
+		200000000000000000000040 /* OAuthTokenStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthTokenStoreTests.swift; sourceTree = "<group>"; };
+		200000000000000000000041 /* OAuthAuthorizationTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationTestSupport.swift; sourceTree = "<group>"; };
+		200000000000000000000042 /* OAuthAuthorizationFeatureCommit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationFeatureCommit.swift; sourceTree = "<group>"; };
+		200000000000000000000043 /* OAuthAuthorizationFeatureFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationFeatureFlow.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -110,6 +136,7 @@
 		500000000000000000000002 /* Nama */ = {
 			isa = PBXGroup;
 			children = (
+				500000000000000000000009 /* OAuthAuthorization */,
 				200000000000000000000001 /* NamaApp.swift */,
 				500000000000000000000006 /* Connection */,
 				500000000000000000000005 /* Resources */,
@@ -121,6 +148,7 @@
 			isa = PBXGroup;
 			children = (
 				500000000000000000000007 /* Connection */,
+				500000000000000000000008 /* OAuthAuthorization */,
 			);
 			path = NamaTests;
 			sourceTree = "<group>";
@@ -168,6 +196,33 @@
 				200000000000000000000016 /* TestSupport.swift */,
 			);
 			path = Connection;
+			sourceTree = "<group>";
+		};
+		500000000000000000000008 /* OAuthAuthorization */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000031 /* OAuthAuthorizationFeatureTests.swift */,
+				200000000000000000000038 /* OAuthAuthorizationLifecycleTests.swift */,
+				200000000000000000000039 /* OAuthAuthorizationTransportTests.swift */,
+				200000000000000000000040 /* OAuthTokenStoreTests.swift */,
+				200000000000000000000041 /* OAuthAuthorizationTestSupport.swift */,
+			);
+			path = OAuthAuthorization;
+			sourceTree = "<group>";
+		};
+		500000000000000000000009 /* OAuthAuthorization */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000032 /* OAuthAuthorizationModels.swift */,
+				200000000000000000000033 /* OAuthAuthorizationFeature.swift */,
+				200000000000000000000034 /* OAuthAuthorizationHTTPClient.swift */,
+				200000000000000000000035 /* OAuthTokenStore.swift */,
+				200000000000000000000036 /* OAuthAuthorizationView.swift */,
+				200000000000000000000037 /* OAuthScopedAccessVerifier.swift */,
+				200000000000000000000042 /* OAuthAuthorizationFeatureCommit.swift */,
+				200000000000000000000043 /* OAuthAuthorizationFeatureFlow.swift */,
+			);
+			path = OAuthAuthorization;
 			sourceTree = "<group>";
 		};
 		500000000000000000000005 /* Resources */ = {
@@ -303,6 +358,14 @@
 				100000000000000000000010 /* ConnectionPresentation.swift in Sources */,
 				100000000000000000000011 /* ConnectionView.swift in Sources */,
 				100000000000000000000012 /* TVConnectionView.swift in Sources */,
+				100000000000000000000029 /* OAuthAuthorizationModels.swift in Sources */,
+				100000000000000000000030 /* OAuthAuthorizationFeature.swift in Sources */,
+				100000000000000000000031 /* OAuthAuthorizationHTTPClient.swift in Sources */,
+				100000000000000000000032 /* OAuthTokenStore.swift in Sources */,
+				100000000000000000000033 /* OAuthAuthorizationView.swift in Sources */,
+				100000000000000000000034 /* OAuthScopedAccessVerifier.swift in Sources */,
+				100000000000000000000039 /* OAuthAuthorizationFeatureCommit.swift in Sources */,
+				100000000000000000000040 /* OAuthAuthorizationFeatureFlow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -319,6 +382,11 @@
 				100000000000000000000015 /* DiscoveryTests.swift in Sources */,
 				100000000000000000000016 /* ConnectionDiscoveryTests.swift in Sources */,
 				100000000000000000000014 /* TestSupport.swift in Sources */,
+				100000000000000000000028 /* OAuthAuthorizationFeatureTests.swift in Sources */,
+				100000000000000000000035 /* OAuthAuthorizationLifecycleTests.swift in Sources */,
+				100000000000000000000036 /* OAuthAuthorizationTransportTests.swift in Sources */,
+				100000000000000000000037 /* OAuthTokenStoreTests.swift in Sources */,
+				100000000000000000000038 /* OAuthAuthorizationTestSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

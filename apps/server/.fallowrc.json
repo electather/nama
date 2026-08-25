@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": ["src/main.ts", "src/contracts/probe.ts"],
-  "ignoreDependencies": ["better-auth"],
+  "ignoreDependencies": ["@better-auth/oauth-provider", "better-auth"],
   "rules": {
     "boundary-violation": "error",
     "circular-dependencies": "error",

@@ -107,6 +107,58 @@ export declare type SignOutResponse = Message<"nama.api.v1.SignOutResponse"> & {
 export declare const SignOutResponseSchema: GenMessage<SignOutResponse>;
 
 /**
+ * @generated from message nama.api.v1.ApproveDeviceAuthorizationRequest
+ */
+export declare type ApproveDeviceAuthorizationRequest = Message<"nama.api.v1.ApproveDeviceAuthorizationRequest"> & {
+  /**
+   * @generated from field: string user_code = 1;
+   */
+  userCode: string;
+};
+
+/**
+ * Describes the message nama.api.v1.ApproveDeviceAuthorizationRequest.
+ * Use `create(ApproveDeviceAuthorizationRequestSchema)` to create a new message.
+ */
+export declare const ApproveDeviceAuthorizationRequestSchema: GenMessage<ApproveDeviceAuthorizationRequest>;
+
+/**
+ * @generated from message nama.api.v1.ApproveDeviceAuthorizationResponse
+ */
+export declare type ApproveDeviceAuthorizationResponse = Message<"nama.api.v1.ApproveDeviceAuthorizationResponse"> & {
+};
+
+/**
+ * Describes the message nama.api.v1.ApproveDeviceAuthorizationResponse.
+ * Use `create(ApproveDeviceAuthorizationResponseSchema)` to create a new message.
+ */
+export declare const ApproveDeviceAuthorizationResponseSchema: GenMessage<ApproveDeviceAuthorizationResponse>;
+
+/**
+ * @generated from message nama.api.v1.RevokeAppleClientRefreshTokensRequest
+ */
+export declare type RevokeAppleClientRefreshTokensRequest = Message<"nama.api.v1.RevokeAppleClientRefreshTokensRequest"> & {
+};
+
+/**
+ * Describes the message nama.api.v1.RevokeAppleClientRefreshTokensRequest.
+ * Use `create(RevokeAppleClientRefreshTokensRequestSchema)` to create a new message.
+ */
+export declare const RevokeAppleClientRefreshTokensRequestSchema: GenMessage<RevokeAppleClientRefreshTokensRequest>;
+
+/**
+ * @generated from message nama.api.v1.RevokeAppleClientRefreshTokensResponse
+ */
+export declare type RevokeAppleClientRefreshTokensResponse = Message<"nama.api.v1.RevokeAppleClientRefreshTokensResponse"> & {
+};
+
+/**
+ * Describes the message nama.api.v1.RevokeAppleClientRefreshTokensResponse.
+ * Use `create(RevokeAppleClientRefreshTokensResponseSchema)` to create a new message.
+ */
+export declare const RevokeAppleClientRefreshTokensResponseSchema: GenMessage<RevokeAppleClientRefreshTokensResponse>;
+
+/**
  * @generated from service nama.api.v1.AuthService
  */
 export declare const AuthService: GenService<{
@@ -133,6 +185,22 @@ export declare const AuthService: GenService<{
     methodKind: "unary";
     input: typeof SignOutRequestSchema;
     output: typeof SignOutResponseSchema;
+  },
+  /**
+   * @generated from rpc nama.api.v1.AuthService.ApproveDeviceAuthorization
+   */
+  approveDeviceAuthorization: {
+    methodKind: "unary";
+    input: typeof ApproveDeviceAuthorizationRequestSchema;
+    output: typeof ApproveDeviceAuthorizationResponseSchema;
+  },
+  /**
+   * @generated from rpc nama.api.v1.AuthService.RevokeAppleClientRefreshTokens
+   */
+  revokeAppleClientRefreshTokens: {
+    methodKind: "unary";
+    input: typeof RevokeAppleClientRefreshTokensRequestSchema;
+    output: typeof RevokeAppleClientRefreshTokensResponseSchema;
   },
 }>;
 

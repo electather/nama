@@ -1,4 +1,4 @@
-// oxlint-disable import/max-dependencies -- The complete Database test double includes the catalog and provider persistence seams.
+// oxlint-disable import/max-dependencies, eslint/max-lines -- The complete Database test double includes the catalog, provider, authentication, and initialization persistence seams.
 import { expect } from "@effect/vitest";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Cause, Effect, Exit } from "effect";
@@ -83,8 +83,12 @@ interface CreationCallCounts {
 const unusedAuthenticationDatabase = drizzle(new Pool(), { schema: databaseSchema });
 
 const defaultAdapter = Object.freeze({
+  approveDeviceAuthorization: () => Effect.die("unexpected approveDeviceAuthorization call"),
   createAdministrator: () => Effect.die("unexpected createAdministrator call"),
+  oauthRequestListener: () => {},
   resolveBearer: () => Effect.die("unexpected resolveBearer call"),
+  resolveOAuthAccess: () => Effect.die("unexpected resolveOAuthAccess call"),
+  revokeAppleClientRefreshTokens: Effect.die("unexpected revokeAppleClientRefreshTokens call"),
   signIn: () => Effect.die("unexpected signIn call"),
   signOut: () => Effect.die("unexpected signOut call"),
 }) satisfies BetterAuthAdapterService;
@@ -118,7 +122,11 @@ const makeCoordinatorFixture = (
   const bootstrapToken = options.bootstrapToken ?? makeEligibleBootstrapToken();
   const completeInitialization = options.completeInitialization ?? defaultCompleteInitialization;
   const database = Database.of({
-    authentication: { completeInitialization, database: unusedAuthenticationDatabase },
+    authentication: {
+      completeInitialization,
+      database: unusedAuthenticationDatabase,
+      revokeAppleClientRefreshTokens: Effect.die("unexpected Apple client revocation"),
+    },
     catalog: unusedCatalog.persistence,
     catalogQueries: unusedCatalog.queries,
     checkReadiness: Effect.succeed(true),

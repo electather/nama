@@ -1,3 +1,4 @@
+// oxlint-disable eslint/max-lines -- One interceptor state machine owns setup gating, authority resolution, validation, execution, normalization, and terminal logging order.
 import { createContextKey } from "@connectrpc/connect";
 import type {
   Code,
@@ -13,6 +14,7 @@ import { Effect } from "effect";
 import type { AuthenticationService } from "../authentication/authentication-service.ts";
 import type { Administrator } from "../authentication/better-auth-adapter.ts";
 import type { SetupCoordinatorService } from "../authentication/setup-coordinator.ts";
+import { LIBRARY_SCOPE, PLAYBACK_SCOPE, USER_STATE_SCOPE } from "../config/oauth.ts";
 import { contractAuthorityByMethod } from "../contracts/authorization.ts";
 import type { RequestValidator } from "../contracts/request-validation.ts";
 import {
@@ -28,7 +30,6 @@ import type { RequestRuntime } from "./request-runtime.ts";
 
 const REQUEST_ID_HEADER = "nama-request-id";
 const CREATE_ADMINISTRATOR_METHOD = "nama.api.v1.SetupService.CreateAdministrator";
-const BEGIN_PAIRING_METHOD = "nama.api.v1.DeviceService.BeginPairing";
 const CONNECT_CODE_OK = 0;
 const EMPTY_REQUEST_ID_LENGTH = CONNECT_CODE_OK;
 const MINIMUM_DURATION_MILLISECONDS = CONNECT_CODE_OK;
@@ -40,11 +41,24 @@ const requestAdministratorContextKey = createContextKey<Administrator | undefine
   description: "nama request administrator",
 });
 
+const requestPrincipalContextKey = createContextKey<RequestPrincipal | undefined>(undefined, {
+  description: "nama request principal",
+});
 const contractAuthorities: Readonly<
   Record<string, (typeof contractAuthorityByMethod)[keyof typeof contractAuthorityByMethod]>
 > = contractAuthorityByMethod;
+const publicAuthorityByName: Readonly<Record<string, true>> = Object.freeze({
+  "bootstrap-token": true,
+  public: true,
+});
+const consumerScopeByAuthority: Readonly<Record<string, string>> = Object.freeze({
+  "session-or-library": LIBRARY_SCOPE,
+  "session-or-playback": PLAYBACK_SCOPE,
+  "session-or-user-state": USER_STATE_SCOPE,
+});
 
 type TerminalRpcCode = Code | typeof CONNECT_CODE_OK;
+type RequestPrincipal = Readonly<Pick<Administrator, "id">>;
 type InterceptorRequest = UnaryRequest | StreamRequest;
 type InterceptorResponse = UnaryResponse | StreamResponse;
 type RequestNext = (request: InterceptorRequest) => Promise<InterceptorResponse>;
@@ -98,6 +112,8 @@ const getRequestId = (contextValues: ContextValues): string | undefined =>
 const getRequestAdministrator = (contextValues: ContextValues): Administrator | undefined =>
   contextValues.get(requestAdministratorContextKey);
 
+const getRequestPrincipal = (contextValues: ContextValues): RequestPrincipal | undefined =>
+  contextValues.get(requestPrincipalContextKey);
 const ensureSetupState = (
   setupCoordinator: SetupCoordinatorService,
   expectedInitialized: boolean,
@@ -117,25 +133,71 @@ const applySetupGate = (
   if (method === CREATE_ADMINISTRATOR_METHOD) {
     return ensureSetupState(setupCoordinator, false, { _tag: "SetupAlreadyInitialized" });
   }
-  if (method === SIGN_IN_METHOD || method === BEGIN_PAIRING_METHOD) {
+  if (method === SIGN_IN_METHOD) {
     return ensureSetupState(setupCoordinator, true, { _tag: "NotInitialized" });
   }
   return Effect.void;
 };
 
-const resolveRequestAdministrator = (
-  authentication: AuthenticationService,
+const resolveRequestAuthority = <Principal, Failure>(
   request: UnaryRequest,
-): Effect.Effect<void, unknown> =>
-  Effect.gen(function* resolveRequestAdministratorEffect() {
+  resolve: (authorization: string) => Effect.Effect<Principal, Failure>,
+  setPrincipal: (principal: Principal) => void,
+): Effect.Effect<void, Failure | Readonly<{ readonly _tag: "InvalidBearer" }>> =>
+  Effect.gen(function* resolveRequestAuthorityEffect() {
     const authorization = request.header.get("authorization");
     if (authorization === null) {
-      yield* Effect.fail({ _tag: "InvalidBearer" as const });
-    } else {
-      const administrator = yield* authentication.resolveAdministrator(authorization);
-      request.contextValues.set(requestAdministratorContextKey, administrator);
+      return yield* Effect.fail({ _tag: "InvalidBearer" as const });
     }
+    const principal = yield* resolve(authorization);
+    return yield* Effect.sync(() => {
+      setPrincipal(principal);
+    });
   });
+
+const resolveSessionAuthority = (
+  authentication: AuthenticationService,
+  request: UnaryRequest,
+  authority: string | undefined,
+): Effect.Effect<void, unknown> | undefined => {
+  if (authority === "administrator") {
+    return resolveRequestAuthority(
+      request,
+      authentication.resolveAdministrator,
+      (administrator) => {
+        request.contextValues.set(requestAdministratorContextKey, administrator);
+      },
+    );
+  }
+  if (authority === "authenticated-principal") {
+    return resolveRequestAuthority(request, authentication.resolvePrincipal, (principal) => {
+      request.contextValues.set(requestPrincipalContextKey, principal);
+    });
+  }
+  return undefined;
+};
+
+const consumerScopeForAuthority = (authority: string | undefined): string | undefined => {
+  if (authority === undefined) {
+    return undefined;
+  }
+  return consumerScopeByAuthority[authority];
+};
+
+const authorizeNonConsumerRequest = (
+  authentication: AuthenticationService,
+  request: UnaryRequest,
+  authority: string | undefined,
+): Effect.Effect<void, unknown> => {
+  const sessionResolution = resolveSessionAuthority(authentication, request, authority);
+  if (sessionResolution !== undefined) {
+    return sessionResolution;
+  }
+  if (authority === "plugin-bearer") {
+    return Effect.fail({ _tag: "PermissionDenied" as const });
+  }
+  return Effect.fail({ _tag: "MissingAuthorityInventory" as const });
+};
 
 const authorizeRequest = (
   authentication: AuthenticationService,
@@ -143,16 +205,20 @@ const authorizeRequest = (
   method: string,
 ): Effect.Effect<void, unknown> => {
   const authority = contractAuthorities[method];
-  if (authority === "public" || authority === "bootstrap-token") {
+  if (authority !== undefined && publicAuthorityByName[authority] === true) {
     return Effect.void;
   }
-  if (authority === "administrator" || authority === "administrator-or-device") {
-    return resolveRequestAdministrator(authentication, request);
+  const consumerScope = consumerScopeForAuthority(authority);
+  if (consumerScope !== undefined) {
+    return resolveRequestAuthority(
+      request,
+      (authorization) => authentication.resolveConsumerPrincipal(authorization, consumerScope),
+      (principal) => {
+        request.contextValues.set(requestPrincipalContextKey, principal);
+      },
+    );
   }
-  if (authority === "polling-token" || authority === "plugin-bearer") {
-    return Effect.fail({ _tag: "PermissionDenied" as const });
-  }
-  return Effect.fail({ _tag: "MissingAuthorityInventory" as const });
+  return authorizeNonConsumerRequest(authentication, request, authority);
 };
 
 const createRequestEffect = ({
@@ -241,5 +307,5 @@ const createRequestPipeline = ({
     }
   };
 };
-export { createRequestPipeline, getRequestAdministrator, getRequestId };
-export type { RequestPipelineDependencies, TerminalRpcCode, TerminalRpcRecord };
+export { createRequestPipeline, getRequestAdministrator, getRequestId, getRequestPrincipal };
+export type { RequestPipelineDependencies, RequestPrincipal, TerminalRpcCode, TerminalRpcRecord };

@@ -317,7 +317,11 @@ const withControlledJellyfin = <Success, Failure, Requirements>(
             };
           };
           const server = createServer((request, response) => {
-            requestCount += 1;
+            const isConnectionInspectionRequest =
+              request.url === "/System/Info/Public" || request.url?.startsWith("/Users/") === true;
+            if (isConnectionInspectionRequest) {
+              requestCount += 1;
+            }
             const respond = (): void => {
               if (request.url === "/System/Info/Public") {
                 response.setHeader("content-type", "application/json");
@@ -352,7 +356,7 @@ const withControlledJellyfin = <Success, Failure, Requirements>(
               response.statusCode = 401;
               response.end();
             };
-            if (blockedRequest !== noBlockedRequest) {
+            if (isConnectionInspectionRequest && blockedRequest !== noBlockedRequest) {
               const blocked = blockedRequest;
               blockedRequest = noBlockedRequest;
               blocked.started();

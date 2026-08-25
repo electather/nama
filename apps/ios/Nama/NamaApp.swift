@@ -4,6 +4,10 @@ import SwiftUI
 struct NamaApp: App {
   private let clientVersion: String
   private let endpointStore: UserDefaultsVerifiedEndpointStore
+  private let oauthClient: BetterAuthOAuthAuthorizationClient
+  private let tokenStore: KeychainOAuthTokenStore
+  private let scopedAccessVerifier: NamaOAuthScopedAccessVerifier
+  private let authorizationSession: OAuthAuthorizationSession
 
   init() {
     guard
@@ -15,11 +19,22 @@ struct NamaApp: App {
     }
     clientVersion = version
     endpointStore = UserDefaultsVerifiedEndpointStore()
+    oauthClient = BetterAuthOAuthAuthorizationClient()
+    tokenStore = KeychainOAuthTokenStore()
+    scopedAccessVerifier = NamaOAuthScopedAccessVerifier(clientVersion: version)
+    authorizationSession = OAuthAuthorizationSession()
   }
 
   var body: some Scene {
     WindowGroup {
-      ConnectionWindow(clientVersion: clientVersion, endpointStore: endpointStore)
+      ConnectionWindow(
+        clientVersion: clientVersion,
+        endpointStore: endpointStore,
+        oauthClient: oauthClient,
+        tokenStore: tokenStore,
+        scopedAccessVerifier: scopedAccessVerifier,
+        authorizationSession: authorizationSession
+      )
     }
   }
 }
@@ -27,10 +42,15 @@ struct NamaApp: App {
 private struct ConnectionWindow: View {
   @Environment(\.scenePhase) private var scenePhase
   @State private var connection: ConnectionFeature
+  @State private var authorization: OAuthAuthorizationFeature
 
   init(
     clientVersion: String,
-    endpointStore: any VerifiedEndpointStoring
+    endpointStore: any VerifiedEndpointStoring,
+    oauthClient: any OAuthAuthorizationClient,
+    tokenStore: any OAuthTokenStoring,
+    scopedAccessVerifier: any OAuthScopedAccessVerifying,
+    authorizationSession: OAuthAuthorizationSession
   ) {
     _connection = State(
       initialValue: ConnectionFeature(
@@ -39,23 +59,42 @@ private struct ConnectionWindow: View {
         endpointStore: endpointStore
       )
     )
+    _authorization = State(
+      initialValue: OAuthAuthorizationFeature(
+        client: oauthClient,
+        tokenStore: tokenStore,
+        scopedAccessVerifier: scopedAccessVerifier,
+        session: authorizationSession
+      )
+    )
   }
 
   var body: some View {
-    ConnectionRootView(feature: connection)
-      .onAppear {
-        if scenePhase == .active {
-          connection.restoreSavedEndpoint()
-          connection.flowDidEnter()
+    Group {
+      if case .ready(let endpoint) = connection.state {
+        OAuthAuthorizationView(
+          feature: authorization,
+          endpoint: endpoint
+        ) {
+          await connection.changeEndpoint()
         }
+      } else {
+        ConnectionRootView(feature: connection)
       }
-      .onChange(of: scenePhase) { _, phase in
-        if phase == .active {
-          connection.restoreSavedEndpoint()
-          connection.flowDidEnter()
-        } else {
-          connection.flowDidLeave()
-        }
+    }
+    .onAppear {
+      if scenePhase == .active {
+        connection.restoreSavedEndpoint()
+        connection.flowDidEnter()
       }
+    }
+    .onChange(of: scenePhase) { _, phase in
+      if phase == .active {
+        connection.restoreSavedEndpoint()
+        connection.flowDidEnter()
+      } else {
+        connection.flowDidLeave()
+      }
+    }
   }
 }

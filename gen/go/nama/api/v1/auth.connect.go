@@ -39,6 +39,12 @@ const (
 	AuthServiceGetCurrentUserProcedure = "/nama.api.v1.AuthService/GetCurrentUser"
 	// AuthServiceSignOutProcedure is the fully-qualified name of the AuthService's SignOut RPC.
 	AuthServiceSignOutProcedure = "/nama.api.v1.AuthService/SignOut"
+	// AuthServiceApproveDeviceAuthorizationProcedure is the fully-qualified name of the AuthService's
+	// ApproveDeviceAuthorization RPC.
+	AuthServiceApproveDeviceAuthorizationProcedure = "/nama.api.v1.AuthService/ApproveDeviceAuthorization"
+	// AuthServiceRevokeAppleClientRefreshTokensProcedure is the fully-qualified name of the
+	// AuthService's RevokeAppleClientRefreshTokens RPC.
+	AuthServiceRevokeAppleClientRefreshTokensProcedure = "/nama.api.v1.AuthService/RevokeAppleClientRefreshTokens"
 )
 
 // AuthServiceClient is a client for the nama.api.v1.AuthService service.
@@ -46,6 +52,8 @@ type AuthServiceClient interface {
 	SignIn(context.Context, *connect.Request[SignInRequest]) (*connect.Response[SignInResponse], error)
 	GetCurrentUser(context.Context, *connect.Request[GetCurrentUserRequest]) (*connect.Response[GetCurrentUserResponse], error)
 	SignOut(context.Context, *connect.Request[SignOutRequest]) (*connect.Response[SignOutResponse], error)
+	ApproveDeviceAuthorization(context.Context, *connect.Request[ApproveDeviceAuthorizationRequest]) (*connect.Response[ApproveDeviceAuthorizationResponse], error)
+	RevokeAppleClientRefreshTokens(context.Context, *connect.Request[RevokeAppleClientRefreshTokensRequest]) (*connect.Response[RevokeAppleClientRefreshTokensResponse], error)
 }
 
 // NewAuthServiceClient constructs a client for the nama.api.v1.AuthService service. By default, it
@@ -77,14 +85,28 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(authServiceMethods.ByName("SignOut")),
 			connect.WithClientOptions(opts...),
 		),
+		approveDeviceAuthorization: connect.NewClient[ApproveDeviceAuthorizationRequest, ApproveDeviceAuthorizationResponse](
+			httpClient,
+			baseURL+AuthServiceApproveDeviceAuthorizationProcedure,
+			connect.WithSchema(authServiceMethods.ByName("ApproveDeviceAuthorization")),
+			connect.WithClientOptions(opts...),
+		),
+		revokeAppleClientRefreshTokens: connect.NewClient[RevokeAppleClientRefreshTokensRequest, RevokeAppleClientRefreshTokensResponse](
+			httpClient,
+			baseURL+AuthServiceRevokeAppleClientRefreshTokensProcedure,
+			connect.WithSchema(authServiceMethods.ByName("RevokeAppleClientRefreshTokens")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // authServiceClient implements AuthServiceClient.
 type authServiceClient struct {
-	signIn         *connect.Client[SignInRequest, SignInResponse]
-	getCurrentUser *connect.Client[GetCurrentUserRequest, GetCurrentUserResponse]
-	signOut        *connect.Client[SignOutRequest, SignOutResponse]
+	signIn                         *connect.Client[SignInRequest, SignInResponse]
+	getCurrentUser                 *connect.Client[GetCurrentUserRequest, GetCurrentUserResponse]
+	signOut                        *connect.Client[SignOutRequest, SignOutResponse]
+	approveDeviceAuthorization     *connect.Client[ApproveDeviceAuthorizationRequest, ApproveDeviceAuthorizationResponse]
+	revokeAppleClientRefreshTokens *connect.Client[RevokeAppleClientRefreshTokensRequest, RevokeAppleClientRefreshTokensResponse]
 }
 
 // SignIn calls nama.api.v1.AuthService.SignIn.
@@ -102,11 +124,23 @@ func (c *authServiceClient) SignOut(ctx context.Context, req *connect.Request[Si
 	return c.signOut.CallUnary(ctx, req)
 }
 
+// ApproveDeviceAuthorization calls nama.api.v1.AuthService.ApproveDeviceAuthorization.
+func (c *authServiceClient) ApproveDeviceAuthorization(ctx context.Context, req *connect.Request[ApproveDeviceAuthorizationRequest]) (*connect.Response[ApproveDeviceAuthorizationResponse], error) {
+	return c.approveDeviceAuthorization.CallUnary(ctx, req)
+}
+
+// RevokeAppleClientRefreshTokens calls nama.api.v1.AuthService.RevokeAppleClientRefreshTokens.
+func (c *authServiceClient) RevokeAppleClientRefreshTokens(ctx context.Context, req *connect.Request[RevokeAppleClientRefreshTokensRequest]) (*connect.Response[RevokeAppleClientRefreshTokensResponse], error) {
+	return c.revokeAppleClientRefreshTokens.CallUnary(ctx, req)
+}
+
 // AuthServiceHandler is an implementation of the nama.api.v1.AuthService service.
 type AuthServiceHandler interface {
 	SignIn(context.Context, *connect.Request[SignInRequest]) (*connect.Response[SignInResponse], error)
 	GetCurrentUser(context.Context, *connect.Request[GetCurrentUserRequest]) (*connect.Response[GetCurrentUserResponse], error)
 	SignOut(context.Context, *connect.Request[SignOutRequest]) (*connect.Response[SignOutResponse], error)
+	ApproveDeviceAuthorization(context.Context, *connect.Request[ApproveDeviceAuthorizationRequest]) (*connect.Response[ApproveDeviceAuthorizationResponse], error)
+	RevokeAppleClientRefreshTokens(context.Context, *connect.Request[RevokeAppleClientRefreshTokensRequest]) (*connect.Response[RevokeAppleClientRefreshTokensResponse], error)
 }
 
 // NewAuthServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -134,6 +168,18 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(authServiceMethods.ByName("SignOut")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authServiceApproveDeviceAuthorizationHandler := connect.NewUnaryHandler(
+		AuthServiceApproveDeviceAuthorizationProcedure,
+		svc.ApproveDeviceAuthorization,
+		connect.WithSchema(authServiceMethods.ByName("ApproveDeviceAuthorization")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceRevokeAppleClientRefreshTokensHandler := connect.NewUnaryHandler(
+		AuthServiceRevokeAppleClientRefreshTokensProcedure,
+		svc.RevokeAppleClientRefreshTokens,
+		connect.WithSchema(authServiceMethods.ByName("RevokeAppleClientRefreshTokens")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/nama.api.v1.AuthService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuthServiceSignInProcedure:
@@ -142,6 +188,10 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 			authServiceGetCurrentUserHandler.ServeHTTP(w, r)
 		case AuthServiceSignOutProcedure:
 			authServiceSignOutHandler.ServeHTTP(w, r)
+		case AuthServiceApproveDeviceAuthorizationProcedure:
+			authServiceApproveDeviceAuthorizationHandler.ServeHTTP(w, r)
+		case AuthServiceRevokeAppleClientRefreshTokensProcedure:
+			authServiceRevokeAppleClientRefreshTokensHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -161,4 +211,12 @@ func (UnimplementedAuthServiceHandler) GetCurrentUser(context.Context, *connect.
 
 func (UnimplementedAuthServiceHandler) SignOut(context.Context, *connect.Request[SignOutRequest]) (*connect.Response[SignOutResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("nama.api.v1.AuthService.SignOut is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) ApproveDeviceAuthorization(context.Context, *connect.Request[ApproveDeviceAuthorizationRequest]) (*connect.Response[ApproveDeviceAuthorizationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("nama.api.v1.AuthService.ApproveDeviceAuthorization is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) RevokeAppleClientRefreshTokens(context.Context, *connect.Request[RevokeAppleClientRefreshTokensRequest]) (*connect.Response[RevokeAppleClientRefreshTokensResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("nama.api.v1.AuthService.RevokeAppleClientRefreshTokens is not implemented"))
 }
