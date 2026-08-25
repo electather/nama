@@ -36,23 +36,25 @@ records, issuance and polling endpoints, approval state, token issuance,
 refresh rotation, expiry, revocation endpoints, migrations, and cleanup. Nama
 does not wrap the Apple client's device-code, token, or refresh protocol in
 Connect or maintain parallel code, digest, delivery-envelope, approval-result,
-Device, or cleanup records. The one Connect approval method is an
-Administrator management adapter over Better Auth's internal APIs.
+Device, or cleanup records. The one Connect approval method is a role-neutral
+authenticated-principal adapter over Better Auth's internal APIs.
 
 The existing listener publicly delegates Better Auth's OAuth
 authorization-server metadata, required protected-resource metadata, JWKS,
 device-code issuance, token exchange, refresh, and revocation routes. It does
 not expose verification or approve/deny routes for issue #145. The generated
-`AuthService.ApproveDeviceAuthorization` method passes the authenticated
-Administrator session context through the private adapter to Better Auth's
-internal verification and approval APIs. Setup and CLI authentication retain
-their existing Nama Connect contracts. The implementation continues to
+`AuthService.ApproveDeviceAuthorization` method derives the grant subject only
+from the authenticated session context and passes that context through the
+private adapter to Better Auth's internal verification and approval APIs. It
+accepts no target user ID and requires no Administrator role. Setup and CLI
+authentication retain their existing Nama Connect contracts. The implementation
+continues to
 suppress Better Auth logging and telemetry and never logs cookies,
 authorization headers, device or user codes, access tokens, refresh tokens,
 request bodies, or arbitrary OAuth parameters.
 
 Under ADR-0033's explicit transport exception, the existing acknowledged
-local-HTTP policy also applies to Administrator sign-in, device authorization,
+local-HTTP policy also applies to session sign-in, device authorization,
 token exchange, refresh, and bearer-protected Connect calls. Loopback, private,
 link-local, `localhost`/`.localhost`, and `.local` endpoints may use HTTP after
 the existing warning and exact endpoint acknowledgement; public names and
@@ -83,28 +85,32 @@ Auth's one-hour default and refresh tokens retain its 30-day default.
 
 The Apple public client requests an OAuth device authorization directly from
 Better Auth and presents the returned user code with instructions for the
-already authenticated Administrator to run
+already authenticated CLI user to run
 `nama auth approve-device <user-code>` against the same endpoint. It polls
 Better Auth's OAuth token endpoint with the device-code grant no faster than
-the returned interval. Approval yields an audience-bound JWT access token and,
-because `offline_access` was granted, a rotating refresh token.
+the returned interval. Approval yields an audience-bound JWT access token for
+that session principal and, because `offline_access` was granted, a rotating
+refresh token.
 
 The CLI sends the user code through the generated
 `AuthService.ApproveDeviceAuthorization` method using its existing signed
-Administrator session bearer from the selected profile or `NAMA_TOKEN`. The
-handler invokes Better Auth's internal `deviceVerify` then `deviceApprove` APIs
-with the same session context. It does not ask for the password again, mint a
-second session, call Better Auth over loopback HTTP, manipulate Better Auth
-persistence, or reproduce its approval policy. Invoking the command with the
-displayed code is the explicit approval action. Invalid, expired,
-already-processed, and unauthorized results map to stable safe Connect
-failures.
+session bearer from the selected profile or `NAMA_TOKEN`. The handler binds the
+grant to that exact principal and invokes Better Auth's internal `deviceVerify`
+then `deviceApprove` APIs with the same session context. It accepts no target
+user ID and does not require the Administrator role, ask for the password
+again, mint a second session, call Better Auth over loopback HTTP, manipulate
+Better Auth persistence, or reproduce its approval policy. Invoking the command
+with the displayed code is the explicit approval action. Invalid, expired,
+already-processed, session-mismatched, and unauthenticated results map to stable
+safe Connect failures.
 
-This is the installation Administrator authorizing the fixed Apple public
-client, not a new general consumer-user login model. Issue #167 separately owns
-browser sign-in and explicit device confirmation as an optional web-app surface
-over the same internal application service. The issue #145 flow remains
-complete without a browser.
+Approval is for the current authenticated principal and grants no Administrator
+authority. Milestone 4 still delivers only the existing single Administrator
+account; non-Administrator account creation remains deferred, but a later
+non-Administrator session can use the same RPC and CLI command unchanged. Issue
+#167 separately owns browser sign-in and explicit device confirmation as an
+optional web-app surface over the same role-neutral internal application
+service. The issue #145 flow remains complete without a browser.
 
 ## Target protected-resource authorization
 
@@ -118,10 +124,11 @@ JWKS, issuer, exact audience, expiry, fixed client ID, and required scope:
 | `nama:playback` | `PlaybackService.*` |
 | `nama:user-state` | `UserStateService.*` |
 
-Administrator sessions continue to authorize management methods and may call
-consumer methods. OAuth access tokens never authorize setup, Administrator
-authentication, health, provider management, synchronization, grant
-management, or plugin methods. A malformed, expired, wrong-issuer,
+Every authenticated session may call current-principal consumer methods.
+Administrator sessions additionally authorize management methods. OAuth access
+tokens never authorize setup, session authentication, health, provider
+management, synchronization, grant management, or plugin methods. A malformed,
+expired, wrong-issuer,
 wrong-audience, wrong-client, or insufficient-scope token fails before handler
 validation without revealing protected field details.
 

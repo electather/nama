@@ -1,16 +1,16 @@
-# Management CLI
+# Command-line client
 
 Status: issue #24 profiles, Administrator setup/sign-in, and authentication status; issue #25's complete public process contract; issues #76–#80's provider type and provider-instance CRUD surface plus durable tracer; issue #107's restricted-schema interactive create/update workflow; and issue #31's candidate and stored-instance connection tests are implemented and verified. The remaining MVP command families are unfinished.
 
 ## Purpose
 
-`nama` is the public management interface for both terminal users and shell-capable agents. [ADR-0015](../adr/0015-thin-management-cli.md) keeps it a thin Go 1.26 client over generated Connect-Go services, not a second implementation of server behavior. Commands, flags, structured output, errors, and exit codes form a versioned public contract.
+`nama` is the public command-line interface for terminal users and shell-capable agents. Administrator management commands and current-principal application commands share the same generated Connect-Go foundation; [ADR-0015](../adr/0015-thin-management-cli.md) keeps it a thin client rather than a second implementation of server behavior. Commands, flags, structured output, errors, and exit codes form a versioned public contract.
 
 The CLI remains useful without an interactive terminal. Every operation has a complete non-interactive form, and interactive affordances may only wrap those same operations.
 
 ## Scope and delivery
 
-The complete MVP management surface covers initial Administrator setup, authentication and server profiles, Apple device-code approval, provider configuration, synchronization status and triggering, broad first-party OAuth grant revocation, health, and diagnostics. Command families enter with the server boundaries they exercise:
+The complete MVP CLI surface covers initial Administrator setup, session authentication and server profiles, role-neutral Apple device-code approval, provider configuration, synchronization status and triggering, broad first-party OAuth grant revocation, health, and diagnostics. Command families enter with the server boundaries they exercise:
 
 - Milestone 0 created the compilable Cobra boundary and proved that generated public clients are consumable.
 - Issue #24 implements the shared CLI foundation, named profiles, administrator setup, sign-in, and authentication status.
@@ -22,7 +22,7 @@ The complete MVP management surface covers initial Administrator setup, authenti
 - Issue #80 proves those commands as one restart and upgrade flow against the production server, PostgreSQL, supervisor, Jellyfin plugin, and a disposable Jellyfin server.
 - Issue #107 adds ordered restricted-schema prompts for human create and update while preserving complete file/stdin automation and JSON no-prompt behavior.
 - Issue #31 adds provider-neutral candidate and stored-instance connection tests while retaining provider-type listing as the installed capability-inspection surface.
-- Issue #145 adds `nama auth approve-device <user-code>` over the generated `AuthService.ApproveDeviceAuthorization` method plus broad fixed-client refresh-family revocation.
+- Issue #145 adds role-neutral `nama auth approve-device <user-code>` over the generated `AuthService.ApproveDeviceAuthorization` method plus Administrator-only broad fixed-client refresh-family revocation.
 
 The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no general management web application or CLI plugin framework in the MVP. Issue #145 makes Apple authorization complete through the CLI; issue #167 separately owns optional browser approval.
 
@@ -104,12 +104,15 @@ Only commands backed by an implemented public RPC are added. Exact leaf
 commands, arguments, and flags are designed with those RPCs; this list reserves
 no other unimplemented server behavior.
 
-`nama auth approve-device <user-code>` requires an active Administrator session
+`nama auth approve-device <user-code>` requires an active authenticated session
 for the selected endpoint and sends the code through the generated
 `AuthService.ApproveDeviceAuthorization` client with the existing signed bearer
-from its profile or `NAMA_TOKEN`. It does not ask for a password, mint a
-session, or call Better Auth directly. Terminal and JSON output map stable
-Connect failures without printing the session bearer or code in diagnostics.
+from its profile or `NAMA_TOKEN`. The request accepts no target user ID; the
+server binds approval to that session principal without requiring the
+Administrator role or granting Administrator authority. The CLI does not ask
+for a password, mint a session, or call Better Auth directly. Terminal and JSON
+output map stable Connect failures without printing the session bearer or code
+in diagnostics.
 
 Issue #145 also adds one destructive Administrator-authenticated operation
 under `nama auth` that revokes every Better Auth refresh-token family for the

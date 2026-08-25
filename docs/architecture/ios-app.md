@@ -251,9 +251,9 @@ transaction:
 1. verify the candidate endpoint without attaching existing tokens;
 2. request a Better Auth device authorization for the fixed public client,
    exact candidate resource, granular consumer scopes, and `offline_access`;
-3. present the user code with instructions for an already authenticated
-   Administrator to run `nama auth approve-device <user-code>` against the same
-   endpoint, while polling no faster than the returned interval;
+3. present the user code with instructions for an already authenticated CLI
+   user to run `nama auth approve-device <user-code>` for their own access
+   against the same endpoint, while polling no faster than the returned interval;
 4. exchange the approved device code for access and refresh tokens;
 5. durably store the complete endpoint-bound Keychain record; and
 6. only then delete the old bundle and publish the new authorization.
