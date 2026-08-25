@@ -142,6 +142,7 @@
       { "name": "entry", "patterns": ["src/main.ts"] },
       { "name": "composition", "patterns": ["src/app.ts", "src/tests/**/*.ts"] },
       { "name": "authentication", "patterns": ["src/authentication/**/*.ts"] },
+      { "name": "catalog", "patterns": ["src/catalog/**/*.ts"] },
       { "name": "configuration", "patterns": ["src/config/**/*.ts"] },
       { "name": "logging", "patterns": ["src/logging/**/*.ts"] },
       { "name": "database", "patterns": ["src/database/**/*.ts"] },
@@ -162,6 +163,7 @@
       {
         "from": "composition",
         "allow": [
+          "catalog",
           "authentication",
           "configuration",
           "database",
@@ -176,6 +178,10 @@
       {
         "from": "authentication",
         "allow": ["configuration", "database", "lifecycle", "setup"]
+      },
+      {
+        "from": "catalog",
+        "allow": ["database", "plugin", "provider"]
       },
       { "from": "configuration", "allow": [] },
       { "from": "logging", "allow": ["configuration"] },
@@ -204,6 +210,7 @@
       {
         "from": "integration",
         "allow": [
+          "catalog",
           "authentication",
           "configuration",
           "contracts",

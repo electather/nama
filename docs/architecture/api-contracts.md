@@ -871,6 +871,11 @@ returns a provider SDK object or an unbounded payload map.
 
 `ProviderItemReference` contains opaque `item_id`. The configured provider instance is implied by the authenticated process, so it is not repeated in every request. `ProviderSourceReference`, `ProviderPartReference`, `ProviderTrackReference`, and `ProviderArtworkReference` contain the parent reference plus their corresponding opaque provider identifier where needed.
 
+For ordinary item artwork, the `ProviderArtworkReference` parent is the media
+item. A credit portrait may instead name the provider person or other target
+resource that owns the image. Canonical persistence retains that private target
+separately while the portrait projection remains owned by the media aggregate.
+
 `ProviderMediaItem` contains:
 
 - its provider item reference, kind, title, and optional original title;

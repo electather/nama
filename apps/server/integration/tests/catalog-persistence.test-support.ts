@@ -168,7 +168,10 @@ const movieObservation = (
     {
       characterName: "Ada",
       name: "Example Actor",
-      portraitArtworkReference: "private-credit-portrait",
+      portraitArtworkReference: {
+        artworkReference: "private-credit-portrait",
+        itemReference: "private-person",
+      },
       role: "actor",
     },
   ],

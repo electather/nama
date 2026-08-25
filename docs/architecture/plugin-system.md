@@ -88,7 +88,10 @@ studios, and bounded artwork. Shows and seasons remain non-playable hierarchy
 observations. Positive-numbered seasons retain their opaque show reference;
 positive-numbered episodes retain opaque show and season references and
 normalize every media source through the same source, part, and track rules as
-movies. Season-zero specials are deliberately unsupported. Filesystem paths,
+movies. When Jellyfin omits runtime on one media source, the adapter inherits
+the playable item's runtime for that source and its single normalized part; an
+absent playable-item runtime remains invalid rather than becoming a guessed
+duration. Season-zero specials are deliberately unsupported. Filesystem paths,
 provider objects, authorized URLs, and arbitrary identifier namespaces are
 discarded. Missing, forbidden, unavailable, oversized, malformed, and
 cancelled reads return only sanitized Connect outcomes.

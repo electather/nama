@@ -21,7 +21,7 @@ import {
   SOCKET_MODE_MASK,
   SOCKET_POLL_MILLISECONDS,
 } from "./constants.ts";
-import { PluginRpcError, unavailable } from "./errors.ts";
+import { PluginRpcError, retryAfterMillisecondsFrom, unavailable } from "./errors.ts";
 import type { PluginRpcFailure, PluginUnavailableFailure } from "./errors.ts";
 import type { PluginLaunchDescriptor, RunningPlugin } from "./model.ts";
 
@@ -143,7 +143,14 @@ const performHandshake = (
 
 const pluginCallFailure = (error: ConnectError): PluginRpcFailure | PluginUnavailableFailure => {
   if (error.cause === undefined) {
-    return new PluginRpcError({ code: error.code });
+    const retryAfter = retryAfterMillisecondsFrom(error);
+    if (retryAfter === undefined) {
+      return new PluginRpcError({ code: error.code });
+    }
+    return new PluginRpcError({
+      code: error.code,
+      retryAfterMilliseconds: retryAfter,
+    });
   }
   return unavailable("plugin_exited");
 };

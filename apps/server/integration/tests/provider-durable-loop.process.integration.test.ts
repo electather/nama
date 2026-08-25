@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { Code } from "@connectrpc/connect";
 import { expect, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 
 import {
   bootstrapTokenFrom,
@@ -35,6 +35,8 @@ import {
 import type { JellyfinFixture } from "./provider-durable-loop.test-support.ts";
 
 const TEST_TIMEOUT_MILLISECONDS = 180_000;
+const CATALOG_IMPORT_WAIT_MILLISECONDS = 30_000;
+const CATALOG_IMPORT_POLL_MILLISECONDS = 100;
 const WRONG_MASTER_KEY = `base64:${Buffer.alloc(32, 23).toString("base64")}`;
 const ADMINISTRATOR = Object.freeze({
   displayName: "Durable Provider Administrator",
@@ -140,6 +142,98 @@ const structuredRecord = (line: string): Readonly<Record<string, unknown>> => {
   }
   return Object.fromEntries(Object.entries(value));
 };
+
+interface CatalogImportSnapshot {
+  readonly canonicalItemCount: number;
+  readonly libraryEntryCount: number;
+  readonly mappingCount: number;
+  readonly nextRetryAt: Date | null;
+  readonly safeFailureReason: string | null;
+  readonly status: string | null;
+}
+
+const readCatalogImport = (databaseUrl: string, providerInstanceId: string) =>
+  withPool(databaseUrl, (pool) =>
+    Effect.promise(async (): Promise<CatalogImportSnapshot> => {
+      const result = await pool.query<{
+        readonly canonical_item_count: number;
+        readonly library_entry_count: number;
+        readonly mapping_count: number;
+        readonly next_retry_at: Date | null;
+        readonly safe_failure_reason: string | null;
+        readonly status: string | null;
+      }>(
+        `SELECT
+           (SELECT count(*)::integer FROM canonical_item) AS canonical_item_count,
+           (SELECT count(*)::integer FROM library_entry) AS library_entry_count,
+           (SELECT count(*)::integer FROM provider_item_mapping
+             WHERE provider_instance_id = $1) AS mapping_count,
+           (SELECT next_retry_at FROM provider_catalog_scan_state
+             WHERE provider_instance_id = $1) AS next_retry_at,
+           (SELECT safe_failure_reason FROM provider_catalog_scan_state
+             WHERE provider_instance_id = $1) AS safe_failure_reason,
+           (SELECT status FROM provider_catalog_scan_state
+             WHERE provider_instance_id = $1) AS status`,
+        [providerInstanceId],
+      );
+      const row = result.rows.at(0);
+      if (row === undefined) {
+        throw new Error("catalog import snapshot is missing");
+      }
+      return {
+        canonicalItemCount: row.canonical_item_count,
+        libraryEntryCount: row.library_entry_count,
+        mappingCount: row.mapping_count,
+        nextRetryAt: row.next_retry_at,
+        safeFailureReason: row.safe_failure_reason,
+        status: row.status,
+      };
+    }),
+  );
+
+interface CatalogImportPoll {
+  readonly deadline: number;
+  readonly expectedStatus: string;
+}
+
+const pollCatalogImport = (
+  databaseUrl: string,
+  providerInstanceId: string,
+  poll: CatalogImportPoll,
+): Effect.Effect<CatalogImportSnapshot> =>
+  Effect.gen(function* waitForCatalogImport() {
+    const snapshot = yield* readCatalogImport(databaseUrl, providerInstanceId);
+    if (snapshot.status === poll.expectedStatus) {
+      return snapshot;
+    }
+    if (
+      snapshot.status === "failed" &&
+      snapshot.nextRetryAt === null &&
+      snapshot.safeFailureReason !== null
+    ) {
+      return yield* Effect.die(new Error(`catalog import failed: ${snapshot.safeFailureReason}`));
+    }
+    const now = yield* Clock.currentTimeMillis;
+    if (now >= poll.deadline) {
+      return yield* Effect.die(new Error(`catalog import did not reach ${poll.expectedStatus}`));
+    }
+    yield* Effect.sleep(CATALOG_IMPORT_POLL_MILLISECONDS);
+    return yield* pollCatalogImport(databaseUrl, providerInstanceId, poll);
+  });
+
+const waitForCatalogImport = (
+  databaseUrl: string,
+  providerInstanceId: string,
+  expectedStatus = "succeeded",
+) =>
+  Clock.currentTimeMillis.pipe(
+    Effect.flatMap((now) =>
+      pollCatalogImport(databaseUrl, providerInstanceId, {
+        deadline: now + CATALOG_IMPORT_WAIT_MILLISECONDS,
+        expectedStatus,
+      }),
+    ),
+  );
 
 const readInstallation = (databaseUrl: string) =>
   withPool(databaseUrl, (pool) =>
@@ -435,6 +529,12 @@ it.live(
               });
               const providerInstanceId = requiredString(createdInstance, "id");
               const createdRevision = requiredString(createdInstance, "revision");
+              const importedCatalog = yield* waitForCatalogImport(databaseUrl, providerInstanceId);
+              expect(importedCatalog.status).toBe("succeeded");
+              expect(importedCatalog.safeFailureReason).toBeNull();
+              expect(importedCatalog.canonicalItemCount).toBeGreaterThanOrEqual(3);
+              expect(importedCatalog.libraryEntryCount).toBeGreaterThanOrEqual(3);
+              expect(importedCatalog.mappingCount).toBeGreaterThanOrEqual(3);
               const durableCreated =
                 yield* readInstanceScopedProviderStateWithGlobalOperationResults(
                   databaseUrl,
@@ -1170,6 +1270,20 @@ it.live(
               cliResults.push(restartedDisabled);
               expectNamaSuccess(restartedDisabled);
               expect(providerInstanceFromNama(restartedDisabled)).toEqual(disabledInstance);
+              const pausedCatalog = yield* waitForCatalogImport(
+                databaseUrl,
+                providerInstanceId,
+                "paused",
+              );
+              expect(pausedCatalog).toMatchObject({
+                libraryEntryCount: importedCatalog.libraryEntryCount,
+                mappingCount: importedCatalog.mappingCount,
+                status: "paused",
+              });
+              expect(pausedCatalog.canonicalItemCount).toBeGreaterThanOrEqual(
+                importedCatalog.canonicalItemCount,
+              );
+              expect(pausedCatalog.safeFailureReason).toBeNull();
 
               const reenableArguments = [
                 "provider",
@@ -1192,6 +1306,17 @@ it.live(
               const reenabledInstance = providerInstanceFromNama(reenabled);
               expect(reenabledInstance).toMatchObject({ enabled: true, status: "unavailable" });
               const reenabledRevision = requiredString(reenabledInstance, "revision");
+              const reimportedCatalog = yield* waitForCatalogImport(
+                databaseUrl,
+                providerInstanceId,
+              );
+              expect(reimportedCatalog).toMatchObject({
+                canonicalItemCount: pausedCatalog.canonicalItemCount,
+                libraryEntryCount: importedCatalog.libraryEntryCount,
+                mappingCount: importedCatalog.mappingCount,
+                status: "succeeded",
+              });
+              expect(reimportedCatalog.safeFailureReason).toBeNull();
               const disableForDeletionArguments = [
                 "provider",
                 "instance",
@@ -1234,6 +1359,15 @@ it.live(
               cliResults.push(deleted);
               expectNamaSuccess(deleted);
               expect(dataFromNama(deleted)).toEqual({ operation_id: CREATE_OPERATION_ID });
+              const deletedCatalog = yield* readCatalogImport(databaseUrl, providerInstanceId);
+              expect(deletedCatalog).toMatchObject({
+                canonicalItemCount: reimportedCatalog.canonicalItemCount,
+                libraryEntryCount: 0,
+                mappingCount: 0,
+              });
+              expect(deletedCatalog.nextRetryAt).toBeNull();
+              expect(deletedCatalog.safeFailureReason).toBeNull();
+              expect(deletedCatalog.status).toBeNull();
 
               runningProcess = yield* restartProcess({
                 currentProcess: runningProcess,

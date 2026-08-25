@@ -27,6 +27,7 @@ import type {
 } from "@nama/api/nama/plugin/v1/watch_state_pb.js";
 import { Effect } from "effect";
 
+import { catalogPageFromPlugin } from "../../src/catalog/catalog-item-mapper.ts";
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 import { provisionJellyfin } from "./provider-durable-loop.test-support.ts";
 
@@ -182,6 +183,12 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           consistency: ListConsistency.BEST_EFFORT_SCAN,
         });
         expect(catalog.nextPageToken).toBeUndefined();
+        const canonicalPage = catalogPageFromPlugin(
+          "real-jellyfin-provider-instance",
+          "real-jellyfin-core-run",
+          catalog,
+        );
+        expect(canonicalPage.items).toHaveLength(catalog.items.length);
         const catalogMovie = itemNamed(catalog.items, MOVIE_TITLE, MediaKind.MOVIE);
         const catalogEpisode = itemNamed(catalog.items, EPISODE_TITLE, MediaKind.EPISODE);
         expectNormalizedSource(catalogMovie);

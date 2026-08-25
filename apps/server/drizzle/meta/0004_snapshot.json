@@ -1,6 +1,6 @@
 {
-  "id": "1f8ea9b0-76f9-40e0-9dd1-0463b5675226",
-  "prevId": "cfb5cc8a-5334-4690-8ced-5799e4a074de",
+  "id": "76dac82a-96d2-4e8b-96f6-3575c800faa7",
+  "prevId": "1f8ea9b0-76f9-40e0-9dd1-0463b5675226",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -64,7 +64,6 @@
           "primaryKey": true,
           "notNull": true
         },
-
         "account_id": {
           "name": "account_id",
           "type": "text",
@@ -173,7 +172,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-
     "public.session": {
       "name": "session",
       "schema": "",
@@ -463,6 +461,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "target_item_reference": {
+          "name": "target_item_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "width": {
           "name": "width",
           "type": "bigint",
@@ -517,6 +521,7 @@
             "provider_instance_id",
             "item_reference",
             "artwork_reference",
+            "target_item_reference",
             "canonical_item_id",
             "id"
           ],
@@ -524,6 +529,7 @@
             "provider_instance_id",
             "item_reference",
             "artwork_reference",
+            "target_item_reference",
             "canonical_item_id",
             "artwork_id"
           ],
@@ -681,6 +687,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "target_item_reference": {
+          "name": "target_item_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         }
       },
       "indexes": {},
@@ -696,9 +708,14 @@
         }
       },
       "compositePrimaryKeys": {
-        "provider_artwork_mapping_provider_instance_id_item_reference_artwork_reference_pk": {
-          "name": "provider_artwork_mapping_provider_instance_id_item_reference_artwork_reference_pk",
-          "columns": ["provider_instance_id", "item_reference", "artwork_reference"]
+        "provider_artwork_mapping_provider_instance_id_item_reference_target_item_reference_artwork_reference_pk": {
+          "name": "provider_artwork_mapping_provider_instance_id_item_reference_target_item_reference_artwork_reference_pk",
+          "columns": [
+            "provider_instance_id",
+            "item_reference",
+            "target_item_reference",
+            "artwork_reference"
+          ]
         }
       },
       "uniqueConstraints": {
@@ -714,6 +731,7 @@
             "provider_instance_id",
             "item_reference",
             "artwork_reference",
+            "target_item_reference",
             "canonical_item_id",
             "artwork_id"
           ]
@@ -724,6 +742,10 @@
         "provider_artwork_mapping_reference_check": {
           "name": "provider_artwork_mapping_reference_check",
           "value": "char_length(\"provider_artwork_mapping\".\"artwork_reference\") between 1 and 256"
+        },
+        "provider_artwork_mapping_target_reference_check": {
+          "name": "provider_artwork_mapping_target_reference_check",
+          "value": "char_length(\"provider_artwork_mapping\".\"target_item_reference\") between 1 and 256"
         }
       },
       "isRLSEnabled": false
@@ -1100,18 +1122,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "consecutive_failure_count": {
           "name": "consecutive_failure_count",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "default": 0
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         },
         "core_run_id": {
           "name": "core_run_id",
