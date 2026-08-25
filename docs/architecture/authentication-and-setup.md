@@ -2,7 +2,7 @@
 
 Status: issue #23 server setup and Administrator authentication plus issue #24 CLI setup, sign-in, and status are implemented and verified. Issue #145 defines the accepted Better Auth OAuth authorization target with authenticated CLI approval; its runtime, wire-contract, CLI, and Apple behavior remain unimplemented. Issue #167 separately owns browser approval.
 
-Nama owns public setup, Administrator authentication, and protected-resource authorization semantics. The implemented setup and CLI Administrator-authentication adapter remains private behind `SetupService` and `AuthService`; the target OAuth authorization-server and device-approval routes are a deliberate public Better Auth boundary under [ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md), superseding the broader route prohibition in [ADR-0007](../adr/0007-private-better-auth-adapter.md). Browser email/password and session routes remain private unless issue #167 implements its separate web-app surface.
+Nama owns public setup, Administrator authentication, and protected-resource authorization semantics. The implemented setup and CLI Administrator-authentication adapter remains private behind `SetupService` and `AuthService`; [ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md) deliberately exposes only the fixed Apple client's standard OAuth metadata, JWKS, device-code, token, refresh, and revocation routes, superseding that part of [ADR-0007](../adr/0007-private-better-auth-adapter.md). CLI approval remains a generated `AuthService` operation over the private adapter. Browser email/password and session routes remain private unless issue #167 implements its separate web-app surface.
 
 ## Implemented runtime boundary
 
@@ -34,16 +34,20 @@ Issue #145 adds the exact compatible Better Auth JWT, OAuth Provider, and OAuth
 Device Authorization plugins. Better Auth owns the RFC 8628 device-code
 records, issuance and polling endpoints, approval state, token issuance,
 refresh rotation, expiry, revocation endpoints, migrations, and cleanup. Nama
-does not wrap those endpoints in Connect or maintain parallel code, digest,
-delivery-envelope, approval-result, Device, or cleanup records.
+does not wrap the Apple client's device-code, token, or refresh protocol in
+Connect or maintain parallel code, digest, delivery-envelope, approval-result,
+Device, or cleanup records. The one Connect approval method is an
+Administrator management adapter over Better Auth's internal APIs.
 
-The existing listener publicly delegates Better Auth's authorization-server
-routes, OAuth authorization-server metadata, required protected-resource
-metadata, JWKS, device authorization, token exchange, and revocation. The
-existing signed Better Auth session bearer authenticates CLI approval; setup
-and CLI authentication retain their Nama Connect contracts. Issue #145 does
-not expose browser email/password or session routes. The implementation
-continues to suppress Better Auth logging and telemetry and never logs cookies,
+The existing listener publicly delegates Better Auth's OAuth
+authorization-server metadata, required protected-resource metadata, JWKS,
+device-code issuance, token exchange, refresh, and revocation routes. It does
+not expose verification or approve/deny routes for issue #145. The generated
+`AuthService.ApproveDeviceAuthorization` method passes the authenticated
+Administrator session context through the private adapter to Better Auth's
+internal verification and approval APIs. Setup and CLI authentication retain
+their existing Nama Connect contracts. The implementation continues to
+suppress Better Auth logging and telemetry and never logs cookies,
 authorization headers, device or user codes, access tokens, refresh tokens,
 request bodies, or arbitrary OAuth parameters.
 
@@ -85,18 +89,22 @@ Better Auth's OAuth token endpoint with the device-code grant no faster than
 the returned interval. Approval yields an audience-bound JWT access token and,
 because `offline_access` was granted, a rotating refresh token.
 
-The CLI uses its existing signed Administrator session bearer from the selected
-profile or `NAMA_TOKEN`. It calls Better Auth's native `GET /device` route to
-validate and claim the code, then `POST /device/approve` with the same session.
-It does not ask for the password again, mint a second session, or call a
-Nama-owned approval RPC. Invoking the command with the displayed code is the
-explicit approval action. Invalid, expired, already-processed, and unauthorized
-codes map to stable safe CLI failures.
+The CLI sends the user code through the generated
+`AuthService.ApproveDeviceAuthorization` method using its existing signed
+Administrator session bearer from the selected profile or `NAMA_TOKEN`. The
+handler invokes Better Auth's internal `deviceVerify` then `deviceApprove` APIs
+with the same session context. It does not ask for the password again, mint a
+second session, call Better Auth over loopback HTTP, manipulate Better Auth
+persistence, or reproduce its approval policy. Invoking the command with the
+displayed code is the explicit approval action. Invalid, expired,
+already-processed, and unauthorized results map to stable safe Connect
+failures.
 
 This is the installation Administrator authorizing the fixed Apple public
 client, not a new general consumer-user login model. Issue #167 separately owns
-browser sign-in and explicit device confirmation as an optional web-app
-alternative. The issue #145 flow remains complete without a browser.
+browser sign-in and explicit device confirmation as an optional web-app surface
+over the same internal application service. The issue #145 flow remains
+complete without a browser.
 
 ## Target protected-resource authorization
 
@@ -148,7 +156,7 @@ grant. Multiple saved endpoint grants remain deferred.
 
 [ADR-0026](../adr/0026-standard-google-rpc-error-details.md) governs Connect application failure details, and [ADR-0027](../adr/0027-logical-operation-idempotency.md) keeps server-owned request correlation separate from logical-operation identity. The outer Node dispatch assigns server-owned `nama-request-id` to every delegated Connect response before decoding. Application-generated failures carry the same value in `google.rpc.RequestInfo`; malformed Connect input may fail before the application pipeline, so the response header is the correlation fallback. Terminal RPC logs contain only the request ID, method, Connect code, and duration. Better Auth HTTP endpoints retain their standard protocol errors but share the same credential and body redaction rules.
 
-Focused server and CLI coverage, disposable PostgreSQL, generated clients, compiled-command smoke tests, and package-entrypoint process coverage verify the implemented setup creation and restart repair, sign-in/current-user/sign-out, CLI setup recovery and credential replacement, forced session-deletion failure, rate limits, cancellation, correlation, public-error and log redaction, readiness, and fatal ambiguity handling. Issue #145 additionally requires executable authorization-server discovery, CLI code claim and approval, device-code exchange, JWT enforcement, refresh rotation, broad client-grant revocation, and Apple Keychain flows before the OAuth target may be called implemented.
+Focused server and CLI coverage, disposable PostgreSQL, generated clients, compiled-command smoke tests, and package-entrypoint process coverage verify the implemented setup creation and restart repair, sign-in/current-user/sign-out, CLI setup recovery and credential replacement, forced session-deletion failure, rate limits, cancellation, correlation, public-error and log redaction, readiness, and fatal ambiguity handling. Issue #145 additionally requires executable authorization-server discovery, generated Connect CLI approval over the private Better Auth adapter, device-code exchange, JWT enforcement, refresh rotation, broad client-grant revocation, and Apple Keychain flows before the OAuth target may be called implemented.
 
 ## Unfinished work
 

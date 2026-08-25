@@ -4,7 +4,7 @@ Status: issue #24 profiles, Administrator setup/sign-in, and authentication stat
 
 ## Purpose
 
-`nama` is the public management interface for both terminal users and shell-capable agents. [ADR-0015](../adr/0015-thin-management-cli.md) keeps it a thin Go 1.26 client over generated Connect-Go services and, for issue #145's OAuth approval only, Better Auth's native device HTTP routes—not a second implementation of server behavior. Commands, flags, structured output, errors, and exit codes form a versioned public contract.
+`nama` is the public management interface for both terminal users and shell-capable agents. [ADR-0015](../adr/0015-thin-management-cli.md) keeps it a thin Go 1.26 client over generated Connect-Go services, not a second implementation of server behavior. Commands, flags, structured output, errors, and exit codes form a versioned public contract.
 
 The CLI remains useful without an interactive terminal. Every operation has a complete non-interactive form, and interactive affordances may only wrap those same operations.
 
@@ -22,7 +22,7 @@ The complete MVP management surface covers initial Administrator setup, authenti
 - Issue #80 proves those commands as one restart and upgrade flow against the production server, PostgreSQL, supervisor, Jellyfin plugin, and a disposable Jellyfin server.
 - Issue #107 adds ordered restricted-schema prompts for human create and update while preserving complete file/stdin automation and JSON no-prompt behavior.
 - Issue #31 adds provider-neutral candidate and stored-instance connection tests while retaining provider-type listing as the installed capability-inspection surface.
-- Issue #145 adds `nama auth approve-device <user-code>` over Better Auth's native device routes plus broad fixed-client refresh-family revocation.
+- Issue #145 adds `nama auth approve-device <user-code>` over the generated `AuthService.ApproveDeviceAuthorization` method plus broad fixed-client refresh-family revocation.
 
 The repository ships the `nama-cli` skill with command discovery, JSON use, safe setup and authentication flows, and confirmation boundaries. There is no general management web application or CLI plugin framework in the MVP. Issue #145 makes Apple authorization complete through the CLI; issue #167 separately owns optional browser approval.
 
@@ -51,16 +51,18 @@ Cobra commands
       v
 application operations
       |
-      ├──> generated Connect-Go clients ──> Nama api.v1
+      v
+generated Connect-Go clients
       |
-      └──> Better Auth device HTTP routes ──> OAuth approval
+      v
+Nama api.v1
 ```
 
 A command normally performs four steps:
 
 1. Parse arguments, flags, and inherited configuration.
 2. Validate constraints specific to invoking the command.
-3. Call one application operation through its generated Connect-Go client or explicit Better Auth device HTTP boundary.
+3. Call one application operation backed by generated Connect-Go clients.
 4. Return a Go value or typed error to the root output handler.
 
 Commands do not select exit codes, print errors, format JSON independently, contain persistence rules, or reproduce server authorization and validation.
@@ -98,18 +100,16 @@ nama
 └── schema
 ```
 
-Only commands backed by an implemented public RPC or issue #145's standard
-Better Auth device-approval routes are added. Exact leaf commands, arguments,
-and flags are designed with their owning boundary; this list reserves no other
-unimplemented server behavior.
+Only commands backed by an implemented public RPC are added. Exact leaf
+commands, arguments, and flags are designed with those RPCs; this list reserves
+no other unimplemented server behavior.
 
 `nama auth approve-device <user-code>` requires an active Administrator session
-for the selected endpoint and uses the existing signed bearer from its profile
-or `NAMA_TOKEN`. It first calls Better Auth's native `GET /device` route to
-validate and claim the code, then `POST /device/approve` with the same session.
-It does not ask for a password, mint a session, or call Connect. Terminal and
-JSON output map invalid, expired, already-processed, and unauthorized codes to
-stable safe failures without printing the session bearer or code in diagnostics.
+for the selected endpoint and sends the code through the generated
+`AuthService.ApproveDeviceAuthorization` client with the existing signed bearer
+from its profile or `NAMA_TOKEN`. It does not ask for a password, mint a
+session, or call Better Auth directly. Terminal and JSON output map stable
+Connect failures without printing the session bearer or code in diagnostics.
 
 Issue #145 also adds one destructive Administrator-authenticated operation
 under `nama auth` that revokes every Better Auth refresh-token family for the

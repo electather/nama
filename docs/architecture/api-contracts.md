@@ -52,8 +52,8 @@ The MVP remains single-administrator and single-user. User administration, invit
 6. Canonical Nama item IDs and provider-instance IDs are Nama-owned. A canonical item may have sources from more than one provider instance.
 7. The core maps plugin observations into stored canonical media before serving consumer reads. Public browse and search never proxy a live provider query.
 8. The core is a control plane. Artwork and media bytes travel directly from the provider to the client through short-lived, narrowly scoped locators when the provider can supply them safely.
-9. Nama application RPCs are unary Connect. Better Auth's target OAuth authorization-server, discovery, JWKS, device-authorization, token, and revocation endpoints use their standard HTTP contracts; streaming application RPCs, event feeds, unrelated REST, and GraphQL remain deferred.
-10. Better Auth wire formats are public only on those authorization-server endpoints. Nama Connect APIs and provider boundaries continue to expose only Nama-owned messages ([ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md)).
+9. Nama application RPCs are unary Connect. Better Auth's target OAuth metadata, JWKS, device-code issuance, token, refresh, and revocation endpoints use their standard HTTP contracts; streaming application RPCs, event feeds, unrelated REST, and GraphQL remain deferred.
+10. Better Auth wire formats are public only on those standard OAuth authorization-server endpoints. Nama Connect APIs and provider boundaries continue to expose only Nama-owned messages ([ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md)).
 
 ## Package and file layout
 
@@ -64,7 +64,7 @@ The public contract is split across these files under `proto/nama/api/v1/`:
 | `common.proto` | Cross-cutting public values such as credentials and HTTP headers |
 | `health.proto` | Operator status and diagnostics; extends the existing health anchor |
 | `setup.proto` | One-time administrator setup |
-| `auth.proto` | Administrator sign-in, current user, and sign-out |
+| `auth.proto` | Administrator sign-in, current user, sign-out, and device-authorization approval |
 | `device.proto` | Obsolete unimplemented Pairing/Device contract; issue #145 removes it and reserves removed names and numbers |
 | `provider.proto` | Provider type schema, testing, and instance management |
 | `media.proto` | Canonical summaries, details, artwork, sources, parts, and tracks |
@@ -148,7 +148,7 @@ Each plugin returns its build version and contract major from `PluginService.Get
 
 - Nama application RPCs and all plugin RPCs use Connect over HTTP; Nama exposes neither gRPC nor gRPC-Web ([ADR-0003](../adr/0003-protobuf-connectrpc-boundary.md)). Better Auth's target OAuth authorization-server routes use their standard HTTP methods and media types. The plugin transport remains a core-owned Unix socket authenticated by one random per-launch bearer.
 - Supervising a code-owned descriptor and explicit launch kind validates both without creating a child process, socket, or launch artifact. The first valid call starts or joins one shared launch or recovery episode. That episode delivers one canonical versioned UTF-8 JSON launch document of at most 64 KiB through child stdin, then closes stdin. Discovery carries no provider context; one-shot candidate and exact-revision instance launches may carry one configuration and credential snapshot. Children inherit no environment values, and provider context never enters arguments, RPC bodies, RPC metadata, diagnostics, spans, or logs. Readiness requires socket mode `0600`, authenticated health, expected provider type, and contract major `1`; every provider RPC carries an explicit deadline and cancellation.
-- The implemented ordinary public HTTP endpoints are exact `GET /health/live` and `GET /health/ready`. Issue #145 additionally mounts Better Auth's authorization-server metadata, JWKS, device-authorization, token, and revocation routes on the same listener; it does not expose browser email/password or session routes.
+- The implemented ordinary public HTTP endpoints are exact `GET /health/live` and `GET /health/ready`. Issue #145 additionally mounts Better Auth's authorization-server metadata, JWKS, device-code issuance, token, refresh, and revocation routes on the same listener; it does not expose browser email/password, session, verification, or approve/deny routes.
 - Public Administrator sessions and OAuth access tokens use `Authorization: Bearer`. Plugin credentials use the same header only on the private socket.
 - After explicit endpoint acknowledgement, the existing eligible local-HTTP policy applies to Administrator, OAuth, refresh, and consumer bearer traffic: loopback, private, link-local, `localhost`/`.localhost`, and `.local` endpoints may use HTTP, while public names and addresses require HTTPS. This deliberately deviates from Better Auth's production HTTPS guidance and accepts local-network interception risk.
 - The server, not the client, assigns `nama-request-id` at outer Node dispatch and returns it on every Connect-delegated response, including malformed-body failures. Application-generated errors carry the identical value in `google.rpc.RequestInfo`; Connect may reject malformed input before the application pipeline, where the response header is the sole correlation value.
@@ -220,24 +220,35 @@ In the process that detects fatal commit ambiguity, `GetStatus` fails `UNAVAILAB
 | `SignIn` | Public, rate-limited | `email`, `password` | `administrator`, `credential` |
 | `GetCurrentUser` | Administrator | none | `administrator` |
 | `SignOut` | Administrator | none | none |
+| `ApproveDeviceAuthorization` | Administrator | `user_code` | none |
 
 `SignIn` calls Better Auth's private server API with automatic sign-in disabled and returns the signed token extracted from its `set-auth-token` response header, never a raw session token or cookie ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). Better Auth owns expiry, rotation, and revocation; Nama adds no refresh-token protocol and does not force a different expiry. Authentication failure always uses the same public reason regardless of whether an email exists. A Nama-owned limiter wraps the public SignIn RPC because private server-API calls do not rely on Better Auth's HTTP-route limiter.
 
 Under [ADR-0009](../adr/0009-confirm-durable-session-revocation.md), `SignOut` succeeds only after the durable session store confirms that the presented bearer no longer resolves to an active session. Clearing cookies or client state is not proof of revocation. If deletion fails or its outcome cannot be confirmed, Nama returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the caller retains the bearer and resolves the ambiguity with `GetCurrentUser` before retrying. An unauthenticated read proves the credential is no longer usable. PostgreSQL coverage forces session-deletion failure and proves Nama never reports successful sign-out while the bearer remains valid.
 
+`ApproveDeviceAuthorization` accepts one bounded non-empty user code and returns
+an empty response. Its handler passes the authenticated Administrator session
+context to Better Auth's internal `deviceVerify` then `deviceApprove` APIs. It
+does not call Better Auth over loopback HTTP, read or mutate Better Auth tables,
+or reproduce device-code policy. Invalid or unknown, expired,
+already-processed, and session-mismatched requests map respectively to
+`INVALID_ARGUMENT/DEVICE_AUTHORIZATION_CODE_INVALID`,
+`FAILED_PRECONDITION/DEVICE_AUTHORIZATION_EXPIRED`,
+`FAILED_PRECONDITION/DEVICE_AUTHORIZATION_ALREADY_PROCESSED`, and
+`PERMISSION_DENIED/DEVICE_AUTHORIZATION_ACCESS_DENIED`. Standard Administrator
+authentication failures remain `UNAUTHENTICATED`.
+
 ### Better Auth OAuth authorization server
 
-Issue #145 removes `DeviceService`. The Apple public client uses Better Auth's
-OAuth Device Authorization and OAuth Provider HTTP contracts directly under
-the configured authorization-server base URL:
+Issue #145 removes `DeviceService` and additively adds
+`AuthService.ApproveDeviceAuthorization`. The Apple public client uses Better
+Auth's OAuth Device Authorization and OAuth Provider HTTP contracts directly
+under the configured authorization-server base URL:
 
 | Endpoint | Access | Purpose |
 | --- | --- | --- |
 | OAuth authorization-server metadata and JWKS | Public | Advertise issuer, device authorization, token, revocation, resource, and signing-key metadata |
 | `POST /device/code` | Fixed public client, rate-limited | Request user and device codes for the exact resource and allowed scopes |
-| `GET /device` | Signed Administrator session bearer | Validate and claim the entered user code for the authenticated Administrator |
-| `POST /device/approve` | Same Administrator session bearer | Approve the claimed request explicitly |
-| `POST /device/deny` | Same Administrator session bearer | Deny the claimed request; issue #167 exposes this through its web surface |
 | `POST /oauth2/token` | Fixed public client, rate-limited | Poll with the device-code grant or rotate through the refresh-token grant |
 | `POST /oauth2/revoke` | Token-holding fixed public client | Revoke a presented refresh token through the standard OAuth endpoint |
 
@@ -256,14 +267,14 @@ refresh behavior; Nama adds no logical-operation replay record or parallel
 credential delivery.
 
 An already authenticated Administrator runs
-`nama auth approve-device <user-code>`. The CLI uses the existing signed session
-bearer from the selected profile or `NAMA_TOKEN`, calls `GET /device` to
-validate and claim the request, then calls `POST /device/approve` with the same
-session. It does not collect the password again or call a Nama-owned Connect
-approval RPC. Better Auth's protocol errors and rate-limit responses remain
-authoritative on its HTTP boundary and map to stable safe CLI failures.
-Issue #167 separately owns browser sign-in and explicit approve/deny as an
-optional web-app alternative.
+`nama auth approve-device <user-code>`. The CLI sends the code through the
+generated `AuthService.ApproveDeviceAuthorization` Connect client using the
+existing signed session bearer from the selected profile or `NAMA_TOKEN`. The
+server invokes Better Auth in-process with that session context. It does not
+collect the password again, mint another session, call Better Auth over loopback
+HTTP, or manipulate plugin persistence. Issue #167 separately owns browser
+sign-in and explicit approve/deny as an optional web-app surface over the same
+internal application service.
 
 Access JWTs use Better Auth's pinned one-hour default and refresh tokens use its
 pinned 30-day default. The Apple client stores and rotates the refresh token;
@@ -1046,6 +1057,7 @@ forbidden because a real seek, unwatch, or rewatch can race the export.
 | `AuthService.SignIn` | Public, rate-limited |
 | `HealthService.*` | Administrator session |
 | `AuthService.GetCurrentUser`, `AuthService.SignOut` | Administrator session |
+| `AuthService.ApproveDeviceAuthorization` | Administrator session |
 | Target broad first-party client grant-revocation operation | Administrator session |
 | `ProviderService.*` | Administrator session |
 | `SyncService.*` | Administrator session |
@@ -1319,7 +1331,7 @@ These flows define how the services compose. They are not authorization shortcut
 
 1. The Apple app requests a device authorization from Better Auth with the fixed public client ID, exact Nama API resource, `nama:library`, `nama:playback`, `nama:user-state`, and `offline_access`.
 2. It displays the returned user code with instructions for the already authenticated Administrator to run `nama auth approve-device <user-code>` against the same endpoint and polls no faster than the returned interval.
-3. The CLI uses its existing signed Administrator session bearer to claim the code through Better Auth's native `GET /device` route and approve it through `POST /device/approve`; no browser or repeated password entry is required.
+3. The CLI sends the code through the generated `AuthService.ApproveDeviceAuthorization` Connect method with its existing signed Administrator session bearer; the server invokes Better Auth's internal verification and approval APIs with the same session context, so no browser, repeated password entry, or loopback HTTP is required.
 4. The app exchanges the approved device code at Better Auth's OAuth token endpoint and commits the endpoint-bound access and refresh token bundle to Keychain before replacing any active bundle.
 5. Connect consumer calls present the JWT access token; each method verifies issuer, audience, expiry, fixed client ID, and its required scope locally.
 6. The app rotates through Better Auth's refresh-token grant. Expiry or definitive refresh failure returns to visible device authorization; ordinary offline failures preserve the stored grant.
