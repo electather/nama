@@ -28,7 +28,7 @@ Apple player <──────────┴───────────
 
 The target installation is one private deployment with one administrator, Jellyfin as its first provider type, and one universal SwiftUI client for iPhone, iPad, Apple TV, and Mac on Apple platform version 26 or later. Multiple Jellyfin provider instances may supply watch-state input. The public and plugin contracts are real from the first vertical slice, while a marketplace, web console, generic workflow engine, distributed queue, and native media server are not part of the target architecture.
 
-The MVP authorization path is complete without a browser: an already authenticated Go CLI sends the Apple app's displayed user code through `AuthService.ApproveDeviceAuthorization`, and the core invokes Better Auth's internal verification and approval APIs with that session context. Issue #167 may add a narrow browser approval web app over the same internal application service; it does not become a prerequisite for Apple authorization or a general web console.
+The MVP authorization path is complete without a browser: an already authenticated Go CLI sends the Apple app's displayed user code through role-neutral `AuthService.ApproveDeviceAuthorization`, and the core binds the grant to that session principal before invoking Better Auth's internal verification and approval APIs. The request selects no target user and grants no Administrator authority. Issue #167 may add a narrow browser approval web app over the same internal application service; it does not become a prerequisite for Apple authorization or a general web console.
 
 The implemented baseline is narrower than that topology. `@nama/server` currently runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, readiness probing, exact health routes, Setup and administrator Auth RPCs through a private Better Auth adapter, the durable provider persistence/protection boundary, and an authenticated Effect-scoped plugin supervisor. Before binding, a code-owned bundled registry discovers the production Jellyfin plugin, validates its identity and restricted configuration schema, and reconciles the last accepted installation metadata. Authenticated provider-neutral RPCs and compiled CLI commands list provider types, then create, list, inspect, patch, disable, re-enable, and permanently delete disabled provider instances. Create verifies one isolated Jellyfin candidate and atomically commits encrypted credentials plus a principal digest. Update keeps metadata-only changes local, verifies candidate configuration or credential changes against the immutable principal, fences revisions, retires old runtime admission, and atomically commits the replacement snapshot. Delete rejects enabled or busy instances, closes core activity and plugin admission, proves supervised cleanup, and atomically removes instance-owned state while retaining its durable retry result. Better Auth routes remain unmounted; setup closes its durable marker transactionally; and sign-out confirms durable session revocation. Device pairing, provider-instance testing, Apple-client behavior, media capabilities, and playback remain target contracts rather than implemented capabilities.
 
@@ -114,7 +114,7 @@ ADRs record the choices and rationale below; superseded records remain linked as
 12. [ADR-0012 — Contain the playback engine behind one concrete Nama adapter](adr/0012-single-playback-engine-adapter.md)
 13. [ADR-0013 — Deliver media directly with origin-scoped short-lived locators](adr/0013-origin-scoped-short-lived-locators.md)
 14. [ADR-0014 — Model playback as plan, open, report, and close](adr/0014-four-stage-playback-lifecycle.md)
-15. [ADR-0015 — Make the management CLI a thin public-API client](adr/0015-thin-management-cli.md)
+15. [ADR-0015 — Make the CLI a thin public-API client](adr/0015-thin-management-cli.md)
 16. [ADR-0016 — Package one Linux application image with a separate PostgreSQL service](adr/0016-linux-application-image-and-postgresql.md)
 17. [ADR-0017 — Use Mise only as a thin orchestrator over native owners](adr/0017-mise-thin-native-orchestrator.md)
 18. [ADR-0018 — Commit generated bindings only for present consumers](adr/0018-commit-present-consumer-bindings.md)
@@ -160,7 +160,7 @@ ADRs record the choices and rationale below; superseded records remain linked as
 - [Canonical data model](architecture/data-model.md)
 - [Watch-state synchronization](architecture/state-sync.md)
 - [Authentication, setup, and OAuth authorization](architecture/authentication-and-setup.md)
-- [Management CLI](architecture/cli.md)
+- [Command-line client](architecture/cli.md)
 - [Universal Apple application](architecture/ios-app.md)
 - [Playback](architecture/playback.md)
 - [Deployment and exposure](architecture/deployment.md)

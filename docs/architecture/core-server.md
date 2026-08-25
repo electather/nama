@@ -387,19 +387,21 @@ Auth OAuth and metadata paths second, and Connect application RPCs last. A
 reviewed Better Auth/Drizzle migration seeds
 the fixed native public Apple client. An already authenticated Go CLI sends the
 displayed user code through `AuthService.ApproveDeviceAuthorization`. The
-Connect handler invokes Better Auth's internal verification and approval APIs
-with the authenticated Administrator session context without loopback HTTP or
-direct persistence access. Issue #145 exposes no browser email/password,
-session, verification, or approve/deny routes; issue #167 may add a web surface
-over the same internal application service. Nama adds no Pairing or Device
+Connect handler binds the grant to that session principal and invokes Better
+Auth's internal verification and approval APIs without a target user ID,
+Administrator-role check, loopback HTTP, or direct persistence access. Issue
+#145 exposes no browser email/password, session, verification, or approve/deny
+routes; issue #167 may add a web surface over the same role-neutral internal
+application service. Nama adds no Pairing or Device
 owner, generic repository, crypto service, scheduler framework, or duplicate
 OAuth endpoint.
 
 Connect's default-deny inventory locally verifies Better Auth access JWT
 signature, issuer, exact resource audience, expiry, fixed client ID, and the
-method-specific library, playback, or user-state scope. Administrator session
-resolution stays separate and is never a fallback for a rejected OAuth JWT.
-The approval handler delegates its mutation to Better Auth. One additional
+method-specific library, playback, or user-state scope. Session resolution
+stays separate and is never a fallback for a rejected OAuth JWT or a source of
+inherited Administrator authority. The role-neutral approval handler delegates
+its principal-bound mutation to Better Auth. One additional
 Nama-owned grant-management operation revokes every Better Auth refresh-token
 family for the fixed Apple client; issued JWTs remain valid until their pinned
 one-hour expiry.

@@ -64,7 +64,7 @@ The public contract is split across these files under `proto/nama/api/v1/`:
 | `common.proto` | Cross-cutting public values such as credentials and HTTP headers |
 | `health.proto` | Operator status and diagnostics; extends the existing health anchor |
 | `setup.proto` | One-time administrator setup |
-| `auth.proto` | Administrator sign-in, current user, sign-out, and device-authorization approval |
+| `auth.proto` | Administrator sign-in, current user, and sign-out plus role-neutral device-authorization approval |
 | `device.proto` | Obsolete unimplemented Pairing/Device contract; issue #145 removes it and reserves removed names and numbers |
 | `provider.proto` | Provider type schema, testing, and instance management |
 | `media.proto` | Canonical summaries, details, artwork, sources, parts, and tracks |
@@ -149,8 +149,8 @@ Each plugin returns its build version and contract major from `PluginService.Get
 - Nama application RPCs and all plugin RPCs use Connect over HTTP; Nama exposes neither gRPC nor gRPC-Web ([ADR-0003](../adr/0003-protobuf-connectrpc-boundary.md)). Better Auth's target OAuth authorization-server routes use their standard HTTP methods and media types. The plugin transport remains a core-owned Unix socket authenticated by one random per-launch bearer.
 - Supervising a code-owned descriptor and explicit launch kind validates both without creating a child process, socket, or launch artifact. The first valid call starts or joins one shared launch or recovery episode. That episode delivers one canonical versioned UTF-8 JSON launch document of at most 64 KiB through child stdin, then closes stdin. Discovery carries no provider context; one-shot candidate and exact-revision instance launches may carry one configuration and credential snapshot. Children inherit no environment values, and provider context never enters arguments, RPC bodies, RPC metadata, diagnostics, spans, or logs. Readiness requires socket mode `0600`, authenticated health, expected provider type, and contract major `1`; every provider RPC carries an explicit deadline and cancellation.
 - The implemented ordinary public HTTP endpoints are exact `GET /health/live` and `GET /health/ready`. Issue #145 additionally mounts Better Auth's authorization-server metadata, JWKS, device-code issuance, token, refresh, and revocation routes on the same listener; it does not expose browser email/password, session, verification, or approve/deny routes.
-- Public Administrator sessions and OAuth access tokens use `Authorization: Bearer`. Plugin credentials use the same header only on the private socket.
-- After explicit endpoint acknowledgement, the existing eligible local-HTTP policy applies to Administrator, OAuth, refresh, and consumer bearer traffic: loopback, private, link-local, `localhost`/`.localhost`, and `.local` endpoints may use HTTP, while public names and addresses require HTTPS. This deliberately deviates from Better Auth's production HTTPS guidance and accepts local-network interception risk.
+- Public Better Auth sessions and OAuth access tokens use `Authorization: Bearer`. Plugin credentials use the same header only on the private socket.
+- After explicit endpoint acknowledgement, the existing eligible local-HTTP policy applies to session, OAuth, refresh, and consumer bearer traffic: loopback, private, link-local, `localhost`/`.localhost`, and `.local` endpoints may use HTTP, while public names and addresses require HTTPS. This deliberately deviates from Better Auth's production HTTPS guidance and accepts local-network interception risk.
 - The server, not the client, assigns `nama-request-id` at outer Node dispatch and returns it on every Connect-delegated response, including malformed-body failures. Application-generated errors carry the identical value in `google.rpc.RequestInfo`; Connect may reject malformed input before the application pipeline, where the response header is the sole correlation value.
 - Request and response bodies, authorization headers, locator headers, passwords, bootstrap tokens, device and user codes, access tokens, refresh tokens, provider configuration, and opaque plugin session context are never logged.
 - Locators are absolute HTTP or HTTPS URLs. Any attached headers are allowlisted by the core and valid only for the referenced artwork or playback session.
@@ -220,23 +220,25 @@ In the process that detects fatal commit ambiguity, `GetStatus` fails `UNAVAILAB
 | `SignIn` | Public, rate-limited | `email`, `password` | `administrator`, `credential` |
 | `GetCurrentUser` | Administrator | none | `administrator` |
 | `SignOut` | Administrator | none | none |
-| `ApproveDeviceAuthorization` | Administrator | `user_code` | none |
+| `ApproveDeviceAuthorization` | Authenticated principal | `user_code` | none |
 
 `SignIn` calls Better Auth's private server API with automatic sign-in disabled and returns the signed token extracted from its `set-auth-token` response header, never a raw session token or cookie ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). Better Auth owns expiry, rotation, and revocation; Nama adds no refresh-token protocol and does not force a different expiry. Authentication failure always uses the same public reason regardless of whether an email exists. A Nama-owned limiter wraps the public SignIn RPC because private server-API calls do not rely on Better Auth's HTTP-route limiter.
 
 Under [ADR-0009](../adr/0009-confirm-durable-session-revocation.md), `SignOut` succeeds only after the durable session store confirms that the presented bearer no longer resolves to an active session. Clearing cookies or client state is not proof of revocation. If deletion fails or its outcome cannot be confirmed, Nama returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the caller retains the bearer and resolves the ambiguity with `GetCurrentUser` before retrying. An unauthenticated read proves the credential is no longer usable. PostgreSQL coverage forces session-deletion failure and proves Nama never reports successful sign-out while the bearer remains valid.
 
-`ApproveDeviceAuthorization` accepts one bounded non-empty user code and returns
-an empty response. Its handler passes the authenticated Administrator session
-context to Better Auth's internal `deviceVerify` then `deviceApprove` APIs. It
-does not call Better Auth over loopback HTTP, read or mutate Better Auth tables,
-or reproduce device-code policy. Invalid or unknown, expired,
-already-processed, and session-mismatched requests map respectively to
+`ApproveDeviceAuthorization` accepts one bounded non-empty user code, no target
+user ID, and returns an empty response. Its handler derives the grant subject
+only from the authenticated session context and passes that context to Better
+Auth's internal `deviceVerify` then `deviceApprove` APIs. It does not require
+the Administrator role, grant Administrator authority, call Better Auth over
+loopback HTTP, read or mutate Better Auth tables, or reproduce device-code
+policy. Invalid or unknown, expired, already-processed, and session-mismatched
+requests map respectively to
 `INVALID_ARGUMENT/DEVICE_AUTHORIZATION_CODE_INVALID`,
 `FAILED_PRECONDITION/DEVICE_AUTHORIZATION_EXPIRED`,
 `FAILED_PRECONDITION/DEVICE_AUTHORIZATION_ALREADY_PROCESSED`, and
-`PERMISSION_DENIED/DEVICE_AUTHORIZATION_ACCESS_DENIED`. Standard Administrator
-authentication failures remain `UNAUTHENTICATED`.
+`PERMISSION_DENIED/DEVICE_AUTHORIZATION_ACCESS_DENIED`. Missing or invalid
+session authentication remains `UNAUTHENTICATED`.
 
 ### Better Auth OAuth authorization server
 
@@ -266,15 +268,18 @@ response is recovered only through Better Auth's supported device-code or
 refresh behavior; Nama adds no logical-operation replay record or parallel
 credential delivery.
 
-An already authenticated Administrator runs
+An already authenticated CLI user runs
 `nama auth approve-device <user-code>`. The CLI sends the code through the
 generated `AuthService.ApproveDeviceAuthorization` Connect client using the
 existing signed session bearer from the selected profile or `NAMA_TOKEN`. The
-server invokes Better Auth in-process with that session context. It does not
+server binds the grant to that session principal and invokes Better Auth
+in-process with the same context. It accepts no target user ID and does not
 collect the password again, mint another session, call Better Auth over loopback
-HTTP, or manipulate plugin persistence. Issue #167 separately owns browser
-sign-in and explicit approve/deny as an optional web-app surface over the same
-internal application service.
+HTTP, or manipulate plugin persistence. Milestone 4 still has only the existing
+Administrator account, but the method's authorization policy admits a later
+non-Administrator session without a wire or CLI change. Issue #167 separately
+owns browser sign-in and explicit approve/deny as an optional web-app surface
+over the same role-neutral internal application service.
 
 Access JWTs use Better Auth's pinned one-hour default and refresh tokens use its
 pinned 30-day default. The Apple client stores and rotates the refresh token;
@@ -580,13 +585,13 @@ Technical tracks returned by `GetMediaSource` are descriptive and not selectable
 
 | RPC | Access | Request | Response |
 | --- | --- | --- | --- |
-| `GetHome` | Administrator or device | optional `section_size` | repeated `sections` |
-| `ListLibrary` | Administrator or device | filters, sort, `page_size`, `page_token` | repeated `items`, `next_page_token` |
-| `Search` | Administrator or device | `query`, optional kinds, `page_size`, `page_token` | repeated `items`, `next_page_token` |
-| `GetMedia` | Administrator or device | `media_id` | `media` |
-| `ListChildren` | Administrator or device | `parent_media_id`, `page_size`, `page_token` | repeated `items`, `next_page_token` |
-| `GetMediaSource` | Administrator or device | `media_id`, `source_id` | `source` |
-| `ResolveArtwork` | Administrator or device | `artwork_id`, optional `max_width`, optional `max_height` | `locator` |
+| `GetHome` | Authenticated principal | optional `section_size` | repeated `sections` |
+| `ListLibrary` | Authenticated principal | filters, sort, `page_size`, `page_token` | repeated `items`, `next_page_token` |
+| `Search` | Authenticated principal | `query`, optional kinds, `page_size`, `page_token` | repeated `items`, `next_page_token` |
+| `GetMedia` | Authenticated principal | `media_id` | `media` |
+| `ListChildren` | Authenticated principal | `parent_media_id`, `page_size`, `page_token` | repeated `items`, `next_page_token` |
+| `GetMediaSource` | Authenticated principal | `media_id`, `source_id` | `source` |
+| `ResolveArtwork` | Authenticated principal | `artwork_id`, optional `max_width`, optional `max_height` | `locator` |
 
 `GetHome` returns ordered `HomeSection` values with stable `id`, display
 `title`, `kind`, and ordered `MediaSummary` items. Initial section kinds are
@@ -754,8 +759,8 @@ Canonical state commits before provider telemetry is considered delivered. A pro
 
 | RPC | Access | Request | Response |
 | --- | --- | --- | --- |
-| `GetUserState` | Administrator or device | `media_id` | `user_state` |
-| `SetWatched` | Administrator or device | `operation_id`, `media_id`, `watched` | `user_state` |
+| `GetUserState` | Authenticated principal | `media_id` | `user_state` |
+| `SetWatched` | Authenticated principal | `operation_id`, `media_id`, `watched` | `user_state` |
 
 `SetWatched` is an explicit target, never a toggle. Both marking watched and marking unwatched are valid state changes. The server timestamps the local action; the client does not supply a trusted activity time. Direct state applies to playable movies and episodes in the MVP. Playback progress is persisted through `ReportPlayback` and `ClosePlayback`; there is no second public `SetProgress` path. Provider export occurs asynchronously after the Nama state commits.
 
@@ -1057,13 +1062,13 @@ forbidden because a real seek, unwatch, or rewatch can race the export.
 | `AuthService.SignIn` | Public, rate-limited |
 | `HealthService.*` | Administrator session |
 | `AuthService.GetCurrentUser`, `AuthService.SignOut` | Administrator session |
-| `AuthService.ApproveDeviceAuthorization` | Administrator session |
+| `AuthService.ApproveDeviceAuthorization` | Authenticated session; current principal only |
 | Target broad first-party client grant-revocation operation | Administrator session |
 | `ProviderService.*` | Administrator session |
 | `SyncService.*` | Administrator session |
-| `LibraryService.*` | Administrator session or OAuth JWT with `nama:library` |
-| `PlaybackService.*` | Administrator session or OAuth JWT with `nama:playback` |
-| `UserStateService.*` | Administrator session or OAuth JWT with `nama:user-state` |
+| `LibraryService.*` | Authenticated session or OAuth JWT with `nama:library` |
+| `PlaybackService.*` | Authenticated session or OAuth JWT with `nama:playback` |
+| `UserStateService.*` | Authenticated session or OAuth JWT with `nama:user-state` |
 | Every `nama.plugin.v1` method | Matching per-launch plugin bearer |
 
 Before initialization, only the two operational HTTP health endpoints and setup
@@ -1074,12 +1079,12 @@ token exchange fail until setup is complete. After initialization,
 `CreateAdministrator` always returns `ALREADY_INITIALIZED`, even after database
 damage; setup never reopens itself.
 
-Administrator session bearers and OAuth access JWTs are distinct authorities.
+Better Auth session bearers and OAuth access JWTs are distinct authorities.
 OAuth validation requires the Better Auth signature, issuer, exact resource
 audience, expiry, fixed client ID, and method-specific scope. A candidate that
-looks like an OAuth access token never falls back to Administrator-session
-resolution after OAuth validation fails. OAuth access cannot call provider,
-synchronization, health, setup, Administrator-authentication, or
+looks like an OAuth access token never falls back to session resolution after
+OAuth validation fails or inherits Administrator authority. OAuth access cannot
+call provider, synchronization, health, setup, session-authentication, or
 grant-management methods. A plugin bearer is accepted only on its process
 socket and never on the public listener.
 
@@ -1330,8 +1335,8 @@ These flows define how the services compose. They are not authorization shortcut
 ### Authorize the Apple public client
 
 1. The Apple app requests a device authorization from Better Auth with the fixed public client ID, exact Nama API resource, `nama:library`, `nama:playback`, `nama:user-state`, and `offline_access`.
-2. It displays the returned user code with instructions for the already authenticated Administrator to run `nama auth approve-device <user-code>` against the same endpoint and polls no faster than the returned interval.
-3. The CLI sends the code through the generated `AuthService.ApproveDeviceAuthorization` Connect method with its existing signed Administrator session bearer; the server invokes Better Auth's internal verification and approval APIs with the same session context, so no browser, repeated password entry, or loopback HTTP is required.
+2. It displays the returned user code with instructions for the already authenticated CLI user to run `nama auth approve-device <user-code>` against the same endpoint and polls no faster than the returned interval.
+3. The CLI sends the code through the generated `AuthService.ApproveDeviceAuthorization` Connect method with its existing signed session bearer; the server binds the grant to that principal and invokes Better Auth's internal verification and approval APIs with the same session context, so no Administrator role, target user ID, browser, repeated password entry, or loopback HTTP is required.
 4. The app exchanges the approved device code at Better Auth's OAuth token endpoint and commits the endpoint-bound access and refresh token bundle to Keychain before replacing any active bundle.
 5. Connect consumer calls present the JWT access token; each method verifies issuer, audience, expiry, fixed client ID, and its required scope locally.
 6. The app rotates through Better Auth's refresh-token grant. Expiry or definitive refresh failure returns to visible device authorization; ordinary offline failures preserve the stored grant.

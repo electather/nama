@@ -44,15 +44,16 @@ Jellyfin Server for operators.
 
 Issue #145 adds Better Auth authorization-server metadata, JWKS, device-code,
 token, refresh, and revocation routes to the same published core listener. The
-authenticated Go CLI sends approval through a generated Connect method whose
-server handler invokes Better Auth in-process; public verification and
-approve/deny routes remain outside issue #145. Browser email/password and
-session routes belong only to issue #167's separate web surface over the shared
-internal approval service. Nama deliberately retains its existing transport
-exception despite
+role-neutral authenticated Go CLI sends approval through a generated Connect
+method whose server handler binds the grant to the session principal and
+invokes Better Auth in-process; public verification and approve/deny routes
+remain outside issue #145. Browser email/password and session routes belong
+only to issue #167's separate web surface over the shared role-neutral internal
+approval service. Nama deliberately retains its existing transport exception
+despite
 Better Auth's production HTTPS guidance: loopback, private, link-local,
-`localhost`/`.localhost`, and `.local` endpoints may carry Administrator and
-OAuth credentials over HTTP only after the existing explicit warning and exact
+`localhost`/`.localhost`, and `.local` endpoints may carry session and OAuth
+credentials over HTTP only after the existing explicit warning and exact
 endpoint acknowledgement; public names and addresses require HTTPS. Operators
 accept local-network interception risk when enabling that exception.
 

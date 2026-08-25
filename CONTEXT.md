@@ -86,6 +86,10 @@ _Avoid_: Server connection, server identity
 The sole MVP person authorized to set up, configure, diagnose, and manage Nama.
 _Avoid_: Admin user, owner
 
+**Authorizing user**:
+The authenticated person whose current Nama session approves an OAuth device authorization for their own access; approval cannot select another person or grant Administrator authority.
+_Avoid_: Approving Administrator, target user
+
 **Apple public client**:
 The fixed first-party native OAuth client shared by universal Apple app installations and limited to one exact Nama API resource and the consumer scopes.
 _Avoid_: Device, paired client
