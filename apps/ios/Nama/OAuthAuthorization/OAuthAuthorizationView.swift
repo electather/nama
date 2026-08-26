@@ -7,26 +7,13 @@ private enum OAuthAuthorizationTVLayout {
 }
 
 struct OAuthAuthorizationView: View {
-  @Environment(\.scenePhase) private var scenePhase
-  @State private var retryGeneration = 0
   let feature: OAuthAuthorizationFeature
   let endpoint: NamaEndpoint
   let changeEndpoint: @MainActor () async -> Void
+  let retry: @MainActor () -> Void
 
   var body: some View {
     platformBody
-      .task(
-        id: OAuthAuthorizationTaskID(
-          endpoint: endpoint,
-          retryGeneration: retryGeneration,
-          isActive: scenePhase == .active
-        )
-      ) {
-        guard scenePhase == .active else {
-          return
-        }
-        await feature.run(endpoint)
-      }
   }
 
   #if os(tvOS)
@@ -89,14 +76,11 @@ struct OAuthAuthorizationView: View {
         )
       }
 
-    case .authorized(let status):
+    case .authorized:
       Section {
-        Label("Nama is authorized", systemImage: "checkmark.circle.fill")
-          .font(.headline)
-          .foregroundStyle(.green)
-        EndpointText(endpoint: status.endpoint)
+        ProgressView("Preparing Home…")
       } footer: {
-        Text("This device now has scoped consumer access. Administrator access was not granted.")
+        EndpointText(endpoint: endpoint)
       }
 
     case .failed(let failedEndpoint, let failure):
@@ -112,10 +96,8 @@ struct OAuthAuthorizationView: View {
   @ViewBuilder
   private var recoveryActions: some View {
     if case .failed = feature.state {
-      Button("Try Again") {
-        retryGeneration &+= 1
-      }
-      .buttonStyle(.borderedProminent)
+      Button("Try Again", action: retry)
+        .buttonStyle(.borderedProminent)
     }
     Button("Change Endpoint") {
       Task {
@@ -123,12 +105,6 @@ struct OAuthAuthorizationView: View {
       }
     }
   }
-}
-
-private struct OAuthAuthorizationTaskID: Hashable {
-  let endpoint: NamaEndpoint
-  let retryGeneration: Int
-  let isActive: Bool
 }
 
 private struct EndpointText: View {
@@ -162,6 +138,9 @@ private func authorizationTitle(for failure: OAuthAuthorizationFailure) -> Local
   case .authorizationExpired:
     "Authorization expired"
 
+  case .authorizationResetUnavailable:
+    "Authorization could not be reset"
+
   case .invalidResponse:
     "Nama could not authorize this device"
 
@@ -180,6 +159,9 @@ private func authorizationMessage(for failure: OAuthAuthorizationFailure) -> Loc
 
   case .authorizationExpired:
     "The displayed user code is no longer valid. Request a new one."
+
+  case .authorizationResetUnavailable:
+    "The rejected authorization is not active. Unlock this device, then try again."
 
   case .invalidResponse:
     "The authorization response was not compatible with this version of Nama."

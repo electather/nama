@@ -40,7 +40,7 @@
 		100000000000000000000031 /* OAuthAuthorizationHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000034 /* OAuthAuthorizationHTTPClient.swift */; };
 		100000000000000000000032 /* OAuthTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000035 /* OAuthTokenStore.swift */; };
 		100000000000000000000033 /* OAuthAuthorizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000036 /* OAuthAuthorizationView.swift */; };
-		100000000000000000000034 /* OAuthScopedAccessVerifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000037 /* OAuthScopedAccessVerifier.swift */; };
+		100000000000000000000034 /* NamaLibraryClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000037 /* NamaLibraryClient.swift */; };
 		100000000000000000000035 /* OAuthAuthorizationLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000038 /* OAuthAuthorizationLifecycleTests.swift */; };
 		100000000000000000000036 /* OAuthAuthorizationTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000039 /* OAuthAuthorizationTransportTests.swift */; };
 		100000000000000000000037 /* OAuthTokenStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000040 /* OAuthTokenStoreTests.swift */; };
@@ -69,6 +69,16 @@
 		100000000000000000000060 /* NamaPlayerHLSRequestSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000062 /* NamaPlayerHLSRequestSecurityTests.swift */; };
 		100000000000000000000061 /* NamaPlayerLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000063 /* NamaPlayerLifecycleTests.swift */; };
 		100000000000000000000062 /* NamaPlayerExpiryLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000064 /* NamaPlayerExpiryLifecycleTests.swift */; };
+		100000000000000000000069 /* HomeFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000071 /* HomeFeatureTests.swift */; };
+		100000000000000000000070 /* HomeAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000072 /* HomeAdapterTests.swift */; };
+		100000000000000000000071 /* HomeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000073 /* HomeModels.swift */; };
+		100000000000000000000072 /* HomeFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000074 /* HomeFeature.swift */; };
+		100000000000000000000073 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000075 /* HomeView.swift */; };
+		100000000000000000000074 /* HomePreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000076 /* HomePreviewFixtures.swift */; };
+		100000000000000000000075 /* HomeResponseMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000077 /* HomeResponseMapping.swift */; };
+		100000000000000000000076 /* HomeFailureViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000078 /* HomeFailureViews.swift */; };
+		100000000000000000000077 /* HomeAdapterTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000079 /* HomeAdapterTestSupport.swift */; };
+		100000000000000000000078 /* OAuthAuthorizationFeatureDiscard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000080 /* OAuthAuthorizationFeatureDiscard.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -118,7 +128,7 @@
 		200000000000000000000034 /* OAuthAuthorizationHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationHTTPClient.swift; sourceTree = "<group>"; };
 		200000000000000000000035 /* OAuthTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthTokenStore.swift; sourceTree = "<group>"; };
 		200000000000000000000036 /* OAuthAuthorizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationView.swift; sourceTree = "<group>"; };
-		200000000000000000000037 /* OAuthScopedAccessVerifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthScopedAccessVerifier.swift; sourceTree = "<group>"; };
+		200000000000000000000037 /* NamaLibraryClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaLibraryClient.swift; sourceTree = "<group>"; };
 		200000000000000000000038 /* OAuthAuthorizationLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationLifecycleTests.swift; sourceTree = "<group>"; };
 		200000000000000000000039 /* OAuthAuthorizationTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationTransportTests.swift; sourceTree = "<group>"; };
 		200000000000000000000040 /* OAuthTokenStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthTokenStoreTests.swift; sourceTree = "<group>"; };
@@ -146,6 +156,16 @@
 		200000000000000000000062 /* NamaPlayerHLSRequestSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaPlayerHLSRequestSecurityTests.swift; sourceTree = "<group>"; };
 		200000000000000000000063 /* NamaPlayerLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaPlayerLifecycleTests.swift; sourceTree = "<group>"; };
 		200000000000000000000064 /* NamaPlayerExpiryLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaPlayerExpiryLifecycleTests.swift; sourceTree = "<group>"; };
+		200000000000000000000071 /* HomeFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeatureTests.swift; sourceTree = "<group>"; };
+		200000000000000000000072 /* HomeAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAdapterTests.swift; sourceTree = "<group>"; };
+		200000000000000000000073 /* HomeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeModels.swift; sourceTree = "<group>"; };
+		200000000000000000000074 /* HomeFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeature.swift; sourceTree = "<group>"; };
+		200000000000000000000075 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		200000000000000000000076 /* HomePreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomePreviewFixtures.swift; sourceTree = "<group>"; };
+		200000000000000000000077 /* HomeResponseMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeResponseMapping.swift; sourceTree = "<group>"; };
+		200000000000000000000078 /* HomeFailureViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFailureViews.swift; sourceTree = "<group>"; };
+		200000000000000000000079 /* HomeAdapterTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAdapterTestSupport.swift; sourceTree = "<group>"; };
+		200000000000000000000080 /* OAuthAuthorizationFeatureDiscard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationFeatureDiscard.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -181,6 +201,7 @@
 			isa = PBXGroup;
 			children = (
 				500000000000000000000009 /* OAuthAuthorization */,
+				500000000000000000000013 /* Home */,
 				500000000000000000000010 /* Playback */,
 				200000000000000000000001 /* NamaApp.swift */,
 				500000000000000000000006 /* Connection */,
@@ -194,6 +215,7 @@
 			children = (
 				500000000000000000000007 /* Connection */,
 				500000000000000000000008 /* OAuthAuthorization */,
+				500000000000000000000014 /* Home */,
 				500000000000000000000011 /* Playback */,
 			);
 			path = NamaTests;
@@ -264,9 +286,9 @@
 				200000000000000000000034 /* OAuthAuthorizationHTTPClient.swift */,
 				200000000000000000000035 /* OAuthTokenStore.swift */,
 				200000000000000000000036 /* OAuthAuthorizationView.swift */,
-				200000000000000000000037 /* OAuthScopedAccessVerifier.swift */,
 				200000000000000000000042 /* OAuthAuthorizationFeatureCommit.swift */,
 				200000000000000000000043 /* OAuthAuthorizationFeatureFlow.swift */,
+				200000000000000000000080 /* OAuthAuthorizationFeatureDiscard.swift */,
 			);
 			path = OAuthAuthorization;
 			sourceTree = "<group>";
@@ -311,6 +333,30 @@
 				200000000000000000000048 /* subtitle.srt */,
 			);
 			path = Fixtures;
+			sourceTree = "<group>";
+		};
+		500000000000000000000013 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000073 /* HomeModels.swift */,
+				200000000000000000000074 /* HomeFeature.swift */,
+				200000000000000000000037 /* NamaLibraryClient.swift */,
+				200000000000000000000077 /* HomeResponseMapping.swift */,
+				200000000000000000000078 /* HomeFailureViews.swift */,
+				200000000000000000000075 /* HomeView.swift */,
+				200000000000000000000076 /* HomePreviewFixtures.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		500000000000000000000014 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000071 /* HomeFeatureTests.swift */,
+				200000000000000000000072 /* HomeAdapterTests.swift */,
+				200000000000000000000079 /* HomeAdapterTestSupport.swift */,
+			);
+			path = Home;
 			sourceTree = "<group>";
 		};
 		500000000000000000000005 /* Resources */ = {
@@ -459,9 +505,16 @@
 				100000000000000000000031 /* OAuthAuthorizationHTTPClient.swift in Sources */,
 				100000000000000000000032 /* OAuthTokenStore.swift in Sources */,
 				100000000000000000000033 /* OAuthAuthorizationView.swift in Sources */,
-				100000000000000000000034 /* OAuthScopedAccessVerifier.swift in Sources */,
+				100000000000000000000034 /* NamaLibraryClient.swift in Sources */,
 				100000000000000000000039 /* OAuthAuthorizationFeatureCommit.swift in Sources */,
 				100000000000000000000040 /* OAuthAuthorizationFeatureFlow.swift in Sources */,
+				100000000000000000000078 /* OAuthAuthorizationFeatureDiscard.swift in Sources */,
+				100000000000000000000071 /* HomeModels.swift in Sources */,
+				100000000000000000000072 /* HomeFeature.swift in Sources */,
+				100000000000000000000073 /* HomeView.swift in Sources */,
+				100000000000000000000074 /* HomePreviewFixtures.swift in Sources */,
+				100000000000000000000075 /* HomeResponseMapping.swift in Sources */,
+				100000000000000000000076 /* HomeFailureViews.swift in Sources */,
 				100000000000000000000047 /* PlaybackModels.swift in Sources */,
 				100000000000000000000048 /* NamaPlayer.swift in Sources */,
 				100000000000000000000052 /* NamaPlayer+EngineMapping.swift in Sources */,
@@ -493,6 +546,9 @@
 				100000000000000000000036 /* OAuthAuthorizationTransportTests.swift in Sources */,
 				100000000000000000000037 /* OAuthTokenStoreTests.swift in Sources */,
 				100000000000000000000038 /* OAuthAuthorizationTestSupport.swift in Sources */,
+				100000000000000000000069 /* HomeFeatureTests.swift in Sources */,
+				100000000000000000000070 /* HomeAdapterTests.swift in Sources */,
+				100000000000000000000077 /* HomeAdapterTestSupport.swift in Sources */,
 				100000000000000000000041 /* NamaPlayerTests.swift in Sources */,
 				100000000000000000000059 /* NamaPlayerSecurityTests.swift in Sources */,
 				100000000000000000000060 /* NamaPlayerHLSRequestSecurityTests.swift in Sources */,
@@ -577,6 +633,7 @@
 				"INFOPLIST_KEY_UISupportedInterfaceOrientations[sdk=iphonesimulator*]" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1.0;
@@ -615,6 +672,7 @@
 				"INFOPLIST_KEY_UISupportedInterfaceOrientations[sdk=iphonesimulator*]" = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "$(inherited) @executable_path/../Frameworks";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1.0;

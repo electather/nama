@@ -113,6 +113,38 @@ plugin_process_ids() {
   '
 }
 
+plugin_has_jellyfin_connection() {
+  local plugin_pid="$1"
+  "${runtime_compose[@]}" exec --no-TTY nama node --input-type=module --eval '
+    import { readdir, readFile, readlink } from "node:fs/promises";
+    const pluginPid = process.argv[1];
+    const socketInodes = new Set();
+    for (const entry of await readdir(`/proc/${pluginPid}/fd`)) {
+      try {
+        const target = await readlink(`/proc/${pluginPid}/fd/${entry}`);
+        const match = /^socket:\[(\d+)\]$/u.exec(target);
+        if (match?.[1] !== undefined) socketInodes.add(match[1]);
+      } catch {}
+    }
+    for (const table of ["/proc/net/tcp", "/proc/net/tcp6"]) {
+      const rows = (await readFile(table, "utf8")).trim().split("\n").slice(1);
+      for (const row of rows) {
+        const fields = row.trim().split(/\s+/u);
+        const remoteAddress = fields[2];
+        const inode = fields[9];
+        if (
+          inode !== undefined &&
+          remoteAddress?.toUpperCase().endsWith(":1FA0") === true &&
+          socketInodes.has(inode)
+        ) {
+          process.exit(0);
+        }
+      }
+    }
+    process.exit(1);
+  ' "${plugin_pid}"
+}
+
 for required_file in "${development_compose_file}" "${packaging_compose_file}" "${repository_root}/Dockerfile"; do
   test -f "${required_file}" || fail "required Docker packaging file is missing: ${required_file}"
 done
@@ -342,10 +374,26 @@ NAMA_DOCKER_PROVIDER_CONFIG="${provider_configuration}" \
   node "${repository_root}/scripts/check-docker-jellyfin.mjs"
 run_cli "${work_directory}/configuration-test.json" provider type test jellyfin --configuration "${provider_configuration}" --profile "${profile}"
 assert_json "${work_directory}/configuration-test.json" 'value.data.connection_test.status === "connected"'
+test -z "$(plugin_process_ids)" || fail "candidate plugin process did not retire"
 run_cli "${work_directory}/provider-create.json" provider instance create jellyfin --display-name "Packaging Proof" --configuration "${provider_configuration}" --profile "${profile}"
 provider_instance_id="$(node --input-type=module --eval 'import { readFileSync } from "node:fs"; const value = JSON.parse(readFileSync(process.argv[1], "utf8")); process.stdout.write(value.data.provider_instance.id);' "${work_directory}/provider-create.json")"
 test -n "${provider_instance_id}"
-test -z "$(plugin_process_ids)" || fail "candidate plugin process did not retire"
+initial_import_pids=""
+for _ in $(seq 1 100); do
+  initial_import_pids="$(plugin_process_ids)"
+  if [ -n "${initial_import_pids}" ]; then
+    break
+  fi
+  sleep 0.1
+done
+test -n "${initial_import_pids}" || fail "initial catalog plugin process did not start"
+for _ in $(seq 1 400); do
+  if [ -z "$(plugin_process_ids)" ]; then
+    break
+  fi
+  sleep 0.1
+done
+test -z "$(plugin_process_ids)" || fail "initial catalog plugin process did not retire"
 
 docker pause "${jellyfin_container_id}" >/dev/null
 HOME="${cli_home}" XDG_CONFIG_HOME="${cli_home}" APPDATA="${cli_home}" \
@@ -361,10 +409,23 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 test -n "${plugin_pids}" || fail "packaged Jellyfin child was not running"
+kill -0 "${instance_test_process}" || fail "provider operation exited before child interruption"
 plugin_pid_values=()
 while IFS= read -r value; do
   plugin_pid_values+=("${value}")
 done <<<"${plugin_pids}"
+request_reached_jellyfin=0
+for _ in $(seq 1 100); do
+  if plugin_has_jellyfin_connection "${plugin_pid_values[0]}"; then
+    request_reached_jellyfin=1
+    break
+  fi
+  kill -0 "${instance_test_process}" ||
+    fail "provider operation exited before reaching Jellyfin"
+  sleep 0.1
+done
+test "${request_reached_jellyfin}" = "1" ||
+  fail "provider operation did not reach Jellyfin before child interruption"
 "${runtime_compose[@]}" exec --no-TTY nama node --input-type=module --eval '
   for (const value of process.argv.slice(1)) process.kill(Number(value), "SIGKILL");
 ' "${plugin_pid_values[@]}"

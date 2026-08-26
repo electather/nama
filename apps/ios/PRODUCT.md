@@ -10,9 +10,9 @@ ios
 
 People who operate a private Nama deployment and need to connect an iPhone,
 iPad, Apple TV, or Mac from the device in front of them. Their immediate job is
-to discover, enter, or restore a Nama endpoint, verify that it is genuinely
-reachable through Nama's public contract, and understand whether the deployment
-is ready or still needs Administrator setup.
+to discover, enter, or restore a Nama endpoint, authorize scoped consumer
+access, and see stored canonical Movies and Shows in Home with honest loading,
+empty, preparation, content, refresh, and failure states.
 
 ## Product Purpose
 
@@ -20,9 +20,9 @@ Nama's universal Apple application provides one native, dependable client
 across Apple platforms. Its connection and authorization flow turns an
 explicitly discovered, manually entered, or restored transport address into a
 verified Nama endpoint and one endpoint-bound OAuth grant without guessing
-identity or weakening platform security. Media behavior remains unimplemented;
-success means the person always sees an honest, actionable connection or
-authorization state.
+identity or weakening platform security. Home then presents provider-neutral
+stored media through the public `LibraryService`. Library browsing, Search,
+Details, artwork loading, Watch State, and Playback remain unimplemented.
 
 ## Positioning
 

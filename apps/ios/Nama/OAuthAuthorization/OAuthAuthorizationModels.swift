@@ -172,6 +172,17 @@ nonisolated struct OAuthAuthorizationStatus: Equatable, Sendable {
   }
 }
 
+nonisolated enum OAuthAuthorizationDiscardResult: Equatable, Sendable {
+  case discarded
+  case storageUnavailable
+  case stale
+}
+
+nonisolated struct OAuthAuthorizationDiscardContext: Equatable, Sendable {
+  let authorization: OAuthAuthorizationStatus
+  let generation: UInt64
+}
+
 nonisolated enum OAuthTokenRecordError: Error, Equatable {
   case invalid
   case unsupportedVersion
@@ -184,6 +195,7 @@ final class OAuthAuthorizationSession {
   private(set) var generation: UInt64 = 0
   private(set) var failureEndpoint: NamaEndpoint?
   private(set) var failure: OAuthAuthorizationFailure?
+  private(set) var pendingDiscard: OAuthAuthorizationDiscardContext?
   @ObservationIgnored private var refreshOwner: UUID?
   @ObservationIgnored private var mutationOwner: UUID?
 
@@ -194,6 +206,7 @@ final class OAuthAuthorizationSession {
     }
     generation &+= 1
     authorization = status
+    pendingDiscard = nil
     failureEndpoint = nil
     failure = nil
   }
@@ -226,8 +239,45 @@ final class OAuthAuthorizationSession {
     }
     generation &+= 1
     authorization = nil
+    pendingDiscard = nil
     failureEndpoint = status.endpoint
     self.failure = failure
+  }
+
+  func deferDiscard(
+    _ status: OAuthAuthorizationStatus,
+    expectedGeneration: UInt64
+  ) -> OAuthAuthorizationDiscardContext? {
+    guard
+      generation == expectedGeneration,
+      authorization == status
+    else {
+      return nil
+    }
+    generation &+= 1
+    authorization = nil
+    let context = OAuthAuthorizationDiscardContext(
+      authorization: status,
+      generation: generation
+    )
+    pendingDiscard = context
+    failureEndpoint = status.endpoint
+    failure = .authorizationResetUnavailable
+    return context
+  }
+
+  func finishDiscard(_ context: OAuthAuthorizationDiscardContext) -> Bool {
+    guard
+      generation == context.generation,
+      pendingDiscard == context
+    else {
+      return false
+    }
+    generation &+= 1
+    pendingDiscard = nil
+    failureEndpoint = context.authorization.endpoint
+    failure = .authorizationExpired
+    return true
   }
 
   func claimRefresh(owner: UUID, generation: UInt64) -> Bool {
@@ -312,6 +362,7 @@ nonisolated protocol OAuthScopedAccessVerifying: Sendable {
 nonisolated enum OAuthAuthorizationFailure: Equatable, Sendable {
   case accessDenied
   case authorizationExpired
+  case authorizationResetUnavailable
   case invalidResponse
   case networkUnavailable
   case tokenStorageUnavailable

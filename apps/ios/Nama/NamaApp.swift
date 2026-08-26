@@ -6,7 +6,7 @@ struct NamaApp: App {
   private let endpointStore: UserDefaultsVerifiedEndpointStore
   private let oauthClient: BetterAuthOAuthAuthorizationClient
   private let tokenStore: KeychainOAuthTokenStore
-  private let scopedAccessVerifier: NamaOAuthScopedAccessVerifier
+  private let libraryClient: NamaLibraryClient
   private let authorizationSession: OAuthAuthorizationSession
 
   init() {
@@ -17,11 +17,15 @@ struct NamaApp: App {
     else {
       preconditionFailure("CFBundleShortVersionString must be configured")
     }
+    let keychainTokenStore = KeychainOAuthTokenStore()
     clientVersion = version
     endpointStore = UserDefaultsVerifiedEndpointStore()
     oauthClient = BetterAuthOAuthAuthorizationClient()
-    tokenStore = KeychainOAuthTokenStore()
-    scopedAccessVerifier = NamaOAuthScopedAccessVerifier(clientVersion: version)
+    tokenStore = keychainTokenStore
+    libraryClient = NamaLibraryClient(
+      clientVersion: version,
+      tokenStore: keychainTokenStore
+    )
     authorizationSession = OAuthAuthorizationSession()
   }
 
@@ -32,7 +36,7 @@ struct NamaApp: App {
         endpointStore: endpointStore,
         oauthClient: oauthClient,
         tokenStore: tokenStore,
-        scopedAccessVerifier: scopedAccessVerifier,
+        libraryClient: libraryClient,
         authorizationSession: authorizationSession
       )
     }
@@ -43,13 +47,14 @@ private struct ConnectionWindow: View {
   @Environment(\.scenePhase) private var scenePhase
   @State private var connection: ConnectionFeature
   @State private var authorization: OAuthAuthorizationFeature
+  @State private var home: HomeFeature
 
   init(
     clientVersion: String,
     endpointStore: any VerifiedEndpointStoring,
     oauthClient: any OAuthAuthorizationClient,
     tokenStore: any OAuthTokenStoring,
-    scopedAccessVerifier: any OAuthScopedAccessVerifying,
+    libraryClient: NamaLibraryClient,
     authorizationSession: OAuthAuthorizationSession
   ) {
     _connection = State(
@@ -63,19 +68,22 @@ private struct ConnectionWindow: View {
       initialValue: OAuthAuthorizationFeature(
         client: oauthClient,
         tokenStore: tokenStore,
-        scopedAccessVerifier: scopedAccessVerifier,
+        scopedAccessVerifier: libraryClient,
         session: authorizationSession
       )
     )
+    _home = State(initialValue: HomeFeature(loader: libraryClient))
   }
 
   var body: some View {
     Group {
       if case .ready(let endpoint) = connection.state {
-        OAuthAuthorizationView(
-          feature: authorization,
+        AuthorizedConsumerRootView(
+          authorization: authorization,
+          home: home,
           endpoint: endpoint
         ) {
+          home.deactivate()
           await connection.changeEndpoint()
         }
       } else {
@@ -97,4 +105,83 @@ private struct ConnectionWindow: View {
       }
     }
   }
+}
+
+private struct AuthorizedConsumerRootView: View {
+  @Environment(\.scenePhase) private var scenePhase
+  @State private var retryGeneration = 0
+
+  let authorization: OAuthAuthorizationFeature
+  let home: HomeFeature
+  let endpoint: NamaEndpoint
+  let changeEndpoint: @MainActor () async -> Void
+
+  var body: some View {
+    Group {
+      if let homeAuthorization {
+        HomeView(
+          feature: home,
+          authorization: homeAuthorization,
+          changeEndpoint: changeEndpoint
+        ) {
+          await discardRejectedAuthorization(for: homeAuthorization)
+        }
+      } else {
+        OAuthAuthorizationView(
+          feature: authorization,
+          endpoint: endpoint,
+          changeEndpoint: changeEndpoint
+        ) {
+          retryGeneration &+= 1
+        }
+      }
+    }
+    .task(
+      id: OAuthAuthorizationTaskID(
+        endpoint: endpoint,
+        retryGeneration: retryGeneration,
+        isActive: scenePhase == .active
+      )
+    ) {
+      guard scenePhase == .active else {
+        return
+      }
+      await authorization.run(endpoint)
+    }
+  }
+
+  private func discardRejectedAuthorization(
+    for authorizationIdentity: HomeAuthorizationIdentity
+  ) async {
+    guard
+      case .authorized(let rejected) = authorization.state,
+      authorization.session.generation == authorizationIdentity.generation
+    else {
+      return
+    }
+    switch await authorization.discardRejectedAuthorization(
+      rejected,
+      generation: authorizationIdentity.generation
+    ) {
+    case .discarded:
+      retryGeneration &+= 1
+
+    case .storageUnavailable, .stale:
+      return
+    }
+  }
+
+  private var homeAuthorization: HomeAuthorizationIdentity? {
+    HomeAuthorizationIdentity(
+      currentEndpoint: endpoint,
+      authorizationState: authorization.state,
+      generation: authorization.session.generation
+    )
+  }
+}
+
+private struct OAuthAuthorizationTaskID: Hashable {
+  let endpoint: NamaEndpoint
+  let retryGeneration: Int
+  let isActive: Bool
 }
