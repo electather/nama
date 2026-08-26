@@ -10,6 +10,8 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
 
   private static let apiErrorDomain = "nama.api.v1"
   private static let requestTimeout: TimeInterval = 10
+  private static let canonicalRequestIDLength = 36
+  private static let nanosecondsPerSecond: Int32 = 1_000_000_000
 
   init(
     clientVersion: String,
@@ -102,8 +104,8 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
   private static func isCatalogNotReady(_ error: ConnectError) -> Bool {
     let errorInfo: [Google_Rpc_ErrorInfo] = error.unpackedDetails()
     return error.code == .unavailable
-      && errorInfo.contains {
-        $0.domain == Self.apiErrorDomain && $0.reason == "CATALOG_NOT_READY"
+      && errorInfo.contains { detail in
+        detail.domain == Self.apiErrorDomain && detail.reason == "CATALOG_NOT_READY"
       }
   }
 
@@ -128,17 +130,13 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
 
   private static func mapHomeFailure(_ error: ConnectError) -> HomeLoadingFailure {
     let errorInfo: [Google_Rpc_ErrorInfo] = error.unpackedDetails()
-    if error.code == .unavailable,
-      errorInfo.contains {
-        $0.domain == Self.apiErrorDomain && $0.reason == "CATALOG_NOT_READY"
-      }
-    {
+    if isCatalogNotReady(error) {
       return .catalogNotReady(retryAfterSeconds: retryDelaySeconds(error))
     }
     if error.code == .failedPrecondition,
-      errorInfo.contains {
-        $0.domain == Self.apiErrorDomain && $0.reason == "CLIENT_VERSION_UNSUPPORTED"
-      }
+      errorInfo.contains(where: { detail in
+        detail.domain == Self.apiErrorDomain && detail.reason == "CLIENT_VERSION_UNSUPPORTED"
+      })
     {
       return .incompatible
     }
@@ -170,7 +168,7 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
       let detail = retryInfo.first(where: \.hasRetryDelay),
       detail.retryDelay.seconds >= 0,
       detail.retryDelay.nanos >= 0,
-      detail.retryDelay.nanos < 1_000_000_000
+      detail.retryDelay.nanos < Self.nanosecondsPerSecond
     else {
       return nil
     }
@@ -183,7 +181,17 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
 
   private static func requestID(_ error: ConnectError) -> String? {
     let requestInfo: [Google_Rpc_RequestInfo] = error.unpackedDetails()
-    return requestInfo.lazy.map(\.requestID).first { !$0.isEmpty }
+    return requestInfo.lazy.map(\.requestID).first(where: isCanonicalRequestID)
+  }
+
+  private static func isCanonicalRequestID(_ value: String) -> Bool {
+    guard
+      value.utf8.count == Self.canonicalRequestIDLength,
+      let normalized = UUID(uuidString: value)?.uuidString
+    else {
+      return false
+    }
+    return normalized.caseInsensitiveCompare(value) == .orderedSame
   }
 
   private static var currentPlatform: String {

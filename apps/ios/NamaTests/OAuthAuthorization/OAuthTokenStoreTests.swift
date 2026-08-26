@@ -30,10 +30,54 @@ struct OAuthTokenStoreTests {
         == (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String)
     )
     #expect(attributes[kSecAttrSynchronizable] as? Bool == false)
-    let storedData = try #require(attributes[kSecValueData] as? Data)
-    let decoder = JSONDecoder()
-    decoder.dateDecodingStrategy = .iso8601
-    #expect(try decoder.decode(EndpointBoundOAuthTokenRecord.self, from: storedData) == record)
+    _ = try #require(attributes[kSecValueData] as? Data)
+  }
+
+  @Test("fractional expiry round-trips without changing authorization identity")
+  func fractionalExpiryRoundTrip() async throws {
+    let record = EndpointBoundOAuthTokenRecord(
+      endpoint: try NamaEndpoint("https://nama.example.test"),
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      accessTokenExpiresAt: Date(timeIntervalSince1970: 4_600.125),
+      scope: OAuthConfiguration.consumerScopes,
+      tokenType: "Bearer"
+    )
+    let writerRecorder = OAuthKeychainRecorder(updateStatus: errSecItemNotFound)
+    let writer = KeychainOAuthTokenStore(keychain: writerRecorder.access)
+    try await writer.replace(with: record)
+    let storedData = try #require(
+      writerRecorder.events.last?.attributes[kSecValueData] as? Data
+    )
+    let readerRecorder = OAuthKeychainRecorder(
+      updateStatus: errSecSuccess,
+      loadResult: (errSecSuccess, storedData)
+    )
+    let reader = KeychainOAuthTokenStore(keychain: readerRecorder.access)
+
+    #expect(await reader.load() == .record(record))
+  }
+
+  @Test("legacy ISO expiry records remain restorable")
+  func legacyISOExpiryRecord() async throws {
+    let record = EndpointBoundOAuthTokenRecord(
+      endpoint: try NamaEndpoint("https://nama.example.test"),
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      accessTokenExpiresAt: Date(timeIntervalSince1970: 4_600),
+      scope: OAuthConfiguration.consumerScopes,
+      tokenType: "Bearer"
+    )
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    let storedData = try encoder.encode(record)
+    let recorder = OAuthKeychainRecorder(
+      updateStatus: errSecSuccess,
+      loadResult: (errSecSuccess, storedData)
+    )
+    let store = KeychainOAuthTokenStore(keychain: recorder.access)
+
+    #expect(await store.load() == .record(record))
   }
 
   @Test("damaged bytes are durably quarantined before the active item is deleted")

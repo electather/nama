@@ -3,6 +3,10 @@ import Testing
 
 @testable import Nama
 
+private enum HomeFeatureFixture {
+  static let tokenExpiry: TimeInterval = 4_600
+}
+
 @Suite("Home feature state")
 @MainActor
 struct HomeFeatureTests {
@@ -106,10 +110,11 @@ struct HomeFeatureTests {
     )
 
     await eventually {
-      feature.state == .refreshFailed(
-        confirmed,
-        .catalogNotReady(retryAfterSeconds: 9)
-      )
+      feature.state
+        == .refreshFailed(
+          confirmed,
+          .catalogNotReady(retryAfterSeconds: 9)
+        )
     }
   }
 
@@ -118,17 +123,17 @@ struct HomeFeatureTests {
     let loader = CancellationHomeLoader()
     let feature = HomeFeature(loader: loader)
 
-    feature.activate(try homeAuthorization(endpoint: "https://first.example.test", generation: 4))
+    feature.activate(try homeAuthorization(generation: 4, endpoint: "https://first.example.test"))
     await eventually { await loader.callCount == 1 }
 
-    feature.activate(try homeAuthorization(endpoint: "https://second.example.test", generation: 5))
+    feature.activate(try homeAuthorization(generation: 5, endpoint: "https://second.example.test"))
     await eventually {
       let callCount = await loader.callCount
       let cancellationCount = await loader.cancellationCount
       return callCount == 2 && cancellationCount == 1
     }
 
-    feature.activate(try homeAuthorization(endpoint: "https://second.example.test", generation: 6))
+    feature.activate(try homeAuthorization(generation: 6, endpoint: "https://second.example.test"))
     await eventually {
       let callCount = await loader.callCount
       let cancellationCount = await loader.cancellationCount
@@ -250,12 +255,12 @@ private actor CancellationHomeLoader: HomeLoading {
 }
 
 private func homeAuthorization(
-  endpoint: String = "https://nama.example.test",
-  generation: UInt64
+  generation: UInt64,
+  endpoint: String = "https://nama.example.test"
 ) throws -> HomeAuthorizationIdentity {
   HomeAuthorizationIdentity(
     endpoint: try NamaEndpoint(endpoint),
-    accessTokenExpiresAt: Date(timeIntervalSince1970: 4_600),
+    accessTokenExpiresAt: Date(timeIntervalSince1970: HomeFeatureFixture.tokenExpiry),
     generation: generation
   )
 }

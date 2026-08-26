@@ -11,6 +11,7 @@ nonisolated private enum OAuthTransportFixture {
   static let successfulHTTPStatus = 200
   static let unavailableHTTPStatus = 500
   static let unimplementedHTTPStatus = 501
+  static let tokenExpiry: TimeInterval = 4_600
 }
 
 @Suite("OAuth authorization transports", .serialized)
@@ -159,7 +160,7 @@ private func oauthTransportTokenRecord() throws -> EndpointBoundOAuthTokenRecord
     endpoint: try NamaEndpoint("https://nama.example.test"),
     accessToken: "access-token-secret",
     refreshToken: "refresh-token-secret",
-    accessTokenExpiresAt: Date(timeIntervalSince1970: 4_600),
+    accessTokenExpiresAt: Date(timeIntervalSince1970: OAuthTransportFixture.tokenExpiry),
     scope: OAuthConfiguration.consumerScopes,
     tokenType: "Bearer"
   )

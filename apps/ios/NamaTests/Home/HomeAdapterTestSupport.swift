@@ -3,6 +3,8 @@ import Foundation
 @testable import Nama
 
 nonisolated enum HomeTransportFixture {
+  static let overlongTitleLength = 129
+  static let oversizedHomeItemCount = 51
   static let successfulHTTPStatus = 200
   static let unavailableHTTPStatus = 503
   static let homeResponse = #"""
@@ -97,7 +99,7 @@ nonisolated enum HomeTransportFixture {
         "playability": "PLAYABILITY_PLAYABLE"
       }
       """#
-    let items = Array(repeating: item, count: 51).joined(separator: ",")
+    let items = Array(repeating: item, count: oversizedHomeItemCount).joined(separator: ",")
     return """
       {
         "sections": [
@@ -123,6 +125,27 @@ nonisolated enum HomeTransportFixture {
       ]
     }
     """#
+  static let validRequestInfoValue = "CiQyZjFjNWY0NC02YTliLTRkMmUtOGM3MC02MmRmNjA3YzJlZmE="
+  static let unsafeRequestInfoValue = "Cg51bnNhZmUKcmVxdWVzdA=="
+  static let overlongRequestInfoValue =
+    "CoEBYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYW"
+    + "FhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFh"
+
+  static func unavailableResponse(requestInfoValue: String) -> String {
+    """
+    {
+      "code": "unavailable",
+      "message": "temporarily unavailable",
+      "details": [
+        {
+          "type": "google.rpc.RequestInfo",
+          "value": "\(requestInfoValue)"
+        }
+      ]
+    }
+    """
+  }
+
   static let malformedArtworkLocaleResponse = #"""
     {
       "sections": [
@@ -151,7 +174,7 @@ nonisolated enum HomeTransportFixture {
     }
     """#
   static let overlongCombiningTitleResponse: String = {
-    let title = String(repeating: "e\u{301}", count: 129)
+    let title = String(repeating: "e\u{301}", count: overlongTitleLength)
     return """
       {
         "sections": [

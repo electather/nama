@@ -56,13 +56,7 @@ struct OAuthAuthorizationFeatureTests {
     #expect(
       feature.state == .authorized(OAuthAuthorizationStatus(record: expectedRecord))
     )
-    #expect(
-      HomeAuthorizationIdentity(
-        currentEndpoint: endpoint,
-        authorizationState: feature.state,
-        generation: feature.session.generation
-      ) != nil
-    )
+    assertHomeAuthorizationIdentity(feature, endpoint: endpoint)
   }
 
   @Test("a token rejected by the scoped consumer call is never committed")
@@ -252,5 +246,19 @@ private func replacementClient(for endpoint: NamaEndpoint) -> InMemoryOAuthAutho
       interval: ReplacementFixture.pollingInterval
     ),
     pollResults: [.authorized(bundle)]
+  )
+}
+
+@MainActor
+private func assertHomeAuthorizationIdentity(
+  _ feature: OAuthAuthorizationFeature,
+  endpoint: NamaEndpoint
+) {
+  #expect(
+    HomeAuthorizationIdentity(
+      currentEndpoint: endpoint,
+      authorizationState: feature.state,
+      generation: feature.session.generation
+    ) != nil
   )
 }

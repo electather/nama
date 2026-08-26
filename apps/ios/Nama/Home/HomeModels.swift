@@ -114,7 +114,7 @@ nonisolated enum HomeDynamicRange: Equatable, Sendable {
 }
 
 nonisolated enum HomeSpatialAudioFormat: Equatable, Sendable {
-  case none
+  case nonSpatial
   case dolbyAtmos
   case dtsX
   case unknown

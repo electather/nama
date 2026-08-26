@@ -55,13 +55,7 @@ struct OAuthAuthorizationLifecycleTests {
     #expect(
       feature.state == .authorized(OAuthAuthorizationStatus(record: expected))
     )
-    #expect(
-      HomeAuthorizationIdentity(
-        currentEndpoint: endpoint,
-        authorizationState: feature.state,
-        generation: feature.session.generation
-      ) != nil
-    )
+    assertHomeAuthorizationIdentity(feature, endpoint: endpoint)
   }
 
   @Test("rejected Home authorization retries exact bundle removal")
@@ -84,16 +78,14 @@ struct OAuthAuthorizationLifecycleTests {
       client: InMemoryOAuthAuthorizationClient(deviceAuthorization: nil, pollResults: []),
       tokenStore: store,
       scopedAccessVerifier: InMemoryOAuthScopedAccessVerifier(),
-      session: session,
-      now: { Date(timeIntervalSince1970: 1_000) }
-    )
+      session: session
+    ) { Date(timeIntervalSince1970: 1_000) }
     let otherWindow = OAuthAuthorizationFeature(
       client: InMemoryOAuthAuthorizationClient(deviceAuthorization: nil, pollResults: []),
       tokenStore: store,
       scopedAccessVerifier: InMemoryOAuthScopedAccessVerifier(),
-      session: session,
-      now: { Date(timeIntervalSince1970: 1_000) }
-    )
+      session: session
+    ) { Date(timeIntervalSince1970: 1_000) }
     await feature.authorize(endpoint)
     await otherWindow.authorize(endpoint)
     let rejected = try #require(session.authorization)
@@ -129,9 +121,8 @@ struct OAuthAuthorizationLifecycleTests {
     let feature = OAuthAuthorizationFeature(
       client: InMemoryOAuthAuthorizationClient(deviceAuthorization: nil, pollResults: []),
       tokenStore: store,
-      scopedAccessVerifier: InMemoryOAuthScopedAccessVerifier(),
-      now: { Date(timeIntervalSince1970: 1_000) }
-    )
+      scopedAccessVerifier: InMemoryOAuthScopedAccessVerifier()
+    ) { Date(timeIntervalSince1970: 1_000) }
     await feature.authorize(endpoint)
     let rejected = try #require(feature.session.authorization)
     let generation = feature.session.generation
@@ -147,7 +138,11 @@ struct OAuthAuthorizationLifecycleTests {
     #expect(await store.quarantined == [damaged])
     #expect(feature.session.authorization == nil)
   }
+}
 
+@Suite("OAuth authorization refresh lifecycle")
+@MainActor
+struct OAuthAuthorizationRefreshLifecycleTests {
   @Test("an active authorization refreshes when its access token reaches expiry")
   func activeAuthorizationRefreshesAtExpiry() async throws {
     let endpoint = try NamaEndpoint("https://nama.example.test")
@@ -197,13 +192,7 @@ struct OAuthAuthorizationLifecycleTests {
     #expect(
       feature.state == .authorized(OAuthAuthorizationStatus(record: expected))
     )
-    #expect(
-      HomeAuthorizationIdentity(
-        currentEndpoint: endpoint,
-        authorizationState: feature.state,
-        generation: feature.session.generation
-      ) != nil
-    )
+    assertHomeAuthorizationIdentity(feature, endpoint: endpoint)
   }
 
   @Test("window-local tasks share active authorization without canceling another refresh loop")
@@ -337,5 +326,19 @@ private func successfulRefreshClient() -> InMemoryOAuthAuthorizationClient {
         tokenType: "Bearer"
       )
     )
+  )
+}
+
+@MainActor
+private func assertHomeAuthorizationIdentity(
+  _ feature: OAuthAuthorizationFeature,
+  endpoint: NamaEndpoint
+) {
+  #expect(
+    HomeAuthorizationIdentity(
+      currentEndpoint: endpoint,
+      authorizationState: feature.state,
+      generation: feature.session.generation
+    ) != nil
   )
 }

@@ -1,5 +1,28 @@
 import SwiftUI
 
+private enum HomeLayout {
+  static let cardContentSpacing: CGFloat = 8
+  static let cardCornerRadius: CGFloat = 12
+  static let cardSpacing: CGFloat = 16
+
+  #if os(tvOS)
+    static let cardWidth: CGFloat = 300
+  #else
+    static let cardWidth: CGFloat = 148
+  #endif
+
+  static let contentPadding: CGFloat = 24
+  static let loadingCardCount = 5
+  static let metadataSpacing: CGFloat = 6
+  static let posterHeightUnits: CGFloat = 3
+  static let posterWidthUnits: CGFloat = 2
+  static let posterAspectRatio = posterWidthUnits / posterHeightUnits
+  static let sectionSpacing: CGFloat = 32
+  static let shelfSpacing: CGFloat = 12
+  static let sourceLabelLineLimit = 1
+  static let titleLineLimit = 3
+}
+
 struct HomeView: View {
   @Environment(\.scenePhase) private var scenePhase
 
@@ -59,12 +82,12 @@ struct HomePresentationView: View {
       .navigationTitle("Home")
       .toolbar {
         ToolbarItem(placement: .primaryAction) {
-          if state.canRefresh {
+          if homeCanRefresh(state) {
             Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
-              .disabled(state.isRefreshing)
+              .disabled(homeIsRefreshing(state))
           }
         }
-        ToolbarItem(placement: .secondaryAction) {
+        ToolbarItem(placement: .automatic) {
           Button("Change Endpoint", systemImage: "network") {
             Task {
               await changeEndpoint()
@@ -144,32 +167,32 @@ private struct HomeStateContent: View {
 private struct HomeLoadingView: View {
   var body: some View {
     ScrollView {
-      LazyVStack(alignment: .leading, spacing: 32) {
+      LazyVStack(alignment: .leading, spacing: HomeLayout.sectionSpacing) {
         ProgressView("Loading Home…")
         HomeLoadingShelf(title: "Movies")
         HomeLoadingShelf(title: "Shows")
       }
-      .padding(24)
+      .padding(HomeLayout.contentPadding)
     }
   }
 }
 
 private struct HomeLoadingShelf: View {
-  @ScaledMetric(relativeTo: .body) private var cardWidth: CGFloat = 148
+  @ScaledMetric(relativeTo: .body) private var cardWidth = HomeLayout.cardWidth
 
   let title: LocalizedStringKey
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: HomeLayout.shelfSpacing) {
       Text(title)
         .font(.title2.bold())
       ScrollView(.horizontal) {
-        LazyHStack(alignment: .top, spacing: 16) {
-          ForEach(0..<5, id: \.self) { _ in
-            VStack(alignment: .leading, spacing: 8) {
-              RoundedRectangle(cornerRadius: 12)
+        LazyHStack(alignment: .top, spacing: HomeLayout.cardSpacing) {
+          ForEach(0..<HomeLayout.loadingCardCount, id: \.self) { _ in
+            VStack(alignment: .leading, spacing: HomeLayout.cardContentSpacing) {
+              RoundedRectangle(cornerRadius: HomeLayout.cardCornerRadius)
                 .fill(.quaternary)
-                .aspectRatio(2 / 3, contentMode: .fit)
+                .aspectRatio(HomeLayout.posterAspectRatio, contentMode: .fit)
               Text("Loading title")
                 .font(.headline)
               Text("Loading details")
@@ -212,7 +235,7 @@ private struct HomeContentView: View {
 
   var body: some View {
     ScrollView {
-      LazyVStack(alignment: .leading, spacing: 32) {
+      LazyVStack(alignment: .leading, spacing: HomeLayout.sectionSpacing) {
         if let refreshFailure {
           HomeRefreshFailureView(
             failure: refreshFailure,
@@ -230,7 +253,7 @@ private struct HomeContentView: View {
           HomeShelfView(shelf: shows)
         }
       }
-      .padding(24)
+      .padding(HomeLayout.contentPadding)
     }
   }
 }
@@ -239,11 +262,11 @@ private struct HomeShelfView: View {
   let shelf: HomeShelf
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: HomeLayout.shelfSpacing) {
       Text(verbatim: shelf.title)
         .font(.title2.bold())
       ScrollView(.horizontal) {
-        LazyHStack(alignment: .top, spacing: 16) {
+        LazyHStack(alignment: .top, spacing: HomeLayout.cardSpacing) {
           ForEach(shelf.items) { item in
             HomeMediaCard(item: item)
           }
@@ -255,15 +278,15 @@ private struct HomeShelfView: View {
 }
 
 private struct HomeMediaCard: View {
-  @ScaledMetric(relativeTo: .body) private var cardWidth: CGFloat = 148
+  @ScaledMetric(relativeTo: .body) private var cardWidth = HomeLayout.cardWidth
 
   let item: HomeMediaSummary
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      RoundedRectangle(cornerRadius: 12)
+    VStack(alignment: .leading, spacing: HomeLayout.cardContentSpacing) {
+      RoundedRectangle(cornerRadius: HomeLayout.cardCornerRadius)
         .fill(.quaternary)
-        .aspectRatio(2 / 3, contentMode: .fit)
+        .aspectRatio(HomeLayout.posterAspectRatio, contentMode: .fit)
         .overlay {
           Image(systemName: item.kind == .movie ? "film" : "tv")
             .font(.title)
@@ -272,14 +295,14 @@ private struct HomeMediaCard: View {
         }
       Text(verbatim: item.title)
         .font(.headline)
-        .lineLimit(3, reservesSpace: true)
-      HStack(spacing: 6) {
+        .lineLimit(HomeLayout.titleLineLimit, reservesSpace: true)
+      HStack(spacing: HomeLayout.metadataSpacing) {
         if let releaseYear = item.releaseYear {
           Text(releaseYear, format: .number.grouping(.never))
         }
         if let label = item.defaultSource?.label {
           Text(verbatim: label)
-            .lineLimit(1)
+            .lineLimit(HomeLayout.sourceLabelLineLimit)
         }
       }
       .font(.subheadline)
@@ -311,24 +334,22 @@ private struct HomePlayabilityLabel: View {
   }
 }
 
-private extension HomeState {
-  var canRefresh: Bool {
-    switch self {
-    case .empty, .content, .refreshing:
-      true
-    case .refreshFailed(_, .authorizationUnavailable):
-      false
-    case .refreshFailed(_, _):
-      true
-    case .loading, .catalogNotReady, .failed:
-      false
-    }
-  }
+private func homeCanRefresh(_ state: HomeState) -> Bool {
+  switch state {
+  case .empty, .content, .refreshing:
+    true
 
-  var isRefreshing: Bool {
-    if case .refreshing = self {
-      return true
-    }
-    return false
+  case .refreshFailed(_, let failure):
+    failure != .authorizationUnavailable
+
+  case .loading, .catalogNotReady, .failed:
+    false
   }
+}
+
+private func homeIsRefreshing(_ state: HomeState) -> Bool {
+  if case .refreshing = state {
+    return true
+  }
+  return false
 }

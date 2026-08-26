@@ -102,11 +102,21 @@ actor KeychainOAuthTokenStore: OAuthTokenStoring {
       return .unavailable
     }
     do {
-      let decoder = JSONDecoder()
-      decoder.dateDecodingStrategy = .iso8601
-      return .record(try decoder.decode(EndpointBoundOAuthTokenRecord.self, from: data))
+      return .record(try Self.decodeRecord(data))
     } catch {
       return .damaged(data)
+    }
+  }
+
+  private static func decodeRecord(_ data: Data) throws -> EndpointBoundOAuthTokenRecord {
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .secondsSince1970
+    do {
+      return try decoder.decode(EndpointBoundOAuthTokenRecord.self, from: data)
+    } catch {
+      let legacyDecoder = JSONDecoder()
+      legacyDecoder.dateDecodingStrategy = .iso8601
+      return try legacyDecoder.decode(EndpointBoundOAuthTokenRecord.self, from: data)
     }
   }
 
@@ -114,7 +124,7 @@ actor KeychainOAuthTokenStore: OAuthTokenStoring {
     let data: Data
     do {
       let encoder = JSONEncoder()
-      encoder.dateEncodingStrategy = .iso8601
+      encoder.dateEncodingStrategy = .secondsSince1970
       data = try encoder.encode(candidate)
     } catch {
       throw OAuthTokenStoreError.encodingFailed

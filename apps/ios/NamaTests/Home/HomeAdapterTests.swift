@@ -3,6 +3,13 @@ import Testing
 
 @testable import Nama
 
+private enum HomeAdapterExpected {
+  static let releaseYear: UInt32 = 2_026
+  static let runtimeSeconds: Int64 = 7_200
+  static let runtime: Duration = .seconds(runtimeSeconds)
+  static let tokenExpiry: TimeInterval = 4_600
+}
+
 @Suite("Home LibraryService adapter", .serialized)
 @MainActor
 struct HomeAdapterTests {
@@ -98,6 +105,52 @@ struct HomeAdapterTests {
     }
   }
 
+  @Test("a canonical request ID is exposed for support")
+  func canonicalRequestIDIsExposed() async throws {
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.unavailableHTTPStatus,
+      body: HomeTransportFixture.unavailableResponse(
+        requestInfoValue: HomeTransportFixture.validRequestInfoValue
+      )
+    )
+    defer { HomeConnectStubURLProtocol.reset() }
+    let record = try homeTokenRecord()
+    let client = homeClient(record: record, platform: "ios")
+
+    await #expect(
+      throws: HomeLoadingFailure.namaUnavailable(
+        requestID: "2f1c5f44-6a9b-4d2e-8c70-62df607c2efa"
+      )
+    ) {
+      try await client.load(
+        for: homeAuthorization(record: record, generation: 15)
+      )
+    }
+  }
+
+  @Test(
+    "unsafe request IDs are omitted",
+    arguments: [
+      HomeTransportFixture.unsafeRequestInfoValue,
+      HomeTransportFixture.overlongRequestInfoValue,
+    ]
+  )
+  func unsafeRequestIDIsOmitted(requestInfoValue: String) async throws {
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.unavailableHTTPStatus,
+      body: HomeTransportFixture.unavailableResponse(requestInfoValue: requestInfoValue)
+    )
+    defer { HomeConnectStubURLProtocol.reset() }
+    let record = try homeTokenRecord()
+    let client = homeClient(record: record, platform: "ios")
+
+    await #expect(throws: HomeLoadingFailure.namaUnavailable(requestID: nil)) {
+      try await client.load(
+        for: homeAuthorization(record: record, generation: 16)
+      )
+    }
+  }
+
   @Test("a changed authorization record cannot send the previous access token")
   func changedAuthorizationRejectsOldRecord() async throws {
     HomeConnectStubURLProtocol.reset()
@@ -145,8 +198,8 @@ private func assertHomeSnapshot(_ snapshot: HomeSnapshot) throws {
   #expect(snapshot.shows == nil)
   let item = try #require(snapshot.movies?.items.first)
   #expect(item.identity == HomeMediaIdentity("movie-2"))
-  #expect(item.releaseYear == 2026)
-  #expect(item.runtime == .seconds(7_200))
+  #expect(item.releaseYear == HomeAdapterExpected.releaseYear)
+  #expect(item.runtime == HomeAdapterExpected.runtime)
   #expect(item.artwork.first?.identity == HomeArtworkIdentity("artwork-2"))
   #expect(item.artwork.first?.role == .poster)
   #expect(item.artwork.first?.textPresence == .textless)
@@ -172,7 +225,7 @@ private func homeTokenRecord() throws -> EndpointBoundOAuthTokenRecord {
     endpoint: try NamaEndpoint("https://nama.example.test"),
     accessToken: "access-token-secret",
     refreshToken: "refresh-token-secret",
-    accessTokenExpiresAt: Date(timeIntervalSince1970: 4_600),
+    accessTokenExpiresAt: Date(timeIntervalSince1970: HomeAdapterExpected.tokenExpiry),
     scope: OAuthConfiguration.consumerScopes,
     tokenType: "Bearer"
   )

@@ -2,6 +2,23 @@
   import SwiftUI
 
   private enum HomePreviewFixtures {
+    static let catalogRetrySeconds = 9
+    static let movieRuntimeSeconds: Int64 = 7_200
+    static let movieRuntime: Duration = .seconds(movieRuntimeSeconds)
+    static let posterHeight: UInt32 = 1_500
+    static let posterWidth: UInt32 = 1_000
+    static let releaseYear: UInt32 = 2_026
+    static let videoHeight: UInt32 = 2_160
+    static let videoWidth: UInt32 = 3_840
+
+    static func noAction() {
+      // Preview controls intentionally have no side effects.
+    }
+
+    static func noAsyncAction() async {
+      await Task.yield()
+    }
+
     static let longTitle = HomeSnapshot(
       movies: HomeShelf(
         identity: HomeShelfIdentity("movies"),
@@ -13,7 +30,12 @@
             kind: .movie,
             title: "The Incredibly Long Movie Title That Still Needs a Calm, Readable Home"
           ),
-          item(identity: "movie-unavailable", kind: .movie, title: "Quiet Horizon", playable: false),
+          item(
+            identity: "movie-unavailable",
+            kind: .movie,
+            title: "Quiet Horizon",
+            playable: false
+          ),
         ]
       ),
       shows: HomeShelf(
@@ -37,20 +59,11 @@
         identity: HomeMediaIdentity(identity),
         kind: kind,
         title: title,
-        releaseYear: 2026,
-        runtime: kind == .movie ? .seconds(7_200) : nil,
+        releaseYear: releaseYear,
+        runtime: kind == .movie ? movieRuntime : nil,
         contentRating: nil,
         primaryGenre: "Drama",
-        artwork: [
-          HomeArtworkReference(
-            identity: HomeArtworkIdentity("artwork-\(identity)"),
-            role: .poster,
-            width: 1_000,
-            height: 1_500,
-            locale: nil,
-            textPresence: .unknown
-          )
-        ],
+        artwork: [artwork(identity: identity)],
         playability: playable ? .playable : .temporarilyUnavailable,
         defaultSource: playable
           ? HomeSourceSummary(
@@ -61,8 +74,8 @@
             container: "mkv",
             videoQuality: HomeVideoQuality(
               codec: "hevc",
-              width: 3_840,
-              height: 2_160,
+              width: videoWidth,
+              height: videoHeight,
               dynamicRange: .hdr10
             ),
             audioQuality: nil
@@ -70,75 +83,87 @@
           : nil
       )
     }
+    private static func artwork(identity: String) -> HomeArtworkReference {
+      HomeArtworkReference(
+        identity: HomeArtworkIdentity("artwork-\(identity)"),
+        role: .poster,
+        width: posterWidth,
+        height: posterHeight,
+        locale: nil,
+        textPresence: .unknown
+      )
+    }
   }
 
   #Preview("Home — Loading") {
     HomePresentationView(
       state: .loading,
-      retry: {},
-      refresh: {},
-      changeEndpoint: {},
-      reauthorize: {}
+      retry: HomePreviewFixtures.noAction,
+      refresh: HomePreviewFixtures.noAction,
+      changeEndpoint: HomePreviewFixtures.noAsyncAction,
+      reauthorize: HomePreviewFixtures.noAsyncAction
     )
   }
 
   #Preview("Home — Empty") {
     HomePresentationView(
       state: .empty,
-      retry: {},
-      refresh: {},
-      changeEndpoint: {},
-      reauthorize: {}
+      retry: HomePreviewFixtures.noAction,
+      refresh: HomePreviewFixtures.noAction,
+      changeEndpoint: HomePreviewFixtures.noAsyncAction,
+      reauthorize: HomePreviewFixtures.noAsyncAction
     )
   }
 
   #Preview("Home — Long title and content") {
     HomePresentationView(
       state: .content(HomePreviewFixtures.longTitle),
-      retry: {},
-      refresh: {},
-      changeEndpoint: {},
-      reauthorize: {}
+      retry: HomePreviewFixtures.noAction,
+      refresh: HomePreviewFixtures.noAction,
+      changeEndpoint: HomePreviewFixtures.noAsyncAction,
+      reauthorize: HomePreviewFixtures.noAsyncAction
     )
   }
 
   #Preview("Home — Refreshing") {
     HomePresentationView(
       state: .refreshing(HomePreviewFixtures.longTitle),
-      retry: {},
-      refresh: {},
-      changeEndpoint: {},
-      reauthorize: {}
+      retry: HomePreviewFixtures.noAction,
+      refresh: HomePreviewFixtures.noAction,
+      changeEndpoint: HomePreviewFixtures.noAsyncAction,
+      reauthorize: HomePreviewFixtures.noAsyncAction
     )
   }
 
   #Preview("Home — Refresh failed") {
     HomePresentationView(
       state: .refreshFailed(HomePreviewFixtures.longTitle, .networkUnavailable),
-      retry: {},
-      refresh: {},
-      changeEndpoint: {},
-      reauthorize: {}
+      retry: HomePreviewFixtures.noAction,
+      refresh: HomePreviewFixtures.noAction,
+      changeEndpoint: HomePreviewFixtures.noAsyncAction,
+      reauthorize: HomePreviewFixtures.noAsyncAction
     )
   }
 
   #Preview("Home — Catalog preparation") {
     HomePresentationView(
-      state: .catalogNotReady(retryAfterSeconds: 9),
-      retry: {},
-      refresh: {},
-      changeEndpoint: {},
-      reauthorize: {}
+      state: .catalogNotReady(retryAfterSeconds: HomePreviewFixtures.catalogRetrySeconds),
+      retry: HomePreviewFixtures.noAction,
+      refresh: HomePreviewFixtures.noAction,
+      changeEndpoint: HomePreviewFixtures.noAsyncAction,
+      reauthorize: HomePreviewFixtures.noAsyncAction
     )
   }
 
   #Preview("Home — Failure") {
     HomePresentationView(
-      state: .failed(.namaUnavailable(requestID: "request-safe-123")),
-      retry: {},
-      refresh: {},
-      changeEndpoint: {},
-      reauthorize: {}
+      state: .failed(
+        .namaUnavailable(requestID: "2f1c5f44-6a9b-4d2e-8c70-62df607c2efa")
+      ),
+      retry: HomePreviewFixtures.noAction,
+      refresh: HomePreviewFixtures.noAction,
+      changeEndpoint: HomePreviewFixtures.noAsyncAction,
+      reauthorize: HomePreviewFixtures.noAsyncAction
     )
   }
 #endif

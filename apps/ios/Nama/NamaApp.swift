@@ -17,14 +17,14 @@ struct NamaApp: App {
     else {
       preconditionFailure("CFBundleShortVersionString must be configured")
     }
-    let tokenStore = KeychainOAuthTokenStore()
+    let keychainTokenStore = KeychainOAuthTokenStore()
     clientVersion = version
     endpointStore = UserDefaultsVerifiedEndpointStore()
     oauthClient = BetterAuthOAuthAuthorizationClient()
-    self.tokenStore = tokenStore
+    tokenStore = keychainTokenStore
     libraryClient = NamaLibraryClient(
       clientVersion: version,
-      tokenStore: tokenStore
+      tokenStore: keychainTokenStore
     )
     authorizationSession = OAuthAuthorizationSession()
   }
@@ -124,23 +124,7 @@ private struct AuthorizedConsumerRootView: View {
           authorization: homeAuthorization,
           changeEndpoint: changeEndpoint
         ) {
-          guard
-            case .authorized(let rejected) = authorization.state,
-            authorization.session.generation == homeAuthorization.generation
-          else {
-            return
-          }
-          switch await authorization.discardRejectedAuthorization(
-            rejected,
-            generation: homeAuthorization.generation
-          ) {
-          case .discarded:
-            retryGeneration &+= 1
-          case .storageUnavailable:
-            return
-          case .stale:
-            return
-          }
+          await discardRejectedAuthorization(for: homeAuthorization)
         }
       } else {
         OAuthAuthorizationView(
@@ -163,6 +147,27 @@ private struct AuthorizedConsumerRootView: View {
         return
       }
       await authorization.run(endpoint)
+    }
+  }
+
+  private func discardRejectedAuthorization(
+    for authorizationIdentity: HomeAuthorizationIdentity
+  ) async {
+    guard
+      case .authorized(let rejected) = authorization.state,
+      authorization.session.generation == authorizationIdentity.generation
+    else {
+      return
+    }
+    switch await authorization.discardRejectedAuthorization(
+      rejected,
+      generation: authorizationIdentity.generation
+    ) {
+    case .discarded:
+      retryGeneration &+= 1
+
+    case .storageUnavailable, .stale:
+      return
     }
   }
 

@@ -25,7 +25,7 @@ nonisolated extension NamaLibraryClient {
         }
         shows = try map(section, kind: .shows, itemKind: .show)
 
-      case .continueWatching, .UNRECOGNIZED(_):
+      case .continueWatching, .UNRECOGNIZED:
         continue
 
       case .unspecified:
@@ -83,13 +83,14 @@ nonisolated extension NamaLibraryClient {
       guard
         summary.runtime.seconds >= 0,
         summary.runtime.nanos >= 0,
-        summary.runtime.nanos < 1_000_000_000
+        summary.runtime.nanos < HomeResponseBounds.nanosecondsPerSecond
       else {
         throw HomeResponseMappingError.invalid
       }
       runtime = Duration(
         secondsComponent: summary.runtime.seconds,
-        attosecondsComponent: Int64(summary.runtime.nanos) * 1_000_000_000
+        attosecondsComponent: Int64(summary.runtime.nanos)
+          * HomeResponseBounds.attosecondsPerNanosecond
       )
     } else {
       runtime = nil
@@ -113,9 +114,11 @@ nonisolated extension NamaLibraryClient {
     switch kind {
     case .movie:
       .movie
+
     case .show:
       .show
-    case .unspecified, .season, .episode, .UNRECOGNIZED(_):
+
+    case .unspecified, .season, .episode, .UNRECOGNIZED:
       throw HomeResponseMappingError.invalid
     }
   }
@@ -126,12 +129,16 @@ nonisolated extension NamaLibraryClient {
     switch playability {
     case .playable:
       .playable
+
     case .temporarilyUnavailable:
       .temporarilyUnavailable
+
     case .noAvailableSource:
       .noAvailableSource
-    case .UNRECOGNIZED(_):
+
+    case .UNRECOGNIZED:
       .unknown
+
     case .unspecified:
       throw HomeResponseMappingError.invalid
     }
@@ -147,36 +154,10 @@ nonisolated extension NamaLibraryClient {
     else {
       throw HomeResponseMappingError.invalid
     }
-    let role: HomeArtworkRole
-    switch artwork.role {
-    case .poster:
-      role = .poster
-    case .backdrop:
-      role = .backdrop
-    case .logo:
-      role = .logo
-    case .thumbnail:
-      role = .thumbnail
-    case .portrait:
-      role = .portrait
-    case .UNRECOGNIZED(_):
+    guard let role = try map(artwork.role) else {
       return nil
-    case .unspecified:
-      throw HomeResponseMappingError.invalid
     }
-
-    let textPresence: HomeArtworkTextPresence
-    switch artwork.textPresence {
-    case .unknown, .UNRECOGNIZED(_):
-      textPresence = .unknown
-    case .textless:
-      textPresence = .textless
-    case .containsText:
-      textPresence = .containsText
-    case .unspecified:
-      throw HomeResponseMappingError.invalid
-    }
-
+    let textPresence = try map(artwork.textPresence)
     let locale = try optionalString(artwork.hasLocale, artwork.locale)
     guard locale.map(isValidArtworkLocale) ?? true else {
       throw HomeResponseMappingError.invalid
@@ -192,11 +173,54 @@ nonisolated extension NamaLibraryClient {
   }
 
   private static func map(
+    _ role: Nama_Api_V1_ArtworkRole
+  ) throws -> HomeArtworkRole? {
+    switch role {
+    case .poster:
+      .poster
+
+    case .backdrop:
+      .backdrop
+
+    case .logo:
+      .logo
+
+    case .thumbnail:
+      .thumbnail
+
+    case .portrait:
+      .portrait
+
+    case .UNRECOGNIZED:
+      nil
+
+    case .unspecified:
+      throw HomeResponseMappingError.invalid
+    }
+  }
+
+  private static func map(
+    _ textPresence: Nama_Api_V1_ArtworkTextPresence
+  ) throws -> HomeArtworkTextPresence {
+    switch textPresence {
+    case .unknown, .UNRECOGNIZED:
+      .unknown
+
+    case .textless:
+      .textless
+
+    case .containsText:
+      .containsText
+
+    case .unspecified:
+      throw HomeResponseMappingError.invalid
+    }
+  }
+
+  private static func map(
     _ source: Nama_Api_V1_MediaSourceSummary
   ) throws -> HomeSourceSummary {
-    guard
-      isBoundedString(source.id)
-    else {
+    guard isBoundedString(source.id) else {
       throw HomeResponseMappingError.invalid
     }
 
@@ -204,12 +228,16 @@ nonisolated extension NamaLibraryClient {
     switch source.availability {
     case .available:
       availability = .available
+
     case .providerUnavailable:
       availability = .providerUnavailable
+
     case .unsupported:
       availability = .unsupported
-    case .UNRECOGNIZED(_):
+
+    case .UNRECOGNIZED:
       availability = .unknown
+
     case .unspecified:
       throw HomeResponseMappingError.invalid
     }
@@ -238,16 +266,22 @@ nonisolated extension NamaLibraryClient {
       switch quality.dynamicRange {
       case .sdr:
         dynamicRange = .sdr
+
       case .hdr10:
         dynamicRange = .hdr10
+
       case .hdr10Plus:
         dynamicRange = .hdr10Plus
+
       case .hlg:
         dynamicRange = .hlg
+
       case .dolbyVision:
         dynamicRange = .dolbyVision
-      case .UNRECOGNIZED(_):
+
+      case .UNRECOGNIZED:
         dynamicRange = .unknown
+
       case .unspecified:
         throw HomeResponseMappingError.invalid
       }
@@ -273,13 +307,17 @@ nonisolated extension NamaLibraryClient {
     if quality.hasSpatialFormat {
       switch quality.spatialFormat {
       case .none:
-        spatialFormat = .none
+        spatialFormat = .nonSpatial
+
       case .dolbyAtmos:
         spatialFormat = .dolbyAtmos
+
       case .dtsX:
         spatialFormat = .dtsX
-      case .UNRECOGNIZED(_):
+
+      case .UNRECOGNIZED:
         spatialFormat = .unknown
+
       case .unspecified:
         throw HomeResponseMappingError.invalid
       }
@@ -303,13 +341,13 @@ nonisolated extension NamaLibraryClient {
     let subtags = locale.split(separator: "-", omittingEmptySubsequences: false)
     guard
       let language = subtags.first,
-      (2...8).contains(language.unicodeScalars.count),
+      HomeResponseBounds.languageSubtagLengths.contains(language.unicodeScalars.count),
       language.unicodeScalars.allSatisfy(isASCIILetter)
     else {
       return false
     }
     return subtags.dropFirst().allSatisfy { subtag in
-      (1...8).contains(subtag.unicodeScalars.count)
+      HomeResponseBounds.localeSubtagLengths.contains(subtag.unicodeScalars.count)
         && subtag.unicodeScalars.allSatisfy { scalar in
           isASCIILetter(scalar) || isASCIIDigit(scalar)
         }
@@ -317,20 +355,22 @@ nonisolated extension NamaLibraryClient {
   }
 
   private static func isASCIILetter(_ scalar: Unicode.Scalar) -> Bool {
-    (65...90).contains(scalar.value) || (97...122).contains(scalar.value)
+    (HomeResponseBounds.asciiUppercaseStart...HomeResponseBounds.asciiUppercaseEnd)
+      .contains(scalar.value)
+      || (HomeResponseBounds.asciiLowercaseStart...HomeResponseBounds.asciiLowercaseEnd)
+        .contains(scalar.value)
   }
 
   private static func isASCIIDigit(_ scalar: Unicode.Scalar) -> Bool {
-    (48...57).contains(scalar.value)
+    (HomeResponseBounds.asciiDigitStart...HomeResponseBounds.asciiDigitEnd)
+      .contains(scalar.value)
   }
 
   private static func optionalString(_ isPresent: Bool, _ value: String) throws -> String? {
     guard isPresent else {
       return nil
     }
-    guard
-      isBoundedString(value)
-    else {
+    guard isBoundedString(value) else {
       throw HomeResponseMappingError.invalid
     }
     return value
@@ -338,6 +378,16 @@ nonisolated extension NamaLibraryClient {
 }
 
 nonisolated private enum HomeResponseBounds {
+  static let asciiDigitEnd: UInt32 = 57
+  static let asciiDigitStart: UInt32 = 48
+  static let asciiLowercaseEnd: UInt32 = 122
+  static let asciiLowercaseStart: UInt32 = 97
+  static let asciiUppercaseEnd: UInt32 = 90
+  static let asciiUppercaseStart: UInt32 = 65
+  static let attosecondsPerNanosecond: Int64 = 1_000_000_000
+  static let languageSubtagLengths = 2...8
+  static let localeSubtagLengths = 1...8
+  static let nanosecondsPerSecond: Int32 = 1_000_000_000
   static let maximumSections = 3
   static let maximumSectionItems = 50
   static let maximumArtworkReferences = 20

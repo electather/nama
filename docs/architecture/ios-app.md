@@ -9,10 +9,11 @@ signed Apple TV 4K simulator has completed local-HTTP acknowledgement,
 no-browser authorization through the generated CLI, scoped consumer
 verification, Keychain commit, and relaunch restoration. The production
 `NamaPlayer` boundary is implemented and one controlled SDR HLS fixture passes
-through its macOS-hosted real-engine test. Home's Apple-platform builds and
-actual surfaces, product playback behavior, physical Apple hardware,
-expiry-driven actual-surface refresh, and the remaining Apple surfaces remain
-unverified.
+through its macOS-hosted real-engine test. Home loading, empty, long-title, and
+failure fixtures have been inspected on iPhone 17 Pro, iPad Pro 13-inch, and
+Apple TV 4K simulators and an Apple Development-signed sandboxed Mac build.
+Product playback behavior, physical Apple hardware, expiry-driven
+actual-surface refresh, and the remaining Apple surfaces remain unverified.
 
 ## Authority and fixed decisions
 
@@ -189,12 +190,14 @@ response bounds and mapping, error precedence, and consumer metadata.
 Self-contained previews render discovery outcomes, local-HTTP confirmation with
 a long endpoint, persistent ready and failure warnings, blocked restoration,
 and Home loading, empty, long-title content, refresh, catalog-preparation, and
-failure fixtures. They make the states available for actual-surface inspection
-but are not runtime evidence. `check:ios` lints Swift formatting, runs the test
-target through its macOS host, inspects the built ATS shape, and performs
-signing-disabled iOS, tvOS, and macOS builds. The real-player test proves one
-controlled macOS-hosted SDR HLS render and control flow. Generic builds do not
-prove physical-device privacy prompts, focus, accessibility, or playback.
+failure fixtures. The Home loading, empty, long-title, and failure fixtures have
+also run in the Debug application on iPhone, iPad, and Apple TV simulators and
+an Apple Development-signed sandboxed Mac build. `check:ios` lints Swift
+formatting, runs the test target through its macOS host, inspects the built ATS
+shape, and performs signing-disabled iOS, tvOS, and macOS builds. The
+real-player test proves one controlled macOS-hosted SDR HLS render and control
+flow. Generic builds do not prove physical-device privacy prompts, focus,
+accessibility, or playback.
 
 This baseline implements endpoint eligibility, endpoint-bound persistent
 local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP

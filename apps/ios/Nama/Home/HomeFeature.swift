@@ -65,12 +65,12 @@ final class HomeFeature {
     attempt &+= 1
     let currentAttempt = attempt
     state = snapshot.map(HomeState.refreshing) ?? .loading
-    let loader = self.loader
+    let homeLoader = loader
 
     activeTask = Task { [weak self] in
       let result: Result<HomeSnapshot, any Error>
       do {
-        result = .success(try await loader.load(for: authorization))
+        result = .success(try await homeLoader.load(for: authorization))
       } catch {
         result = .failure(error)
       }

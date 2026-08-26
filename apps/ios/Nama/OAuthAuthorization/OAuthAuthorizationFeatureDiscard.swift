@@ -1,5 +1,10 @@
 import Foundation
 
+private enum OAuthAuthorizationRecordDiscardResult {
+  case removedOrAbsent
+  case replaced
+}
+
 extension OAuthAuthorizationFeature {
   func discardRejectedAuthorization(
     _ rejected: OAuthAuthorizationStatus,
@@ -26,63 +31,28 @@ extension OAuthAuthorizationFeature {
       return .stale
     }
 
-    switch snapshot {
-    case .missing:
-      session.fail(
-        status: rejected,
-        failure: .authorizationExpired,
-        expectedGeneration: generation
-      )
-      session.releaseMutation(owner: mutationOwner)
-      return .discarded
-
-    case .damaged(let data):
-      do {
-        try await tokenStore.quarantine(data)
-      } catch {
-        return deferDiscard(
-          rejected,
-          generation: generation,
-          mutationOwner: mutationOwner
-        )
+    do {
+      guard
+        try await discardAuthorizationRecord(matching: rejected, snapshot: snapshot)
+          == .removedOrAbsent
+      else {
+        session.releaseMutation(owner: mutationOwner)
+        return .stale
       }
-      session.fail(
-        status: rejected,
-        failure: .authorizationExpired,
-        expectedGeneration: generation
-      )
-      session.releaseMutation(owner: mutationOwner)
-      return .discarded
-
-    case .unavailable:
+    } catch {
       return deferDiscard(
         rejected,
         generation: generation,
         mutationOwner: mutationOwner
       )
-
-    case .record(let current):
-      guard rejected.matches(current) else {
-        session.releaseMutation(owner: mutationOwner)
-        return .stale
-      }
-      do {
-        try await tokenStore.remove(ifCurrent: current)
-      } catch {
-        return deferDiscard(
-          rejected,
-          generation: generation,
-          mutationOwner: mutationOwner
-        )
-      }
-      session.fail(
-        record: current,
-        failure: .authorizationExpired,
-        expectedGeneration: generation
-      )
-      session.releaseMutation(owner: mutationOwner)
-      return .discarded
     }
+    session.fail(
+      status: rejected,
+      failure: .authorizationExpired,
+      expectedGeneration: generation
+    )
+    session.releaseMutation(owner: mutationOwner)
+    return .discarded
   }
 
   private func deferDiscard(
@@ -129,37 +99,40 @@ extension OAuthAuthorizationFeature {
       return .stale
     }
 
-    switch snapshot {
-    case .missing:
-      return finishPendingDiscard(context, mutationOwner: mutationOwner)
-
-    case .damaged(let data):
-      do {
-        try await tokenStore.quarantine(data)
-      } catch {
-        presentationState = .failed(endpoint, .authorizationResetUnavailable)
-        session.releaseMutation(owner: mutationOwner)
-        return .storageUnavailable
-      }
-      return finishPendingDiscard(context, mutationOwner: mutationOwner)
-
-    case .unavailable:
+    do {
+      _ = try await discardAuthorizationRecord(
+        matching: context.authorization,
+        snapshot: snapshot
+      )
+    } catch {
       presentationState = .failed(endpoint, .authorizationResetUnavailable)
       session.releaseMutation(owner: mutationOwner)
       return .storageUnavailable
+    }
+    return finishPendingDiscard(context, mutationOwner: mutationOwner)
+  }
+
+  private func discardAuthorizationRecord(
+    matching authorization: OAuthAuthorizationStatus,
+    snapshot: OAuthTokenStoreSnapshot
+  ) async throws -> OAuthAuthorizationRecordDiscardResult {
+    switch snapshot {
+    case .missing:
+      return .removedOrAbsent
+
+    case .damaged(let data):
+      try await tokenStore.quarantine(data)
+      return .removedOrAbsent
+
+    case .unavailable:
+      throw OAuthTokenStoreError.unavailable
 
     case .record(let current):
-      guard context.authorization.matches(current) else {
-        return finishPendingDiscard(context, mutationOwner: mutationOwner)
+      guard authorization.matches(current) else {
+        return .replaced
       }
-      do {
-        try await tokenStore.remove(ifCurrent: current)
-      } catch {
-        presentationState = .failed(endpoint, .authorizationResetUnavailable)
-        session.releaseMutation(owner: mutationOwner)
-        return .storageUnavailable
-      }
-      return finishPendingDiscard(context, mutationOwner: mutationOwner)
+      try await tokenStore.remove(ifCurrent: current)
+      return .removedOrAbsent
     }
   }
 
