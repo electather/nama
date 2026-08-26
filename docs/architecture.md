@@ -98,11 +98,14 @@ rather than authorizing another endpoint. Safe failures retain the endpoint; a
 legacy forbidden HTTP value remains visible in a blocked HTTPS-required state
 until explicit Change Endpoint. The app implements native Better Auth device
 authorization, returned-interval polling, refresh rotation, and a
-this-device-only endpoint-bound Keychain token record. Apple-platform builds
-pass, and a signed Apple TV 4K simulator has completed the no-browser
-authorization, scoped consumer verification, Keychain commit, and relaunch
-restoration flow. Media behavior, physical Apple hardware, expiry-driven
-actual-surface refresh, and the remaining Apple surfaces remain unverified.
+this-device-only endpoint-bound Keychain token record. The universal target now
+contains exact-pinned AetherEngine `6.21.0` behind the complete Nama-owned
+player boundary; a controlled SDR HLS fixture loads, renders, and stops through
+that adapter in macOS-hosted automation. Apple-platform builds pass, and a
+signed Apple TV 4K simulator has completed the no-browser authorization, scoped
+consumer verification, Keychain commit, and relaunch restoration flow. Product
+media behavior, physical Apple hardware, expiry-driven actual-surface refresh,
+and the remaining Apple surfaces remain unverified.
 
 ## Architectural decision records
 

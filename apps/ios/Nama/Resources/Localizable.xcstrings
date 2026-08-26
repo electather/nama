@@ -101,6 +101,18 @@
       "comment" : "Button that opens this application's Settings page after local-network denial on iPhone or iPad.",
       "extractionState" : "manual"
     },
+    "Playback could not continue." : {
+      "comment" : "Safe generic failure shown when the playback engine reports an unexpected error.",
+      "extractionState" : "manual"
+    },
+    "Playback is temporarily unavailable." : {
+      "comment" : "Safe failure shown when media playback cannot continue temporarily.",
+      "extractionState" : "manual"
+    },
+    "Playback is unavailable on this device." : {
+      "comment" : "Safe failure shown when the playback engine cannot initialize on the current device.",
+      "extractionState" : "manual"
+    },
     "Retry" : {
       "comment" : "Button that starts one fresh endpoint verification attempt.",
       "extractionState" : "manual"
@@ -113,8 +125,16 @@
       "comment" : "Documented macOS path for enabling local-network access.",
       "extractionState" : "manual"
     },
+    "The media source could not be reached." : {
+      "comment" : "Safe playback failure shown for a media transport or network error.",
+      "extractionState" : "manual"
+    },
     "This address did not respond as a compatible Nama server." : {
       "comment" : "Safe message for a response that is not compatible with the public Nama contract.",
+      "extractionState" : "manual"
+    },
+    "This media format is not supported." : {
+      "comment" : "Safe playback failure shown when the selected media format cannot be played.",
       "extractionState" : "manual"
     },
     "This Nama endpoint requires HTTPS." : {

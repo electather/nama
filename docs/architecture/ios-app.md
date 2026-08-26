@@ -6,9 +6,11 @@ device authorization, refresh rotation, and endpoint-bound Keychain token
 storage are implemented. Apple-platform builds and macOS-host tests pass. A
 signed Apple TV 4K simulator has completed local-HTTP acknowledgement,
 no-browser authorization through the generated CLI, scoped consumer
-verification, Keychain commit, and relaunch restoration. Consumer media
-behavior, physical Apple hardware, expiry-driven actual-surface refresh, and
-the remaining Apple surfaces remain unverified.
+verification, Keychain commit, and relaunch restoration. The production
+`NamaPlayer` boundary is implemented and one controlled SDR HLS fixture passes
+through its macOS-hosted real-engine test. Product consumer media behavior,
+physical Apple hardware, expiry-driven actual-surface refresh, and the
+remaining Apple surfaces remain unverified.
 
 ## Authority and fixed decisions
 
@@ -136,6 +138,12 @@ device authorization:
   plus `offline_access`, refuses redirects, and applies the connection module's
   proxy-free policy to acknowledged eligible local HTTP. Browser verification
   and Better Auth browser session routes are not part of this surface.
+- `NamaPlayer` and `NamaPlayerSurface` contain exact-pinned AetherEngine
+  `6.21.0` behind Nama-owned request, state, clock, track, video, control, and
+  failure values. The target and tests import no engine type outside that
+  boundary. The complete Swift package closure is locked, notices are bundled,
+  and the artifact and relinking review is recorded in
+  [aetherengine-distribution.md](aetherengine-distribution.md).
 
 The Swift Testing target covers endpoint normalization and every approved and
 forbidden address-class boundary, mapped and scoped IPv6, local DNS label and
@@ -158,8 +166,9 @@ a long endpoint, persistent ready and failure warnings, and blocked
 restoration. They make the states available for actual-surface inspection but
 are not runtime evidence. `check:ios` lints Swift formatting, runs the test
 target through its macOS host, inspects the built ATS shape, and performs
-signing-disabled iOS, tvOS, and macOS builds. These checks do not prove
-physical-device privacy prompts, focus, accessibility, or playback behavior.
+signing-disabled iOS, tvOS, and macOS builds. The real-player test proves one
+controlled macOS-hosted SDR HLS render and control flow. Generic builds do not
+prove physical-device privacy prompts, focus, accessibility, or playback.
 
 This baseline implements endpoint eligibility, endpoint-bound persistent
 local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP
@@ -794,25 +803,30 @@ direct-delivery security boundary. Media travels directly from the provider to
 the client. The core is not a media relay, and an on-device loopback bridge used
 by a player does not change that boundary.
 
-- Nama-owned locator values and headers are session-memory-only. Never persist,
+The production adapter places every remote media and external-subtitle request behind one session-scoped loopback bridge. AetherEngine receives only opaque loopback locators and no upstream Locator headers. The bridge retains upstream Locator material in session memory, validates every destination, rewrites HLS child references, and ends with the load that owns it.
+
+- Nama-owned Locator values and headers are session-memory-only. Never persist,
   upload, or place them in Nama-owned logs, errors, analytics, diagnostics,
-  metadata, defaults, or Keychain. The selected engine's local Release logs may
-  contain complete short-lived locator URLs under ADR-0032's MVP exception.
+  metadata, defaults, or Keychain. ADR-0032 permits the selected engine's local
+  Release logs to contain complete short-lived Locator URLs, but the production
+  adapter supplies only opaque loopback URLs.
 - Follow only origins present in the core-validated
   `allowed_redirect_origins` allowlist. Each value is an exact normalized
-  scheme/host/effective-port origin.
-- Locator headers target the locator's original normalized origin. During the
-  MVP, AetherEngine may replay them when an HLS subrequest or redirect moves to
-  another allowed origin. Enforce the allowlist independently for every
-  playlist, variant, rendition, segment, key, subtitle, and redirect request.
+  scheme/host/effective-port origin. The bridge rejects an initial Locator,
+  redirect, playlist, variant, rendition, segment, key, or subtitle destination
+  whose origin is absent.
+- Locator headers remain inside the bridge and are attached only to upstream
+  requests whose destinations are in that Locator's allowlist. AetherEngine
+  receives no upstream Locator headers.
 - The core never supplies Administrator sessions, OAuth access or refresh
   tokens, or reusable provider-account credentials in a locator. Normalize
   engine and network failures into a closed, secret-free Nama error model.
 
-An engine or adapter that permits a destination outside the validated allowlist
-remains ineligible. ADR-0032 defers only Release locator-URL redaction and
-header stripping on an allowed-origin change; it does not make other locator
-rules advisory.
+The session bridge is mandatory containment because AetherEngine `6.21.0`
+cannot enforce Nama's origin allowlist itself. An engine or adapter that permits
+a destination outside the validated allowlist remains ineligible. ADR-0032's
+Release-log and allowed-origin header-replay exceptions are ceilings, not
+permission to bypass the bridge or make another Locator rule advisory.
 
 ### Player interaction invariants
 

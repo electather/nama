@@ -1,8 +1,10 @@
 # Playback
 
-Status: the universal Apple application has a manual-connection tracer;
-playback remains target architecture and no production playback engine is
-implemented.
+Status: the universal Apple application contains the production `NamaPlayer`
+boundary backed by exact-pinned AetherEngine `6.21.0`. Automated macOS-host
+verification loads, renders, controls, and stops controlled media through the
+real adapter. Public planning, opening, reporting, and closing remain target
+architecture.
 
 The target Apple application reports a Nama-defined capability profile for the
 current device, and the Jellyfin plugin translates it into provider playback
@@ -25,13 +27,23 @@ redirect origins. Destinations outside that allowlist, reusable credentials,
 Nama-owned locator logging or persistence, and locator-bearing user errors
 remain prohibited.
 
+The concrete adapter contains both engine limitations behind a session-scoped
+loopback bridge. The engine receives opaque loopback locators without upstream
+Locator headers; the bridge alone retains upstream Locator material, validates
+the initial and redirected origin, rewrites HLS child references, and reapplies
+headers only within the request's core-validated allowlist. The bridge is part
+of the concrete adapter, not a second playback engine or public media relay.
+
 [ADR-0014](../adr/0014-four-stage-playback-lifecycle.md) defines the
 plan, open, report, and close lifecycle for the target public and plugin
 contracts.
 
 The integration pins AetherEngine's exact source revision and complete resolved
-dependency closure, confines its rendering and control types to `NamaPlayer`,
-and completes artifact-level distribution review. Issue #38 proves one
-known-good SDR HLS fixture on representative physical iPhone or iPad, Apple TV,
-and Mac hardware; capability negotiation and the full media and interaction
-matrix remain with issues #39 and #40.
+dependency closure and confines its rendering and control types to
+`NamaPlayer`. The [distribution record](aetherengine-distribution.md) owns the
+reviewed build, linkage, checksum, notice, source, signing, and relinking
+evidence. Issue #161 proves a controlled SDR HLS fixture through the real
+adapter in automated macOS-host verification. Issue #38 still owns
+representative physical iPhone or iPad, Apple TV, and Mac playback evidence;
+capability negotiation and the full media and interaction matrix remain with
+issues #39 and #40.
