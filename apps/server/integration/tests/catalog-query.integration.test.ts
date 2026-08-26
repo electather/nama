@@ -3,7 +3,7 @@ import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { expect, it } from "@effect/vitest";
-import { ErrorInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
+import { ErrorInfoSchema, RetryInfoSchema } from "@nama/api/google/rpc/error_details_pb.js";
 import { Effect } from "effect";
 
 import {
@@ -288,6 +288,26 @@ it.live("returns stored Movies and Shows with effective playability and default 
           expect(outage.sections[0]?.items[0]?.defaultSource).toMatchObject({
             availability: SourceAvailability.PROVIDER_UNAVAILABLE,
             id: movie.sources[0]?.id,
+          });
+          const unavailableSourceId = movie.sources[FIRST_ROW_INDEX]?.id;
+          if (unavailableSourceId === undefined) {
+            throw new Error("unavailable source fixture is missing");
+          }
+          const sourceFailure = yield* captureConnectFailure(() =>
+            client.getMediaSource(
+              { mediaId: movie.id, sourceId: unavailableSourceId },
+              requestOptions,
+            ),
+          );
+          expect(sourceFailure.code).toBe(Code.Unavailable);
+          expect(sourceFailure.findDetails(ErrorInfoSchema)[FIRST_ROW_INDEX]?.reason).toBe(
+            "SOURCE_UNAVAILABLE",
+          );
+          expect(
+            sourceFailure.findDetails(RetryInfoSchema)[FIRST_ROW_INDEX]?.retryDelay,
+          ).toMatchObject({
+            nanos: 0,
+            seconds: 5n,
           });
         }),
       );
@@ -914,13 +934,16 @@ it.live("resolves only stored artwork mappings into validated short-lived locato
             () => {
               resolutionCount += 1;
               return Effect.succeed({
-                $typeName: "nama.plugin.v1.ProviderArtworkLease",
-                accessExpiresAt: undefined,
-                allowedRedirectOrigins: ["https://artwork.example"],
-                authorizationScope: ArtworkAuthorizationScope.PUBLIC,
-                headers: [],
-                mimeType: "image/jpeg",
-                url: "https://artwork.example/poster.jpg",
+                approvedOrigins: ["https://artwork.example"],
+                lease: {
+                  $typeName: "nama.plugin.v1.ProviderArtworkLease",
+                  accessExpiresAt: undefined,
+                  allowedRedirectOrigins: ["https://artwork.example"],
+                  authorizationScope: ArtworkAuthorizationScope.PUBLIC,
+                  headers: [],
+                  mimeType: "image/jpeg",
+                  url: "https://artwork.example/poster.jpg",
+                },
               });
             },
           );
@@ -952,19 +975,70 @@ it.live("resolves only stored artwork mappings into validated short-lived locato
               typeof value === "bigint" ? value.toString() : value,
             ),
           ).not.toContain("private-artwork");
+          const unapprovedOriginQuery = yield* makeStoredQuery(
+            database,
+            () => NOW,
+            () =>
+              Effect.succeed({
+                approvedOrigins: ["https://artwork.example"],
+                lease: {
+                  $typeName: "nama.plugin.v1.ProviderArtworkLease",
+                  accessExpiresAt: undefined,
+                  allowedRedirectOrigins: ["https://attacker.example"],
+                  authorizationScope: ArtworkAuthorizationScope.PUBLIC,
+                  headers: [],
+                  mimeType: "image/jpeg",
+                  url: "https://attacker.example/poster.jpg",
+                },
+              }),
+          );
+          const unapprovedOrigin = yield* unapprovedOriginQuery
+            .resolveArtwork(PRINCIPAL_ID, create(ResolveArtworkRequestSchema, { artworkId }))
+            .pipe(
+              Effect.map(() => "unapproved artwork origin unexpectedly accepted"),
+              Effect.flip,
+            );
+          expect(unapprovedOrigin).toMatchObject({ _tag: "ResourceNotFound" });
+          const providerReferenceQuery = yield* makeStoredQuery(
+            database,
+            () => NOW,
+            () =>
+              Effect.succeed({
+                approvedOrigins: ["https://artwork.example"],
+                lease: {
+                  $typeName: "nama.plugin.v1.ProviderArtworkLease",
+                  accessExpiresAt: undefined,
+                  allowedRedirectOrigins: ["https://artwork.example"],
+                  authorizationScope: ArtworkAuthorizationScope.PUBLIC,
+                  headers: [],
+                  mimeType: "image/jpeg",
+                  url: "https://artwork.example/private-artwork-item/poster.jpg",
+                },
+              }),
+          );
+          const providerReference = yield* providerReferenceQuery
+            .resolveArtwork(PRINCIPAL_ID, create(ResolveArtworkRequestSchema, { artworkId }))
+            .pipe(
+              Effect.map(() => "provider artwork reference unexpectedly exposed"),
+              Effect.flip,
+            );
+          expect(providerReference).toMatchObject({ _tag: "ResourceNotFound" });
 
           const unsafeQuery = yield* makeStoredQuery(
             database,
             () => NOW,
             () =>
               Effect.succeed({
-                $typeName: "nama.plugin.v1.ProviderArtworkLease",
-                accessExpiresAt: undefined,
-                allowedRedirectOrigins: ["https://artwork.example"],
-                authorizationScope: ArtworkAuthorizationScope.PROVIDER_ACCOUNT,
-                headers: [],
-                mimeType: "image/jpeg",
-                url: "https://artwork.example/poster.jpg",
+                approvedOrigins: ["https://artwork.example"],
+                lease: {
+                  $typeName: "nama.plugin.v1.ProviderArtworkLease",
+                  accessExpiresAt: undefined,
+                  allowedRedirectOrigins: ["https://artwork.example"],
+                  authorizationScope: ArtworkAuthorizationScope.PROVIDER_ACCOUNT,
+                  headers: [],
+                  mimeType: "image/jpeg",
+                  url: "https://artwork.example/poster.jpg",
+                },
               }),
           );
           const unsafe = yield* unsafeQuery

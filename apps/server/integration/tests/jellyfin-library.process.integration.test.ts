@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { join } from "node:path";
 
-import { Code, createClient } from "@connectrpc/connect";
+import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { expect, it } from "@effect/vitest";
 import {
@@ -2140,7 +2140,7 @@ it.live(
             PUBLIC_LIBRARY_MASTER_KEY_BYTES,
             PUBLIC_LIBRARY_MASTER_KEY_FILL,
           ).toString("base64")}`;
-          const records: unknown[] = [];
+          const capturedLogRecords: unknown[] = [];
           yield* initializeCatalogDatabase(
             databaseUrl,
             [{ id: CATALOG_PROVIDER_INSTANCE_ID, priority: 1 }],
@@ -2291,7 +2291,7 @@ it.live(
               const server = yield* startServer(catalogDatabase, {
                 authentication,
                 catalogQuery,
-                records,
+                records: capturedLogRecords,
               });
               const client = createClient(
                 PublicLibraryService,
@@ -2361,32 +2361,37 @@ it.live(
                   options,
                 ),
               );
-              const resolvedArtwork = yield* Effect.promise(() =>
-                client.resolveArtwork(
-                  { artworkId: artwork.id, maxHeight: 1080, maxWidth: 1920 },
-                  options,
-                ),
-              );
+              const resolvedArtworkFailure = yield* Effect.tryPromise({
+                catch: (error) => error,
+                try: () =>
+                  client.resolveArtwork(
+                    { artworkId: artwork.id, maxHeight: 1080, maxWidth: 1920 },
+                    options,
+                  ),
+              }).pipe(Effect.flip);
+              if (!(resolvedArtworkFailure instanceof ConnectError)) {
+                throw new TypeError("expected an unsafe artwork locator failure");
+              }
 
               expect(search.items.map(({ title }) => title)).toContain("Arrival");
               expect(children.items.map(({ title }) => title)).toEqual(["Season 2"]);
               expect(source.source?.mediaId).toBe(movieSummary.id);
-              expect(resolvedArtwork.locator).toMatchObject({
-                allowedRedirectOrigins: [new URL(jellyfin.baseUrl).origin],
-                headers: [],
-              });
+              expect(resolvedArtworkFailure.code).toBe(Code.NotFound);
+              expect(jellyfin.requests.map(({ url }) => url)).toContain(
+                `/jellyfin/Items/${providerItemSentinel}/Images/Primary/0?tag=${providerArtworkSentinel}&maxWidth=1920&maxHeight=1080`,
+              );
               expect(
                 jellyfin.requests
                   .filter(({ url }) => url.startsWith("/jellyfin/Items?"))
                   .map(({ url }) => url),
               ).toEqual(catalogRequests);
               const ordinaryPublicContents = publicBoundaryJson({
+                capturedLogRecords,
                 children,
                 home,
                 libraryFirst,
                 librarySecond,
                 media,
-                records,
                 search,
                 source,
               });
@@ -2401,15 +2406,21 @@ it.live(
               ]) {
                 expect(ordinaryPublicContents).not.toContain(sentinel);
               }
-              const locatorContents = publicBoundaryJson(resolvedArtwork);
+              const artworkFallbackContents = publicBoundaryJson({
+                details: resolvedArtworkFailure.details,
+                metadata: [...resolvedArtworkFailure.metadata.entries()],
+                rawMessage: resolvedArtworkFailure.rawMessage,
+              });
               for (const sentinel of [
                 API_KEY,
                 PRIVATE_PATH,
                 PROVIDER_ERROR_SENTINEL,
+                providerArtworkSentinel,
+                providerItemSentinel,
                 providerSourceSentinel,
                 String(providerTrackSentinel),
               ]) {
-                expect(locatorContents).not.toContain(sentinel);
+                expect(artworkFallbackContents).not.toContain(sentinel);
               }
             });
           });

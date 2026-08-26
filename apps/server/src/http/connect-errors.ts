@@ -427,6 +427,41 @@ const providerValidationError = (requestId: string, failure: unknown): ConnectEr
   return createValidationError(requestId, violations);
 };
 
+const isRetryDelayMilliseconds = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= ZERO_MILLISECONDS;
+
+const catalogRetryError = (
+  requestId: string,
+  failure: unknown,
+  tag: "CatalogNotReady" | "SourceUnavailable",
+): ConnectError | undefined => {
+  if (typeof failure !== "object" || failure === null) {
+    return createApplicationError({ code: Code.Internal, reason: "INTERNAL", requestId });
+  }
+  const retryDelayMilliseconds = dataPropertyValue(failure, "retryDelayMilliseconds");
+  if (retryDelayMilliseconds === undefined) {
+    if (tag === "SourceUnavailable") {
+      return undefined;
+    }
+    return createApplicationError({ code: Code.Internal, reason: "INTERNAL", requestId });
+  }
+  if (!isRetryDelayMilliseconds(retryDelayMilliseconds)) {
+    return createApplicationError({ code: Code.Internal, reason: "INTERNAL", requestId });
+  }
+  return createApplicationError({
+    ...TAGGED_FAILURE_MAPPINGS[tag],
+    extraDetails: [
+      {
+        desc: RetryInfoSchema,
+        value: create(RetryInfoSchema, {
+          retryDelay: retryDelayFromMilliseconds(retryDelayMilliseconds),
+        }),
+      },
+    ],
+    requestId,
+  });
+};
+
 const catalogApplicationError = (
   requestId: string,
   failure: unknown,
@@ -441,29 +476,10 @@ const catalogApplicationError = (
       },
     ]);
   }
-  if (tag !== "CatalogNotReady" || typeof failure !== "object" || failure === null) {
-    return undefined;
+  if (tag === "CatalogNotReady" || tag === "SourceUnavailable") {
+    return catalogRetryError(requestId, failure, tag);
   }
-  const retryDelayMilliseconds = dataPropertyValue(failure, "retryDelayMilliseconds");
-  if (
-    typeof retryDelayMilliseconds !== "number" ||
-    !Number.isSafeInteger(retryDelayMilliseconds) ||
-    retryDelayMilliseconds < ZERO_MILLISECONDS
-  ) {
-    return createApplicationError({ code: Code.Internal, reason: "INTERNAL", requestId });
-  }
-  return createApplicationError({
-    ...TAGGED_FAILURE_MAPPINGS.CatalogNotReady,
-    extraDetails: [
-      {
-        desc: RetryInfoSchema,
-        value: create(RetryInfoSchema, {
-          retryDelay: retryDelayFromMilliseconds(retryDelayMilliseconds),
-        }),
-      },
-    ],
-    requestId,
-  });
+  return undefined;
 };
 
 const taggedApplicationError = (

@@ -8,7 +8,11 @@ import { ArtworkAuthorizationScope } from "../../../../gen/ts/src/nama/plugin/v1
 import type { ProviderArtworkLease } from "../../../../gen/ts/src/nama/plugin/v1/library_pb.js";
 import type { CatalogArtworkTarget } from "../database/catalog-query-storage.ts";
 import { CatalogQueryPersistenceError, ResourceNotFound } from "./catalog-query-model.ts";
-import type { CatalogQueryDependencies, CatalogQueryService } from "./catalog-query-model.ts";
+import type {
+  CatalogArtworkLeaseResolution,
+  CatalogQueryDependencies,
+  CatalogQueryService,
+} from "./catalog-query-model.ts";
 import { ensureCatalogReady } from "./catalog-readiness.ts";
 
 const ARTWORK_REFRESH_MILLISECONDS = 300_000;
@@ -58,16 +62,34 @@ const normalizedLocatorOrigin = (value: string): string | undefined => {
   }
 };
 
-const hasValidAllowedOrigins = (origins: readonly string[], initialOrigin: string): boolean => {
-  const allowedOrigins = new Set<string>();
+const normalizedOriginSet = (origins: readonly string[]): Set<string> | undefined => {
+  const normalizedOrigins = new Set<string>();
   for (const origin of origins) {
     const normalized = normalizedLocatorOrigin(origin);
-    if (normalized === undefined || normalized !== origin || allowedOrigins.has(origin)) {
+    if (normalized === undefined || normalized !== origin || normalizedOrigins.has(origin)) {
+      return undefined;
+    }
+    normalizedOrigins.add(origin);
+  }
+  return normalizedOrigins;
+};
+
+const hasValidAllowedOrigins = (
+  origins: readonly string[],
+  approvedOrigins: readonly string[],
+  initialOrigin: string,
+): boolean => {
+  const approvedOriginSet = normalizedOriginSet(approvedOrigins);
+  const allowedOriginSet = normalizedOriginSet(origins);
+  if (approvedOriginSet === undefined || allowedOriginSet === undefined) {
+    return false;
+  }
+  for (const origin of allowedOriginSet) {
+    if (!approvedOriginSet.has(origin)) {
       return false;
     }
-    allowedOrigins.add(origin);
   }
-  return allowedOrigins.has(initialOrigin);
+  return approvedOriginSet.has(initialOrigin) && allowedOriginSet.has(initialOrigin);
 };
 
 const hasValidArtworkAuthority = (
@@ -100,18 +122,48 @@ const hasValidLocatorHeaders = (lease: ProviderArtworkLease): boolean => {
   }
   return true;
 };
+const containsProviderReference = (value: string, target: CatalogArtworkTarget): boolean =>
+  value.includes(target.providerInstanceId) ||
+  value.includes(target.itemReference) ||
+  value.includes(target.artworkReference);
+
+const hasNoProviderReferences = (
+  lease: ProviderArtworkLease,
+  target: CatalogArtworkTarget,
+): boolean => {
+  if (containsProviderReference(lease.url, target)) {
+    return false;
+  }
+  for (const origin of lease.allowedRedirectOrigins) {
+    if (containsProviderReference(origin, target)) {
+      return false;
+    }
+  }
+  for (const header of lease.headers) {
+    if (
+      containsProviderReference(header.name, target) ||
+      containsProviderReference(header.value, target)
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
 
 interface ArtworkLeaseTiming {
   readonly accessExpiresAt?: number | undefined;
   readonly refreshAt: number;
 }
 
-const validatedArtworkOrigin = (lease: ProviderArtworkLease): string | undefined => {
+const validatedArtworkOrigin = (
+  lease: ProviderArtworkLease,
+  approvedOrigins: readonly string[],
+): string | undefined => {
   const initialOrigin = normalizedLocatorOrigin(lease.url);
   if (
     initialOrigin === undefined ||
     !/^image\/[A-Za-z0-9.+-]+$/u.test(lease.mimeType) ||
-    !hasValidAllowedOrigins(lease.allowedRedirectOrigins, initialOrigin)
+    !hasValidAllowedOrigins(lease.allowedRedirectOrigins, approvedOrigins, initialOrigin)
   ) {
     return ABSENT_VALUE;
   }
@@ -142,27 +194,30 @@ const validatedArtworkTiming = (
 };
 
 const validatedArtworkLocator = (
-  lease: ProviderArtworkLease,
+  resolution: CatalogArtworkLeaseResolution,
   target: CatalogArtworkTarget,
   now: number,
 ): ArtworkLocator | undefined => {
-  const initialOrigin = validatedArtworkOrigin(lease);
-  const timing = validatedArtworkTiming(lease, now);
+  if (!hasNoProviderReferences(resolution.lease, target)) {
+    return ABSENT_VALUE;
+  }
+  const initialOrigin = validatedArtworkOrigin(resolution.lease, resolution.approvedOrigins);
+  const timing = validatedArtworkTiming(resolution.lease, now);
   if (initialOrigin === undefined || timing === undefined) {
     return ABSENT_VALUE;
   }
   return {
     $typeName: "nama.api.v1.ArtworkLocator",
-    accessExpiresAt: lease.accessExpiresAt,
-    allowedRedirectOrigins: [...lease.allowedRedirectOrigins],
-    headers: lease.headers.map((header) => ({
+    accessExpiresAt: resolution.lease.accessExpiresAt,
+    allowedRedirectOrigins: [...resolution.lease.allowedRedirectOrigins],
+    headers: resolution.lease.headers.map((header) => ({
       $typeName: "nama.api.v1.HttpHeader",
       name: header.name,
       value: header.value,
     })),
     height: target.height ?? undefined,
     refreshAt: timestampFromDate(new Date(timing.refreshAt)),
-    url: lease.url,
+    url: resolution.lease.url,
     width: target.width ?? undefined,
   };
 };
@@ -180,18 +235,18 @@ const makeResolveArtwork =
       if (target === undefined) {
         return yield* Effect.fail(new ResourceNotFound({}));
       }
-      const lease = yield* dependencies
+      const resolution = yield* dependencies
         .resolveArtworkLease({
           ...target,
           maxHeight: request.maxHeight,
           maxWidth: request.maxWidth,
         })
         .pipe(Effect.mapError(() => new ResourceNotFound({})));
-      const locator = validatedArtworkLocator(lease, target, now);
+      const locator = validatedArtworkLocator(resolution, target, now);
       if (locator === undefined) {
         return yield* Effect.fail(new ResourceNotFound({}));
       }
       return create(ResolveArtworkResponseSchema, { locator });
     });
 
-export { makeResolveArtwork };
+export { makeResolveArtwork, normalizedLocatorOrigin };

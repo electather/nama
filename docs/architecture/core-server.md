@@ -429,7 +429,7 @@ existing fenced delete transaction. It removes a Library entry only when no
 source remains and never deletes the internal canonical item or Nama-owned user
 state.
 
-### Target stored catalog reads
+### Stored catalog reads
 
 Stored catalog reads use PostgreSQL filtering, ordering, pagination, hierarchy,
 and full-text search. They make no provider call except artwork resolution,

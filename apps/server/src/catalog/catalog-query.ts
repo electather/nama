@@ -32,6 +32,7 @@ import type {
 import { ensureCatalogReady } from "./catalog-readiness.ts";
 
 const DEFAULT_HOME_SECTION_SIZE = 20;
+const SOURCE_RETRY_DELAY_MILLISECONDS = 5000;
 const ZERO = 0;
 
 const pageTokenFailure = (error: unknown): PageTokenInvalidFailure => {
@@ -76,7 +77,12 @@ const makeGetMediaSource =
       if (source === undefined) {
         return yield* Effect.fail(new ResourceNotFound({}));
       }
-      if (source.availability !== "available") {
+      if (source.availability === "provider_unavailable") {
+        return yield* Effect.fail(
+          new SourceUnavailable({ retryDelayMilliseconds: SOURCE_RETRY_DELAY_MILLISECONDS }),
+        );
+      }
+      if (source.availability === "unsupported") {
         return yield* Effect.fail(new SourceUnavailable({}));
       }
       return create(GetMediaSourceResponseSchema, {
