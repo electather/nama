@@ -98,15 +98,25 @@ nonisolated extension NamaPlaybackBridgeRequest {
     }
     let lineSeparator = playlist.contains("\r\n") ? "\r\n" : "\n"
     let lines = playlist.components(separatedBy: lineSeparator)
-    let rewrittenLines = try lines.map { line in
+    var nextURIIsPlaylist = false
+    var rewrittenLines: [String] = []
+    rewrittenLines.reserveCapacity(lines.count)
+    for line in lines {
       let trimmed = line.trimmingCharacters(in: .whitespaces)
       guard !trimmed.isEmpty else {
-        return line
+        rewrittenLines.append(line)
+        continue
       }
       if trimmed.hasPrefix("#") {
-        return try rewriteURIAttributes(in: line, relativeTo: baseURL)
+        rewrittenLines.append(try rewriteURIAttributes(in: line, relativeTo: baseURL))
+        nextURIIsPlaylist = trimmed.hasPrefix("#EXT-X-STREAM-INF:")
+        continue
       }
-      return try localURL(for: trimmed, relativeTo: baseURL).absoluteString
+      let contentKind: NamaPlaybackBridgeContentKind = nextURIIsPlaylist ? .playlist : .unknown
+      rewrittenLines.append(
+        try localURL(for: trimmed, relativeTo: baseURL, contentKind: contentKind).absoluteString
+      )
+      nextURIIsPlaylist = false
     }
     return Data(rewrittenLines.joined(separator: lineSeparator).utf8)
   }
@@ -114,20 +124,29 @@ nonisolated extension NamaPlaybackBridgeRequest {
   func rewriteURIAttributes(in line: String, relativeTo baseURL: URL) throws -> String {
     var rewritten = line
     var searchStart = rewritten.startIndex
+    let contentKind = Self.uriAttributeContentKind(for: line)
     while let marker = rewritten.range(of: "URI=\"", range: searchStart..<rewritten.endIndex) {
       let valueStart = marker.upperBound
       guard let valueEnd = rewritten[valueStart...].firstIndex(of: "\"") else {
         throw NamaPlaybackHTTPBridgeError.malformedPlaylist
       }
       let value = String(rewritten[valueStart..<valueEnd])
-      let replacement = try localURL(for: value, relativeTo: baseURL).absoluteString
+      let replacement = try localURL(
+        for: value,
+        relativeTo: baseURL,
+        contentKind: contentKind
+      ).absoluteString
       rewritten.replaceSubrange(valueStart..<valueEnd, with: replacement)
       searchStart = rewritten.index(valueStart, offsetBy: replacement.count)
     }
     return rewritten
   }
 
-  func localURL(for value: String, relativeTo baseURL: URL) throws -> URL {
+  func localURL(
+    for value: String,
+    relativeTo baseURL: URL,
+    contentKind: NamaPlaybackBridgeContentKind
+  ) throws -> URL {
     guard
       let upstreamURL = URL(string: value, relativeTo: baseURL)?.absoluteURL,
       resource.allows(upstreamURL)
@@ -140,14 +159,28 @@ nonisolated extension NamaPlaybackBridgeRequest {
         url: upstreamURL,
         headers: resource.headers,
         allowedOrigins: resource.allowedOrigins,
-        mimeType: nil
+        mimeType: nil,
+        expiresAt: resource.expiresAt,
+        contentKind: contentKind
       )
     )
   }
 
+  static func uriAttributeContentKind(for line: String) -> NamaPlaybackBridgeContentKind {
+    if line.hasPrefix("#EXT-X-MEDIA:")
+      || line.hasPrefix("#EXT-X-I-FRAME-STREAM-INF:")
+      || line.hasPrefix("#EXT-X-IMAGE-STREAM-INF:")
+      || line.hasPrefix("#EXT-X-RENDITION-REPORT:")
+    {
+      return .playlist
+    }
+    return .unknown
+  }
+
   static func isLikelyPlaylist(_ resource: NamaPlaybackBridgeResource) -> Bool {
     let mimeType = resource.mimeType?.lowercased() ?? ""
-    return resource.url.pathExtension.lowercased() == "m3u8"
+    return resource.contentKind == .playlist
+      || resource.url.pathExtension.lowercased() == "m3u8"
       || mimeType.contains("mpegurl")
   }
 

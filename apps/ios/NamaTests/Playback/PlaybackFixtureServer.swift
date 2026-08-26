@@ -33,159 +33,110 @@ nonisolated private struct PlaybackFixtureRequest {
   }
 }
 
-nonisolated private struct PlaybackFixtureResponse: Sendable {
-  private static let rangeComponentCount = 2
+nonisolated private struct PlaybackFixtureRecordedRequest: Sendable {
+  let path: String
+  let headers: [String: String]
+}
 
+nonisolated enum PlaybackFixtureRoute: Sendable {
+  case content(contentType: String, data: Data, requiredMarker: String?)
+  case redirect(location: URL, requiredMarker: String?)
+  case stall(requiredMarker: String?)
+
+  static func playlist(_ contents: String, requiredMarker: String = "media") -> Self {
+    .content(
+      contentType: "application/vnd.apple.mpegurl",
+      data: Data(contents.utf8),
+      requiredMarker: requiredMarker
+    )
+  }
+}
+
+nonisolated private struct PlaybackFixtureResponse: Sendable {
   let status: String
   let data: Data
   let contentRange: String?
-
-  static func make(for data: Data, rangeHeader: String?) -> Self {
-    guard let rangeHeader, rangeHeader.hasPrefix("bytes=") else {
-      return Self(status: "200 OK", data: data, contentRange: nil)
-    }
-    let values = rangeHeader.dropFirst("bytes=".count).split(
-      separator: "-",
-      maxSplits: 1,
-      omittingEmptySubsequences: false
-    )
-    guard values.count == Self.rangeComponentCount else {
-      return Self(status: "416 Range Not Satisfiable", data: Data(), contentRange: nil)
-    }
-    guard let finalByteOffset = data.indices.last else {
-      return Self(status: "416 Range Not Satisfiable", data: Data(), contentRange: nil)
-    }
-    let start: Int
-    let end: Int
-    if values[0].isEmpty, let suffixLength = Int(values[1]), suffixLength > 0 {
-      start = max(data.startIndex, data.endIndex - suffixLength)
-      end = finalByteOffset
-    } else if let parsedStart = Int(values[0]) {
-      start = parsedStart
-      end = min(Int(values[1]) ?? finalByteOffset, finalByteOffset)
-    } else {
-      return Self(status: "416 Range Not Satisfiable", data: Data(), contentRange: nil)
-    }
-    guard start >= data.startIndex, start <= end, start < data.endIndex else {
-      return Self(status: "416 Range Not Satisfiable", data: Data(), contentRange: nil)
-    }
-    return Self(
-      status: "206 Partial Content",
-      data: data.subdata(in: start..<data.index(after: end)),
-      contentRange: "bytes \(start)-\(end)/\(data.count)"
-    )
-  }
 }
 
-nonisolated private final class PlaybackFixtureRequestRecorder: @unchecked Sendable {
-  private struct Waiter {
-    let path: String
-    let marker: String?
-    let continuation: CheckedContinuation<Bool, Never>
-  }
+nonisolated private let kPlaybackFixtureRangeComponentCount = 2
 
-  private let lock = NSLock()
-  private var requests: [PlaybackFixtureServer.RecordedRequest] = []
-  private var waiters: [Waiter] = []
-  private var stopped = false
-
-  func record(_ request: PlaybackFixtureServer.RecordedRequest) {
-    lock.lock()
-    requests.append(request)
-    var matched: [CheckedContinuation<Bool, Never>] = []
-    waiters.removeAll { waiter in
-      guard Self.matches(request, path: waiter.path, marker: waiter.marker) else {
-        return false
-      }
-      matched.append(waiter.continuation)
-      return true
-    }
-    lock.unlock()
-    for continuation in matched {
-      continuation.resume(returning: true)
-    }
+nonisolated private func playbackFixtureResponse(
+  for data: Data,
+  rangeHeader: String?
+) -> PlaybackFixtureResponse {
+  guard let rangeHeader, rangeHeader.hasPrefix("bytes=") else {
+    return PlaybackFixtureResponse(status: "200 OK", data: data, contentRange: nil)
   }
-
-  func received(path: String, marker: String? = nil) -> Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    return requests.contains { Self.matches($0, path: path, marker: marker) }
+  let values = rangeHeader.dropFirst("bytes=".count).split(
+    separator: "-",
+    maxSplits: 1,
+    omittingEmptySubsequences: false
+  )
+  guard values.count == kPlaybackFixtureRangeComponentCount else {
+    return PlaybackFixtureResponse(
+      status: "416 Range Not Satisfiable",
+      data: Data(),
+      contentRange: nil
+    )
   }
-
-  func waitUntilReceived(path: String, marker: String? = nil) async -> Bool {
-    await withCheckedContinuation { continuation in
-      lock.lock()
-      if stopped {
-        lock.unlock()
-        continuation.resume(returning: false)
-      } else if requests.contains(where: { Self.matches($0, path: path, marker: marker) }) {
-        lock.unlock()
-        continuation.resume(returning: true)
-      } else {
-        waiters.append(Waiter(path: path, marker: marker, continuation: continuation))
-        lock.unlock()
-      }
-    }
+  guard let finalByteOffset = data.indices.last else {
+    return PlaybackFixtureResponse(
+      status: "416 Range Not Satisfiable",
+      data: Data(),
+      contentRange: nil
+    )
   }
-
-  func stop() {
-    lock.lock()
-    stopped = true
-    let pending = waiters.map(\.continuation)
-    waiters.removeAll()
-    lock.unlock()
-    for continuation in pending {
-      continuation.resume(returning: false)
-    }
+  let start: Int
+  let end: Int
+  if values[0].isEmpty, let suffixLength = Int(values[1]), suffixLength > 0 {
+    start = max(data.startIndex, data.endIndex - suffixLength)
+    end = finalByteOffset
+  } else if let parsedStart = Int(values[0]) {
+    start = parsedStart
+    end = min(Int(values[1]) ?? finalByteOffset, finalByteOffset)
+  } else {
+    return PlaybackFixtureResponse(
+      status: "416 Range Not Satisfiable",
+      data: Data(),
+      contentRange: nil
+    )
   }
-
-  private static func matches(
-    _ request: PlaybackFixtureServer.RecordedRequest,
-    path: String,
-    marker: String?
-  ) -> Bool {
-    request.path == path
-      && (marker.map { request.headers["x-nama-fixture"] == $0 } ?? true)
+  guard start >= data.startIndex, start <= end, start < data.endIndex else {
+    return PlaybackFixtureResponse(
+      status: "416 Range Not Satisfiable",
+      data: Data(),
+      contentRange: nil
+    )
   }
+  return PlaybackFixtureResponse(
+    status: "206 Partial Content",
+    data: data.subdata(in: start..<data.index(after: end)),
+    contentRange: "bytes \(start)-\(end)/\(data.count)"
+  )
 }
 
 nonisolated final class PlaybackFixtureServer: @unchecked Sendable {
-  struct RecordedRequest: Sendable {
-    let path: String
-    let headers: [String: String]
-  }
-
-  private struct Fixture: Sendable {
-    let contentType: String
-    let data: Data
-    let requiredMarker: String?
-  }
-
   private static let minimumReceiveLength = 1
   private static let maximumRequestBytes = 65_536
 
   private let listener: NWListener
   private let queue = DispatchQueue(label: "com.electather.nama.tests.playback-fixture")
-  private let fixtureTable: [String: Fixture]
-  private let redirects: [String: URL]
-  private let requestRecorder = PlaybackFixtureRequestRecorder()
+  private let routeTable: [String: PlaybackFixtureRoute]
+  private let lock = NSLock()
+  private var recordedRequests: [PlaybackFixtureRecordedRequest] = []
+  private var stalledConnections: [NWConnection] = []
 
-  private init(listener: NWListener, fixtures: [String: Fixture], redirects: [String: URL]) {
+  private init(listener: NWListener, routes: [String: PlaybackFixtureRoute]) {
     self.listener = listener
-    fixtureTable = fixtures
-    self.redirects = redirects
+    routeTable = routes
   }
 
   static func start(
-    redirects: [String: URL] = [:]
+    routes: [String: PlaybackFixtureRoute] = [:]
   ) async throws -> PlaybackFixtureServer {
-    let fixtures = try loadFixtures()
+    let loadedRoutes = try loadRoutes().merging(routes) { _, supplied in supplied }
     let tcpListener = try NWListener(using: .tcp, on: .any)
-    let fixtureServer = PlaybackFixtureServer(
-      listener: tcpListener,
-      fixtures: fixtures,
-      redirects: redirects
-    )
+    let fixtureServer = PlaybackFixtureServer(listener: tcpListener, routes: loadedRoutes)
     return try await withCheckedThrowingContinuation { continuation in
       let resumed = LockedFlag()
       tcpListener.stateUpdateHandler = { state in
@@ -217,25 +168,25 @@ nonisolated final class PlaybackFixtureServer: @unchecked Sendable {
     }
   }
 
-  private static func loadFixtures() throws -> [String: Fixture] {
+  private static func loadRoutes() throws -> [String: PlaybackFixtureRoute] {
     let bundle = Bundle(for: PlaybackFixtureBundleToken.self)
     return try [
-      "/sdr-master.m3u8": Fixture(
+      "/sdr-master.m3u8": .content(
         contentType: "application/vnd.apple.mpegurl",
         data: resource(named: "sdr-master", extension: "m3u8", bundle: bundle),
         requiredMarker: "media"
       ),
-      "/sdr-segment.ts": Fixture(
+      "/sdr-segment.ts": .content(
         contentType: "video/mp2t",
         data: resource(named: "sdr-segment", extension: "ts", bundle: bundle),
         requiredMarker: "media"
       ),
-      "/track-controls.mkv": Fixture(
+      "/track-controls.mkv": .content(
         contentType: "video/x-matroska",
         data: resource(named: "track-controls", extension: "mkv", bundle: bundle),
         requiredMarker: "media"
       ),
-      "/subtitle.srt": Fixture(
+      "/subtitle.srt": .content(
         contentType: "application/x-subrip",
         data: resource(named: "subtitle", extension: "srt", bundle: bundle),
         requiredMarker: "subtitle"
@@ -254,18 +205,35 @@ nonisolated final class PlaybackFixtureServer: @unchecked Sendable {
   }
 
   func stop() {
+    lock.lock()
+    let connections = stalledConnections
+    stalledConnections.removeAll(keepingCapacity: false)
+    lock.unlock()
     listener.cancel()
-    requestRecorder.stop()
+    for connection in connections {
+      connection.cancel()
+    }
   }
 
-  func received(path: String, marker: String) -> Bool {
-    requestRecorder.received(path: path, marker: marker)
+  func received(path: String, marker: String? = nil) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return recordedRequests.contains { request in
+      request.path == path
+        && marker.map { request.headers["x-nama-fixture"] == $0 } != false
+    }
   }
 
-  func received(path: String) -> Bool { requestRecorder.received(path: path) }
+  func requestCount(path: String) -> Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return recordedRequests.count { $0.path == path }
+  }
 
-  func waitUntilReceived(path: String, marker: String? = nil) async -> Bool {
-    await requestRecorder.waitUntilReceived(path: path, marker: marker)
+  func receivedHeader(path: String, name: String) -> String? {
+    lock.lock()
+    defer { lock.unlock() }
+    return recordedRequests.last { $0.path == path }?.headers[name.lowercased()]
   }
 
   private func accept(_ connection: NWConnection) {
@@ -305,39 +273,61 @@ nonisolated final class PlaybackFixtureServer: @unchecked Sendable {
     let method = request.method
     let path = request.path
     let headers = request.headers
-    requestRecorder.record(RecordedRequest(path: path, headers: headers))
+    lock.lock()
+    recordedRequests.append(PlaybackFixtureRecordedRequest(path: path, headers: headers))
+    lock.unlock()
 
-    if let redirect = redirects[path] {
+    guard let route = routeTable[path] else {
+      send(status: "404 Not Found", body: Data(), contentType: "text/plain", on: connection)
+      return
+    }
+    respond(to: route, method: method, headers: headers, on: connection)
+  }
+
+  private func respond(
+    to route: PlaybackFixtureRoute,
+    method: String,
+    headers: [String: String],
+    on connection: NWConnection
+  ) {
+    switch route {
+    case .content(let contentType, let data, let requiredMarker):
+      guard requiredMarker == nil || headers["x-nama-fixture"] == requiredMarker else {
+        send(status: "401 Unauthorized", body: Data(), contentType: "text/plain", on: connection)
+        return
+      }
+      let fixtureResponse = playbackFixtureResponse(for: data, rangeHeader: headers["range"])
+      send(
+        status: fixtureResponse.status,
+        body: method == "HEAD" ? Data() : fixtureResponse.data,
+        contentType: contentType,
+        on: connection,
+        contentLength: fixtureResponse.data.count,
+        contentRange: fixtureResponse.contentRange
+      )
+
+    case .redirect(let location, let requiredMarker):
+      guard requiredMarker == nil || headers["x-nama-fixture"] == requiredMarker else {
+        send(status: "401 Unauthorized", body: Data(), contentType: "text/plain", on: connection)
+        return
+      }
       send(
         status: "302 Found",
         body: Data(),
         contentType: "text/plain",
         on: connection,
-        additionalHeaders: ["Location": redirect.absoluteString]
+        additionalHeaders: ["Location": location.absoluteString]
       )
-      return
-    }
 
-    guard let fixture = fixtureTable[path] else {
-      send(status: "404 Not Found", body: Data(), contentType: "text/plain", on: connection)
-      return
+    case .stall(let requiredMarker):
+      guard requiredMarker == nil || headers["x-nama-fixture"] == requiredMarker else {
+        send(status: "401 Unauthorized", body: Data(), contentType: "text/plain", on: connection)
+        return
+      }
+      lock.lock()
+      stalledConnections.append(connection)
+      lock.unlock()
     }
-    if let marker = fixture.requiredMarker, headers["x-nama-fixture"] != marker {
-      send(status: "401 Unauthorized", body: Data(), contentType: "text/plain", on: connection)
-      return
-    }
-    let fixtureResponse = PlaybackFixtureResponse.make(
-      for: fixture.data,
-      rangeHeader: headers["range"]
-    )
-    send(
-      status: fixtureResponse.status,
-      body: method == "HEAD" ? Data() : fixtureResponse.data,
-      contentType: fixture.contentType,
-      on: connection,
-      contentLength: fixtureResponse.data.count,
-      contentRange: fixtureResponse.contentRange
-    )
   }
 
   private func send(

@@ -3,6 +3,15 @@ import Network
 
 nonisolated extension NamaPlaybackHTTPBridge {
   func accept(_ connection: NWConnection) {
+    let identifier = ObjectIdentifier(connection)
+    lock.lock()
+    guard !stopped else {
+      lock.unlock()
+      connection.cancel()
+      return
+    }
+    acceptedConnections[identifier] = connection
+    lock.unlock()
     connection.start(queue: queue)
     receive(on: connection, accumulated: Data())
   }
@@ -23,6 +32,7 @@ nonisolated extension NamaPlaybackHTTPBridge {
       if String(data: requestData, encoding: .utf8)?.contains("\r\n\r\n") == true {
         handle(requestData, on: connection)
       } else if isComplete || error != nil || requestData.count >= Self.maximumRequestBytes {
+        removeAcceptedConnection(connection)
         connection.cancel()
       } else {
         receive(on: connection, accumulated: requestData)
@@ -63,6 +73,15 @@ nonisolated extension NamaPlaybackHTTPBridge {
       )
       return
     }
+    guard bridgeResource.expiresAt > Date() else {
+      send(
+        status: NamaPlaybackHTTPStatus.serviceUnavailable,
+        body: Data(),
+        contentType: "text/plain",
+        on: connection
+      )
+      return
+    }
     startHandler(for: localRequest, resource: bridgeResource, connection: connection)
   }
 
@@ -88,7 +107,8 @@ nonisolated extension NamaPlaybackHTTPBridge {
     )
     let identifier = ObjectIdentifier(handler)
     lock.lock()
-    guard !stopped else {
+    acceptedConnections.removeValue(forKey: ObjectIdentifier(connection))
+    guard !stopped, resource.expiresAt > Date() else {
       lock.unlock()
       handler.cancel()
       return
@@ -101,6 +121,12 @@ nonisolated extension NamaPlaybackHTTPBridge {
   private func removeHandler(_ identifier: ObjectIdentifier) {
     lock.lock()
     handlers.removeValue(forKey: identifier)
+    lock.unlock()
+  }
+
+  private func removeAcceptedConnection(_ connection: NWConnection) {
+    lock.lock()
+    acceptedConnections.removeValue(forKey: ObjectIdentifier(connection))
     lock.unlock()
   }
 
@@ -139,6 +165,7 @@ nonisolated extension NamaPlaybackHTTPBridge {
     contentType: String,
     on connection: NWConnection
   ) {
+    removeAcceptedConnection(connection)
     let head = [
       "HTTP/1.1 \(status) \(NamaPlaybackHTTPStatus.reason(for: status))",
       "Content-Type: \(contentType)",

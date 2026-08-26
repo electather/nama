@@ -100,11 +100,14 @@ until explicit Change Endpoint. The app implements native Better Auth device
 authorization, returned-interval polling, refresh rotation, and a
 this-device-only endpoint-bound Keychain token record. The universal target now
 contains exact-pinned AetherEngine `6.21.0` behind the complete Nama-owned
-player boundary; a controlled SDR HLS fixture loads, renders, and stops through
-that adapter in macOS-hosted automation. Apple-platform builds pass, and a
-signed Apple TV 4K simulator has completed the no-browser authorization, scoped
-consumer verification, Keychain commit, and relaunch restoration flow. Product
-media behavior, physical Apple hardware, expiry-driven actual-surface refresh,
+player boundary. A per-load loopback broker enforces exact normalized allowed
+origins for initial, redirect, nested HLS, key, segment, and external-subtitle
+requests without exposing remote locators to the engine. Mac-hosted automation
+proves controlled rendering and controls plus rejection, replacement, expiry
+signaling, and surface shutdown; Apple-platform builds pass. A signed Apple TV
+4K simulator has completed the no-browser authorization, scoped consumer
+verification, Keychain commit, and relaunch restoration flow. Product media
+coordination, physical Apple hardware, expiry-driven actual-surface refresh,
 and the remaining Apple surfaces remain unverified.
 
 ## Architectural decision records
