@@ -6,6 +6,14 @@ nonisolated private enum NamaPlayerInitialLoadOutcome: Sendable, Equatable {
   case expired
 }
 
+nonisolated private struct NamaPlayerLoadContext: Sendable {
+  let request: NamaPlayerRequest
+  let mediaURL: URL
+  let externalSubtitles: [ExternalSubtitleTrack]
+  let resumePosition: TimeInterval?
+  let generation: UInt64
+}
+
 extension NamaPlayer {
   func load(_ request: NamaPlayerRequest) {
     let replacementPosition = clock.state.position
@@ -33,12 +41,7 @@ extension NamaPlayer {
   private func replaceCurrentLoad() {
     loadTask?.cancel()
     loadTask = nil
-    httpBridge?.stop()
-    httpBridge = nil
-    invalidateEngineObservations()
-    if request != nil {
-      engine.stop()
-    }
+    tearDownCurrentLoad()
   }
 
   private func performLoad(
@@ -55,21 +58,20 @@ extension NamaPlayer {
         throw CancellationError()
       }
       let bridgedRequest = try bridge.prepare(request)
-      let externalSubtitles = bridgedRequest.externalSubtitles.map { subtitle in
-        Self.externalSubtitle(subtitle, url: subtitle.locator.url)
-      }
+      let externalSubtitles = bridgedRequest.externalSubtitles.map(Self.externalSubtitle)
       try Task.checkCancellation()
       guard isCurrentLoad(generation) else {
         throw CancellationError()
       }
       httpBridge = bridge
-      let outcome = try await loadUntilReadyOrExpired(
-        request,
+      let context = NamaPlayerLoadContext(
+        request: request,
         mediaURL: bridgedRequest.media.url,
         externalSubtitles: externalSubtitles,
         resumePosition: resumePosition,
         generation: generation
       )
+      let outcome = try await loadUntilReadyOrExpired(context)
       guard outcome == .loaded else {
         return
       }
@@ -86,18 +88,13 @@ extension NamaPlayer {
       guard !Task.isCancelled, isCurrentLoad(generation) else {
         return
       }
-      self.request = nil
-      invalidateEngineObservations()
+      tearDownCurrentLoad()
       reset(to: .failed(Self.sanitizedFailure(error)))
     }
   }
 
   private func loadUntilReadyOrExpired(
-    _ request: NamaPlayerRequest,
-    mediaURL: URL,
-    externalSubtitles: [ExternalSubtitleTrack],
-    resumePosition: TimeInterval?,
-    generation: UInt64
+    _ context: NamaPlayerLoadContext
   ) async throws -> NamaPlayerInitialLoadOutcome {
     guard let bridge = httpBridge else {
       throw CancellationError()
@@ -107,21 +104,15 @@ extension NamaPlayer {
         guard let self else {
           throw CancellationError()
         }
-        return try await loadEngine(
-          request,
-          mediaURL: mediaURL,
-          externalSubtitles: externalSubtitles,
-          resumePosition: resumePosition,
-          generation: generation
-        )
+        return try await loadEngine(context)
       }
       group.addTask { [weak self] in
-        try await Self.waitUntilExpiration(request.earliestExpiration)
+        try await Self.waitUntilExpiration(context.request.earliestExpiration)
         try Task.checkCancellation()
         guard let self else {
           throw CancellationError()
         }
-        await expire(bridge, generation: generation)
+        await expire(bridge, generation: context.generation)
         return .expired
       }
       guard let outcome = try await group.next() else {
@@ -133,25 +124,21 @@ extension NamaPlayer {
   }
 
   private func loadEngine(
-    _ request: NamaPlayerRequest,
-    mediaURL: URL,
-    externalSubtitles: [ExternalSubtitleTrack],
-    resumePosition: TimeInterval?,
-    generation: UInt64
+    _ context: NamaPlayerLoadContext
   ) async throws -> NamaPlayerInitialLoadOutcome {
     let probe = try await engine.load(
-      url: mediaURL,
-      startPosition: resumePosition,
+      url: context.mediaURL,
+      startPosition: context.resumePosition,
       options: LoadOptions(
         httpHeaders: [:],
-        externalSubtitles: externalSubtitles
+        externalSubtitles: context.externalSubtitles
       )
     )
     try Task.checkCancellation()
-    guard isCurrentLoad(generation) else {
+    guard isCurrentLoad(context.generation) else {
       throw CancellationError()
     }
-    publishLoadedRequest(probe: probe, mimeType: request.media.mimeType)
+    publishLoadedRequest(probe: probe, mimeType: context.request.media.mimeType)
     return .loaded
   }
 
@@ -166,17 +153,11 @@ extension NamaPlayer {
   }
 
   private func expire(_ bridge: NamaPlaybackHTTPBridge, generation: UInt64) {
-    guard isCurrentLoad(generation) else {
+    guard isCurrentLoad(generation), httpBridge === bridge else {
       return
     }
     let resumePosition = clock.state.position
-    bridge.stop()
-    if httpBridge === bridge {
-      httpBridge = nil
-    }
-    request = nil
-    invalidateEngineObservations()
-    engine.stop()
+    tearDownCurrentLoad()
     reset(to: .idle)
     onLocatorExpired(resumePosition)
   }

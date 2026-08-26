@@ -7,6 +7,11 @@ nonisolated enum NamaPlaybackHTTPBridgeError: Error, Sendable {
   case malformedPlaylist
 }
 
+nonisolated enum NamaPlaybackBridgeContentKind: Sendable, Hashable {
+  case unknown
+  case playlist
+}
+
 nonisolated struct NamaPlaybackBridgeResource: Sendable {
   let scopeID: UUID
   let url: URL
@@ -14,18 +19,18 @@ nonisolated struct NamaPlaybackBridgeResource: Sendable {
   let allowedOrigins: Set<NamaPlaybackOrigin>
   let mimeType: String?
   let expiresAt: Date
+  let contentKind: NamaPlaybackBridgeContentKind
 
   func allows(_ destination: URL) -> Bool {
-    NamaPlaybackOrigin(url: destination, requiresOriginOnly: false)
-      .map(allowedOrigins.contains) ?? false
+    NamaPlaybackOrigin(destination: destination).map(allowedOrigins.contains) ?? false
   }
 }
 
 nonisolated struct NamaPlaybackBridgeResourceKey: Hashable {
   let scopeID: UUID
   let url: URL
+  let contentKind: NamaPlaybackBridgeContentKind
 }
-
 nonisolated struct NamaPlaybackBridgeLocalRequest {
   let method: String
   let path: String
@@ -177,7 +182,11 @@ nonisolated final class NamaPlaybackHTTPBridge: @unchecked Sendable {
   }
 
   func localURL(for resource: NamaPlaybackBridgeResource) throws -> URL {
-    let key = NamaPlaybackBridgeResourceKey(scopeID: resource.scopeID, url: resource.url)
+    let key = NamaPlaybackBridgeResourceKey(
+      scopeID: resource.scopeID,
+      url: resource.url,
+      contentKind: resource.contentKind
+    )
     lock.lock()
     defer { lock.unlock() }
     guard !stopped else {
@@ -204,9 +213,7 @@ nonisolated final class NamaPlaybackHTTPBridge: @unchecked Sendable {
 
   private func register(_ locator: NamaPlaybackLocator) throws -> NamaPlaybackLocator {
     let allowedOriginValues = try locator.allowedRedirectOrigins.map { allowedURL in
-      guard
-        let allowedOrigin = NamaPlaybackOrigin(url: allowedURL, requiresOriginOnly: true)
-      else {
+      guard let allowedOrigin = NamaPlaybackOrigin(allowedOrigin: allowedURL) else {
         throw NamaPlaybackHTTPBridgeError.invalidLocator
       }
       return allowedOrigin
@@ -218,7 +225,8 @@ nonisolated final class NamaPlaybackHTTPBridge: @unchecked Sendable {
       headers: locator.headerFields,
       allowedOrigins: allowedOrigins,
       mimeType: locator.mimeType,
-      expiresAt: locator.expiresAt
+      expiresAt: locator.expiresAt,
+      contentKind: .unknown
     )
     guard bridgeResource.allows(locator.url) else {
       throw NamaPlaybackHTTPBridgeError.destinationNotAllowed

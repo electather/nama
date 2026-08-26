@@ -1,6 +1,10 @@
 #if os(macOS)
+  import AppKit
   import Foundation
   import Testing
+  // Swift Format and SwiftLint order these mixed-case module names differently.
+  // swiftlint:disable:next sorted_imports
+  import SwiftUI
 
   @testable import Nama
 
@@ -101,22 +105,22 @@
         let pathURL = try #require(URL(string: "https://example.com/path"))
         let fragmentURL = try #require(URL(string: "https://example.com/path#playback"))
         let implicitHTTPS = try #require(
-          NamaPlaybackOrigin(url: implicitHTTPSURL, requiresOriginOnly: true)
+          NamaPlaybackOrigin(allowedOrigin: implicitHTTPSURL)
         )
         let explicitHTTPS = try #require(
-          NamaPlaybackOrigin(url: explicitHTTPSURL, requiresOriginOnly: true)
+          NamaPlaybackOrigin(allowedOrigin: explicitHTTPSURL)
         )
         let differentScheme = try #require(
-          NamaPlaybackOrigin(url: differentSchemeURL, requiresOriginOnly: true)
+          NamaPlaybackOrigin(allowedOrigin: differentSchemeURL)
         )
         let destinationWithFragment = try #require(
-          NamaPlaybackOrigin(url: fragmentURL, requiresOriginOnly: false)
+          NamaPlaybackOrigin(destination: fragmentURL)
         )
 
         #expect(implicitHTTPS == explicitHTTPS)
         #expect(implicitHTTPS == destinationWithFragment)
         #expect(implicitHTTPS != differentScheme)
-        #expect(NamaPlaybackOrigin(url: pathURL, requiresOriginOnly: true) == nil)
+        #expect(NamaPlaybackOrigin(allowedOrigin: pathURL) == nil)
       }
 
       @Test("allows a redirect and records header replay only between allowed origins")
@@ -227,6 +231,12 @@
     static let pollInterval: Duration = .seconds(pollIntervalSeconds)
   }
 
+  private enum PlaybackTestSurface {
+    static let width: CGFloat = 320
+    static let height: CGFloat = 180
+    static let size = NSSize(width: width, height: height)
+  }
+
   @MainActor
   func securityPlaybackEventually(
     timeout: Duration = PlaybackSecurityTestTiming.timeout,
@@ -241,6 +251,35 @@
       try? await Task.sleep(for: PlaybackSecurityTestTiming.pollInterval)
     }
     return condition()
+  }
+
+  func playbackTestRequest(
+    server: PlaybackFixtureServer,
+    path: String,
+    mimeType: String,
+    expiresAt: Date
+  ) -> NamaPlayerRequest {
+    NamaPlayerRequest(
+      media: NamaPlaybackLocator(
+        url: server.origin.appendingPathComponent(path),
+        headers: [NamaPlaybackLocatorHeader(name: "X-Nama-Fixture", value: "media")],
+        allowedRedirectOrigins: [server.origin],
+        mimeType: mimeType,
+        expiresAt: expiresAt
+      ),
+      resumePosition: nil,
+      externalSubtitles: []
+    )
+  }
+
+  @MainActor
+  func hostPlaybackTestSurface(for player: NamaPlayer) -> NSWindow {
+    let controller = NSHostingController(rootView: NamaPlayerSurface(player: player))
+    let window = NSWindow(contentViewController: controller)
+    window.setContentSize(PlaybackTestSurface.size)
+    window.makeKeyAndOrderFront(nil)
+    controller.view.layoutSubtreeIfNeeded()
+    return window
   }
 
   @MainActor

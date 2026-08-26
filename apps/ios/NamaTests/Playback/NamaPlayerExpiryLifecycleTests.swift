@@ -1,7 +1,5 @@
 #if os(macOS)
-  import AppKit
   import Foundation
-  import SwiftUI
   import Testing
 
   @testable import Nama
@@ -15,7 +13,7 @@
       func replacesExpiredLocator() async throws {
         let server = try await PlaybackFixtureServer.start()
         defer { server.stop() }
-        let replacement = playerRequest(
+        let replacement = playbackTestRequest(
           server: server,
           path: "sdr-master.m3u8",
           mimeType: "application/vnd.apple.mpegurl",
@@ -28,13 +26,13 @@
           playerBox.player?.load(replacement)
         }
         playerBox.player = player
-        let window = hostSurface(for: player)
+        let window = hostPlaybackTestSurface(for: player)
         defer {
           player.stop()
           window.close()
         }
         player.load(
-          playerRequest(
+          playbackTestRequest(
             server: server,
             path: "track-controls.mkv",
             mimeType: "video/x-matroska",
@@ -66,13 +64,13 @@
         let player = try NamaPlayer { position in
           expiredPosition = position
         }
-        let window = hostSurface(for: player)
+        let window = hostPlaybackTestSurface(for: player)
         defer {
           player.stop()
           window.close()
         }
         player.load(
-          playerRequest(
+          playbackTestRequest(
             server: server,
             path: "track-controls.mkv",
             mimeType: "video/x-matroska",
@@ -93,7 +91,7 @@
         )
         let currentPosition = player.clock.state.position
         player.load(
-          playerRequest(
+          playbackTestRequest(
             server: server,
             path: "sdr-master.m3u8",
             mimeType: "application/vnd.apple.mpegurl",
@@ -116,7 +114,7 @@
         }
         defer { player.stop() }
         player.load(
-          playerRequest(
+          playbackTestRequest(
             server: server,
             path: "stall.mkv",
             mimeType: "video/x-matroska",
@@ -137,34 +135,6 @@
       private static let inFlightExpiryDelaySeconds: TimeInterval = 0.5
       private static let positionTolerance: TimeInterval = 0.5
       private static let positionBeyondDuration: TimeInterval = 10
-
-      private func playerRequest(
-        server: PlaybackFixtureServer,
-        path: String,
-        mimeType: String,
-        expiresAt: Date
-      ) -> NamaPlayerRequest {
-        NamaPlayerRequest(
-          media: NamaPlaybackLocator(
-            url: server.origin.appendingPathComponent(path),
-            headers: [NamaPlaybackLocatorHeader(name: "X-Nama-Fixture", value: "media")],
-            allowedRedirectOrigins: [server.origin],
-            mimeType: mimeType,
-            expiresAt: expiresAt
-          ),
-          resumePosition: nil,
-          externalSubtitles: []
-        )
-      }
-
-      private func hostSurface(for player: NamaPlayer) -> NSWindow {
-        let controller = NSHostingController(rootView: NamaPlayerSurface(player: player))
-        let window = NSWindow(contentViewController: controller)
-        window.setContentSize(NSSize(width: 320, height: 180))
-        window.makeKeyAndOrderFront(nil)
-        controller.view.layoutSubtreeIfNeeded()
-        return window
-      }
     }
   }
 

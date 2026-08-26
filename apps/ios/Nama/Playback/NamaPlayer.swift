@@ -100,14 +100,18 @@ final class NamaPlayer {
     engine.clearSubtitle()
   }
 
-  func stop() {
-    loadTask?.cancel()
-    loadTask = nil
+  func tearDownCurrentLoad() {
     httpBridge?.stop()
     httpBridge = nil
     request = nil
     invalidateEngineObservations()
     engine.stop()
+  }
+
+  func stop() {
+    loadTask?.cancel()
+    loadTask = nil
+    tearDownCurrentLoad()
     reset(to: .idle)
   }
 

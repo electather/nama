@@ -56,7 +56,7 @@
         )
 
         #expect(
-          await playbackEventually {
+          await securityPlaybackEventually {
             player.hasFirstFrame
               && player.state == .playing
               && player.subtitleTracks.contains { $0.id == subtitle.trackID }
@@ -73,15 +73,17 @@
 
         player.selectSubtitleTrack(id: subtitle.trackID)
         #expect(
-          await playbackEventually {
+          await securityPlaybackEventually {
             player.selectedSubtitleTrackID == subtitle.trackID
           }
         )
         #expect(
-          await playbackEventually { server.received(path: "/subtitle.srt", marker: "subtitle") }
+          await securityPlaybackEventually {
+            server.received(path: "/subtitle.srt", marker: "subtitle")
+          }
         )
         player.disableSubtitles()
-        #expect(await playbackEventually { player.selectedSubtitleTrackID == nil })
+        #expect(await securityPlaybackEventually { player.selectedSubtitleTrackID == nil })
 
         player.stop()
         assertStopped(player)
@@ -118,21 +120,21 @@
           subtitleID: subtitle.trackID
         )
         player.play()
-        #expect(await playbackEventually { player.state == .playing })
+        #expect(await securityPlaybackEventually { player.state == .playing })
 
         let alternateAudio = try #require(
           player.audioTracks.first { $0.id != player.selectedAudioTrackID }
         )
         player.selectAudioTrack(id: alternateAudio.id)
         #expect(
-          await playbackEventually { player.selectedAudioTrackID == alternateAudio.id }
+          await securityPlaybackEventually { player.selectedAudioTrackID == alternateAudio.id }
         )
 
         let duration = try #require(player.clock.state.duration)
         let expectedPosition = min(5, duration / 2)
         #expect(player.seek(to: expectedPosition) == expectedPosition)
         #expect(
-          await playbackEventually {
+          await securityPlaybackEventually {
             abs(player.clock.state.position - expectedPosition) < 0.5
               && player.state == .playing
           }
@@ -169,7 +171,7 @@
         )
 
         #expect(
-          await playbackEventually {
+          await securityPlaybackEventually {
             if case .failed = player.state { true } else { false }
           }
         )
@@ -218,7 +220,7 @@
 
       private func verifyTracksReady(_ player: NamaPlayer) async {
         #expect(
-          await playbackEventually {
+          await securityPlaybackEventually {
             player.state == .playing && player.audioTracks.count == 2
           }
         )
@@ -243,19 +245,19 @@
         subtitleID: String
       ) async throws {
         player.pause()
-        #expect(await playbackEventually { player.state == .paused })
+        #expect(await securityPlaybackEventually { player.state == .paused })
         let subtitle = try #require(player.subtitleTracks.first { $0.id == subtitleID })
         let frameWithoutSubtitle = try #require(renderedPixels(in: window))
         player.selectSubtitleTrack(id: subtitle.id)
         #expect(
-          await playbackEventually {
+          await securityPlaybackEventually {
             player.selectedSubtitleTrackID == subtitle.id && !player.subtitleCues.isEmpty
           }
         )
         let frameWithSubtitle = try #require(renderedPixels(in: window))
         #expect(frameWithSubtitle != frameWithoutSubtitle)
         player.disableSubtitles()
-        #expect(await playbackEventually { player.selectedSubtitleTrackID == nil })
+        #expect(await securityPlaybackEventually { player.selectedSubtitleTrackID == nil })
       }
 
       private func assertStopped(_ player: NamaPlayer) {
@@ -310,10 +312,4 @@
     }
   }
 
-  @MainActor
-  private func playbackEventually(
-    _ condition: @MainActor @Sendable () -> Bool
-  ) async -> Bool {
-    await securityPlaybackEventually(condition)
-  }
 #endif

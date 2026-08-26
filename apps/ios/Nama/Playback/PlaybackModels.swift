@@ -12,12 +12,25 @@ nonisolated struct NamaPlaybackOrigin: Sendable, Hashable {
   let host: String
   let port: Int
 
+  private enum URLRole {
+    case allowedOrigin
+    case destination
+  }
+
   private static let minimumPort = 1
   private static let maximumPort = 65_535
   private static let defaultHTTPPort = 80
   private static let defaultHTTPSPort = 443
 
-  init?(url: URL, requiresOriginOnly: Bool) {
+  init?(allowedOrigin url: URL) {
+    self.init(url: url, role: .allowedOrigin)
+  }
+
+  init?(destination url: URL) {
+    self.init(url: url, role: .destination)
+  }
+
+  private init?(url: URL, role: URLRole) {
     guard
       let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
       let normalizedScheme = components.scheme?.lowercased(),
@@ -25,13 +38,18 @@ nonisolated struct NamaPlaybackOrigin: Sendable, Hashable {
       let normalizedHost = components.host?.lowercased(),
       !normalizedHost.isEmpty,
       components.user == nil,
-      components.password == nil,
-      !requiresOriginOnly
-        || (components.fragment == nil
-          && (components.path.isEmpty || components.path == "/")
-          && components.query == nil)
+      components.password == nil
     else {
       return nil
+    }
+    if role == .allowedOrigin {
+      guard
+        components.fragment == nil,
+        components.path.isEmpty || components.path == "/",
+        components.query == nil
+      else {
+        return nil
+      }
     }
     let effectivePort =
       components.port
@@ -81,14 +99,10 @@ nonisolated struct NamaPlaybackLocator: Sendable, Equatable {
   }
 
   var allowsInitialDestination: Bool {
-    guard
-      let destination = NamaPlaybackOrigin(url: url, requiresOriginOnly: false)
-    else {
+    guard let destination = NamaPlaybackOrigin(destination: url) else {
       return false
     }
-    let allowedOrigins = allowedRedirectOrigins.compactMap { origin in
-      NamaPlaybackOrigin(url: origin, requiresOriginOnly: true)
-    }
+    let allowedOrigins = allowedRedirectOrigins.compactMap(NamaPlaybackOrigin.init(allowedOrigin:))
     return allowedOrigins.count == allowedRedirectOrigins.count
       && allowedOrigins.contains(destination)
   }

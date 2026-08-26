@@ -1,7 +1,5 @@
 #if os(macOS)
-  import AppKit
   import Foundation
-  import SwiftUI
   import Testing
 
   @testable import Nama
@@ -16,9 +14,9 @@
         defer { server.stop() }
         let player = try makePlaybackTestPlayer()
         defer { player.stop() }
-        let window = hostSurface(for: player)
+        let window = hostPlaybackTestSurface(for: player)
         player.load(
-          playerRequest(
+          playbackTestRequest(
             server: server,
             path: "sdr-master.m3u8",
             mimeType: "application/vnd.apple.mpegurl",
@@ -38,13 +36,13 @@
         let server = try await PlaybackFixtureServer.start()
         defer { server.stop() }
         let player = try makePlaybackTestPlayer()
-        let window = hostSurface(for: player)
+        let window = hostPlaybackTestSurface(for: player)
         defer {
           player.stop()
           window.close()
         }
         player.load(
-          playerRequest(
+          playbackTestRequest(
             server: server,
             path: "sdr-master.m3u8",
             mimeType: "application/vnd.apple.mpegurl",
@@ -66,14 +64,14 @@
         defer { newServer.stop() }
         let oldSubtitleID = "old-session-subtitle"
         let oldRequest = oldPlayerRequest(server: oldServer, subtitleID: oldSubtitleID)
-        let newRequest = playerRequest(
+        let newRequest = playbackTestRequest(
           server: newServer,
           path: "sdr-master.m3u8",
           mimeType: "application/vnd.apple.mpegurl",
           expiresAt: .distantFuture
         )
         let player = try makePlaybackTestPlayer()
-        let window = hostSurface(for: player)
+        let window = hostPlaybackTestSurface(for: player)
         defer {
           player.stop()
           window.close()
@@ -155,35 +153,6 @@
         #expect(player.videoCharacteristics == nil)
         #expect(player.clock.state == NamaPlayerClockState())
       }
-
-      private func playerRequest(
-        server: PlaybackFixtureServer,
-        path: String,
-        mimeType: String,
-        expiresAt: Date
-      ) -> NamaPlayerRequest {
-        NamaPlayerRequest(
-          media: NamaPlaybackLocator(
-            url: server.origin.appendingPathComponent(path),
-            headers: [NamaPlaybackLocatorHeader(name: "X-Nama-Fixture", value: "media")],
-            allowedRedirectOrigins: [server.origin],
-            mimeType: mimeType,
-            expiresAt: expiresAt
-          ),
-          resumePosition: nil,
-          externalSubtitles: []
-        )
-      }
-
-      private func hostSurface(for player: NamaPlayer) -> NSWindow {
-        let controller = NSHostingController(rootView: NamaPlayerSurface(player: player))
-        let window = NSWindow(contentViewController: controller)
-        window.setContentSize(NSSize(width: 320, height: 180))
-        window.makeKeyAndOrderFront(nil)
-        controller.view.layoutSubtreeIfNeeded()
-        return window
-      }
     }
   }
-
 #endif
