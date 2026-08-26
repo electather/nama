@@ -6,23 +6,26 @@ final class HomeFeature {
   private(set) var state: HomeState = .loading
 
   @ObservationIgnored private let loader: any HomeLoading
+  @ObservationIgnored private let artworkWindow: HomeArtworkWindow
   @ObservationIgnored private var activeTask: Task<Void, Never>?
   @ObservationIgnored private var authorization: HomeAuthorizationIdentity?
-  @ObservationIgnored private var attempt: UInt64 = 0
+  @ObservationIgnored private var attempt: UInt64 = .zero
 
-  init(loader: any HomeLoading) {
+  init(loader: any HomeLoading, artworkLoader: any HomeArtworkLoading) {
     self.loader = loader
+    artworkWindow = HomeArtworkWindow(loader: artworkLoader)
   }
 
   deinit {
     activeTask?.cancel()
   }
 
-  func activate(_ authorization: HomeAuthorizationIdentity) {
-    guard self.authorization != authorization else {
+  func activate(_ newAuthorization: HomeAuthorizationIdentity) {
+    guard authorization != newAuthorization else {
       return
     }
-    self.authorization = authorization
+    authorization = newAuthorization
+    artworkWindow.authorizationDidChange(to: newAuthorization)
     startLoad(preserving: nil)
   }
 
@@ -43,7 +46,26 @@ final class HomeFeature {
   func deactivate() {
     authorization = nil
     cancelActiveLoad()
+    artworkWindow.deactivate()
     state = .loading
+  }
+
+  func artworkPresentationState(
+    for media: HomeMediaIdentity
+  ) -> HomeArtworkPresentationState? {
+    artworkWindow.presentationState(for: media)
+  }
+
+  func artworkDidAppear(
+    _ media: HomeMediaIdentity,
+    in shelf: HomeShelfIdentity,
+    size: HomeArtworkSizeBucket
+  ) {
+    artworkWindow.artworkDidAppear(media, in: shelf, size: size)
+  }
+
+  func artworkDidDisappear(_ media: HomeMediaIdentity, in shelf: HomeShelfIdentity) {
+    artworkWindow.artworkDidDisappear(media, in: shelf)
   }
 
   private var confirmedSnapshot: HomeSnapshot? {
@@ -58,19 +80,19 @@ final class HomeFeature {
   }
 
   private func startLoad(preserving snapshot: HomeSnapshot?) {
-    guard let authorization else {
+    guard let currentAuthorization = authorization else {
       return
     }
     cancelActiveLoad()
     attempt &+= 1
     let currentAttempt = attempt
     state = snapshot.map(HomeState.refreshing) ?? .loading
-    let homeLoader = loader
+    let currentLoader = loader
 
     activeTask = Task { [weak self] in
       let result: Result<HomeSnapshot, any Error>
       do {
-        result = .success(try await homeLoader.load(for: authorization))
+        result = .success(try await currentLoader.load(for: currentAuthorization))
       } catch {
         result = .failure(error)
       }
@@ -79,7 +101,7 @@ final class HomeFeature {
       }
       self?.finish(
         result,
-        authorization: authorization,
+        authorization: currentAuthorization,
         attempt: currentAttempt
       )
     }
@@ -87,12 +109,12 @@ final class HomeFeature {
 
   private func finish(
     _ result: Result<HomeSnapshot, any Error>,
-    authorization: HomeAuthorizationIdentity,
-    attempt currentAttempt: UInt64
+    authorization expectedAuthorization: HomeAuthorizationIdentity,
+    attempt expectedAttempt: UInt64
   ) {
     guard
-      self.authorization == authorization,
-      attempt == currentAttempt
+      authorization == expectedAuthorization,
+      attempt == expectedAttempt
     else {
       return
     }
@@ -107,6 +129,7 @@ final class HomeFeature {
     switch result {
     case .success(let snapshot):
       state = snapshot.isEmpty ? .empty : .content(snapshot)
+      artworkWindow.snapshotDidChange(snapshot)
 
     case .failure(is CancellationError):
       return

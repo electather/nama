@@ -104,6 +104,39 @@ nonisolated enum HomeArtworkTextPresence: Equatable, Sendable {
   case containsText
 }
 
+nonisolated struct HomeArtworkSizeBucket: Equatable, Hashable, Sendable {
+  private static let minimumRequestedWidth = 0.0
+  private static let compactWidth: UInt32 = 256
+  private static let standardWidth: UInt32 = 384
+  private static let largeWidth: UInt32 = 512
+  private static let maximumWidth: UInt32 = 768
+  private static let posterHeightIncrementDivisor: UInt32 = 2
+
+  let maxWidth: UInt32
+  let maxHeight: UInt32
+
+  static func poster(displayWidth: Double, scale: Double) -> Self {
+    let requestedWidth =
+      displayWidth.isFinite && scale.isFinite
+      ? max(minimumRequestedWidth, displayWidth * scale)
+      : minimumRequestedWidth
+    let bucketWidth =
+      if requestedWidth <= Double(compactWidth) {
+        compactWidth
+      } else if requestedWidth <= Double(standardWidth) {
+        standardWidth
+      } else if requestedWidth <= Double(largeWidth) {
+        largeWidth
+      } else {
+        maximumWidth
+      }
+    return Self(
+      maxWidth: bucketWidth,
+      maxHeight: bucketWidth + bucketWidth / posterHeightIncrementDivisor
+    )
+  }
+}
+
 nonisolated enum HomeDynamicRange: Equatable, Sendable {
   case sdr
   case hdr10
@@ -163,6 +196,12 @@ nonisolated struct HomeMediaSummary: Equatable, Identifiable, Sendable {
   let artwork: [HomeArtworkReference]
   let playability: HomePlayability
   let defaultSource: HomeSourceSummary?
+
+  var preferredPosterArtwork: HomeArtworkReference? {
+    artwork.first { reference in
+      reference.role == .poster && reference.textPresence == .textless
+    }
+  }
 
   var id: HomeMediaIdentity {
     identity

@@ -7,6 +7,8 @@ nonisolated enum HomeTransportFixture {
   static let oversizedHomeItemCount = 51
   static let successfulHTTPStatus = 200
   static let unavailableHTTPStatus = 503
+  private static let oversizedItemCount = 51
+  private static let overlongTitleCount = 129
   static let homeResponse = #"""
     {
       "sections": [
@@ -68,6 +70,27 @@ nonisolated enum HomeTransportFixture {
           ]
         }
       ]
+    }
+    """#
+  static let artworkResponse = #"""
+    {
+      "locator": {
+        "url": "https://artwork.example.test/poster?lease=short-lived",
+        "headers": [
+          {
+            "name": "X-Artwork-Token",
+            "value": "short-lived-secret"
+          }
+        ],
+        "allowedRedirectOrigins": [
+          "https://artwork.example.test",
+          "https://cdn.example.test"
+        ],
+        "refreshAt": "2030-01-01T00:00:00Z",
+        "accessExpiresAt": "2030-01-01T00:01:00Z",
+        "width": 384,
+        "height": 576
+      }
     }
     """#
   static let catalogNotReadyResponse = #"""
@@ -209,9 +232,15 @@ nonisolated final class HomeConnectStubURLProtocol: URLProtocol, @unchecked Send
     .unavailableHTTPStatus
   nonisolated(unsafe) private static var responseBody = ""
   nonisolated(unsafe) private static var requests: [URLRequest] = []
+  nonisolated(unsafe) private static var requestBodies: [Data] = []
+  private static let bodyBufferSize = 4_096
 
   static var recordedRequests: [URLRequest] {
     lock.withLock { requests }
+  }
+
+  static var recordedRequestBodies: [Data] {
+    lock.withLock { requestBodies }
   }
 
   static func configure(status: Int, body: String) {
@@ -219,6 +248,7 @@ nonisolated final class HomeConnectStubURLProtocol: URLProtocol, @unchecked Send
       responseStatus = status
       responseBody = body
       requests = []
+      requestBodies = []
     }
   }
 
@@ -238,8 +268,10 @@ nonisolated final class HomeConnectStubURLProtocol: URLProtocol, @unchecked Send
   }
 
   override func startLoading() {
+    let requestBody = Self.body(from: request)
     let response = Self.lock.withLock { () -> (Int, String) in
       Self.requests.append(request)
+      Self.requestBodies.append(requestBody)
       return (Self.responseStatus, Self.responseBody)
     }
     guard
@@ -261,5 +293,25 @@ nonisolated final class HomeConnectStubURLProtocol: URLProtocol, @unchecked Send
 
   override func stopLoading() {
     // URLProtocol has no active work to stop in this synchronous fixture.
+  }
+
+  private static func body(from request: URLRequest) -> Data {
+    if let body = request.httpBody {
+      return body
+    }
+    guard let stream = request.httpBodyStream else {
+      return Data()
+    }
+    stream.open()
+    defer { stream.close() }
+    var body = Data()
+    var buffer = [UInt8](repeating: .zero, count: bodyBufferSize)
+    while true {
+      let readCount = stream.read(&buffer, maxLength: buffer.count)
+      guard readCount > 0 else {
+        return body
+      }
+      body.append(contentsOf: buffer.prefix(readCount))
+    }
   }
 }

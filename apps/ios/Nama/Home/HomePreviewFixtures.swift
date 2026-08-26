@@ -55,7 +55,15 @@
       title: String,
       playable: Bool = true
     ) -> HomeMediaSummary {
-      HomeMediaSummary(
+      let posterArtwork = HomeArtworkReference(
+        identity: HomeArtworkIdentity("artwork-\(identity)"),
+        role: .poster,
+        width: posterWidth,
+        height: posterHeight,
+        locale: nil,
+        textPresence: .unknown
+      )
+      return HomeMediaSummary(
         identity: HomeMediaIdentity(identity),
         kind: kind,
         title: title,
@@ -63,7 +71,7 @@
         runtime: kind == .movie ? movieRuntime : nil,
         contentRating: nil,
         primaryGenre: "Drama",
-        artwork: [artwork(identity: identity)],
+        artwork: [posterArtwork],
         playability: playable ? .playable : .temporarilyUnavailable,
         defaultSource: playable
           ? HomeSourceSummary(
@@ -83,87 +91,44 @@
           : nil
       )
     }
-    private static func artwork(identity: String) -> HomeArtworkReference {
-      HomeArtworkReference(
-        identity: HomeArtworkIdentity("artwork-\(identity)"),
-        role: .poster,
-        width: posterWidth,
-        height: posterHeight,
-        locale: nil,
-        textPresence: .unknown
-      )
-    }
+  }
+
+  @MainActor
+  private func homePreview(_ state: HomeState) -> some View {
+    HomePresentationView(
+      state: state,
+      retry: HomePreviewFixtures.noAction,
+      refresh: HomePreviewFixtures.noAction,
+      changeEndpoint: HomePreviewFixtures.noAsyncAction,
+      reauthorize: HomePreviewFixtures.noAsyncAction
+    )
   }
 
   #Preview("Home — Loading") {
-    HomePresentationView(
-      state: .loading,
-      retry: HomePreviewFixtures.noAction,
-      refresh: HomePreviewFixtures.noAction,
-      changeEndpoint: HomePreviewFixtures.noAsyncAction,
-      reauthorize: HomePreviewFixtures.noAsyncAction
-    )
+    homePreview(.loading)
   }
 
   #Preview("Home — Empty") {
-    HomePresentationView(
-      state: .empty,
-      retry: HomePreviewFixtures.noAction,
-      refresh: HomePreviewFixtures.noAction,
-      changeEndpoint: HomePreviewFixtures.noAsyncAction,
-      reauthorize: HomePreviewFixtures.noAsyncAction
-    )
+    homePreview(.empty)
   }
 
   #Preview("Home — Long title and content") {
-    HomePresentationView(
-      state: .content(HomePreviewFixtures.longTitle),
-      retry: HomePreviewFixtures.noAction,
-      refresh: HomePreviewFixtures.noAction,
-      changeEndpoint: HomePreviewFixtures.noAsyncAction,
-      reauthorize: HomePreviewFixtures.noAsyncAction
-    )
+    homePreview(.content(HomePreviewFixtures.longTitle))
   }
 
   #Preview("Home — Refreshing") {
-    HomePresentationView(
-      state: .refreshing(HomePreviewFixtures.longTitle),
-      retry: HomePreviewFixtures.noAction,
-      refresh: HomePreviewFixtures.noAction,
-      changeEndpoint: HomePreviewFixtures.noAsyncAction,
-      reauthorize: HomePreviewFixtures.noAsyncAction
-    )
+    homePreview(.refreshing(HomePreviewFixtures.longTitle))
   }
 
   #Preview("Home — Refresh failed") {
-    HomePresentationView(
-      state: .refreshFailed(HomePreviewFixtures.longTitle, .networkUnavailable),
-      retry: HomePreviewFixtures.noAction,
-      refresh: HomePreviewFixtures.noAction,
-      changeEndpoint: HomePreviewFixtures.noAsyncAction,
-      reauthorize: HomePreviewFixtures.noAsyncAction
-    )
+    homePreview(.refreshFailed(HomePreviewFixtures.longTitle, .networkUnavailable))
   }
 
   #Preview("Home — Catalog preparation") {
-    HomePresentationView(
-      state: .catalogNotReady(retryAfterSeconds: HomePreviewFixtures.catalogRetrySeconds),
-      retry: HomePreviewFixtures.noAction,
-      refresh: HomePreviewFixtures.noAction,
-      changeEndpoint: HomePreviewFixtures.noAsyncAction,
-      reauthorize: HomePreviewFixtures.noAsyncAction
-    )
+    homePreview(.catalogNotReady(retryAfterSeconds: HomePreviewFixtures.catalogRetrySeconds))
   }
 
   #Preview("Home — Failure") {
-    HomePresentationView(
-      state: .failed(
-        .namaUnavailable(requestID: "2f1c5f44-6a9b-4d2e-8c70-62df607c2efa")
-      ),
-      retry: HomePreviewFixtures.noAction,
-      refresh: HomePreviewFixtures.noAction,
-      changeEndpoint: HomePreviewFixtures.noAsyncAction,
-      reauthorize: HomePreviewFixtures.noAsyncAction
-    )
+    homePreview(.failed(.namaUnavailable(requestID: "request-safe-123")))
   }
 #endif

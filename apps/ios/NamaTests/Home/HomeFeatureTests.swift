@@ -29,7 +29,7 @@ struct HomeFeatureTests {
     )
     let snapshot = HomeSnapshot(movies: movies, shows: shows)
     let loader = ImmediateHomeLoader(result: .success(snapshot))
-    let feature = HomeFeature(loader: loader)
+    let feature = HomeFeature(loader: loader, artworkLoader: IgnoringHomeArtworkLoader())
 
     feature.activate(try homeAuthorization(generation: 1))
     await eventually { feature.state == .content(snapshot) }
@@ -47,13 +47,15 @@ struct HomeFeatureTests {
     let authorization = try homeAuthorization(generation: 2)
 
     let emptyFeature = HomeFeature(
-      loader: ImmediateHomeLoader(result: .success(HomeSnapshot(movies: nil, shows: nil)))
+      loader: ImmediateHomeLoader(result: .success(HomeSnapshot(movies: nil, shows: nil))),
+      artworkLoader: IgnoringHomeArtworkLoader()
     )
     emptyFeature.activate(authorization)
     await eventually { emptyFeature.state == .empty }
 
     let preparingFeature = HomeFeature(
-      loader: ImmediateHomeLoader(result: .failure(.catalogNotReady(retryAfterSeconds: 9)))
+      loader: ImmediateHomeLoader(result: .failure(.catalogNotReady(retryAfterSeconds: 9))),
+      artworkLoader: IgnoringHomeArtworkLoader()
     )
     preparingFeature.activate(authorization)
     await eventually {
@@ -61,7 +63,8 @@ struct HomeFeatureTests {
     }
 
     let failedFeature = HomeFeature(
-      loader: ImmediateHomeLoader(result: .failure(.authorizationUnavailable))
+      loader: ImmediateHomeLoader(result: .failure(.authorizationUnavailable)),
+      artworkLoader: IgnoringHomeArtworkLoader()
     )
     failedFeature.activate(authorization)
     await eventually {
@@ -72,7 +75,7 @@ struct HomeFeatureTests {
   @Test("refresh keeps confirmed content visible until replacement completes")
   func refreshKeepsContent() async throws {
     let loader = ManualHomeLoader()
-    let feature = HomeFeature(loader: loader)
+    let feature = HomeFeature(loader: loader, artworkLoader: IgnoringHomeArtworkLoader())
     let authorization = try homeAuthorization(generation: 3)
     let first = homeSnapshot(movieTitle: "Before refresh")
     let second = homeSnapshot(movieTitle: "After refresh")
@@ -93,7 +96,7 @@ struct HomeFeatureTests {
   @Test("a failed refresh preserves confirmed content with an actionable error")
   func refreshFailureKeepsContent() async throws {
     let loader = ManualHomeLoader()
-    let feature = HomeFeature(loader: loader)
+    let feature = HomeFeature(loader: loader, artworkLoader: IgnoringHomeArtworkLoader())
     let authorization = try homeAuthorization(generation: 4)
     let confirmed = homeSnapshot(movieTitle: "Confirmed title")
 
@@ -121,7 +124,7 @@ struct HomeFeatureTests {
   @Test("changing authorization identity cancels the active Home load")
   func authorizationChangeCancelsLoad() async throws {
     let loader = CancellationHomeLoader()
-    let feature = HomeFeature(loader: loader)
+    let feature = HomeFeature(loader: loader, artworkLoader: IgnoringHomeArtworkLoader())
 
     feature.activate(try homeAuthorization(generation: 4, endpoint: "https://first.example.test"))
     await eventually { await loader.callCount == 1 }
@@ -146,7 +149,7 @@ struct HomeFeatureTests {
   @Test("a stale completion cannot replace media from the current authorization")
   func staleCompletionIsIgnored() async throws {
     let loader = ManualHomeLoader()
-    let feature = HomeFeature(loader: loader)
+    let feature = HomeFeature(loader: loader, artworkLoader: IgnoringHomeArtworkLoader())
     let firstAuthorization = try homeAuthorization(generation: 6)
     let secondAuthorization = try homeAuthorization(generation: 7)
     let stale = homeSnapshot(movieTitle: "Stale title")
@@ -251,6 +254,20 @@ private actor CancellationHomeLoader: HomeLoading {
 
   private func recordCancellation() {
     cancellationCount += 1
+  }
+}
+
+private actor IgnoringHomeArtworkLoader: HomeArtworkLoading {
+  func authorizationDidChange(to _: HomeAuthorizationIdentity) {
+    // This adapter has no cache to invalidate.
+  }
+
+  func image(
+    for _: HomeArtworkReference,
+    size _: HomeArtworkSizeBucket,
+    authorization _: HomeAuthorizationIdentity
+  ) -> HomeArtworkPresentation? {
+    nil
   }
 }
 

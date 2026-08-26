@@ -3,8 +3,9 @@
 Status: the universal SwiftUI target, endpoint connection and restoration,
 acknowledged eligible local HTTP, foreground LAN discovery, native Better Auth
 device authorization, refresh rotation, endpoint-bound Keychain token storage,
-and provider-neutral Home source are implemented. The connection and
-authorization baseline's Apple-platform builds and macOS-host tests pass. A
+provider-neutral Home source, and safe Home artwork loading are implemented.
+The connection and authorization baseline's Apple-platform builds and
+macOS-host tests pass. A
 signed Apple TV 4K simulator has completed local-HTTP acknowledgement,
 no-browser authorization through the generated CLI, scoped consumer
 verification, Keychain commit, and relaunch restoration. The production
@@ -12,7 +13,9 @@ verification, Keychain commit, and relaunch restoration. The production
 locator, replacement, expiry, and shared lifecycle behavior pass through its
 macOS-hosted real-engine tests. Home loading, empty, long-title, and failure
 fixtures have been inspected on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K
-simulators and an Apple Development-signed sandboxed Mac build. Product consumer
+simulators and an Apple Development-signed sandboxed Mac build. Home poster
+loading and fallback actual surfaces on iPhone, iPad, Apple TV, and Mac remain
+unverified because the persisted endpoint was unavailable. Product consumer
 media coordination, physical Apple hardware, expiry-driven actual-surface
 refresh, and the remaining Apple surfaces remain unverified.
 
@@ -163,11 +166,27 @@ device authorization:
   client metadata, accepts `CATALOG_NOT_READY` as authenticated access, treats
   an unimplemented handler as incompatible, and maps generated summaries and
   Connect failures into Home-owned values and closed safe failures.
+- `NamaLibraryClient` resolves opaque Home artwork references through
+  `ResolveArtwork` and maps the response into app-owned locator values. Generated
+  messages, URLs, headers, redirect origins, deadlines, and resolution failures
+  remain below the presentation seam.
 - One `HomeFeature` per window owns loading, catalog preparation, legitimate
   empty, content, refresh, refresh-failure, and initial safe-failure state.
   Refresh failure retains confirmed shelves with inline recovery. Endpoint or
   authorization identity replacement cancels the active load, and attempt
   identity prevents stale completion from publishing old media.
+- One scene-local `HomeArtworkWindow` requests artwork only for visible media and
+  a two-item lookahead, cancels obsolete work, rejects stale authorization or
+  snapshot completions, and prunes decoded presentation state outside that
+  window. Each card observes only its media-scoped presentation state. Home
+  selects only textless posters and preserves the media title and neutral poster
+  fallback for every absent or failed image.
+- The shared `HomeArtworkLoader` validates HTTP(S) origins, scoped headers,
+  redirect allowlists, refresh and access deadlines, status, and MIME type, and
+  stops reading when the encoded byte limit is reached. It exposes only decoded
+  `CGImage` presentation data, caches by artwork reference and stable size bucket
+  under a decoded-cost LRU limit, purges on memory pressure, and invalidates on
+  authorization identity changes.
 - The scene root enters Home only when the published authorization belongs to
   its current endpoint. Home presents nonempty Movies before nonempty Shows,
   retains server item order, and offers explicit Retry, Refresh, and Change
@@ -196,12 +215,15 @@ endpoint presentation state, localized copy, warning semantics, presentation
 actions, and television focus intent. Home coverage adds authorization routing,
 rejected-bundle removal, endpoint and authorization-identity cancellation,
 stale completion, refresh preservation and failure, catalog preparation,
-response bounds and mapping, error precedence, and consumer metadata. Playback
-tests cover exact normalized origins, rejected initial and redirect targets,
-allowed redirect header replay, nested HLS playlists, variants, renditions,
-segments and keys, external subtitles, secret-free failures, replacement
-cancellation and state discard, expiry signaling with a complete replacement,
-surface removal, and foreground loss through the real adapter.
+response bounds and mapping, error precedence, consumer metadata, textless
+poster selection, bounded visible lookahead, locator origin and redirect policy,
+deadline enforcement, cancellation, safe decode failure, size-bucket caching,
+authorization invalidation, stale resolution rejection, and memory-pressure
+purging. Playback tests cover exact normalized origins, rejected initial and
+redirect targets, allowed redirect header replay, nested HLS playlists, variants,
+renditions, segments and keys, external subtitles, secret-free failures,
+replacement cancellation and state discard, expiry signaling with a complete
+replacement, surface removal, and foreground loss through the real adapter.
 
 Self-contained previews render discovery outcomes, local-HTTP confirmation with
 a long endpoint, persistent ready and failure warnings, blocked restoration,
@@ -220,9 +242,10 @@ This baseline implements endpoint eligibility, endpoint-bound persistent
 local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP
 recovery, endpoint-scoped local-HTTP proxy bypass, the narrow ATS
 local-networking allowance, Better Auth device authorization and refresh,
-endpoint-bound Keychain tokens, and provider-neutral Home over stored
-`GetHome` results. Library, Search, Details, artwork loading, Watch State, and
-Playback product behavior remain unimplemented.
+endpoint-bound Keychain tokens, provider-neutral Home over stored `GetHome`
+results, and safe Home artwork resolution, loading, decoding, and fallback.
+Library, Search, Details, Watch State, and Playback product behavior remain
+unimplemented.
 
 ## Target runtime topology
 
@@ -323,9 +346,8 @@ generated messages and Connect failures do not cross it. The core is the only
 media data source in the MVP, so the application adds no generic repository
 layer.
 
-Milestone 4 browse delivery proceeds from executable public `LibraryService`
-handlers through the Apple media boundary and artwork loader. Home,
-Library/Search, and Details/hierarchy/source behavior can then complete behind
+Milestone 4 browse delivery continues from the implemented Home and artwork
+boundaries into Library/Search and Details/hierarchy/source behavior behind
 their feature interfaces before scene-local navigation integrates them.
 Universal actual-surface and stored-catalog acceptance closes the slice. This
 sequence creates no platform-specific feature fork or empty package.

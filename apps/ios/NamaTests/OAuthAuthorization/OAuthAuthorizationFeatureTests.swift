@@ -43,14 +43,7 @@ struct OAuthAuthorizationFeatureTests {
     #expect(await sleep.durations == [.seconds(7), .seconds(7)])
     #expect(await client.requestedEndpoints == [endpoint])
     #expect(await client.polledDeviceCodes == ["device-code-secret", "device-code-secret"])
-    let expectedRecord = EndpointBoundOAuthTokenRecord(
-      endpoint: endpoint,
-      accessToken: "access-token-secret",
-      refreshToken: "refresh-token-secret",
-      accessTokenExpiresAt: Date(timeIntervalSince1970: 4_600),
-      scope: OAuthConfiguration.consumerScopes,
-      tokenType: "Bearer"
-    )
+    let expectedRecord = expectedPollingRecord(endpoint: endpoint)
     #expect(await store.record == expectedRecord)
     #expect(await scopedAccessVerifier.records == [expectedRecord])
     #expect(
@@ -211,6 +204,7 @@ private enum ReplacementFixture {
   static let deviceAuthorizationLifetime: TimeInterval = 600
   static let pollingInterval: TimeInterval = 5
   static let tokenLifetime: TimeInterval = 3_600
+  static let expectedAccessExpiry: TimeInterval = 4_600
 }
 
 private func tokenRecord(
@@ -226,6 +220,15 @@ private func tokenRecord(
     accessTokenExpiresAt: Date(timeIntervalSince1970: expiresAt),
     scope: OAuthConfiguration.consumerScopes,
     tokenType: "Bearer"
+  )
+}
+
+private func expectedPollingRecord(endpoint: NamaEndpoint) -> EndpointBoundOAuthTokenRecord {
+  tokenRecord(
+    endpoint: endpoint,
+    accessToken: "access-token-secret",
+    refreshToken: "refresh-token-secret",
+    expiresAt: ReplacementFixture.expectedAccessExpiry
   )
 }
 
