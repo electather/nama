@@ -7,37 +7,17 @@ nonisolated enum NamaPlaybackHTTPBridgeError: Error, Sendable {
   case malformedPlaylist
 }
 
-nonisolated struct NamaPlaybackOrigin: Hashable, Sendable {
-  private static let defaultHTTPPort = 80
-  private static let defaultHTTPSPort = 443
-
-  let scheme: String
-  let host: String
-  let port: Int
-
-  init?(_ url: URL) {
-    guard
-      let normalizedScheme = url.scheme?.lowercased(),
-      normalizedScheme == "http" || normalizedScheme == "https",
-      let normalizedHost = url.host?.lowercased()
-    else {
-      return nil
-    }
-    scheme = normalizedScheme
-    host = normalizedHost
-    port = url.port ?? (normalizedScheme == "https" ? Self.defaultHTTPSPort : Self.defaultHTTPPort)
-  }
-}
-
 nonisolated struct NamaPlaybackBridgeResource: Sendable {
   let scopeID: UUID
   let url: URL
   let headers: [String: String]
   let allowedOrigins: Set<NamaPlaybackOrigin>
   let mimeType: String?
+  let expiresAt: Date
 
   func allows(_ destination: URL) -> Bool {
-    NamaPlaybackOrigin(destination).map(allowedOrigins.contains) ?? false
+    NamaPlaybackOrigin(url: destination, requiresOriginOnly: false)
+      .map(allowedOrigins.contains) ?? false
   }
 }
 
@@ -93,6 +73,7 @@ nonisolated final class NamaPlaybackHTTPBridge: @unchecked Sendable {
   var resources: [String: NamaPlaybackBridgeResource] = [:]
   var pathsByResource: [NamaPlaybackBridgeResourceKey: String] = [:]
   var handlers: [ObjectIdentifier: NamaPlaybackBridgeRequest] = [:]
+  var acceptedConnections: [ObjectIdentifier: NWConnection] = [:]
   var stopped = false
 
   private init(listener: NWListener) {
@@ -169,12 +150,17 @@ nonisolated final class NamaPlaybackHTTPBridge: @unchecked Sendable {
     }
     stopped = true
     let activeHandlers = Array(handlers.values)
+    let partialConnections = Array(acceptedConnections.values)
     handlers.removeAll()
+    acceptedConnections.removeAll()
     resources.removeAll()
     pathsByResource.removeAll()
     lock.unlock()
 
     listener.cancel()
+    for connection in partialConnections {
+      connection.cancel()
+    }
     for handler in activeHandlers {
       handler.cancel()
     }
@@ -218,7 +204,9 @@ nonisolated final class NamaPlaybackHTTPBridge: @unchecked Sendable {
 
   private func register(_ locator: NamaPlaybackLocator) throws -> NamaPlaybackLocator {
     let allowedOriginValues = try locator.allowedRedirectOrigins.map { allowedURL in
-      guard let allowedOrigin = NamaPlaybackOrigin(allowedURL) else {
+      guard
+        let allowedOrigin = NamaPlaybackOrigin(url: allowedURL, requiresOriginOnly: true)
+      else {
         throw NamaPlaybackHTTPBridgeError.invalidLocator
       }
       return allowedOrigin
@@ -229,7 +217,8 @@ nonisolated final class NamaPlaybackHTTPBridge: @unchecked Sendable {
       url: locator.url,
       headers: locator.headerFields,
       allowedOrigins: allowedOrigins,
-      mimeType: locator.mimeType
+      mimeType: locator.mimeType,
+      expiresAt: locator.expiresAt
     )
     guard bridgeResource.allows(locator.url) else {
       throw NamaPlaybackHTTPBridgeError.destinationNotAllowed
@@ -239,7 +228,8 @@ nonisolated final class NamaPlaybackHTTPBridge: @unchecked Sendable {
       url: bridgedURL,
       headers: [],
       allowedRedirectOrigins: [origin],
-      mimeType: locator.mimeType
+      mimeType: locator.mimeType,
+      expiresAt: locator.expiresAt
     )
   }
 }

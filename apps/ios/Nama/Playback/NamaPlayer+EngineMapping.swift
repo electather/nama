@@ -110,10 +110,11 @@ extension NamaPlayer {
   }
 
   static func externalSubtitle(
-    _ subtitle: NamaExternalSubtitleLocator
+    _ subtitle: NamaExternalSubtitleLocator,
+    url: URL
   ) -> ExternalSubtitleTrack {
     ExternalSubtitleTrack(
-      url: subtitle.locator.url,
+      url: url,
       name: subtitle.label,
       language: subtitle.language,
       isForced: subtitle.isForced,

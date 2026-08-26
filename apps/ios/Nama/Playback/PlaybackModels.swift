@@ -7,11 +7,50 @@ nonisolated struct NamaPlaybackLocatorHeader: Sendable, Equatable {
   let value: String
 }
 
+nonisolated struct NamaPlaybackOrigin: Sendable, Hashable {
+  let scheme: String
+  let host: String
+  let port: Int
+
+  private static let minimumPort = 1
+  private static let maximumPort = 65_535
+  private static let defaultHTTPPort = 80
+  private static let defaultHTTPSPort = 443
+
+  init?(url: URL, requiresOriginOnly: Bool) {
+    guard
+      let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+      let normalizedScheme = components.scheme?.lowercased(),
+      normalizedScheme == "http" || normalizedScheme == "https",
+      let normalizedHost = components.host?.lowercased(),
+      !normalizedHost.isEmpty,
+      components.user == nil,
+      components.password == nil,
+      !requiresOriginOnly
+        || (components.fragment == nil
+          && (components.path.isEmpty || components.path == "/")
+          && components.query == nil)
+    else {
+      return nil
+    }
+    let effectivePort =
+      components.port
+      ?? (normalizedScheme == "https" ? Self.defaultHTTPSPort : Self.defaultHTTPPort)
+    guard (Self.minimumPort...Self.maximumPort).contains(effectivePort) else {
+      return nil
+    }
+    scheme = normalizedScheme
+    host = normalizedHost
+    port = effectivePort
+  }
+}
+
 nonisolated struct NamaPlaybackLocator: Sendable, Equatable {
   let url: URL
   let headers: [NamaPlaybackLocatorHeader]
   let allowedRedirectOrigins: [URL]
   let mimeType: String?
+  let expiresAt: Date
 
   var headerFields: [String: String] {
     var result: [String: String] = [:]
@@ -40,6 +79,19 @@ nonisolated struct NamaPlaybackLocator: Sendable, Equatable {
       return nil
     }
   }
+
+  var allowsInitialDestination: Bool {
+    guard
+      let destination = NamaPlaybackOrigin(url: url, requiresOriginOnly: false)
+    else {
+      return false
+    }
+    let allowedOrigins = allowedRedirectOrigins.compactMap { origin in
+      NamaPlaybackOrigin(url: origin, requiresOriginOnly: true)
+    }
+    return allowedOrigins.count == allowedRedirectOrigins.count
+      && allowedOrigins.contains(destination)
+  }
 }
 
 nonisolated struct NamaExternalSubtitleLocator: Sendable, Equatable {
@@ -56,6 +108,21 @@ nonisolated struct NamaPlayerRequest: Sendable, Equatable {
   let media: NamaPlaybackLocator
   let resumePosition: TimeInterval?
   let externalSubtitles: [NamaExternalSubtitleLocator]
+
+  var hasAllowedInitialDestinations: Bool {
+    media.allowsInitialDestination
+      && externalSubtitles.allSatisfy(\.locator.allowsInitialDestination)
+  }
+
+  func isExpired(at date: Date) -> Bool {
+    earliestExpiration <= date
+  }
+
+  var earliestExpiration: Date {
+    externalSubtitles.reduce(media.expiresAt) { expiration, subtitle in
+      min(expiration, subtitle.locator.expiresAt)
+    }
+  }
 }
 
 nonisolated enum NamaPlayerState: Sendable, Equatable {

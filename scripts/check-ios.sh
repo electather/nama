@@ -6,6 +6,7 @@ project="apps/ios/Nama.xcodeproj"
 scheme="Nama"
 resolved="$project/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 lock_state="$(cksum "$resolved")"
+entitlements="apps/ios/Nama/Resources/Nama.entitlements"
 host_arch="$(uname -m)"
 derived_data="$(mktemp -d)"
 
@@ -55,6 +56,18 @@ for plist in \
   "$derived_data/Build/Products/Debug/Nama.app/Contents/Info.plist"
 do
   check_ats "$plist"
+done
+
+for entitlement in \
+  'com\.apple\.security\.app-sandbox' \
+  'com\.apple\.security\.network\.client' \
+  'com\.apple\.security\.network\.server'
+do
+  value="$(plutil -extract "$entitlement" raw "$entitlements")"
+  if test "$value" != "true"; then
+    echo "$entitlements does not enable $entitlement" >&2
+    exit 1
+  fi
 done
 
 test "$lock_state" = "$(cksum "$resolved")"

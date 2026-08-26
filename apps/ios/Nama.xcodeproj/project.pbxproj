@@ -65,6 +65,10 @@
 		100000000000000000000056 /* NamaPlaybackBridgeRequest+Playlist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000058 /* NamaPlaybackBridgeRequest+Playlist.swift */; };
 		100000000000000000000057 /* NamaPlayer+Loading.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000059 /* NamaPlayer+Loading.swift */; };
 		100000000000000000000058 /* NamaPlaybackBridgeRequest+URLSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000060 /* NamaPlaybackBridgeRequest+URLSession.swift */; };
+		100000000000000000000059 /* NamaPlayerSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000061 /* NamaPlayerSecurityTests.swift */; };
+		100000000000000000000060 /* NamaPlayerHLSRequestSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000062 /* NamaPlayerHLSRequestSecurityTests.swift */; };
+		100000000000000000000061 /* NamaPlayerLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000063 /* NamaPlayerLifecycleTests.swift */; };
+		100000000000000000000062 /* NamaPlayerExpiryLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000064 /* NamaPlayerExpiryLifecycleTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -138,6 +142,10 @@
 		200000000000000000000058 /* NamaPlaybackBridgeRequest+Playlist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaPlaybackBridgeRequest+Playlist.swift"; sourceTree = "<group>"; };
 		200000000000000000000059 /* NamaPlayer+Loading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaPlayer+Loading.swift"; sourceTree = "<group>"; };
 		200000000000000000000060 /* NamaPlaybackBridgeRequest+URLSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaPlaybackBridgeRequest+URLSession.swift"; sourceTree = "<group>"; };
+		200000000000000000000061 /* NamaPlayerSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaPlayerSecurityTests.swift; sourceTree = "<group>"; };
+		200000000000000000000062 /* NamaPlayerHLSRequestSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaPlayerHLSRequestSecurityTests.swift; sourceTree = "<group>"; };
+		200000000000000000000063 /* NamaPlayerLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaPlayerLifecycleTests.swift; sourceTree = "<group>"; };
+		200000000000000000000064 /* NamaPlayerExpiryLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaPlayerExpiryLifecycleTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -284,6 +292,10 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000044 /* NamaPlayerTests.swift */,
+				200000000000000000000061 /* NamaPlayerSecurityTests.swift */,
+				200000000000000000000062 /* NamaPlayerHLSRequestSecurityTests.swift */,
+				200000000000000000000063 /* NamaPlayerLifecycleTests.swift */,
+				200000000000000000000064 /* NamaPlayerExpiryLifecycleTests.swift */,
 				200000000000000000000045 /* PlaybackFixtureServer.swift */,
 				500000000000000000000012 /* Fixtures */,
 			);
@@ -482,6 +494,10 @@
 				100000000000000000000037 /* OAuthTokenStoreTests.swift in Sources */,
 				100000000000000000000038 /* OAuthAuthorizationTestSupport.swift in Sources */,
 				100000000000000000000041 /* NamaPlayerTests.swift in Sources */,
+				100000000000000000000059 /* NamaPlayerSecurityTests.swift in Sources */,
+				100000000000000000000060 /* NamaPlayerHLSRequestSecurityTests.swift in Sources */,
+				100000000000000000000061 /* NamaPlayerLifecycleTests.swift in Sources */,
+				100000000000000000000062 /* NamaPlayerExpiryLifecycleTests.swift in Sources */,
 				100000000000000000000042 /* PlaybackFixtureServer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

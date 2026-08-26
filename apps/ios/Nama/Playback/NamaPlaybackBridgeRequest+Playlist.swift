@@ -140,7 +140,8 @@ nonisolated extension NamaPlaybackBridgeRequest {
         url: upstreamURL,
         headers: resource.headers,
         allowedOrigins: resource.allowedOrigins,
-        mimeType: nil
+        mimeType: nil,
+        expiresAt: resource.expiresAt
       )
     )
   }
