@@ -20,66 +20,47 @@ final class NamaPlayer {
   private(set) var hasFirstFrame = false
   let clock = NamaPlayerClock()
 
-  @ObservationIgnored private let engine: AetherEngine
+  @ObservationIgnored let engine: AetherEngine
   @ObservationIgnored private var observations: Set<AnyCancellable> = []
-  @ObservationIgnored private var loadTask: Task<Void, Never>?
-  @ObservationIgnored private var request: NamaPlayerRequest?
-  @ObservationIgnored private var httpBridge: NamaPlaybackHTTPBridge?
+  @ObservationIgnored var loadTask: Task<Void, Never>?
+  @ObservationIgnored var request: NamaPlayerRequest?
+  @ObservationIgnored var httpBridge: NamaPlaybackHTTPBridge?
+  @ObservationIgnored private var loadGeneration: UInt64 = 0
+  @ObservationIgnored let onLocatorExpired: @MainActor @Sendable (TimeInterval) -> Void
   @ObservationIgnored private var audioTrackIDs = OpaquePlaybackTrackIDs()
   @ObservationIgnored private var subtitleTrackIDs = OpaquePlaybackTrackIDs()
 
-  init() throws {
+  init(
+    onLocatorExpired: @escaping @MainActor @Sendable (TimeInterval) -> Void
+  ) throws {
+    self.onLocatorExpired = onLocatorExpired
     do {
       engine = try AetherEngine()
     } catch {
       throw NamaPlayerInitializationError()
     }
-    observations = makeAetherObservations(engine) { [weak self] observation in
-      self?.receive(observation)
-    }
   }
 
-  func load(_ request: NamaPlayerRequest) {
-    loadTask?.cancel()
-    httpBridge?.stop()
-    httpBridge = nil
-    if self.request != nil {
-      engine.stop()
+  func beginEngineObservations() -> UInt64 {
+    loadGeneration &+= 1
+    let generation = loadGeneration
+    observations.removeAll()
+    observations = makeAetherObservations(engine) { [weak self] observation in
+      guard let self, loadGeneration == generation else {
+        return
+      }
+      receive(observation)
     }
-    self.request = request
-    reset(to: .loading)
-    let resumePosition = request.resumePosition.flatMap(NamaPlayerClockState.nonnegativeFinite)
+    return generation
+  }
 
-    loadTask = Task { @MainActor [weak self] in
-      guard let self else {
-        return
-      }
-      do {
-        let result = try await NamaPlayerLoading.perform(
-          engine: engine,
-          request: request,
-          resumePosition: resumePosition
-        )
-        guard !Task.isCancelled else {
-          result.bridge.stop()
-          return
-        }
-        httpBridge = result.bridge
-        publishVideoCharacteristics(from: result.probe, mimeType: request.media.mimeType)
-        if result.probe == nil {
-          publishNativeVideoCharacteristics()
-        }
-        publishTracks()
-        publishClock()
-      } catch is CancellationError {
-        return
-      } catch {
-        guard !Task.isCancelled else {
-          return
-        }
-        state = .failed(Self.sanitizedFailure(error))
-      }
-    }
+  func invalidateEngineObservations() {
+    loadGeneration &+= 1
+    observations.removeAll()
+  }
+
+  func isCurrentLoad(_ generation: UInt64) -> Bool {
+    loadGeneration == generation
   }
 
   func play() { engine.play() }
@@ -119,14 +100,23 @@ final class NamaPlayer {
     engine.clearSubtitle()
   }
 
-  func stop() {
-    loadTask?.cancel()
-    loadTask = nil
+  func tearDownCurrentLoad() {
     httpBridge?.stop()
     httpBridge = nil
     request = nil
+    invalidateEngineObservations()
     engine.stop()
+  }
+
+  func stop() {
+    loadTask?.cancel()
+    loadTask = nil
+    tearDownCurrentLoad()
     reset(to: .idle)
+  }
+
+  func owningSceneLostForeground() {
+    stop()
   }
 
   var surface: some View {
@@ -180,7 +170,7 @@ final class NamaPlayer {
     }
   }
 
-  private func publishClock() {
+  func publishClock() {
     clock.update(
       NamaPlayerClockState(
         position: engine.clock.currentTime,
@@ -191,7 +181,7 @@ final class NamaPlayer {
     )
   }
 
-  private func publishTracks() {
+  func publishTracks() {
     guard request != nil else {
       return
     }
@@ -224,7 +214,7 @@ final class NamaPlayer {
     )
   }
 
-  private func publishVideoCharacteristics(from probe: SourceProbe?, mimeType: String?) {
+  func publishVideoCharacteristics(from probe: SourceProbe?, mimeType: String?) {
     guard let probe else {
       return
     }
@@ -240,7 +230,7 @@ final class NamaPlayer {
     )
   }
 
-  private func publishNativeVideoCharacteristics(from playerItem: AVPlayerItem? = nil) {
+  func publishNativeVideoCharacteristics(from playerItem: AVPlayerItem? = nil) {
     guard request != nil, let currentItem = playerItem ?? engine.currentAVPlayerItem else {
       return
     }
@@ -277,7 +267,7 @@ final class NamaPlayer {
     )
   }
 
-  private func reset(to state: NamaPlayerState) {
+  func reset(to state: NamaPlayerState) {
     self.state = state
     audioTracks = []
     subtitleTracks = []

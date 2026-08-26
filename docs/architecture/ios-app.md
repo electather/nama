@@ -8,12 +8,13 @@ authorization baseline's Apple-platform builds and macOS-host tests pass. A
 signed Apple TV 4K simulator has completed local-HTTP acknowledgement,
 no-browser authorization through the generated CLI, scoped consumer
 verification, Keychain commit, and relaunch restoration. The production
-`NamaPlayer` boundary is implemented and one controlled SDR HLS fixture passes
-through its macOS-hosted real-engine test. Home loading, empty, long-title, and
-failure fixtures have been inspected on iPhone 17 Pro, iPad Pro 13-inch, and
-Apple TV 4K simulators and an Apple Development-signed sandboxed Mac build.
-Product playback behavior, physical Apple hardware, expiry-driven
-actual-surface refresh, and the remaining Apple surfaces remain unverified.
+`NamaPlayer` boundary is implemented; controlled rendering and adversarial
+locator, replacement, expiry, and shared lifecycle behavior pass through its
+macOS-hosted real-engine tests. Home loading, empty, long-title, and failure
+fixtures have been inspected on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K
+simulators and an Apple Development-signed sandboxed Mac build. Product consumer
+media coordination, physical Apple hardware, expiry-driven actual-surface
+refresh, and the remaining Apple surfaces remain unverified.
 
 ## Authority and fixed decisions
 
@@ -126,7 +127,10 @@ device authorization:
 - The app declares `_nama._tcp`, its Local Network purpose, and the narrow ATS
   local-networking allowance in its partial Info property list without a
   multicast entitlement, arbitrary loads, or static per-domain exceptions. The
-  macOS build uses App Sandbox with outgoing network-client access only.
+  macOS build uses App Sandbox with outgoing network-client access and the
+  incoming-server capability required by `NamaPlayer`'s ephemeral broker. That
+  broker binds only exact IPv4 loopback and exposes only opaque per-load routes;
+  the entitlement does not authorize a product LAN listener.
 - `OAuthAuthorizationFeature` requests the fixed Apple public client's device
   grant directly over native HTTP, presents CLI-only approval instructions,
   polls no faster than Better Auth's returned interval, proves the access JWT
@@ -143,9 +147,16 @@ device authorization:
   and Better Auth browser session routes are not part of this surface.
 - `NamaPlayer` and `NamaPlayerSurface` contain exact-pinned AetherEngine
   `6.21.0` behind Nama-owned request, state, clock, track, video, control, and
-  failure values. The target and tests import no engine type outside that
-  boundary. The complete Swift package closure is locked, notices are bundled,
-  and the artifact and relinking review is recorded in
+  failure values. Each complete load owns one generation-guarded cancellable
+  task and an ephemeral loopback broker. The broker gives AetherEngine only
+  opaque local routes, refuses non-allowlisted initial and redirect targets,
+  rewrites every HLS variant, rendition, segment, and key URI back through
+  itself, and independently proxies external subtitles. Replacement and
+  expiry stop and discard the previous broker, locator, headers, origins,
+  tracks, rendering state, and stale observations before publishing or
+  requesting the next load. The target and tests import no engine type outside
+  that boundary. The complete Swift package closure is locked, notices are
+  bundled, and the artifact and relinking review is recorded in
   [aetherengine-distribution.md](aetherengine-distribution.md).
 - `NamaLibraryClient` is the concrete generated `LibraryService` adapter for
   both scoped-access verification and Home. It sends bearer and allowlisted
@@ -185,7 +196,12 @@ endpoint presentation state, localized copy, warning semantics, presentation
 actions, and television focus intent. Home coverage adds authorization routing,
 rejected-bundle removal, endpoint and authorization-identity cancellation,
 stale completion, refresh preservation and failure, catalog preparation,
-response bounds and mapping, error precedence, and consumer metadata.
+response bounds and mapping, error precedence, and consumer metadata. Playback
+tests cover exact normalized origins, rejected initial and redirect targets,
+allowed redirect header replay, nested HLS playlists, variants, renditions,
+segments and keys, external subtitles, secret-free failures, replacement
+cancellation and state discard, expiry signaling with a complete replacement,
+surface removal, and foreground loss through the real adapter.
 
 Self-contained previews render discovery outcomes, local-HTTP confirmation with
 a long endpoint, persistent ready and failure warnings, blocked restoration,
@@ -195,8 +211,9 @@ also run in the Debug application on iPhone, iPad, and Apple TV simulators and
 an Apple Development-signed sandboxed Mac build. `check:ios` lints Swift
 formatting, runs the test target through its macOS host, inspects the built ATS
 shape, and performs signing-disabled iOS, tvOS, and macOS builds. The
-real-player test proves one controlled macOS-hosted SDR HLS render and control
-flow. Generic builds do not prove physical-device privacy prompts, focus,
+real-player tests prove controlled SDR HLS rendering and control flow plus
+adversarial locator and shared lifecycle policy through the real adapter on the
+macOS host. Generic builds do not prove physical-device privacy prompts, focus,
 accessibility, or playback.
 
 This baseline implements endpoint eligibility, endpoint-bound persistent

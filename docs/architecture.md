@@ -101,16 +101,19 @@ until explicit Change Endpoint. The app implements native Better Auth device
 authorization, returned-interval polling, refresh rotation, a this-device-only
 endpoint-bound Keychain token record, and Home over stored canonical
 `LibraryService.GetHome` results. The universal target now contains exact-pinned
-AetherEngine `6.21.0` behind the complete Nama-owned player boundary; a
-controlled SDR HLS fixture loads, renders, and stops through that adapter in
-macOS-hosted automation. The connection, authorization, player, and Home
-baseline's Apple-platform builds pass, and a signed Apple TV 4K simulator has
-completed the no-browser authorization, scoped consumer verification, Keychain
-commit, and relaunch restoration flow. Home loading, empty, long-title, and
-failure fixtures have been inspected on iPhone 17 Pro, iPad Pro 13-inch, and
-Apple TV 4K simulators and an Apple Development-signed sandboxed Mac build.
-Product playback behavior, physical Apple hardware, expiry-driven
-actual-surface refresh, and the remaining Apple surfaces remain unverified.
+AetherEngine `6.21.0` behind the complete Nama-owned player boundary. A
+per-load loopback broker enforces exact normalized allowed origins for initial,
+redirect, nested HLS, key, segment, and external-subtitle requests without
+exposing remote locators to the engine. Mac-hosted automation proves controlled
+rendering and controls plus rejection, replacement, expiry signaling, and
+surface shutdown. The connection, authorization, player, and Home baseline's
+Apple-platform builds pass, and a signed Apple TV 4K simulator has completed
+the no-browser authorization, scoped consumer verification, Keychain commit,
+and relaunch restoration flow. Home loading, empty, long-title, and failure
+fixtures have been inspected on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K
+simulators and an Apple Development-signed sandboxed Mac build. Product consumer
+media coordination, physical Apple hardware, expiry-driven actual-surface
+refresh, and the remaining Apple surfaces remain unverified.
 
 ## Architectural decision records
 

@@ -114,6 +114,7 @@ nonisolated enum NamaSubtitleLayout {
 
 struct NamaPlayerSurface: View {
   let player: NamaPlayer
+  @Environment(\.scenePhase) private var scenePhase
 
   var body: some View {
     ZStack {
@@ -125,6 +126,10 @@ struct NamaPlayerSurface: View {
       )
     }
     .background(.black)
+    .onDisappear(perform: player.stop)
+    .onChange(of: scenePhase) { _, phase in
+      handleScenePhase(phase)
+    }
   }
 
   private var presentationSize: CGSize? {
@@ -135,6 +140,16 @@ struct NamaPlayerSurface: View {
       return nil
     }
     return CGSize(width: width, height: height)
+  }
+
+  private func handleScenePhase(_ phase: ScenePhase) {
+    #if os(iOS) || os(tvOS)
+      if phase == .background {
+        player.owningSceneLostForeground()
+      }
+    #else
+      _ = phase
+    #endif
   }
 }
 

@@ -2,9 +2,10 @@
 
 Status: the universal Apple application contains the production `NamaPlayer`
 boundary backed by exact-pinned AetherEngine `6.21.0`. Automated macOS-host
-verification loads, renders, controls, and stops controlled media through the
-real adapter. Public planning, opening, reporting, and closing remain target
-architecture.
+verification loads, renders, controls, and stops controlled media and drives
+adversarial origin, redirect, nested HLS, external-subtitle, replacement,
+expiry, and surface-lifecycle cases through the real adapter. Public planning,
+opening, reporting, and closing remain target architecture.
 
 The target Apple application reports a Nama-defined capability profile for the
 current device, and the Jellyfin plugin translates it into provider playback
@@ -43,7 +44,11 @@ dependency closure and confines its rendering and control types to
 `NamaPlayer`. The [distribution record](aetherengine-distribution.md) owns the
 reviewed build, linkage, checksum, notice, source, signing, and relinking
 evidence. Issue #161 proves a controlled SDR HLS fixture through the real
-adapter in automated macOS-host verification. Issue #38 still owns
-representative physical iPhone or iPad, Apple TV, and Mac playback evidence;
-capability negotiation and the full media and interaction matrix remain with
-issues #39 and #40.
+adapter. Issue #162 adds a per-load loopback broker that exposes only opaque
+local routes to the engine, validates every remote destination against the
+request's exact normalized origin set, and rewrites allowed redirects and HLS
+references back through that broker. Automated macOS-host tests cover its
+security and lifecycle behavior while recording the accepted allowed-origin
+header replay. Issue #38 still owns representative physical iPhone or iPad,
+Apple TV, and Mac playback evidence; capability negotiation and the full media
+and interaction matrix remain with issues #39 and #40.

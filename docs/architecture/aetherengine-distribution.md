@@ -100,3 +100,11 @@ FFmpegBuild records FFmpeg and its packaging as LGPL-2.1-or-later, dav1d as BSD-
 ADR-0032's two exceptions remain exact: AetherEngine may write complete short-lived Locator URLs to its local Release logs and may replay Locator headers when a request moves between origins already present in the core-validated allowlist. The review does not permit another origin, a reusable credential, Nama-owned Locator logging or persistence, uploaded engine logs, or Locator-bearing product failures.
 
 The production adapter contains both package limitations behind its session-scoped loopback bridge: AetherEngine receives opaque loopback locators and no upstream Locator headers. ADR-0032 remains the dependency eligibility ceiling; bypassing that bridge or restoring direct upstream engine access requires a new security review.
+
+The automated adapter fixtures preserve that boundary deliberately: they record
+header replay when an engine request moves to another core-allowlisted origin,
+reject every non-allowlisted initial, redirect, nested HLS, key, segment, and
+subtitle destination before contact, and do not treat permitted engine-local
+locator logging as a test failure. Nama-owned code records neither locators nor
+headers, and the per-load bridge exposes only opaque loopback routes to the
+engine.
