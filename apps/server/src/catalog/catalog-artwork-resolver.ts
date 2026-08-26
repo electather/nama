@@ -4,7 +4,9 @@ import { Effect } from "effect";
 import type { Database } from "../database/database.ts";
 import type { PluginSupervisorService } from "../plugin/model.ts";
 import { bundledProviders } from "../provider/bundled-provider-registry.ts";
+import type { BundledProvider } from "../provider/bundled-provider-registry.ts";
 import type { ProviderManagement } from "../provider/provider-management.ts";
+import { normalizedLocatorOrigin } from "./catalog-artwork-query.ts";
 import type { CatalogArtworkLeaseRequest } from "./catalog-query-model.ts";
 
 const ARTWORK_DEADLINE_MILLISECONDS = 5000;
@@ -23,6 +25,24 @@ const loadArtworkLaunch = (database: Database["Service"], providerInstanceId: st
     }
     return { provider, stored };
   });
+const approvedArtworkOrigins = (
+  provider: BundledProvider,
+  configuration: Readonly<Record<string, unknown>>,
+): readonly string[] | undefined => {
+  const origins = new Set<string>();
+  for (const property of provider.locatorOriginConfigurationProperties) {
+    const value = configuration[property];
+    if (typeof value !== "string") {
+      return undefined;
+    }
+    const origin = normalizedLocatorOrigin(value);
+    if (origin === undefined) {
+      return undefined;
+    }
+    origins.add(origin);
+  }
+  return [...origins];
+};
 
 const makeCatalogArtworkLeaseResolver =
   (
@@ -58,7 +78,11 @@ const makeCatalogArtworkLeaseResolver =
           if (response.lease === undefined) {
             return yield* Effect.fail(new Error("provider artwork lease is missing"));
           }
-          return response.lease;
+          const approvedOrigins = approvedArtworkOrigins(provider, stored.configuration);
+          if (approvedOrigins === undefined) {
+            return yield* Effect.fail(new Error("provider artwork origins are unavailable"));
+          }
+          return { approvedOrigins, lease: response.lease };
         }),
       ),
     );

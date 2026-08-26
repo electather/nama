@@ -9,6 +9,7 @@ import type { SetupCoordinatorService } from "../../authentication/setup-coordin
 import type { RequestValidator } from "../../contracts/request-validation.ts";
 import type { ProviderManagementService } from "../../provider/provider-management.ts";
 import { createConnectRequestListener } from "../connect-dispatch.ts";
+import type { ConnectRequestListenerDependencies } from "../connect-dispatch.ts";
 import type { RequestRuntime } from "../request-runtime.ts";
 import { EPHEMERAL_PORT, HOST, HTTP_NOT_FOUND } from "./network.test-support.ts";
 
@@ -56,6 +57,15 @@ const authentication: AuthenticationService = Object.freeze({
     }),
   signOut: () => Effect.void,
 });
+const catalogQuery: ConnectRequestListenerDependencies["catalogQuery"] = Object.freeze({
+  getHome: () => Effect.die("catalog home read is outside dispatch coverage"),
+  getMedia: () => Effect.die("catalog media read is outside dispatch coverage"),
+  getMediaSource: () => Effect.die("catalog source read is outside dispatch coverage"),
+  listChildren: () => Effect.die("catalog children list is outside dispatch coverage"),
+  listLibrary: () => Effect.die("catalog library list is outside dispatch coverage"),
+  resolveArtwork: () => Effect.die("catalog artwork resolution is outside dispatch coverage"),
+  search: () => Effect.die("catalog search is outside dispatch coverage"),
+});
 
 const setupCoordinator: SetupCoordinatorService = Object.freeze({
   createAdministrator: () => Effect.die("administrator creation is outside dispatch coverage"),
@@ -91,6 +101,7 @@ const createTestConnectRequestListener = (
 ): RequestListener =>
   createConnectRequestListener({
     authentication,
+    catalogQuery,
     monotonicNow: () => TEST_MONOTONIC_TIME,
     providerManagement: selectedProviderManagement,
     requestIdFactory: () => SERVER_REQUEST_ID,

@@ -1,10 +1,11 @@
 // oxlint-disable eslint/max-lines-per-function -- The thin generated AuthService mapping remains one complete authentication route inventory.
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
-import type { ServiceImpl } from "@connectrpc/connect";
+import type { ConnectRouter, ServiceImpl } from "@connectrpc/connect";
 import { Effect } from "effect";
 
-import type { AuthService, SignInRequest } from "../../../../gen/ts/src/nama/api/v1/auth_pb.js";
-import type { SetupService } from "../../../../gen/ts/src/nama/api/v1/setup_pb.js";
+import { AuthService } from "../../../../gen/ts/src/nama/api/v1/auth_pb.js";
+import type { SignInRequest } from "../../../../gen/ts/src/nama/api/v1/auth_pb.js";
+import { SetupService } from "../../../../gen/ts/src/nama/api/v1/setup_pb.js";
 import type {
   AuthenticationService,
   SessionRevocationUnconfirmed,
@@ -126,5 +127,13 @@ const createAuthServiceHandlers = ({
     ),
 });
 
-export { createAuthServiceHandlers, createSetupServiceHandlers };
+const registerAuthSetupConnectRoutes = (
+  router: ConnectRouter,
+  dependencies: AuthServiceHandlerDependencies & SetupServiceHandlerDependencies,
+): void => {
+  router.service(SetupService, createSetupServiceHandlers(dependencies));
+  router.service(AuthService, createAuthServiceHandlers(dependencies));
+};
+
+export { createAuthServiceHandlers, createSetupServiceHandlers, registerAuthSetupConnectRoutes };
 export type { AuthServiceHandlerDependencies, SetupServiceHandlerDependencies };

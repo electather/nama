@@ -4,8 +4,19 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { join } from "node:path";
 
-import { Code } from "@connectrpc/connect";
+import { Code, ConnectError, createClient } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-node";
 import { expect, it } from "@effect/vitest";
+import {
+  LibraryService as PublicLibraryService,
+  HomeSectionKind,
+  LibrarySort,
+  WatchFilter,
+} from "@nama/api/nama/api/v1/library_pb.js";
+import {
+  MediaKind as PublicMediaKind,
+  Playability as PublicPlayability,
+} from "@nama/api/nama/api/v1/media_pb.js";
 import { LibraryService, ListConsistency } from "@nama/api/nama/plugin/v1/library_pb.js";
 import {
   ArtworkRole,
@@ -22,8 +33,14 @@ import { ProviderCapability as PluginProviderCapability } from "@nama/api/nama/p
 import { Clock, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
+import type { AuthenticationService } from "../../src/authentication/authentication-service.ts";
+import { makeCatalogArtworkLeaseResolver } from "../../src/catalog/catalog-artwork-resolver.ts";
 import { makeCatalogImport } from "../../src/catalog/catalog-import.ts";
 import { listProviderCatalogPage } from "../../src/catalog/catalog-provider-access.ts";
+import { CatalogQuery } from "../../src/catalog/catalog-query-live.ts";
+import { makeCatalogQuery } from "../../src/catalog/catalog-query.ts";
+import { Database } from "../../src/database/database.ts";
+import { startServer } from "../../src/http/tests/http-server.test-support.ts";
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 import { initializeCatalogDatabase } from "./catalog-persistence.test-support.ts";
 import { productionMigrations, useDatabase, withPool } from "./database.test-support.ts";
@@ -52,6 +69,10 @@ const CATALOG_IMPORT_POLL_MILLISECONDS = 25;
 const CATALOG_IMPORT_WAIT_MILLISECONDS = 10_000;
 const CATALOG_IMPORT_PROCESS_TIMEOUT_MILLISECONDS = 30_000;
 const CORE_CATALOG_PAGE_SIZE = 100;
+const FIRST_COLLECTION_INDEX = 0;
+const PUBLIC_LIBRARY_MASTER_KEY_BYTES = 32;
+const PUBLIC_LIBRARY_MASTER_KEY_FILL = 83;
+const PUBLIC_LIBRARY_PROVIDER_TRACK_STRIDE = 100;
 const CATALOG_PROVIDER_INSTANCE_ID = "provider-instance";
 const CATALOG_PROVIDER_REVISION = `${CATALOG_PROVIDER_INSTANCE_ID}-revision`;
 const API_KEY = "jellyfin-api-key-sentinel";
@@ -525,6 +546,14 @@ const respondRaw = (response: ServerResponse, statusCode: number, body: string):
   response.end(body);
 };
 
+const publicBoundaryJson = (value: unknown): string =>
+  JSON.stringify(value, (_key, field: unknown) => {
+    if (typeof field === "bigint") {
+      return field.toString();
+    }
+    return field;
+  });
+
 const acquireControlledJellyfin = Effect.acquireRelease(
   Effect.tryPromise({
     catch: (error) => error,
@@ -542,6 +571,17 @@ const acquireControlledJellyfin = Effect.acquireRelease(
       const server = createServer((request: IncomingMessage, response: ServerResponse) => {
         requests.push({ authorization: request.headers.authorization, url: request.url ?? "" });
         const endpoint = new URL(request.url ?? "", "http://jellyfin.invalid");
+        if (
+          request.method === "HEAD" &&
+          endpoint.pathname.startsWith("/jellyfin/Items/") &&
+          endpoint.pathname.includes("/Images/") &&
+          request.headers.authorization === undefined
+        ) {
+          response.statusCode = HTTP_OK;
+          response.setHeader("content-type", "image/jpeg");
+          response.end();
+          return;
+        }
         if (
           endpoint.pathname === "/jellyfin/Items" &&
           request.headers.authorization === `MediaBrowser Token="${API_KEY}"`
@@ -2083,4 +2123,309 @@ it.live(
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
   TEST_TIMEOUT_MILLISECONDS,
+);
+
+it.live(
+  "serves every public LibraryService method from a supervised production Jellyfin scan",
+  () =>
+    withIsolatedDatabase((databaseUrl) =>
+      Effect.scoped(
+        Effect.gen(function* publicLibraryServiceJellyfinTest() {
+          const providerItemSentinel = "provider-item-public-boundary-sentinel";
+          const providerSourceSentinel = "provider-source-public-boundary-sentinel";
+          const providerArtworkSentinel = "provider-artwork-public-boundary-sentinel";
+          const providerTrackSentinel = 4_000_000_001;
+          const principalId = "public-library-reader";
+          const masterKey = `base64:${Buffer.alloc(
+            PUBLIC_LIBRARY_MASTER_KEY_BYTES,
+            PUBLIC_LIBRARY_MASTER_KEY_FILL,
+          ).toString("base64")}`;
+          const capturedLogRecords: unknown[] = [];
+          yield* initializeCatalogDatabase(
+            databaseUrl,
+            [{ id: CATALOG_PROVIDER_INSTANCE_ID, priority: 1 }],
+            true,
+          );
+          yield* withPool(databaseUrl, (pool) =>
+            Effect.promise(() =>
+              pool.query(
+                `INSERT INTO provider_instance_observation (
+                   instance_revision, provider_instance_id, status, summary
+                 ) VALUES ($1, $2, 'healthy', 'healthy')`,
+                [CATALOG_PROVIDER_REVISION, CATALOG_PROVIDER_INSTANCE_ID],
+              ),
+            ),
+          );
+          const jellyfin = yield* acquireControlledJellyfin;
+          const supervisor = yield* PluginSupervisor;
+          const boundaryMediaSources: unknown[] = [];
+          for (const [sourceIndex, source] of MOVIE_RESPONSE.MediaSources.entries()) {
+            let sourceId = source.Id;
+            if (sourceIndex === FIRST_COLLECTION_INDEX) {
+              sourceId = providerSourceSentinel;
+            }
+            const mediaStreams: unknown[] = [];
+            for (const [trackIndex, track] of source.MediaStreams.entries()) {
+              mediaStreams.push({
+                ...track,
+                Index:
+                  providerTrackSentinel +
+                  sourceIndex * PUBLIC_LIBRARY_PROVIDER_TRACK_STRIDE +
+                  trackIndex,
+              });
+            }
+            boundaryMediaSources.push({ ...source, Id: sourceId, MediaStreams: mediaStreams });
+          }
+          const boundaryMovie = {
+            ...MOVIE_RESPONSE,
+            Id: providerItemSentinel,
+            ImageTags: {
+              ...MOVIE_RESPONSE.ImageTags,
+              Primary: providerArtworkSentinel,
+            },
+            MediaSources: boundaryMediaSources,
+            PrivatePayload: PROVIDER_ERROR_SENTINEL,
+          };
+          jellyfin.catalog.responses = [
+            EPISODE_RESPONSE,
+            SEASON_RESPONSE,
+            SHOW_RESPONSE,
+            boundaryMovie,
+          ];
+
+          yield* useDatabase(databaseUrl, productionMigrations, (database) => {
+            const providers = {
+              ...database.providers,
+              loadInstallation: () =>
+                Effect.succeed({
+                  capabilities: [
+                    PluginProviderCapability.ARTWORK_RESOLVE,
+                    PluginProviderCapability.LIBRARY_READ,
+                  ],
+                  configurationSchema: {},
+                  contractMajor: 1,
+                  description: "Controlled production Jellyfin",
+                  displayName: "Jellyfin",
+                  pluginBuildVersion: "test",
+                  providerTypeId: "jellyfin",
+                  schemaProfileVersion: 1,
+                  schemaRevision: "1",
+                }),
+              loadInstance: (selectedProviderInstanceId: string) => {
+                if (selectedProviderInstanceId !== CATALOG_PROVIDER_INSTANCE_ID) {
+                  return Effect.die(new Error("unexpected catalog provider instance"));
+                }
+                return Effect.succeed({
+                  configuration: { base_url: jellyfin.baseUrl, user_id: USER_ID },
+                  credentials: { api_key: API_KEY },
+                  displayName: "Controlled Jellyfin",
+                  enabled: true,
+                  id: CATALOG_PROVIDER_INSTANCE_ID,
+                  providerTypeId: "jellyfin",
+                  revision: CATALOG_PROVIDER_REVISION,
+                  syncPriority: 1,
+                });
+              },
+            };
+            const catalogDatabase = Database.of({ ...database, providers });
+            const providerManagement = Object.freeze({
+              createProviderInstance: () => Effect.die("unexpected provider creation"),
+              deleteProviderInstance: () => Effect.die("unexpected provider deletion"),
+              getProviderInstance: () => Effect.die("unexpected provider read"),
+              listProviderInstances: () => Effect.die("unexpected provider list"),
+              listProviderTypes: () => Effect.die("unexpected provider type list"),
+              runProviderActivity: passthroughActivity,
+              testProviderConfiguration: () => Effect.die("unexpected provider configuration test"),
+              testProviderInstance: () => Effect.die("unexpected provider instance test"),
+              updateProviderInstance: () => Effect.die("unexpected provider update"),
+            });
+            const authentication: AuthenticationService = Object.freeze({
+              approveDeviceAuthorization: () =>
+                Effect.die("unexpected device authorization approval"),
+              consumeGlobalSignInBudget: Effect.die("unexpected sign-in limit"),
+              consumeIdentitySignInBudget: () => Effect.die("unexpected sign-in limit"),
+              resolveAdministrator: () => Effect.die("unexpected administrator resolution"),
+              resolveConsumerPrincipal: (_authorization: string, scope: string) => {
+                expect(scope).toBe("nama:library");
+                return Effect.succeed({ id: principalId });
+              },
+              resolvePrincipal: () => Effect.die("unexpected principal resolution"),
+              revokeAppleClientRefreshTokens: Effect.die("unexpected Apple client revocation"),
+              signIn: () => Effect.die("unexpected sign-in"),
+              signOut: () => Effect.die("unexpected sign-out"),
+            });
+
+            return Effect.gen(function* exercisePublicStoredLibrary() {
+              const importCatalog = makeCatalogImport({
+                catalog: database.catalog,
+                coreRunId: "public-library-core-run",
+                listPage: listProviderCatalogPage(providers, supervisor),
+                random: () => NO_PROVIDER_REQUESTS,
+                runProviderActivity: passthroughActivity,
+              });
+              yield* Effect.scoped(
+                Effect.gen(function* completeCatalogImport() {
+                  yield* importCatalog.start((cause) => Effect.die(cause));
+                  yield* waitForPersistedCatalogImport(
+                    databaseUrl,
+                    (snapshot) => snapshot.status === "succeeded",
+                    "complete the public Library catalog pass",
+                  );
+                }),
+              );
+              const catalogRequests = jellyfin.requests
+                .filter(({ url }) => url.startsWith("/jellyfin/Items?"))
+                .map(({ url }) => url);
+              const catalogQuery = CatalogQuery.of(
+                yield* makeCatalogQuery({
+                  catalog: database.catalogQueries,
+                  masterKey,
+                  now: Date.now,
+                  resolveArtworkLease: makeCatalogArtworkLeaseResolver(
+                    catalogDatabase,
+                    providerManagement,
+                    supervisor,
+                  ),
+                }),
+              );
+              const server = yield* startServer(catalogDatabase, {
+                authentication,
+                catalogQuery,
+                records: capturedLogRecords,
+              });
+              const client = createClient(
+                PublicLibraryService,
+                createConnectTransport({ baseUrl: server.origin, httpVersion: "1.1" }),
+              );
+              const options = {
+                headers: { authorization: "Bearer public-library-session" },
+              } as const;
+
+              const home = yield* Effect.promise(() =>
+                client.getHome({ sectionSize: 10 }, options),
+              );
+              const libraryFirst = yield* Effect.promise(() =>
+                client.listLibrary(
+                  {
+                    filter: { watchFilter: WatchFilter.ANY },
+                    pageSize: 1,
+                    sort: LibrarySort.DATE_ADDED_DESC,
+                  },
+                  options,
+                ),
+              );
+              expect(libraryFirst.nextPageToken).not.toBe("");
+              const librarySecond = yield* Effect.promise(() =>
+                client.listLibrary(
+                  {
+                    filter: { watchFilter: WatchFilter.ANY },
+                    pageSize: 1,
+                    pageToken: libraryFirst.nextPageToken,
+                    sort: LibrarySort.DATE_ADDED_DESC,
+                  },
+                  options,
+                ),
+              );
+              const search = yield* Effect.promise(() =>
+                client.search({ pageSize: 10, query: "arrival" }, options),
+              );
+              const summaries = home.sections.flatMap((section) => section.items);
+              const movieSummary = summaries.find(
+                (summary) => summary.kind === PublicMediaKind.MOVIE,
+              );
+              const showSummary = summaries.find(
+                (summary) => summary.kind === PublicMediaKind.SHOW,
+              );
+              if (movieSummary === undefined || showSummary === undefined) {
+                throw new Error("stored Home is missing Movies or Shows");
+              }
+              expect(home.sections.map(({ kind }) => kind)).toEqual([
+                HomeSectionKind.MOVIES,
+                HomeSectionKind.SHOWS,
+              ]);
+              expect(movieSummary.playability).toBe(PublicPlayability.PLAYABLE);
+              const media = yield* Effect.promise(() =>
+                client.getMedia({ mediaId: movieSummary.id }, options),
+              );
+              const children = yield* Effect.promise(() =>
+                client.listChildren({ pageSize: 10, parentMediaId: showSummary.id }, options),
+              );
+              const sourceSummary = media.media?.sourceSummaries[FIRST_COLLECTION_INDEX];
+              const artwork = media.media?.artwork[FIRST_COLLECTION_INDEX];
+              if (sourceSummary === undefined || artwork === undefined) {
+                throw new Error("stored movie is missing source or artwork projections");
+              }
+              const source = yield* Effect.promise(() =>
+                client.getMediaSource(
+                  { mediaId: movieSummary.id, sourceId: sourceSummary.id },
+                  options,
+                ),
+              );
+              const resolvedArtworkFailure = yield* Effect.tryPromise({
+                catch: (error) => error,
+                try: () =>
+                  client.resolveArtwork(
+                    { artworkId: artwork.id, maxHeight: 1080, maxWidth: 1920 },
+                    options,
+                  ),
+              }).pipe(Effect.flip);
+              if (!(resolvedArtworkFailure instanceof ConnectError)) {
+                throw new TypeError("expected an unsafe artwork locator failure");
+              }
+
+              expect(search.items.map(({ title }) => title)).toContain("Arrival");
+              expect(children.items.map(({ title }) => title)).toEqual(["Season 2"]);
+              expect(source.source?.mediaId).toBe(movieSummary.id);
+              expect(resolvedArtworkFailure.code).toBe(Code.NotFound);
+              expect(jellyfin.requests.map(({ url }) => url)).toContain(
+                `/jellyfin/Items/${providerItemSentinel}/Images/Primary/0?tag=${providerArtworkSentinel}&maxWidth=1920&maxHeight=1080`,
+              );
+              expect(
+                jellyfin.requests
+                  .filter(({ url }) => url.startsWith("/jellyfin/Items?"))
+                  .map(({ url }) => url),
+              ).toEqual(catalogRequests);
+              const ordinaryPublicContents = publicBoundaryJson({
+                capturedLogRecords,
+                children,
+                home,
+                libraryFirst,
+                librarySecond,
+                media,
+                search,
+                source,
+              });
+              for (const sentinel of [
+                API_KEY,
+                PRIVATE_PATH,
+                PROVIDER_ERROR_SENTINEL,
+                providerArtworkSentinel,
+                providerItemSentinel,
+                providerSourceSentinel,
+                String(providerTrackSentinel),
+              ]) {
+                expect(ordinaryPublicContents).not.toContain(sentinel);
+              }
+              const artworkFallbackContents = publicBoundaryJson({
+                details: resolvedArtworkFailure.details,
+                metadata: [...resolvedArtworkFailure.metadata.entries()],
+                rawMessage: resolvedArtworkFailure.rawMessage,
+              });
+              for (const sentinel of [
+                API_KEY,
+                PRIVATE_PATH,
+                PROVIDER_ERROR_SENTINEL,
+                providerArtworkSentinel,
+                providerItemSentinel,
+                providerSourceSentinel,
+                String(providerTrackSentinel),
+              ]) {
+                expect(artworkFallbackContents).not.toContain(sentinel);
+              }
+            });
+          });
+        }).pipe(Effect.provide(PluginSupervisor.layer())),
+      ),
+    ),
+  CATALOG_IMPORT_PROCESS_TIMEOUT_MILLISECONDS,
 );

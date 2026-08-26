@@ -79,14 +79,22 @@ const expectPublicErrorDoesNotExpose = (
   error: ConnectError,
   unsafeValues: readonly string[],
 ): void => {
-  const publicContents = JSON.stringify({
-    badRequest: error.findDetails(BadRequestSchema),
-    errorInfo: error.findDetails(ErrorInfoSchema),
-    metadata: [...error.metadata.entries()],
-    rawMessage: error.rawMessage,
-    requestInfo: error.findDetails(RequestInfoSchema),
-    retryInfo: error.findDetails(RetryInfoSchema),
-  });
+  const publicContents = JSON.stringify(
+    {
+      badRequest: error.findDetails(BadRequestSchema),
+      errorInfo: error.findDetails(ErrorInfoSchema),
+      metadata: [...error.metadata.entries()],
+      rawMessage: error.rawMessage,
+      requestInfo: error.findDetails(RequestInfoSchema),
+      retryInfo: error.findDetails(RetryInfoSchema),
+    },
+    (_key, value: unknown) => {
+      if (typeof value === "bigint") {
+        return value.toString();
+      }
+      return value;
+    },
+  );
 
   for (const unsafeValue of unsafeValues) {
     expect(publicContents).not.toContain(unsafeValue);
@@ -348,6 +356,34 @@ const mappedFailureCases = [
     [],
   ],
   [
+    "missing canonical resource",
+    { _tag: "ResourceNotFound" },
+    Code.NotFound,
+    "RESOURCE_NOT_FOUND",
+    [],
+  ],
+  [
+    "childless media",
+    { _tag: "MediaHasNoChildren" },
+    Code.FailedPrecondition,
+    "MEDIA_HAS_NO_CHILDREN",
+    [],
+  ],
+  [
+    "unavailable canonical media state",
+    { _tag: "MediaStateUnavailable" },
+    Code.FailedPrecondition,
+    "MEDIA_STATE_UNAVAILABLE",
+    [],
+  ],
+  [
+    "unavailable canonical source",
+    { _tag: "SourceUnavailable" },
+    Code.Unavailable,
+    "SOURCE_UNAVAILABLE",
+    [],
+  ],
+  [
     "arbitrary defect",
     new ConnectError(UNSAFE_FAILURE_DETAIL, Code.Unknown),
     Code.Internal,
@@ -383,6 +419,41 @@ test.each([
   const retry = error.findDetails(RetryInfoSchema);
   expect(retry).toHaveLength(ERROR_DETAIL_COUNT);
   expect(retry[FIRST_ERROR_DETAIL_INDEX]?.retryDelay).toMatchObject(PROVIDER_RETRY_DELAY);
+});
+
+test("normalizeConnectFailure preserves catalog readiness retry guidance", () => {
+  const error = normalizeConnectFailure(REQUEST_ID, {
+    _tag: "CatalogNotReady",
+    detail: UNSAFE_FAILURE_DETAIL,
+    retryDelayMilliseconds: RETRY_DELAY_MILLISECONDS,
+  });
+
+  expectApplicationIdentity(error, Code.Unavailable, "CATALOG_NOT_READY");
+  expect(error.findDetails(BadRequestSchema)).toEqual([]);
+  expect(error.findDetails(RetryInfoSchema)[FIRST_ERROR_DETAIL_INDEX]?.retryDelay).toMatchObject(
+    PROTOBUF_RETRY_DELAY,
+  );
+  expectPublicErrorDoesNotExpose(error, [UNSAFE_FAILURE_DETAIL]);
+});
+
+test("normalizeConnectFailure maps whitespace-only search to a query field violation", () => {
+  const error = normalizeConnectFailure(REQUEST_ID, {
+    _tag: "SearchQueryInvalid",
+    query: UNSAFE_FAILURE_DETAIL,
+  });
+
+  expectApplicationIdentity(error, Code.InvalidArgument, "VALIDATION_FAILED");
+  expect(
+    error.findDetails(BadRequestSchema)[FIRST_ERROR_DETAIL_INDEX]?.fieldViolations,
+  ).toMatchObject([
+    {
+      description: "Enter a non-whitespace search query.",
+      field: "query",
+      reason: "INVALID_FORMAT",
+    },
+  ]);
+  expectNoRetryGuidance(error);
+  expectPublicErrorDoesNotExpose(error, [UNSAFE_FAILURE_DETAIL]);
 });
 
 test("normalizeConnectFailure preserves provider configuration field violations", () => {

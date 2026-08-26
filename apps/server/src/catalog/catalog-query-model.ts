@@ -39,7 +39,9 @@ const ResourceNotFound = taggedError("ResourceNotFound")<Record<string, never>>;
 type ResourceNotFoundFailure = InstanceType<typeof ResourceNotFound>;
 const MediaHasNoChildren = taggedError("MediaHasNoChildren")<Record<string, never>>;
 type MediaHasNoChildrenFailure = InstanceType<typeof MediaHasNoChildren>;
-const SourceUnavailable = taggedError("SourceUnavailable")<Record<string, never>>;
+const SourceUnavailable = taggedError("SourceUnavailable")<{
+  readonly retryDelayMilliseconds?: number;
+}>;
 type SourceUnavailableFailure = InstanceType<typeof SourceUnavailable>;
 const SearchQueryInvalid = taggedError("SearchQueryInvalid")<Record<string, never>>;
 type SearchQueryInvalidFailure = InstanceType<typeof SearchQueryInvalid>;
@@ -100,9 +102,13 @@ interface CatalogArtworkLeaseRequest extends CatalogArtworkTarget {
   readonly maxWidth?: number | undefined;
 }
 
+interface CatalogArtworkLeaseResolution {
+  readonly approvedOrigins: readonly string[];
+  readonly lease: ProviderArtworkLease;
+}
 type CatalogArtworkLeaseResolver = (
   input: CatalogArtworkLeaseRequest,
-) => Effect.Effect<ProviderArtworkLease, unknown>;
+) => Effect.Effect<CatalogArtworkLeaseResolution, unknown>;
 
 interface CatalogQueryDependencies {
   readonly catalog: CatalogQueryStorage;
@@ -122,6 +128,7 @@ export {
 };
 export type {
   CatalogArtworkLeaseRequest,
+  CatalogArtworkLeaseResolution,
   CatalogArtworkLeaseResolver,
   CatalogNotReadyFailure,
   CatalogQueryDependencies,

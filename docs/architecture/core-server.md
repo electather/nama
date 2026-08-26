@@ -1,6 +1,6 @@
 # Core server
 
-Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, authenticated plugin-subprocess supervisor, bundled-provider discovery/listing, candidate and stored-instance connection testing, and verified provider-instance create/list/get/update/delete including disable and re-enable are implemented and verified.
+Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, authenticated plugin-subprocess supervisor, bundled-provider discovery/listing, candidate and stored-instance connection testing, verified provider-instance create/list/get/update/delete including disable and re-enable, initial catalog ingestion, and stored public Library reads are implemented and verified.
 
 This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics.
 
@@ -18,10 +18,12 @@ This note is the canonical record for durable core-server boundaries. The implem
 - one readiness-gated LAN advertiser scoped ahead of listener shutdown;
 - runtime-controlled readiness and fatal post-bind failure;
 - one Effect-scoped authenticated, on-demand plugin-subprocess supervisor with context-free discovery, one-shot candidate, exact-revision instance launches, and bounded idle retirement;
-- one code-owned bundled-provider registry with bounded startup discovery, instance-local credential containment, compatible installation reconciliation, safe availability status, authenticated provider-type and connection-test reads, and provider-instance create/list/get/update/delete; and
+- one code-owned bundled-provider registry with bounded startup discovery, instance-local credential containment, compatible installation reconciliation, safe availability status, authenticated provider-type and connection-test reads, and provider-instance create/list/get/update/delete;
+- one durable initial catalog importer and stored canonical query owner;
+- authenticated `LibraryService` home, list, search, details, hierarchy, source, and validated artwork-locator reads; and
 - deterministic signal shutdown, bounded drain, process-group termination, and resource finalization.
 
-The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; Setup, Auth, `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, `GetProviderInstance`, `UpdateProviderInstance`, and `DeleteProviderInstance` are implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. The private plugin transport launches, authenticates, handshakes with, calls, recovers, and terminates code-owned subprocesses. Its production Jellyfin executable implements health, discovery, and connection verification.
+The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; Setup, Auth, `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, `GetProviderInstance`, `UpdateProviderInstance`, `DeleteProviderInstance`, and every `LibraryService` method are implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. The private plugin transport launches, authenticates, handshakes with, calls, recovers, and terminates code-owned subprocesses. Its production Jellyfin executable implements health, discovery, connection verification, catalog reads, and artwork resolution.
 
 ## Architecture decisions
 
@@ -427,7 +429,7 @@ existing fenced delete transaction. It removes a Library entry only when no
 source remains and never deletes the internal canonical item or Nama-owned user
 state.
 
-### Target stored catalog reads
+### Stored catalog reads
 
 Stored catalog reads use PostgreSQL filtering, ordering, pagination, hierarchy,
 and full-text search. They make no provider call except artwork resolution,

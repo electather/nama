@@ -8,6 +8,7 @@ import { BetterAuthAdapter } from "../../authentication/better-auth-adapter.ts";
 import type { BetterAuthAdapterService } from "../../authentication/better-auth-adapter.ts";
 import { SetupCoordinator } from "../../authentication/setup-coordinator.ts";
 import type { SetupCoordinatorService } from "../../authentication/setup-coordinator.ts";
+import { CatalogQuery } from "../../catalog/catalog-query-live.ts";
 import { Config } from "../../config/config.ts";
 import { Database } from "../../database/database.ts";
 import { databaseSchema } from "../../database/schema.ts";
@@ -63,6 +64,7 @@ const messageText = (message: unknown): string => {
 
 interface ServerLayerOptions {
   readonly authentication?: AuthenticationService;
+  readonly catalogQuery?: CatalogQuery["Service"];
   readonly betterAuthAdapter?: BetterAuthAdapterService;
   readonly emitStopping?: () => Effect.Effect<void>;
   readonly host?: string;
@@ -112,6 +114,15 @@ const defaultSetupCoordinator = SetupCoordinator.of({
   createAdministrator: () => Effect.die("unexpected administrator creation"),
   getStatus: Effect.succeed(true),
 });
+const defaultCatalogQuery = CatalogQuery.of({
+  getHome: () => Effect.die("unexpected catalog home read"),
+  getMedia: () => Effect.die("unexpected catalog media read"),
+  getMediaSource: () => Effect.die("unexpected catalog source read"),
+  listChildren: () => Effect.die("unexpected catalog children list"),
+  listLibrary: () => Effect.die("unexpected catalog library list"),
+  resolveArtwork: () => Effect.die("unexpected catalog artwork resolution"),
+  search: () => Effect.die("unexpected catalog search"),
+});
 
 const defaultProviderManagement = ProviderManagement.of({
   createProviderInstance: () => Effect.die("unexpected provider instance creation"),
@@ -135,6 +146,7 @@ const makeHttpServerTestDependencies = (
 ) =>
   Layer.mergeAll(
     Layer.succeed(BetterAuthAdapter, defaultBetterAuthAdapter),
+    Layer.succeed(CatalogQuery, defaultCatalogQuery),
     Layer.succeed(Authentication, defaultAuthentication),
     Layer.succeed(Config, config),
     Layer.succeed(Database, database),
@@ -184,6 +196,7 @@ const serverLayerWithDatabase = (
   });
   const dependencies = Layer.mergeAll(
     Layer.succeed(BetterAuthAdapter, options.betterAuthAdapter ?? defaultBetterAuthAdapter),
+    Layer.succeed(CatalogQuery, options.catalogQuery ?? defaultCatalogQuery),
     Layer.succeed(Authentication, options.authentication ?? defaultAuthentication),
     Layer.succeed(Config, serverConfig(port, options)),
     databaseLayer,

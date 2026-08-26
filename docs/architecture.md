@@ -30,7 +30,7 @@ The target installation is one private deployment with one administrator, Jellyf
 
 The MVP authorization path is complete without a browser: an already authenticated Go CLI sends the Apple app's displayed user code through role-neutral `AuthService.ApproveDeviceAuthorization`, and the core binds the grant to that session principal before invoking Better Auth's internal verification and approval APIs. The request selects no target user and grants no Administrator authority. Issue #167 may add a narrow browser approval web app over the same internal application service; it does not become a prerequisite for Apple authorization or a general web console.
 
-The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, and the authenticated plugin supervisor. Provider discovery, connection testing, and provider-instance lifecycle management are executable through the compiled CLI; canonical media ingestion and playback remain unimplemented.
+The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, and the authenticated plugin supervisor. Provider discovery, connection testing, provider-instance lifecycle management, initial canonical catalog ingestion, and stored public Library reads are executable; playback remains unimplemented.
 
 The same listener now exposes the fixed Apple public client's allowlisted Better Auth metadata, JWKS, device-code, token, refresh, and revocation routes. Generated `AuthService` handlers approve the current session principal's grant and revoke the fixed client's refresh-token families; Connect consumer authority verifies audience-bound, fixed-client, method-scoped JWTs locally without treating them as Administrator sessions.
 
@@ -64,7 +64,8 @@ provider connection tests, and the local Linux application image are
 implemented. The Docker gate drives the real image through canonical Compose,
 the compiled Go CLI, the pinned Jellyfin fixture, plugin-child recovery,
 application replacement, and graceful shutdown. Core initial catalog ingestion
-is implemented; public stored Library reads remain unimplemented.
+and authenticated stored `LibraryService` reads are implemented and exercised
+through real Connect over a supervised production Jellyfin scan.
 
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.
 
