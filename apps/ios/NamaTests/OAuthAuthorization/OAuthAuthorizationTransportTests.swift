@@ -13,29 +13,37 @@ nonisolated private enum OAuthTransportFixture {
   static let unimplementedHTTPStatus = 501
 }
 
-@Suite("OAuth authorization transports")
+@Suite("OAuth authorization transports", .serialized)
 @MainActor
 struct OAuthAuthorizationTransportTests {
-  @Test("the concrete scoped verifier attaches the access JWT before the library handler")
+  @Test("the concrete scoped verifier accepts CATALOG_NOT_READY as authenticated access")
   func concreteScopedVerifierUsesBearer() async throws {
     OAuthConnectStubURLProtocol.configure(
-      status: OAuthTransportFixture.unimplementedHTTPStatus,
-      body: #"{"code":"unimplemented","message":"LibraryService.GetHome is not implemented"}"#
+      status: OAuthTransportFixture.unavailableHTTPStatus,
+      body: #"""
+        {
+          "code": "unavailable",
+          "message": "catalog is not ready",
+          "details": [
+            {
+              "type": "google.rpc.ErrorInfo",
+              "value": "ChFDQVRBTE9HX05PVF9SRUFEWRILbmFtYS5hcGkudjE="
+            },
+            {
+              "type": "google.rpc.RetryInfo",
+              "value": "CgIICQ=="
+            }
+          ]
+        }
+        """#
     )
     defer { OAuthConnectStubURLProtocol.reset() }
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [OAuthConnectStubURLProtocol.self]
-    let endpoint = try NamaEndpoint("https://nama.example.test")
-    let record = EndpointBoundOAuthTokenRecord(
-      endpoint: endpoint,
-      accessToken: "access-token-secret",
-      refreshToken: "refresh-token-secret",
-      accessTokenExpiresAt: Date(timeIntervalSince1970: 4_600),
-      scope: OAuthConfiguration.consumerScopes,
-      tokenType: "Bearer"
-    )
-    let verifier = NamaOAuthScopedAccessVerifier(
+    let record = try oauthTransportTokenRecord()
+    let verifier = NamaLibraryClient(
       clientVersion: "1.0.0",
+      tokenStore: InMemoryOAuthTokenStore(snapshot: .record(record)),
       sessionConfiguration: configuration,
       platform: "tvos"
     )
@@ -46,6 +54,61 @@ struct OAuthAuthorizationTransportTests {
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access-token-secret")
     #expect(request.value(forHTTPHeaderField: "nama-client-platform") == "tvos")
     #expect(request.url?.path == "/nama.api.v1.LibraryService/GetHome")
+  }
+
+  @Test("a foreign CATALOG_NOT_READY detail is not authenticated access")
+  func foreignCatalogReasonIsRejected() async throws {
+    OAuthConnectStubURLProtocol.configure(
+      status: OAuthTransportFixture.unavailableHTTPStatus,
+      body: #"""
+        {
+          "code": "unavailable",
+          "message": "catalog is not ready",
+          "details": [
+            {
+              "type": "google.rpc.ErrorInfo",
+              "value": "ChFDQVRBTE9HX05PVF9SRUFEWRILZm9yZWlnbi5hcGk="
+            }
+          ]
+        }
+        """#
+    )
+    defer { OAuthConnectStubURLProtocol.reset() }
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [OAuthConnectStubURLProtocol.self]
+    let record = try oauthTransportTokenRecord()
+    let verifier = NamaLibraryClient(
+      clientVersion: "1.0.0",
+      tokenStore: InMemoryOAuthTokenStore(snapshot: .record(record)),
+      sessionConfiguration: configuration,
+      platform: "ios"
+    )
+
+    await #expect(throws: OAuthAuthorizationClientError.network) {
+      try await verifier.verify(record)
+    }
+  }
+
+  @Test("an unimplemented LibraryService is incompatible consumer access")
+  func unimplementedLibraryIsIncompatible() async throws {
+    OAuthConnectStubURLProtocol.configure(
+      status: OAuthTransportFixture.unimplementedHTTPStatus,
+      body: #"{"code":"unimplemented","message":"LibraryService.GetHome is not implemented"}"#
+    )
+    defer { OAuthConnectStubURLProtocol.reset() }
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [OAuthConnectStubURLProtocol.self]
+    let record = try oauthTransportTokenRecord()
+    let verifier = NamaLibraryClient(
+      clientVersion: "1.0.0",
+      tokenStore: InMemoryOAuthTokenStore(snapshot: .record(record)),
+      sessionConfiguration: configuration,
+      platform: "ios"
+    )
+
+    await #expect(throws: OAuthAuthorizationClientError.invalidResponse) {
+      try await verifier.verify(record)
+    }
   }
 
   @Test("the concrete native HTTP client runs device, token, and refresh exchanges")
@@ -89,6 +152,17 @@ struct OAuthAuthorizationTransportTests {
     #expect(bodies.contains { $0.contains("grant_type=refresh_token") })
     #expect(bodies.contains { $0.contains("refresh_token=initial-refresh-token") })
   }
+}
+
+private func oauthTransportTokenRecord() throws -> EndpointBoundOAuthTokenRecord {
+  EndpointBoundOAuthTokenRecord(
+    endpoint: try NamaEndpoint("https://nama.example.test"),
+    accessToken: "access-token-secret",
+    refreshToken: "refresh-token-secret",
+    accessTokenExpiresAt: Date(timeIntervalSince1970: 4_600),
+    scope: OAuthConfiguration.consumerScopes,
+    tokenType: "Bearer"
+  )
 }
 
 private actor ScriptedOAuthHTTPFlow {

@@ -2,15 +2,17 @@
 
 Status: the universal SwiftUI target, endpoint connection and restoration,
 acknowledged eligible local HTTP, foreground LAN discovery, native Better Auth
-device authorization, refresh rotation, and endpoint-bound Keychain token
-storage are implemented. Apple-platform builds and macOS-host tests pass. A
+device authorization, refresh rotation, endpoint-bound Keychain token storage,
+and provider-neutral Home source are implemented. The connection and
+authorization baseline's Apple-platform builds and macOS-host tests pass. A
 signed Apple TV 4K simulator has completed local-HTTP acknowledgement,
 no-browser authorization through the generated CLI, scoped consumer
 verification, Keychain commit, and relaunch restoration. The production
 `NamaPlayer` boundary is implemented and one controlled SDR HLS fixture passes
-through its macOS-hosted real-engine test. Product consumer media behavior,
-physical Apple hardware, expiry-driven actual-surface refresh, and the
-remaining Apple surfaces remain unverified.
+through its macOS-hosted real-engine test. Home's Apple-platform builds and
+actual surfaces, product playback behavior, physical Apple hardware,
+expiry-driven actual-surface refresh, and the remaining Apple surfaces remain
+unverified.
 
 ## Authority and fixed decisions
 
@@ -144,6 +146,26 @@ device authorization:
   boundary. The complete Swift package closure is locked, notices are bundled,
   and the artifact and relinking review is recorded in
   [aetherengine-distribution.md](aetherengine-distribution.md).
+- `NamaLibraryClient` is the concrete generated `LibraryService` adapter for
+  both scoped-access verification and Home. It sends bearer and allowlisted
+  client metadata, accepts `CATALOG_NOT_READY` as authenticated access, treats
+  an unimplemented handler as incompatible, and maps generated summaries and
+  Connect failures into Home-owned values and closed safe failures.
+- One `HomeFeature` per window owns loading, catalog preparation, legitimate
+  empty, content, refresh, refresh-failure, and initial safe-failure state.
+  Refresh failure retains confirmed shelves with inline recovery. Endpoint or
+  authorization identity replacement cancels the active load, and attempt
+  identity prevents stale completion from publishing old media.
+- The scene root enters Home only when the published authorization belongs to
+  its current endpoint. Home presents nonempty Movies before nonempty Shows,
+  retains server item order, and offers explicit Retry, Refresh, and Change
+  Endpoint actions. Authorize Again removes only the exact rejected bundle
+  under OAuth mutation admission before the root starts a fresh device grant
+  for the current endpoint. A storage failure moves the rejected status and
+  generation into shared pending-discard state and clears active authorization
+  so every window leaves Home. Storage-specific Retry resumes that exact
+  discard rather than re-verifying the rejected token; damaged pending bytes
+  are quarantined before device authorization restarts.
 
 The Swift Testing target covers endpoint normalization and every approved and
 forbidden address-class boundary, mapped and scoped IPv6, local DNS label and
@@ -159,12 +181,16 @@ Retry, verification replacement and cancellation, proxy selection, request
 construction and client metadata, redirect refusal, unary-only transport
 enforcement, safe failure mapping, state transitions, stale completions, long
 endpoint presentation state, localized copy, warning semantics, presentation
-actions, and television focus intent.
+actions, and television focus intent. Home coverage adds authorization routing,
+rejected-bundle removal, endpoint and authorization-identity cancellation,
+stale completion, refresh preservation and failure, catalog preparation,
+response bounds and mapping, error precedence, and consumer metadata.
 
 Self-contained previews render discovery outcomes, local-HTTP confirmation with
-a long endpoint, persistent ready and failure warnings, and blocked
-restoration. They make the states available for actual-surface inspection but
-are not runtime evidence. `check:ios` lints Swift formatting, runs the test
+a long endpoint, persistent ready and failure warnings, blocked restoration,
+and Home loading, empty, long-title content, refresh, catalog-preparation, and
+failure fixtures. They make the states available for actual-surface inspection
+but are not runtime evidence. `check:ios` lints Swift formatting, runs the test
 target through its macOS host, inspects the built ATS shape, and performs
 signing-disabled iOS, tvOS, and macOS builds. The real-player test proves one
 controlled macOS-hosted SDR HLS render and control flow. Generic builds do not
@@ -174,9 +200,9 @@ This baseline implements endpoint eligibility, endpoint-bound persistent
 local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP
 recovery, endpoint-scoped local-HTTP proxy bypass, the narrow ATS
 local-networking allowance, Better Auth device authorization and refresh,
-endpoint-bound Keychain tokens, and a scoped `GetHome` authorization probe that
-must reach the deliberately unimplemented handler. Home, Library, Details,
-Watch State, and Playback product behavior remain unimplemented.
+endpoint-bound Keychain tokens, and provider-neutral Home over stored
+`GetHome` results. Library, Search, Details, artwork loading, Watch State, and
+Playback product behavior remain unimplemented.
 
 ## Target runtime topology
 

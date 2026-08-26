@@ -121,6 +121,11 @@ final class OAuthAuthorizationFeature {
   }
 
   func run(_ endpoint: NamaEndpoint) async {
+    if session.pendingDiscard?.authorization.endpoint == endpoint,
+      await resumePendingAuthorizationDiscard(at: endpoint) == .storageUnavailable
+    {
+      return
+    }
     let currentAttempt = await authorize(endpoint)
     guard case .authorized = presentationState else {
       return

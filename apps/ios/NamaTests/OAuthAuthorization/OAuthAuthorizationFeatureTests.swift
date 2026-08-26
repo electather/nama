@@ -56,6 +56,13 @@ struct OAuthAuthorizationFeatureTests {
     #expect(
       feature.state == .authorized(OAuthAuthorizationStatus(record: expectedRecord))
     )
+    #expect(
+      HomeAuthorizationIdentity(
+        currentEndpoint: endpoint,
+        authorizationState: feature.state,
+        generation: feature.session.generation
+      ) != nil
+    )
   }
 
   @Test("a token rejected by the scoped consumer call is never committed")

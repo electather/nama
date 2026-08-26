@@ -118,15 +118,18 @@ enum InMemoryOAuthTokenStoreError: Error {
 actor InMemoryOAuthTokenStore: OAuthTokenStoring {
   private var snapshot: OAuthTokenStoreSnapshot
   private let replaceError: InMemoryOAuthTokenStoreError?
+  private var removalFailuresRemaining: Int
   private(set) var record: EndpointBoundOAuthTokenRecord?
   private(set) var quarantined: [Data] = []
 
   init(
     snapshot: OAuthTokenStoreSnapshot,
-    replaceError: InMemoryOAuthTokenStoreError? = nil
+    replaceError: InMemoryOAuthTokenStoreError? = nil,
+    removalFailures: Int = 0
   ) {
     self.snapshot = snapshot
     self.replaceError = replaceError
+    removalFailuresRemaining = removalFailures
     if case .record(let record) = snapshot {
       self.record = record
     }
@@ -154,12 +157,21 @@ actor InMemoryOAuthTokenStore: OAuthTokenStoring {
     snapshot = previous.map(OAuthTokenStoreSnapshot.record) ?? .missing
   }
 
-  func remove(ifCurrent expected: EndpointBoundOAuthTokenRecord) {
+  func remove(ifCurrent expected: EndpointBoundOAuthTokenRecord) throws {
+    if removalFailuresRemaining > 0 {
+      removalFailuresRemaining -= 1
+      throw InMemoryOAuthTokenStoreError.unavailable
+    }
     guard record == expected else {
       return
     }
     record = nil
     snapshot = .missing
+  }
+
+  func damage(_ data: Data) {
+    record = nil
+    snapshot = .damaged(data)
   }
 
   func quarantine(_ data: Data) {

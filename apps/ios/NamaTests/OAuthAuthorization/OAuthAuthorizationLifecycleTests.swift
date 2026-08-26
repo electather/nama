@@ -55,6 +55,97 @@ struct OAuthAuthorizationLifecycleTests {
     #expect(
       feature.state == .authorized(OAuthAuthorizationStatus(record: expected))
     )
+    #expect(
+      HomeAuthorizationIdentity(
+        currentEndpoint: endpoint,
+        authorizationState: feature.state,
+        generation: feature.session.generation
+      ) != nil
+    )
+  }
+
+  @Test("rejected Home authorization retries exact bundle removal")
+  func rejectedHomeAuthorizationIsDiscarded() async throws {
+    let endpoint = try NamaEndpoint("https://nama.example.test")
+    let record = EndpointBoundOAuthTokenRecord(
+      endpoint: endpoint,
+      accessToken: "rejected-access-token",
+      refreshToken: "rejected-refresh-token",
+      accessTokenExpiresAt: Date(timeIntervalSince1970: 4_600),
+      scope: OAuthConfiguration.consumerScopes,
+      tokenType: "Bearer"
+    )
+    let store = InMemoryOAuthTokenStore(
+      snapshot: .record(record),
+      removalFailures: 1
+    )
+    let session = OAuthAuthorizationSession()
+    let feature = OAuthAuthorizationFeature(
+      client: InMemoryOAuthAuthorizationClient(deviceAuthorization: nil, pollResults: []),
+      tokenStore: store,
+      scopedAccessVerifier: InMemoryOAuthScopedAccessVerifier(),
+      session: session,
+      now: { Date(timeIntervalSince1970: 1_000) }
+    )
+    let otherWindow = OAuthAuthorizationFeature(
+      client: InMemoryOAuthAuthorizationClient(deviceAuthorization: nil, pollResults: []),
+      tokenStore: store,
+      scopedAccessVerifier: InMemoryOAuthScopedAccessVerifier(),
+      session: session,
+      now: { Date(timeIntervalSince1970: 1_000) }
+    )
+    await feature.authorize(endpoint)
+    await otherWindow.authorize(endpoint)
+    let rejected = try #require(session.authorization)
+    let generation = session.generation
+
+    let firstDiscard = await feature.discardRejectedAuthorization(
+      rejected,
+      generation: generation
+    )
+
+    #expect(firstDiscard == .storageUnavailable)
+    #expect(await store.record == record)
+    #expect(session.authorization == nil)
+    #expect(session.pendingDiscard?.authorization == rejected)
+    #expect(session.failure == .authorizationResetUnavailable)
+    #expect(otherWindow.state == .failed(endpoint, .authorizationResetUnavailable))
+
+    let resumedDiscard = await feature.resumePendingAuthorizationDiscard(
+      at: endpoint
+    )
+
+    #expect(resumedDiscard == .discarded)
+    #expect(await store.record == nil)
+    #expect(session.pendingDiscard == nil)
+    #expect(session.failure == .authorizationExpired)
+  }
+
+  @Test("damaged rejected authorization is quarantined before retry")
+  func damagedRejectedAuthorizationIsQuarantined() async throws {
+    let endpoint = try NamaEndpoint("https://nama.example.test")
+    let record = activeLifecycleRecord(endpoint: endpoint)
+    let store = InMemoryOAuthTokenStore(snapshot: .record(record))
+    let feature = OAuthAuthorizationFeature(
+      client: InMemoryOAuthAuthorizationClient(deviceAuthorization: nil, pollResults: []),
+      tokenStore: store,
+      scopedAccessVerifier: InMemoryOAuthScopedAccessVerifier(),
+      now: { Date(timeIntervalSince1970: 1_000) }
+    )
+    await feature.authorize(endpoint)
+    let rejected = try #require(feature.session.authorization)
+    let generation = feature.session.generation
+    let damaged = Data("damaged-token-record".utf8)
+    await store.damage(damaged)
+
+    let outcome = await feature.discardRejectedAuthorization(
+      rejected,
+      generation: generation
+    )
+
+    #expect(outcome == .discarded)
+    #expect(await store.quarantined == [damaged])
+    #expect(feature.session.authorization == nil)
   }
 
   @Test("an active authorization refreshes when its access token reaches expiry")
@@ -105,6 +196,13 @@ struct OAuthAuthorizationLifecycleTests {
     #expect(await store.record == expected)
     #expect(
       feature.state == .authorized(OAuthAuthorizationStatus(record: expected))
+    )
+    #expect(
+      HomeAuthorizationIdentity(
+        currentEndpoint: endpoint,
+        authorizationState: feature.state,
+        generation: feature.session.generation
+      ) != nil
     )
   }
 
