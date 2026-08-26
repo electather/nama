@@ -1,5 +1,6 @@
 #if os(macOS)
   import AppKit
+  import Observation
   import SwiftUI
   import Testing
 
@@ -73,8 +74,10 @@
       #expect(
         await playbackEventually {
           player.selectedSubtitleTrackID == subtitle.trackID
-            && server.received(path: "/subtitle.srt", marker: "subtitle")
         }
+      )
+      #expect(
+        await server.waitUntilReceived(path: "/subtitle.srt", marker: "subtitle")
       )
       player.disableSubtitles()
       #expect(await playbackEventually { player.selectedSubtitleTrackID == nil })
@@ -172,6 +175,7 @@
         Issue.record("Expected a sanitized playback failure")
         return
       }
+      #expect(failure.category == .network)
       let summary = String(localized: failure.summary)
       #expect(!summary.contains("secret-url"))
       #expect(!summary.contains("secret-header"))
@@ -225,6 +229,7 @@
       else {
         return nil
       }
+      view.layoutSubtreeIfNeeded()
       view.cacheDisplay(in: view.bounds, to: representation)
       return representation.representation(using: .png, properties: [:])
     }
@@ -241,12 +246,11 @@
       player.selectSubtitleTrack(id: subtitle.id)
       #expect(
         await playbackEventually {
-          guard let frameWithSubtitle = renderedPixels(in: window) else {
-            return false
-          }
-          return frameWithSubtitle != frameWithoutSubtitle
+          player.selectedSubtitleTrackID == subtitle.id && !player.subtitleCues.isEmpty
         }
       )
+      let frameWithSubtitle = try #require(renderedPixels(in: window))
+      #expect(frameWithSubtitle != frameWithoutSubtitle)
       player.disableSubtitles()
       #expect(await playbackEventually { player.selectedSubtitleTrackID == nil })
     }
@@ -272,26 +276,120 @@
     }
   }
 
-  private enum PlaybackTestTiming {
-    static let timeoutSeconds: TimeInterval = 15
-    static let pollIntervalSeconds: TimeInterval = 0.025
-    static let timeout: Duration = .seconds(timeoutSeconds)
-    static let pollInterval: Duration = .seconds(pollIntervalSeconds)
+  @Suite("Nama player redirect policy", .serialized)
+  @MainActor
+  struct NamaPlayerRedirectTests {
+    @Test("rejects redirects outside the Locator origin allowlist")
+    func rejectsDisallowedRedirectOrigin() async throws {
+      let target = try await PlaybackFixtureServer.start()
+      defer { target.stop() }
+      let rejectedURL = target.origin.appendingPathComponent("missing.m3u8")
+      let source = try await PlaybackFixtureServer.start(
+        redirects: ["/redirect.m3u8": rejectedURL]
+      )
+      defer { source.stop() }
+      let player = try NamaPlayer()
+      defer { player.stop() }
+
+      player.load(
+        NamaPlayerRequest(
+          media: NamaPlaybackLocator(
+            url: source.origin.appendingPathComponent("redirect.m3u8"),
+            headers: [NamaPlaybackLocatorHeader(name: "X-Nama-Fixture", value: "media")],
+            allowedRedirectOrigins: [source.origin],
+            mimeType: "application/vnd.apple.mpegurl"
+          ),
+          resumePosition: nil,
+          externalSubtitles: []
+        )
+      )
+
+      #expect(
+        await playbackEventually {
+          if case .failed = player.state { true } else { false }
+        }
+      )
+      #expect(!target.received(path: "/missing.m3u8"))
+    }
+
+    @Test("follows redirects within the Locator origin allowlist")
+    func followsAllowedRedirectOrigin() async throws {
+      let target = try await PlaybackFixtureServer.start()
+      defer { target.stop() }
+      let allowedURL = target.origin.appendingPathComponent("sdr-master.m3u8")
+      let source = try await PlaybackFixtureServer.start(
+        redirects: ["/redirect.m3u8": allowedURL]
+      )
+      defer { source.stop() }
+      let player = try NamaPlayer()
+      defer { player.stop() }
+
+      player.load(
+        NamaPlayerRequest(
+          media: NamaPlaybackLocator(
+            url: source.origin.appendingPathComponent("redirect.m3u8"),
+            headers: [NamaPlaybackLocatorHeader(name: "X-Nama-Fixture", value: "media")],
+            allowedRedirectOrigins: [source.origin, target.origin],
+            mimeType: "application/vnd.apple.mpegurl"
+          ),
+          resumePosition: nil,
+          externalSubtitles: []
+        )
+      )
+
+      #expect(
+        await target.waitUntilReceived(path: "/sdr-master.m3u8", marker: "media")
+      )
+      #expect(
+        await target.waitUntilReceived(path: "/sdr-segment.ts", marker: "media")
+      )
+      #expect(await playbackEventually { player.state == .playing })
+    }
+  }
+
+  @Suite("Nama subtitle layout")
+  struct NamaSubtitleLayoutTests {
+    private static let topLeadingAlignment = 7
+    private static let middleAlignment = 5
+    private static let bottomTrailingAlignment = 3
+
+    @Test("maps ASS numpad alignment to the matching surface anchor")
+    func mapsTextAlignment() {
+      #expect(
+        NamaSubtitleLayout.textAlignment(for: Self.topLeadingAlignment) == .topLeading
+      )
+      #expect(NamaSubtitleLayout.textAlignment(for: Self.middleAlignment) == .center)
+      #expect(
+        NamaSubtitleLayout.textAlignment(for: Self.bottomTrailingAlignment) == .bottomTrailing
+      )
+      #expect(NamaSubtitleLayout.textAlignment(for: nil) == .bottom)
+    }
+
+    @Test("maps bitmap cues through their authored canvas")
+    func mapsBitmapCanvas() {
+      let imageRect = NamaSubtitleLayout.imageRect(
+        position: CGRect(x: 0.1, y: 0.8, width: 0.2, height: 0.1),
+        canvasSize: CGSize(width: 1_920, height: 1_080),
+        in: CGRect(x: 10, y: 20, width: 1_920, height: 800)
+      )
+
+      #expect(imageRect == CGRect(x: 202, y: 744, width: 384, height: 108))
+    }
   }
 
   @MainActor
   private func playbackEventually(
-    timeout: Duration = PlaybackTestTiming.timeout,
     _ condition: @MainActor @Sendable () -> Bool
   ) async -> Bool {
-    let clock = ContinuousClock()
-    let deadline = clock.now.advanced(by: timeout)
-    while clock.now < deadline {
-      if condition() {
-        return true
+    while !condition() {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        withObservationTracking {
+          _ = condition()
+        } onChange: {
+          continuation.resume()
+        }
       }
-      try? await Task.sleep(for: PlaybackTestTiming.pollInterval)
     }
-    return condition()
+    return true
   }
 #endif

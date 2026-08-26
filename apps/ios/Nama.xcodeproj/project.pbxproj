@@ -59,6 +59,12 @@
 		100000000000000000000050 /* track-controls.mkv in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000052 /* track-controls.mkv */; };
 		100000000000000000000051 /* Licenses in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000053 /* Licenses */; };
 		100000000000000000000052 /* NamaPlayer+EngineMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000054 /* NamaPlayer+EngineMapping.swift */; };
+		100000000000000000000053 /* NamaPlaybackHTTPBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000055 /* NamaPlaybackHTTPBridge.swift */; };
+		100000000000000000000054 /* NamaPlaybackHTTPBridge+Server.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000056 /* NamaPlaybackHTTPBridge+Server.swift */; };
+		100000000000000000000055 /* NamaPlaybackBridgeRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000057 /* NamaPlaybackBridgeRequest.swift */; };
+		100000000000000000000056 /* NamaPlaybackBridgeRequest+Playlist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000058 /* NamaPlaybackBridgeRequest+Playlist.swift */; };
+		100000000000000000000057 /* NamaPlayer+Loading.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000059 /* NamaPlayer+Loading.swift */; };
+		100000000000000000000058 /* NamaPlaybackBridgeRequest+URLSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000060 /* NamaPlaybackBridgeRequest+URLSession.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -126,6 +132,12 @@
 		200000000000000000000052 /* track-controls.mkv */ = {isa = PBXFileReference; lastKnownFileType = file; path = "track-controls.mkv"; sourceTree = "<group>"; };
 		200000000000000000000053 /* Licenses */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Licenses; sourceTree = "<group>"; };
 		200000000000000000000054 /* NamaPlayer+EngineMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaPlayer+EngineMapping.swift"; sourceTree = "<group>"; };
+		200000000000000000000055 /* NamaPlaybackHTTPBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaPlaybackHTTPBridge.swift; sourceTree = "<group>"; };
+		200000000000000000000056 /* NamaPlaybackHTTPBridge+Server.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaPlaybackHTTPBridge+Server.swift"; sourceTree = "<group>"; };
+		200000000000000000000057 /* NamaPlaybackBridgeRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamaPlaybackBridgeRequest.swift; sourceTree = "<group>"; };
+		200000000000000000000058 /* NamaPlaybackBridgeRequest+Playlist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaPlaybackBridgeRequest+Playlist.swift"; sourceTree = "<group>"; };
+		200000000000000000000059 /* NamaPlayer+Loading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaPlayer+Loading.swift"; sourceTree = "<group>"; };
+		200000000000000000000060 /* NamaPlaybackBridgeRequest+URLSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaPlaybackBridgeRequest+URLSession.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -257,6 +269,12 @@
 				200000000000000000000049 /* PlaybackModels.swift */,
 				200000000000000000000050 /* NamaPlayer.swift */,
 				200000000000000000000054 /* NamaPlayer+EngineMapping.swift */,
+				200000000000000000000059 /* NamaPlayer+Loading.swift */,
+				200000000000000000000055 /* NamaPlaybackHTTPBridge.swift */,
+				200000000000000000000056 /* NamaPlaybackHTTPBridge+Server.swift */,
+				200000000000000000000057 /* NamaPlaybackBridgeRequest.swift */,
+				200000000000000000000060 /* NamaPlaybackBridgeRequest+URLSession.swift */,
+				200000000000000000000058 /* NamaPlaybackBridgeRequest+Playlist.swift */,
 				200000000000000000000051 /* NamaPlayerSurface.swift */,
 			);
 			path = Playback;
@@ -435,6 +453,12 @@
 				100000000000000000000047 /* PlaybackModels.swift in Sources */,
 				100000000000000000000048 /* NamaPlayer.swift in Sources */,
 				100000000000000000000052 /* NamaPlayer+EngineMapping.swift in Sources */,
+				100000000000000000000057 /* NamaPlayer+Loading.swift in Sources */,
+				100000000000000000000053 /* NamaPlaybackHTTPBridge.swift in Sources */,
+				100000000000000000000054 /* NamaPlaybackHTTPBridge+Server.swift in Sources */,
+				100000000000000000000055 /* NamaPlaybackBridgeRequest.swift in Sources */,
+				100000000000000000000056 /* NamaPlaybackBridgeRequest+Playlist.swift in Sources */,
+				100000000000000000000058 /* NamaPlaybackBridgeRequest+URLSession.swift in Sources */,
 				100000000000000000000049 /* NamaPlayerSurface.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

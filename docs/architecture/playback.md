@@ -27,6 +27,13 @@ redirect origins. Destinations outside that allowlist, reusable credentials,
 Nama-owned locator logging or persistence, and locator-bearing user errors
 remain prohibited.
 
+The concrete adapter contains both engine limitations behind a session-scoped
+loopback bridge. The engine receives opaque loopback locators without upstream
+Locator headers; the bridge alone retains upstream Locator material, validates
+the initial and redirected origin, rewrites HLS child references, and reapplies
+headers only within the request's core-validated allowlist. The bridge is part
+of the concrete adapter, not a second playback engine or public media relay.
+
 [ADR-0014](../adr/0014-four-stage-playback-lifecycle.md) defines the
 plan, open, report, and close lifecycle for the target public and plugin
 contracts.

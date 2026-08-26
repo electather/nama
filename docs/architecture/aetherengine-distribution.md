@@ -23,6 +23,22 @@ The application target requires AetherEngine with Xcode's `exactVersion` require
 
 SMBClient is resolved because it is a package-level AetherEngine dependency. Nama links only the `AetherEngine` product, not `AetherEngineSMB`, so SMBClient is absent from the built target and artifacts.
 
+### Bundled native source closure
+
+The prebuilt native libraries in FFmpegBuild and LibDovi resolve their build-script tags to the immutable upstream commits and reviewed source archives below. The source-archive SHA-256 values were computed from the exact commit archive URLs, not mutable tag archives.
+
+| Bundled source | Build-script tag | Immutable upstream commit | Source archive SHA-256 |
+| --- | --- | --- | --- |
+| FFmpeg | `n8.1.2` | [`38b88335f99e76ed89ff3c93f877fdefce736c13`](https://github.com/FFmpeg/FFmpeg/tree/38b88335f99e76ed89ff3c93f877fdefce736c13) | `2ae7e42343cfffb811d15cfe98b6d005f082595fcdf034d30a4ff90cfed9f9c6` |
+| dav1d | `1.5.1` | [`42b2b24fb8819f1ed3643aa9cf2a62f03868e3aa`](https://code.videolan.org/videolan/dav1d/-/tree/42b2b24fb8819f1ed3643aa9cf2a62f03868e3aa) | `e26d41e2f496c1598f418726b871ce252ce9f18f8dbe3ad199349a42ed2cb02f` |
+| zimg | `release-3.0.5` | [`e5b0de6bebbcbc66732ed5afaafef6b2c7dfef87`](https://github.com/sekrit-twc/zimg/tree/e5b0de6bebbcbc66732ed5afaafef6b2c7dfef87) | `3ab062eff30067799997bc3e911c0108a5b8cbcd6e0ef14053f17ff0ecd0add8` |
+| libzvbi | `v0.2.44` | [`5169a428d51c3ae8ff7b0897e8a687d8e05e37b5`](https://github.com/zapping-vbi/zvbi/tree/5169a428d51c3ae8ff7b0897e8a687d8e05e37b5) | `f503d37ddaff9172919e17ee32f4d66cc488f47218cf3961bf1c81055e0455e8` |
+| dovi_tool / `dolby_vision` | `libdovi-3.3.2` | [`4fd2b2235c9f93582dd4a00e65ee34a07800afd7`](https://github.com/quietvoid/dovi_tool/tree/4fd2b2235c9f93582dd4a00e65ee34a07800afd7) | `bfbd324c867586968fd9b5df2ee7977acb11097bc098b2a8e261d68b8f3f52d0` |
+
+FFmpegBuild's exact wrapper commit `b2185fa842b829cd53d182a5e9a53182c1d9c84c` owns the applied FFmpeg and libzvbi source patches and the complete Apple build configuration. LibDovi's exact wrapper commit `89be93431c2a5f2e54fb77e93059071b8d2ddb3a` owns its Apple build configuration. The dovi_tool [`Cargo.lock`](https://github.com/quietvoid/dovi_tool/blob/4fd2b2235c9f93582dd4a00e65ee34a07800afd7/Cargo.lock) at that commit pins the complete Rust crate closure and has SHA-256 `ed6d086945a25a6c52aa78104ed460875801c94dbc7c897f702057e4a6f0604e`.
+
+These commit IDs, archive checksums, wrapper commits, and the Cargo lock—not the mutable tag names in the wrapper build scripts—are the reviewed source inputs. A final distribution must retain these exact source archives alongside the wrapper build scripts; a changed source byte, patch, or Cargo lock blocks release and requires a fresh binary and linkage review.
+
 ## Reviewed build and linkage
 
 The local linkage review used Xcode 26.6 build `17F113`, the repository's Release configuration, and `generic/platform=macOS`. It produced a universal arm64/x86_64 executable. AetherEngine Swift code and LibDovi are linked into the Nama executable. They do not appear as dynamic load commands or separately bundled frameworks.
@@ -67,10 +83,11 @@ The application bundles `Nama/Resources/Licenses` with:
 - FFmpegBuild's LGPL-2.1 text;
 - dav1d's BSD-2-Clause text;
 - zimg's WTFPL text;
-- LibDovi's MIT notice, including its libdovi notice; and
+- LibDovi's MIT notice, including its libdovi notice;
+- libzvbi's `ure.c` MIT notice; and
 - `ThirdPartyNotices.txt`, which identifies the components, exact source revisions, and relinking terms.
 
-Corresponding source is available from the exact repositories and commits in the dependency table. Nama's corresponding application source and Xcode build configuration are in this repository. A modified dependency must point to the exact distributing fork and revision instead of the upstream link.
+Corresponding source is defined by the exact wrapper repositories and commits in the dependency table plus the immutable upstream commits, archive checksums, and Cargo lock above. Nama's corresponding application source and Xcode build configuration are in this repository. A modified dependency must point to the exact distributing fork and revision instead of the upstream link.
 
 AetherEngine is LGPL-3 with its Section 7 Apple Store / DRM Exception. The exception permits App Store, TestFlight, signing, DRM, and store restrictions that would otherwise conflict with installation, redistribution, or relinking rights. It does not waive corresponding-source, notice, study, modification, or non-store distribution obligations.
 
@@ -81,3 +98,5 @@ FFmpegBuild records FFmpeg and its packaging as LGPL-2.1-or-later, dav1d as BSD-
 ## Accepted MVP security limits
 
 ADR-0032's two exceptions remain exact: AetherEngine may write complete short-lived Locator URLs to its local Release logs and may replay Locator headers when a request moves between origins already present in the core-validated allowlist. The review does not permit another origin, a reusable credential, Nama-owned Locator logging or persistence, uploaded engine logs, or Locator-bearing product failures.
+
+The production adapter contains both package limitations behind its session-scoped loopback bridge: AetherEngine receives opaque loopback locators and no upstream Locator headers. ADR-0032 remains the dependency eligibility ceiling; bypassing that bridge or restoring direct upstream engine access requires a new security review.

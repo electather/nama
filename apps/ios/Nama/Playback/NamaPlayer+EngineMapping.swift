@@ -128,10 +128,20 @@ extension NamaPlayer {
     if underlyingError is URLError {
       return NamaPlaybackFailure.sanitized(.network)
     }
-    if underlyingError is AetherEngineError
-      || underlyingError is HLSVideoEngine.HLSVideoEngineError
-    {
+    if underlyingError is AetherEngineError {
       return NamaPlaybackFailure.sanitized(.unsupportedMedia)
+    }
+    if let hlsError = underlyingError as? HLSVideoEngine.HLSVideoEngineError {
+      switch hlsError {
+      case .openFailed:
+        return NamaPlaybackFailure.sanitized(.network)
+
+      case .noVideoStream, .unsupportedCodec, .zeroDuration, .unsupportedDVProfile:
+        return NamaPlaybackFailure.sanitized(.unsupportedMedia)
+
+      case .muxerInit, .alreadyStarted, .notStarted:
+        return NamaPlaybackFailure.sanitized(.playbackUnavailable)
+      }
     }
     if let hlsError = underlyingError as? HLSIngestError {
       switch hlsError {

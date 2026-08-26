@@ -13,15 +13,22 @@ Exact source and build scripts: https://github.com/superuser404notfound/FFmpegBu
 The distributed FFmpegBuild frameworks are dynamic frameworks. Do not merge them into the Nama executable. Recipients may replace them with interface-compatible modified versions.
 Licenses:
 - FFmpeg libraries and FFmpegBuild packaging: LGPL-2.1-or-later — FFmpegBuild-LGPL-2.1.txt
-- libzvbi library sources: LGPL-2.0-or-later, conveyed under LGPL-2.1; ure.c retains its MIT notice in the corresponding source
+- libzvbi library sources: LGPL-2.0-or-later, conveyed under LGPL-2.1; ure.c: MIT — libzvbi-ure-MIT.txt
 - dav1d: BSD-2-Clause — dav1d-BSD-2-Clause.txt
 - zimg: WTFPL — zimg-WTFPL.txt
 The FFmpegBuild configuration disables GPL and LGPL-v3 components. Its build script excludes libzvbi's GPL source files and publishes the replacement stubs.
+Exact bundled source inputs:
+- FFmpeg: https://github.com/FFmpeg/FFmpeg/tree/38b88335f99e76ed89ff3c93f877fdefce736c13
+- dav1d: https://code.videolan.org/videolan/dav1d/-/tree/42b2b24fb8819f1ed3643aa9cf2a62f03868e3aa
+- zimg: https://github.com/sekrit-twc/zimg/tree/e5b0de6bebbcbc66732ed5afaafef6b2c7dfef87
+- libzvbi: https://github.com/zapping-vbi/zvbi/tree/5169a428d51c3ae8ff7b0897e8a687d8e05e37b5
 
 LibDovi 2.0.0
 Copyright (c) 2026 Vincent Herbst; libdovi copyright (c) quietvoid and contributors.
 Exact source and build scripts: https://github.com/superuser404notfound/LibDovi/tree/89be93431c2a5f2e54fb77e93059071b8d2ddb3a
 Consumed under the MIT option. License: LibDovi-LICENSE.txt
+Bundled dolby_vision source: https://github.com/quietvoid/dovi_tool/tree/4fd2b2235c9f93582dd4a00e65ee34a07800afd7
+Its complete Rust crate closure is pinned by Cargo.lock at that commit.
 
 Corresponding source and relinking
 Nama's application source and build configuration are published at https://github.com/electather/nama. The exact third-party revisions above and the complete resolved Swift dependency closure are recorded in the repository's Package.resolved and playback distribution record. Preserve these notices, source links, dynamic framework boundaries, and license files with every distributed Apple artifact.

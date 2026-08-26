@@ -24,6 +24,7 @@ final class NamaPlayer {
   @ObservationIgnored private var observations: Set<AnyCancellable> = []
   @ObservationIgnored private var loadTask: Task<Void, Never>?
   @ObservationIgnored private var request: NamaPlayerRequest?
+  @ObservationIgnored private var httpBridge: NamaPlaybackHTTPBridge?
   @ObservationIgnored private var audioTrackIDs = OpaquePlaybackTrackIDs()
   @ObservationIgnored private var subtitleTrackIDs = OpaquePlaybackTrackIDs()
 
@@ -40,13 +41,13 @@ final class NamaPlayer {
 
   func load(_ request: NamaPlayerRequest) {
     loadTask?.cancel()
+    httpBridge?.stop()
+    httpBridge = nil
     if self.request != nil {
       engine.stop()
     }
     self.request = request
     reset(to: .loading)
-    let mediaHeaders = request.media.headerFields
-    let externalSubtitles = request.externalSubtitles.map(Self.externalSubtitle)
     let resumePosition = request.resumePosition.flatMap(NamaPlayerClockState.nonnegativeFinite)
 
     loadTask = Task { @MainActor [weak self] in
@@ -54,19 +55,18 @@ final class NamaPlayer {
         return
       }
       do {
-        let probe = try await engine.load(
-          url: request.media.url,
-          startPosition: resumePosition,
-          options: LoadOptions(
-            httpHeaders: mediaHeaders,
-            externalSubtitles: externalSubtitles
-          )
+        let result = try await NamaPlayerLoading.perform(
+          engine: engine,
+          request: request,
+          resumePosition: resumePosition
         )
         guard !Task.isCancelled else {
+          result.bridge.stop()
           return
         }
-        publishVideoCharacteristics(from: probe, mimeType: request.media.mimeType)
-        if probe == nil {
+        httpBridge = result.bridge
+        publishVideoCharacteristics(from: result.probe, mimeType: request.media.mimeType)
+        if result.probe == nil {
           publishNativeVideoCharacteristics()
         }
         publishTracks()
@@ -84,9 +84,7 @@ final class NamaPlayer {
 
   func play() { engine.play() }
 
-  func pause() {
-    engine.pause()
-  }
+  func pause() { engine.pause() }
 
   @discardableResult
   func seek(to requestedPosition: TimeInterval) -> TimeInterval {
@@ -124,6 +122,8 @@ final class NamaPlayer {
   func stop() {
     loadTask?.cancel()
     loadTask = nil
+    httpBridge?.stop()
+    httpBridge = nil
     request = nil
     engine.stop()
     reset(to: .idle)
