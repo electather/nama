@@ -18,6 +18,8 @@ final class MediaDetailsFeature {
   @ObservationIgnored private var activeTask: Task<Void, Never>?
   @ObservationIgnored var childPageTask: Task<Void, Never>?
   @ObservationIgnored var artworkTasks: [MediaDetailsArtworkSlot: Task<Void, Never>] = [:]
+  @ObservationIgnored var artworkRequests: [MediaDetailsArtworkSlot: MediaDetailsArtworkRequest] =
+    [:]
   @ObservationIgnored var childArtworkTasks: [MediaIdentity: Task<Void, Never>] = [:]
   @ObservationIgnored var childArtworkStates: [MediaIdentity: HomeArtworkPresentationState] = [:]
   @ObservationIgnored var creditArtworkTasks: [MediaCreditIdentity: Task<Void, Never>] = [:]

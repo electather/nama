@@ -1,7 +1,8 @@
-private struct MediaDetailsArtworkRequest {
+nonisolated struct MediaDetailsArtworkRequest: Equatable, Sendable {
   let slot: MediaDetailsArtworkSlot
   let reference: ArtworkIdentity
   let media: MediaIdentity
+  let size: ArtworkSizeBucket
   let authorization: HomeAuthorizationIdentity
 }
 
@@ -31,16 +32,22 @@ extension MediaDetailsFeature {
     guard let reference = artworkReference(for: slot, in: details) else {
       artworkTasks.removeValue(forKey: slot)?.cancel()
       replaceArtworkPresentation(nil, for: slot)
+      artworkRequests[slot] = nil
       return
     }
-    artworkTasks[slot]?.cancel()
-    replaceArtworkPresentation(nil, for: slot)
     let request = MediaDetailsArtworkRequest(
       slot: slot,
       reference: reference.identity,
       media: details.identity,
+      size: size,
       authorization: authorization
     )
+    guard artworkRequests[slot] != request else {
+      return
+    }
+    artworkRequests[slot] = request
+    artworkTasks[slot]?.cancel()
+    replaceArtworkPresentation(nil, for: slot)
     let currentArtworkLoader = artworkLoader
     artworkTasks[slot] = Task { [weak self] in
       await currentArtworkLoader.authorizationDidChange(to: request.authorization)
@@ -60,6 +67,7 @@ extension MediaDetailsFeature {
   }
 
   func artworkDidDisappear(_ slot: MediaDetailsArtworkSlot) {
+    artworkRequests[slot] = nil
     artworkTasks.removeValue(forKey: slot)?.cancel()
   }
 
@@ -68,6 +76,7 @@ extension MediaDetailsFeature {
       task.cancel()
     }
     artworkTasks.removeAll(keepingCapacity: true)
+    artworkRequests.removeAll(keepingCapacity: true)
     posterArtworkPresentation = nil
     backdropArtworkPresentation = nil
   }
@@ -90,6 +99,7 @@ extension MediaDetailsFeature {
     request: MediaDetailsArtworkRequest
   ) {
     guard
+      artworkRequests[request.slot] == request,
       authorization == request.authorization,
       let details = confirmedDetails,
       details.identity == request.media,
