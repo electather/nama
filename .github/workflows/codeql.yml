@@ -62,11 +62,11 @@ jobs:
             -project apps/ios/Nama.xcodeproj \
             -scheme Nama \
             -configuration Debug \
-            -destination "platform=macOS,arch=$(uname -m)" \
+            -destination "platform=macOS,arch=arm64" \
             -derivedDataPath "${RUNNER_TEMP}/codeql-derived-data" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            ARCHS="$(uname -m)" \
+            ARCHS="arm64" \
             ONLY_ACTIVE_ARCH=YES \
             EXCLUDED_ARCHS="x86_64" \
             COMPILATION_CACHE_ENABLE_CACHING=NO \
