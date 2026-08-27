@@ -70,7 +70,21 @@ private struct HomeMediaCard: View {
   let shelf: HomeShelfIdentity
   let artwork: HomeArtworkPresentationAccess
 
+  @ViewBuilder
   var body: some View {
+    if item.kind == .movie {
+      NavigationLink(
+        value: MovieDetailsSelection(identity: item.identity, title: item.title)
+      ) {
+        cardContent
+      }
+      .buttonStyle(.plain)
+    } else {
+      cardContent
+    }
+  }
+
+  private var cardContent: some View {
     VStack(alignment: .leading, spacing: HomeArtworkLayout.cardSpacing) {
       HomePosterView(
         item: item,

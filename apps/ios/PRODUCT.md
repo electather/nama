@@ -11,8 +11,8 @@ ios
 People who operate a private Nama deployment and need to connect an iPhone,
 iPad, Apple TV, or Mac from the device in front of them. Their immediate job is
 to discover, enter, or restore a Nama endpoint, authorize scoped consumer
-access, and see stored canonical Movies and Shows in Home with honest loading,
-empty, preparation, content, refresh, and failure states.
+access, browse stored canonical Movies and Shows in Home, and open a Movie to
+understand its details or request playback.
 
 ## Product Purpose
 
@@ -22,8 +22,10 @@ explicitly discovered, manually entered, or restored transport address into a
 verified Nama endpoint and one endpoint-bound OAuth grant without guessing
 identity or weakening platform security. Home then presents provider-neutral
 stored media through the public `LibraryService` and resolves safe textless
-poster artwork without exposing locator details to views. Library browsing,
-Search, Details, Watch State, and Playback remain unimplemented.
+artwork without exposing locator details to views. Selecting a Movie loads
+stored canonical Details and can emit an app-owned Play intent without invoking
+playback. Library browsing, Search, Watch State, and playback execution remain
+unimplemented.
 
 ## Positioning
 
@@ -43,9 +45,10 @@ the app then continues automatically.
 
 The current app supports connection, endpoint restoration, foreground LAN
 discovery, eligible local-HTTP acknowledgement, device authorization, refresh
-rotation, and endpoint-bound Keychain storage on iOS, iPadOS, tvOS, and macOS.
-It presents only one active endpoint-bound consumer authorization. Provider
-management, Home, Library, Details, Watch State, and product media behavior are
+rotation, endpoint-bound Keychain storage, Home, safe artwork, and Movie Details
+on iOS, iPadOS, tvOS, and macOS. It presents one active endpoint-bound consumer
+authorization. Movie Details emits only a typed canonical Play intent;
+provider management, Library, Search, Watch State, and playback execution are
 not current app behavior.
 
 ## Brand Commitments
@@ -60,15 +63,19 @@ where a standard platform control already communicates the action.
 
 ## Evidence on Hand
 
-The current implementation contains native connection and OAuth authorization
-views with SwiftUI previews for discovery, local-HTTP confirmation, ready,
-failure, and blocked-restoration states. The product has no committed visual
-token system or DESIGN.md; future work must not invent commercial proof,
-provider-specific material, or implemented media behavior.
+The current implementation contains native connection, OAuth authorization,
+Home, and Movie Details views with self-contained previews for their loading,
+content, recovery, long-content, missing-artwork, and unavailable-source states.
+`DESIGN.md` records the native system presentation rules. Movie Details
+loading, content, long-synopsis, missing-artwork, and unavailable-source
+fixtures have run in the Debug application on iPhone 17 Pro, iPad Pro 13-inch,
+and Apple TV 4K simulators and an Apple Development-signed sandboxed Mac build.
+The live stored-catalog transition and successful artwork resolution remain
+unverified actual surfaces.
 
 ## Product Principles
 
-- Put the current task first: connect and verify one endpoint before introducing later product capabilities.
+- Preserve the task hierarchy: connection precedes authorization, Home precedes Details, and a Play intent precedes playback execution.
 - Earn trust with honest terminal states and safe, specific recovery actions.
 - Follow native platform presentation and focus behavior while sharing one feature model.
 - Keep transport and generated API details at the networking edge.

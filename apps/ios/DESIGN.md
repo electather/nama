@@ -1,6 +1,6 @@
 ---
 name: Nama for Apple
-description: Native connection and authorization for a self-hosted Nama endpoint.
+description: Native connection, authorization, Home, and Movie Details for a self-hosted Nama endpoint.
 typography:
   large-title:
     fontFamily: "SF Pro / SF Compact system text"
@@ -38,11 +38,11 @@ spacing:
 
 **Creative North Star: "The Connection Ledger"**
 
-Nama’s Apple surface is a calm, native record of one endpoint and its current
-authorization state. Each screen answers the practical question in front of the
-person: which Nama endpoint is selected, what is true about it now, and which
-safe action can move forward. The visual system earns trust through system
-controls, exact endpoint evidence, and explicit terminal states—not visual
+Nama’s Apple surface is a calm, native record of one endpoint, its current
+authorization, and the canonical media it exposes. Each screen answers the
+practical question in front of the person: what is selected, what is true about
+it now, and which safe action can move forward. The visual system earns trust
+through system controls, exact identity, and explicit terminal states—not visual
 ceremony.
 
 The system is deliberately restrained. iPhone, iPad, and Mac use a
@@ -185,8 +185,8 @@ blur, floating panels, and shadowed card stacks are prohibited.
 ### Actions
 
 - **Affirmative action:** Use the native `.borderedProminent` style for the
-  present state’s one affirmative action: **Connect**, **Continue**, or
-  **Retry**.
+  present state’s one affirmative action: **Connect**, **Continue**, **Play**,
+  or **Retry**.
 - **Recovery action:** Use a standard button for **Cancel** and **Change
   Endpoint**. Preserve the `.cancel` role where it communicates cancellation.
 - **Focus:** Apple TV actions belong in one focus section with a state-derived
@@ -207,6 +207,17 @@ blur, floating panels, and shadowed card stacks are prohibited.
   language, retain the known endpoint, and expose only the recovery action the
   current state safely permits.
 
+### Media Artwork and Details
+
+- **Canonical identity:** Always render the Movie title independently of
+  artwork. Backdrop and poster failures retain stable title-bearing surfaces.
+- **Task hierarchy:** Put identity and concise metadata first, then the primary
+  Play or availability state, followed by synopsis and supporting metadata.
+- **Credits:** Keep Directors and Writers concise. Bound initial Cast and reveal
+  complete ordered credits inline through an explicit button, never a modal.
+- **Playback boundary:** A visible Play control emits an app-owned intent only;
+  Details never adopts player or playback-engine presentation.
+
 ## Do's and Don'ts
 
 ### Do:
@@ -219,8 +230,9 @@ blur, floating panels, and shadowed card stacks are prohibited.
   leave cancellation and endpoint replacement visually secondary.
 - **Do** pair warning, failure, and success color with plain-language text and
   a symbol; preserve the meaning for VoiceOver and increased-contrast users.
-- **Do** keep the same connection and authorization state vocabulary across
-  iPhone, iPad, Apple TV, and Mac while adapting only layout and focus.
+- **Do** keep the same state and action vocabulary across connection,
+  authorization, Home, and Movie Details on iPhone, iPad, Apple TV, and Mac
+  while adapting only layout and focus.
 - **Do** let system Dynamic Type, semantic colors, focus effects, and reduced
   motion determine platform adaptation.
 
@@ -236,8 +248,8 @@ blur, floating panels, and shadowed card stacks are prohibited.
 - **Don't** make a critical action depend on an undiscoverable gesture,
   hover-only affordance, color alone, or a platform-specific interaction that
   does not exist on another supported surface.
-- **Don't** show speculative Home, Library, Details, Watch State, or media
-  behavior as a placeholder. Current product behavior is endpoint connection
-  and authorization only.
+- **Don't** show speculative Library, Search, Watch State, playback execution,
+  or unsupported media behavior as a placeholder. Home and Movie Details show
+  only their implemented stored-canonical behavior.
 - **Don't** imply that authorization grants Administrator access, or add a
   browser/password step to the Apple-device flow.

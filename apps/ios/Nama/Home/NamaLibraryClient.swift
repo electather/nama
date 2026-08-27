@@ -8,7 +8,7 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
   private let sessionConfiguration: URLSessionConfiguration
   let tokenStore: any OAuthTokenStoring
 
-  private static let apiErrorDomain = "nama.api.v1"
+  static let apiErrorDomain = "nama.api.v1"
   private static let requestTimeout: TimeInterval = 10
   private static let canonicalRequestIDLength = 36
   private static let nanosecondsPerSecond: Int32 = 1_000_000_000
@@ -186,7 +186,7 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
     return Int(detail.retryDelay.seconds) + roundUp
   }
 
-  private static func requestID(_ error: ConnectError) -> String? {
+  static func requestID(_ error: ConnectError) -> String? {
     let requestInfo: [Google_Rpc_RequestInfo] = error.unpackedDetails()
     return requestInfo.lazy.map(\.requestID).first(where: isCanonicalRequestID)
   }

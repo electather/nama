@@ -49,7 +49,7 @@ nonisolated extension NamaLibraryClient {
       throw HomeResponseMappingError.invalid
     }
     let items = try section.items.map { item in
-      try map(item, expectedKind: itemKind)
+      try mapHomeMediaSummary(item, expectedKind: itemKind)
     }
     guard !items.isEmpty else {
       return nil
@@ -62,7 +62,7 @@ nonisolated extension NamaLibraryClient {
     )
   }
 
-  private static func map(
+  static func mapHomeMediaSummary(
     _ summary: Nama_Api_V1_MediaSummary,
     expectedKind: HomeMediaKind
   ) throws -> HomeMediaSummary {
@@ -104,9 +104,9 @@ nonisolated extension NamaLibraryClient {
       runtime: runtime,
       contentRating: try optionalString(summary.hasContentRating, summary.contentRating),
       primaryGenre: try optionalString(summary.hasPrimaryGenre, summary.primaryGenre),
-      artwork: try summary.artwork.compactMap(Self.map),
+      artwork: try summary.artwork.compactMap(Self.mapArtworkReference),
       playability: try map(summary.playability),
-      defaultSource: summary.hasDefaultSource ? try map(summary.defaultSource) : nil
+      defaultSource: summary.hasDefaultSource ? try mapSourceSummary(summary.defaultSource) : nil
     )
   }
 
@@ -144,7 +144,7 @@ nonisolated extension NamaLibraryClient {
     }
   }
 
-  private static func map(
+  static func mapArtworkReference(
     _ artwork: Nama_Api_V1_ArtworkReference
   ) throws -> HomeArtworkReference? {
     guard
@@ -218,7 +218,7 @@ nonisolated extension NamaLibraryClient {
     }
   }
 
-  private static func map(
+  static func mapSourceSummary(
     _ source: Nama_Api_V1_MediaSourceSummary
   ) throws -> HomeSourceSummary {
     guard isBoundedString(source.id) else {

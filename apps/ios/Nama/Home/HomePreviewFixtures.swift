@@ -147,14 +147,16 @@
     _ state: HomeState,
     artwork: HomeArtworkPresentationAccess = .empty
   ) -> some View {
-    HomePresentationView(
-      state: state,
-      retry: HomePreviewFixtures.noAction,
-      refresh: HomePreviewFixtures.noAction,
-      changeEndpoint: HomePreviewFixtures.noAsyncAction,
-      reauthorize: HomePreviewFixtures.noAsyncAction,
-      artwork: artwork
-    )
+    NavigationStack {
+      HomePresentationView(
+        state: state,
+        retry: HomePreviewFixtures.noAction,
+        refresh: HomePreviewFixtures.noAction,
+        changeEndpoint: HomePreviewFixtures.noAsyncAction,
+        reauthorize: HomePreviewFixtures.noAsyncAction,
+        artwork: artwork
+      )
+    }
   }
 
   @MainActor

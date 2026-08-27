@@ -87,27 +87,25 @@ struct HomePresentationView: View {
   }
 
   var body: some View {
-    NavigationStack {
-      HomeStateContent(
-        state: state,
-        retry: retry,
-        refresh: refresh,
-        reauthorize: reauthorize,
-        artwork: artwork
-      )
-      .navigationTitle("Home")
-      .toolbar {
-        ToolbarItem(placement: .primaryAction) {
-          if homeCanRefresh(state) {
-            Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
-              .disabled(homeIsRefreshing(state))
-          }
+    HomeStateContent(
+      state: state,
+      retry: retry,
+      refresh: refresh,
+      reauthorize: reauthorize,
+      artwork: artwork
+    )
+    .navigationTitle("Home")
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        if homeCanRefresh(state) {
+          Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
+            .disabled(homeIsRefreshing(state))
         }
-        ToolbarItem(placement: changeEndpointPlacement) {
-          Button("Change Endpoint", systemImage: "network") {
-            Task {
-              await changeEndpoint()
-            }
+      }
+      ToolbarItem(placement: changeEndpointPlacement) {
+        Button("Change Endpoint", systemImage: "network") {
+          Task {
+            await changeEndpoint()
           }
         }
       }

@@ -106,6 +106,11 @@ nonisolated enum HomeArtworkTextPresence: Equatable, Sendable {
 
 nonisolated struct HomeArtworkSizeBucket: Equatable, Hashable, Sendable {
   private static let minimumRequestedWidth = 0.0
+  private static let backdropCompactWidth: UInt32 = 1_024
+  private static let backdropStandardWidth: UInt32 = 1_536
+  private static let backdropMaximumWidth: UInt32 = 1_920
+  private static let backdropHeightNumerator: UInt32 = 9
+  private static let backdropWidthDenominator: UInt32 = 16
   private static let compactWidth: UInt32 = 256
   private static let standardWidth: UInt32 = 384
   private static let largeWidth: UInt32 = 512
@@ -133,6 +138,25 @@ nonisolated struct HomeArtworkSizeBucket: Equatable, Hashable, Sendable {
     return Self(
       maxWidth: bucketWidth,
       maxHeight: bucketWidth + bucketWidth / posterHeightIncrementDivisor
+    )
+  }
+
+  static func backdrop(displayWidth: Double, scale: Double) -> Self {
+    let requestedWidth =
+      displayWidth.isFinite && scale.isFinite
+      ? max(minimumRequestedWidth, displayWidth * scale)
+      : minimumRequestedWidth
+    let bucketWidth =
+      if requestedWidth <= Double(backdropCompactWidth) {
+        backdropCompactWidth
+      } else if requestedWidth <= Double(backdropStandardWidth) {
+        backdropStandardWidth
+      } else {
+        backdropMaximumWidth
+      }
+    return Self(
+      maxWidth: bucketWidth,
+      maxHeight: bucketWidth * backdropHeightNumerator / backdropWidthDenominator
     )
   }
 }
