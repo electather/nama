@@ -30,7 +30,7 @@ struct MediaDetailsRefreshFailureView: View {
 }
 
 struct MediaDetailsFailureView: View {
-  let title: String
+  let title: String?
   let failure: MediaDetailsFailure
   let retry: @MainActor () -> Void
   let reauthorize: @MainActor () async -> Void
@@ -40,8 +40,14 @@ struct MediaDetailsFailureView: View {
       Label(mediaDetailsFailureTitle(failure), systemImage: mediaDetailsFailureSymbol(failure))
     } description: {
       VStack(spacing: MediaDetailsLayout.metadataSpacing) {
-        Text(title)
-          .font(.headline)
+        Group {
+          if let title {
+            Text(verbatim: title)
+          } else {
+            Text("Details")
+          }
+        }
+        .font(.headline)
         Text(mediaDetailsFailureMessage(failure))
         MediaDetailsRetryGuidance(failure: failure)
         if case .namaUnavailable(let requestID?, _) = failure {

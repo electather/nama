@@ -18,6 +18,14 @@
       // Preview controls intentionally have no side effects.
     }
 
+    static func noMediaAction(_: MediaDetailsSelection) {
+      // Preview navigation intentionally has no side effects.
+    }
+
+    static func noShelfAction(_: HomeShelfKind) {
+      // Preview navigation intentionally has no side effects.
+    }
+
     static func noAsyncAction() async {
       await Task.yield()
     }
@@ -154,6 +162,8 @@
         refresh: HomePreviewFixtures.noAction,
         changeEndpoint: HomePreviewFixtures.noAsyncAction,
         reauthorize: HomePreviewFixtures.noAsyncAction,
+        selectMedia: HomePreviewFixtures.noMediaAction,
+        seeAll: HomePreviewFixtures.noShelfAction,
         artwork: artwork
       )
     }

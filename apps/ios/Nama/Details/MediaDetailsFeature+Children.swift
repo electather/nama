@@ -22,7 +22,7 @@ extension MediaDetailsFeature {
   private func startChildPageLoad(continuingExpiredPageRecovery: Bool) {
     guard
       childPageTask == nil,
-      let selection,
+      let pageSelection = canonicalSelection ?? selection,
       let authorization,
       let load = childPageLoad
     else {
@@ -46,7 +46,7 @@ extension MediaDetailsFeature {
     childPageAttempt &+= 1
     let context = MediaChildPageAttempt(
       load: load,
-      selection: selection,
+      selection: pageSelection,
       authorization: authorization,
       attempt: childPageAttempt
     )
@@ -105,7 +105,7 @@ extension MediaDetailsFeature {
     context: MediaChildPageAttempt
   ) {
     guard
-      selection == context.selection,
+      (canonicalSelection ?? selection) == context.selection,
       authorization == context.authorization,
       childPageAttempt == context.attempt,
       case .loadingMore(_, let activePageToken) = childrenState,

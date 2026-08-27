@@ -11,8 +11,8 @@ ios
 People who operate a private Nama deployment and need to connect an iPhone,
 iPad, Apple TV, or Mac from the device in front of them. Their immediate job is
 to discover, enter, or restore a Nama endpoint, authorize scoped consumer
-access, browse stored canonical Movies and Shows in Home, and move from a Movie
-or Show through the canonical Details hierarchy toward a typed Play intent.
+access, browse stored canonical Movies and Shows in Home or the exhaustive
+Library, and move through canonical Details toward a typed Play intent.
 
 ## Product Purpose
 
@@ -20,13 +20,14 @@ Nama's universal Apple application provides one native, dependable client
 across Apple platforms. Its connection and authorization flow turns an
 explicitly discovered, manually entered, or restored transport address into a
 verified Nama endpoint and one endpoint-bound OAuth grant without guessing
-identity or weakening platform security. Home then presents provider-neutral
-stored media through the public `LibraryService` and resolves safe textless
-artwork without exposing locator details to views. Details loads Movies and
-Shows, pages from Shows to Seasons and Seasons to Episodes, preserves canonical
-parent context, and emits an app-owned Play intent for a playable Movie or
-Episode without invoking playback. Library browsing, Search, Watch State, and
-playback execution remain unimplemented.
+identity or weakening platform security. Home presents bounded provider-neutral
+stored media through the public `LibraryService`; Library adds exhaustive
+server-ordered Movie and Show pages with native sort, navigation, and recovery.
+Both resolve safe textless artwork without exposing locator details to views.
+Details loads Movies and Shows, pages from Shows to Seasons and Seasons to
+Episodes, preserves canonical parent context, and emits an app-owned Play intent
+for a playable Movie or Episode without invoking playback. Search, Watch State,
+and playback execution remain unimplemented.
 
 ## Positioning
 
@@ -46,12 +47,12 @@ the app then continues automatically.
 
 The current app supports connection, endpoint restoration, foreground LAN
 discovery, eligible local-HTTP acknowledgement, device authorization, refresh
-rotation, endpoint-bound Keychain storage, Home, safe artwork, and canonical
-Movie, Show, Season, and Episode Details on iOS, iPadOS, tvOS, and macOS. It
-presents one active endpoint-bound consumer authorization. Playable Movie and
-Episode Details emit only a typed canonical Play intent; provider management,
-Library, Search, Watch State, and playback execution are not current app
-behavior.
+rotation, endpoint-bound Keychain storage, Home, exhaustive paginated Movie and
+Show Library browsing, safe artwork, and canonical Movie, Show, Season, and
+Episode Details on iOS, iPadOS, tvOS, and macOS. It presents one active
+endpoint-bound consumer authorization. Playable Movie and Episode Details emit
+only a typed canonical Play intent; provider management, Search, Watch State,
+and playback execution are not current app behavior.
 
 ## Brand Commitments
 
@@ -66,21 +67,22 @@ where a standard platform control already communicates the action.
 ## Evidence on Hand
 
 The current implementation contains native connection, OAuth authorization,
-Home, and media Details views with self-contained previews for loading,
+Home, Library, and media Details views with self-contained previews for loading,
 content, recovery, long content, missing artwork, unavailable sources,
 canonical children, and later-page failure. `DESIGN.md` records the native
-system presentation rules. Show, Season, and Episode fixtures have run in the
-Debug application on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K
-simulators and an Apple Development-signed sandboxed Mac build. Those runs
-confirmed kind-specific titles and metadata, title-bearing artwork fallbacks,
-canonical parent context, Season and Episode child rows, long child titles, and
-Episode Play. Apple TV Load More focus interaction, focus return after nested
-Details, the live OAuth-authorized stored-catalog hierarchy, successful artwork
-resolution, and physical Apple hardware remain unverified actual surfaces.
+system presentation rules. Library fixtures rendered the two-item iPhone and
+Apple TV tabs, the iPad split sidebar, adaptive long-title grids, terminal
+content, and Apple TV’s visible Load More action on iPhone 17 Pro, iPad Pro
+13-inch, and Apple TV 4K simulators. An Apple Development-signed sandboxed Mac
+build created an onscreen Library window, but pixel capture and keyboard or
+pointer inspection were unavailable. Apple TV Load More focus interaction,
+compact iPad collapse, Mac content interaction, live OAuth-authorized stored
+catalog browsing, successful artwork resolution, and physical Apple hardware
+remain unverified actual surfaces.
 
 ## Product Principles
 
-- Preserve the task hierarchy: connection precedes authorization, Home precedes Details, and a Play intent precedes playback execution.
+- Preserve the task hierarchy: connection precedes authorization, Home and Library precede Details, and a Play intent precedes playback execution.
 - Earn trust with honest terminal states and safe, specific recovery actions.
 - Follow native platform presentation and focus behavior while sharing one feature model.
 - Keep transport and generated API details at the networking edge.

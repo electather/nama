@@ -18,13 +18,12 @@ nonisolated extension NamaLibraryClient {
     else {
       throw MediaDetailsResponseMappingError.invalid
     }
-    return try makeMediaDetails(media, summary: summary, selection: selection)
+    return try makeMediaDetails(media, summary: summary)
   }
 
   private static func makeMediaDetails(
     _ media: Nama_Api_V1_MediaDetails,
-    summary: MediaSummary,
-    selection: MediaDetailsSelection
+    summary: MediaSummary
   ) throws -> MediaDetails {
     let genres = try mapMediaDetailsStrings(media.genres)
     let studios = try mapMediaDetailsStrings(media.studios)
@@ -33,12 +32,12 @@ nonisolated extension NamaLibraryClient {
     let credits = try media.credits.compactMap { credit in
       try mapMediaCredit(credit, occurrences: &creditOccurrences)
     }
-    let parents = try mapMediaParents(media.parents, for: selection.kind)
+    let parents = try mapMediaParents(media.parents, for: summary.kind)
     let sourceSummaries = try media.sourceSummaries.map(mapSourceSummary)
     try validateMediaPlayability(
       summary,
       sourceSummaries: sourceSummaries,
-      kind: selection.kind
+      kind: summary.kind
     )
 
     return MediaDetails(

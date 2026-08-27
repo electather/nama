@@ -225,148 +225,32 @@ struct MediaHierarchyFeatureTests {
       with: .success(MediaChildrenPage(items: [], nextPageToken: nil))
     )
   }
-}
 
-actor ManualHierarchyDetailsLoader: MediaDetailsLoading, MediaChildrenLoading {
-  private struct PendingDetails {
-    let continuation: CheckedContinuation<MediaDetails, any Error>
-  }
-
-  private struct PendingChildren {
-    let pageToken: String?
-    let continuation: CheckedContinuation<MediaChildrenPage, any Error>
-  }
-
-  private var pendingDetails: [PendingDetails] = []
-  private var pendingChildren: [PendingChildren] = []
-  private var cancelledChildren = 0
-
-  var detailsCallCount: Int { pendingDetails.count }
-  var childrenCallCount: Int { pendingChildren.count }
-  var childrenCancellationCount: Int { cancelledChildren }
-
-  func load(
-    _: MediaDetailsSelection,
-    authorization _: HomeAuthorizationIdentity
-  ) async throws -> MediaDetails {
-    try await withCheckedThrowingContinuation { continuation in
-      pendingDetails.append(PendingDetails(continuation: continuation))
-    }
-  }
-
-  func loadChildren(
-    for _: MediaDetailsSelection,
-    pageToken: String?,
-    authorization _: HomeAuthorizationIdentity
-  ) async throws -> MediaChildrenPage {
-    try await withTaskCancellationHandler {
-      try await withCheckedThrowingContinuation { continuation in
-        pendingChildren.append(
-          PendingChildren(pageToken: pageToken, continuation: continuation)
-        )
-      }
-    } onCancel: {
-      Task { await self.recordChildrenCancellation() }
-    }
-  }
-
-  func resolveDetails(call index: Int, with result: Result<MediaDetails, any Error>) {
-    pendingDetails[index].continuation.resume(with: result)
-  }
-
-  func resolveChildren(call index: Int, with result: Result<MediaChildrenPage, any Error>) {
-    pendingChildren[index].continuation.resume(with: result)
-  }
-
-  func childrenPageToken(call index: Int) -> String? {
-    pendingChildren[index].pageToken
-  }
-
-  private func recordChildrenCancellation() {
-    cancelledChildren += 1
-  }
-}
-
-func hierarchySelection(
-  _ identity: String,
-  kind: MediaKind,
-  title: String
-) -> MediaDetailsSelection {
-  MediaDetailsSelection(identity: MediaIdentity(identity), kind: kind, title: title)
-}
-
-func hierarchyDetails(
-  _ selection: MediaDetailsSelection,
-  kindDetails: MediaDetailsKind,
-  playability: MediaPlayability = .noAvailableSource,
-  runtime: Duration? = nil
-) -> MediaDetails {
-  let source =
-    playability == .playable
-    ? MediaSourceSummary(
-      identity: MediaSourceIdentity("source-default"),
-      label: nil,
-      isDefault: true,
-      availability: .available,
-      container: nil,
-      videoQuality: nil,
-      audioQuality: nil
+  @Test("an ID-only restored selection reloads canonical kind and hierarchy")
+  func restoredSelectionReloadsCanonicalDetails() async throws {
+    let loader = ManualHierarchyDetailsLoader()
+    let feature = MediaDetailsFeature(
+      loader: loader,
+      artworkLoader: MissingMovieDetailsArtworkLoader()
     )
-    : nil
-  return MediaDetails(
-    identity: selection.identity,
-    title: selection.title,
-    releaseYear: nil,
-    runtime: runtime,
-    contentRating: nil,
-    primaryGenre: nil,
-    tagline: nil,
-    synopsis: nil,
-    genres: [],
-    studios: [],
-    credits: [],
-    artwork: [],
-    parents: [],
-    playability: playability,
-    defaultSource: source,
-    kindDetails: kindDetails
-  )
-}
+    let restored = MediaDetailsSelection(restoredIdentity: MediaIdentity("restored-show"))
+    let canonical = hierarchySelection("restored-show", kind: .show, title: "Restored Show")
+    let details = hierarchyShowDetails(canonical)
 
-func hierarchyShowDetails(_ selection: MediaDetailsSelection) -> MediaDetails {
-  hierarchyDetails(
-    selection,
-    kindDetails: .show(
-      firstReleaseDate: nil,
-      lastReleaseDate: nil,
-      seasonCount: nil,
-      episodeCount: nil
+    feature.select(restored, authorization: try movieDetailsAuthorization(generation: 2))
+    #expect(feature.state == .loading(restored))
+    #expect(feature.childrenState == .loading)
+    await eventually { await loader.detailsCallCount == 1 }
+    await loader.resolveDetails(call: 0, with: .success(details))
+    await eventually { await loader.childrenCallCount == 1 }
+    await loader.resolveChildren(
+      call: 0,
+      with: .success(MediaChildrenPage(items: [], nextPageToken: nil))
     )
-  )
-}
 
-func hierarchyChild(
-  _ identity: String,
-  kind: MediaKind,
-  title: String,
-  season: UInt32? = nil,
-  episode: UInt32? = nil
-) -> MediaSummary {
-  MediaSummary(
-    identity: MediaIdentity(identity),
-    kind: kind,
-    title: title,
-    releaseYear: nil,
-    runtime: nil,
-    contentRating: nil,
-    primaryGenre: nil,
-    artwork: [],
-    playability: .noAvailableSource,
-    defaultSource: nil,
-    episodePosition: season.flatMap { seasonNumber in
-      episode.map { episodeNumber in
-        MediaEpisodePosition(seasonNumber: seasonNumber, episodeNumber: episodeNumber)
-      }
+    await eventually {
+      feature.state == .content(details)
+        && feature.childrenState == .content(items: [], nextPageToken: nil)
     }
-  )
+  }
 }

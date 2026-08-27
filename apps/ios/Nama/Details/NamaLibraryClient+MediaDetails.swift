@@ -51,7 +51,7 @@ nonisolated extension NamaLibraryClient: MediaDetailsLoading, MediaChildrenLoadi
     case .season:
       expectedKind = .episode
 
-    case .movie, .episode:
+    case .movie, .episode, nil:
       throw MediaDetailsFailure.incompatible
     }
 
