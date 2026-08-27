@@ -76,6 +76,29 @@ human-code or polling-token digest, master-key domain, encrypted credential
 delivery, logical-operation replay record, custom authorization capacity row,
 or startup/minute cleanup loop.
 
+## Canonical Watch state persistence
+
+The canonical Watch state boundary stores no row until a resolved movie or
+episode target is accepted. Each row is owned by one authenticated principal and
+one playable canonical item and contains watched status, optional position and
+duration, a nullable last-Source identity, copied activity time, semantics,
+reliability, an Activity origin, database transaction time, and a core-owned
+positive version. An Activity origin distinguishes Nama playback, a Nama
+watched-status action, or an exact Provider replica identified by its provider
+instance and provider item reference.
+
+Callers resolve precedence before this boundary. A compare-and-commit creates a
+row only for an absent expected version or updates it only when the supplied
+version matches durable state. A stale expectation returns the current
+snapshot. Exact equality of watched status, position, duration, and
+last-Source identity returns the existing row without replacing its selected
+activity evidence, database time, or version.
+
+The nullable last-Source identity is part of the caller's fully resolved target.
+Provider-replica persistence and reconciliation remain separate work; Source
+ownership validation and preservation across catalog refresh remain separate
+work. Export and public `UserStateService` behavior also remain separate.
+
 ## Canonical catalog persistence
 
 The stored catalog is a typed relational projection, not a serialized plugin
