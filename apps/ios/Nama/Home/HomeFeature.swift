@@ -51,20 +51,20 @@ final class HomeFeature {
   }
 
   func artworkPresentationState(
-    for media: HomeMediaIdentity
+    for media: MediaIdentity
   ) -> HomeArtworkPresentationState? {
     artworkWindow.presentationState(for: media)
   }
 
   func artworkDidAppear(
-    _ media: HomeMediaIdentity,
+    _ media: MediaIdentity,
     in shelf: HomeShelfIdentity,
-    size: HomeArtworkSizeBucket
+    size: ArtworkSizeBucket
   ) {
     artworkWindow.artworkDidAppear(media, in: shelf, size: size)
   }
 
-  func artworkDidDisappear(_ media: HomeMediaIdentity, in shelf: HomeShelfIdentity) {
+  func artworkDidDisappear(_ media: MediaIdentity, in shelf: HomeShelfIdentity) {
     artworkWindow.artworkDidDisappear(media, in: shelf)
   }
 

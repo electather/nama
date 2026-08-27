@@ -52,6 +52,8 @@ private struct ConnectionWindow: View {
   @State private var connection: ConnectionFeature
   @State private var authorization: OAuthAuthorizationFeature
   @State private var home: HomeFeature
+  @State private var movieDetails: MovieDetailsFeature
+  @State private var pendingPlayIntent: MoviePlayIntent?
 
   init(
     clientVersion: String,
@@ -80,6 +82,9 @@ private struct ConnectionWindow: View {
     _home = State(
       initialValue: HomeFeature(loader: libraryClient, artworkLoader: artworkLoader)
     )
+    _movieDetails = State(
+      initialValue: MovieDetailsFeature(loader: libraryClient, artworkLoader: artworkLoader)
+    )
   }
 
   var body: some View {
@@ -88,6 +93,8 @@ private struct ConnectionWindow: View {
         AuthorizedConsumerRootView(
           authorization: authorization,
           home: home,
+          movieDetails: movieDetails,
+          emitPlayIntent: capturePlayIntent,
           endpoint: endpoint
         ) {
           home.deactivate()
@@ -112,6 +119,10 @@ private struct ConnectionWindow: View {
       }
     }
   }
+
+  private func capturePlayIntent(_ intent: MoviePlayIntent) {
+    pendingPlayIntent = intent
+  }
 }
 
 private struct AuthorizedConsumerRootView: View {
@@ -120,18 +131,32 @@ private struct AuthorizedConsumerRootView: View {
 
   let authorization: OAuthAuthorizationFeature
   let home: HomeFeature
+  let movieDetails: MovieDetailsFeature
+  let emitPlayIntent: @MainActor (MoviePlayIntent) -> Void
   let endpoint: NamaEndpoint
   let changeEndpoint: @MainActor () async -> Void
 
   var body: some View {
     Group {
       if let homeAuthorization {
-        HomeView(
-          feature: home,
-          authorization: homeAuthorization,
-          changeEndpoint: changeEndpoint
-        ) {
-          await discardRejectedAuthorization(for: homeAuthorization)
+        NavigationStack {
+          HomeView(
+            feature: home,
+            authorization: homeAuthorization,
+            changeEndpoint: changeEndpoint
+          ) {
+            await discardRejectedAuthorization(for: homeAuthorization)
+          }
+          .navigationDestination(for: MovieDetailsSelection.self) { selection in
+            MovieDetailsView(
+              feature: movieDetails,
+              selection: selection,
+              authorization: homeAuthorization,
+              emitPlayIntent: emitPlayIntent
+            ) {
+              await discardRejectedAuthorization(for: homeAuthorization)
+            }
+          }
         }
       } else {
         OAuthAuthorizationView(

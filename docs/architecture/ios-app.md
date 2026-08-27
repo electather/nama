@@ -3,24 +3,26 @@
 Status: the universal SwiftUI target, endpoint connection and restoration,
 acknowledged eligible local HTTP, foreground LAN discovery, native Better Auth
 device authorization, refresh rotation, endpoint-bound Keychain token storage,
-provider-neutral Home source, and safe Home artwork loading are implemented.
-The connection and authorization baseline's Apple-platform builds and
-macOS-host tests pass. A
+provider-neutral Home source, safe Home artwork loading, stored-canonical Movie
+Details, and typed opaque Play intent are implemented. The connection and
+authorization baseline's Apple-platform builds and macOS-host tests pass. A
 signed Apple TV 4K simulator has completed local-HTTP acknowledgement,
 no-browser authorization through the generated CLI, scoped consumer
 verification, Keychain commit, and relaunch restoration. The production
 `NamaPlayer` boundary is implemented; controlled rendering and adversarial
 locator, replacement, expiry, and shared lifecycle behavior pass through its
 macOS-hosted real-engine tests. Home loading, empty, long-title, and failure
-fixtures have been inspected on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K
-simulators and an Apple Development-signed sandboxed Mac build. Home poster
-loading and title fallback fixtures have been inspected on the same iPhone,
-iPad, and Apple TV simulators. The same fixture ran in an Apple
-Development-signed sandboxed Mac build and opened its Home window, but Mac
-visual inspection remains unverified because workstation capture returned
-blank output. Product consumer media coordination, physical Apple hardware,
-expiry-driven actual-surface refresh, and the remaining Apple surfaces remain
-unverified.
+fixtures and Movie Details loading, content, long-synopsis, missing-artwork, and
+unavailable-source fixtures have been inspected on iPhone 17 Pro, iPad Pro
+13-inch, and Apple TV 4K simulators and an Apple Development-signed sandboxed
+Mac build. Home poster loading and title fallback fixtures have been inspected
+on the same iPhone, iPad, and Apple TV simulators. The same fixture ran in an
+Apple Development-signed sandboxed Mac build and opened its Home window, but
+Mac visual inspection remains unverified because workstation capture returned
+blank output. The live stored-catalog Home-to-Details transition and successful
+artwork resolution remain unverified. Product consumer media coordination,
+physical Apple hardware, expiry-driven actual-surface refresh, and the
+remaining Apple surfaces remain unverified.
 
 ## Authority and fixed decisions
 
@@ -223,25 +225,38 @@ poster selection, bounded visible lookahead, locator origin and redirect policy,
 credential-free public-query locators, deadline start enforcement and
 post-deadline completion retention, cancellation, safe decode failure,
 size-bucket caching, authorization invalidation, stale resolution rejection, and
-memory-pressure purging. Playback tests cover exact normalized origins, rejected
-initial and
-redirect targets, allowed redirect header replay, nested HLS playlists, variants,
-renditions, segments and keys, external subtitles, secret-free failures,
-replacement cancellation and state discard, expiry signaling with a complete
-replacement, surface removal, and foreground loss through the real adapter.
+memory-pressure purging. Movie Details coverage adds bounded `GetMedia`
+mapping, optional and long metadata, ordered credit projection, artwork
+preference and fallback, refresh-time artwork replacement, playability,
+distinct safe failures, cancellation, stale-selection rejection, retry and
+refresh preservation, and typed Play-intent emission. Playback tests cover
+exact normalized origins, rejected initial and redirect targets, allowed
+redirect header replay, nested HLS playlists, variants, renditions, segments
+and keys, external subtitles, secret-free failures, replacement cancellation
+and state discard, expiry signaling with a complete replacement, surface
+removal, and foreground loss through the real adapter.
 
 Self-contained previews render discovery outcomes, local-HTTP confirmation with
 a long endpoint, persistent ready and failure warnings, blocked restoration,
-and Home loading, empty, long-title content, artwork and title fallback,
-refresh, catalog-preparation, and failure fixtures. The Home loading, empty,
-long-title, and failure fixtures have also run in the Debug application on
-iPhone, iPad, and Apple TV simulators and an Apple Development-signed sandboxed
-Mac build. The artwork-and-fallback fixture has been visually inspected in the
-Debug application on iPhone, iPad, and Apple TV; the signed sandboxed Mac
-runtime opened its Home window, but visual content inspection remains
-unverified. `check:ios` lints Swift
-formatting, runs the test target through its macOS host, inspects the built ATS
-shape, and performs signing-disabled iOS, tvOS, and macOS builds. The
+Home loading, empty, long-title content, artwork and title fallback, refresh,
+catalog-preparation, and failure fixtures, and Movie Details loading, content,
+long-synopsis, missing-artwork, unavailable-source, and not-found states. The
+Home loading, empty, long-title, and failure fixtures and the Movie Details
+loading, content, long-synopsis, missing-artwork, and unavailable-source
+fixtures have run in the Debug application on iPhone 17 Pro, iPad Pro 13-inch,
+and Apple TV 4K simulators and an Apple Development-signed sandboxed Mac build.
+The Home artwork-and-fallback fixture has been visually inspected in the Debug
+application on iPhone, iPad, and Apple TV; the signed sandboxed Mac runtime
+opened its Home window, but visual content inspection remains unverified. The
+Details inspection confirmed adaptive bounds, title-bearing artwork fallbacks,
+scrollable long content, Play and Retry focus, and visible loading on every
+surface. Initial Apple TV and Mac inspection exposed that an interaction-free
+loading scene could remain alive without a usable foreground surface; the
+loading view now carries a focus target without a visible focus effect and was
+reinspected on both platforms. These fixture surfaces do not prove the live
+stored-catalog transition or successful artwork resolution. `check:ios` lints
+Swift formatting, runs the test target through its macOS host, inspects the
+built ATS shape, and performs signing-disabled iOS, tvOS, and macOS builds. The
 real-player tests prove controlled SDR HLS rendering and control flow plus
 adversarial locator and shared lifecycle policy through the real adapter on the
 macOS host. Generic builds do not prove physical-device privacy prompts, focus,
@@ -252,8 +267,10 @@ local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP
 recovery, endpoint-scoped local-HTTP proxy bypass, the narrow ATS
 local-networking allowance, Better Auth device authorization and refresh,
 endpoint-bound Keychain tokens, provider-neutral Home over stored `GetHome`
-results, and safe Home artwork resolution, loading, decoding, and fallback.
-Library, Search, Details, Watch State, and Playback product behavior remain
+results, safe artwork resolution and fallback, and stored canonical Movie
+Details over `GetMedia`. Details owns presentation and emits only a typed,
+opaque canonical Play intent; it does not invoke playback planning, opening, or
+engine code. Library, Search, Watch State, and playback product behavior remain
 unimplemented.
 
 ## Target runtime topology

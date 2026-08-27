@@ -37,5 +37,8 @@ Load only the branches required by the task:
   groups aligned when files move.
 - Use Swift Testing with deterministic adapters. New behavior starts with the
   focused failing test; tests never wait on real time or live services.
+- Run Swift Testing filters at the suite level; a method-level
+  `xcodebuild -only-testing` filter can match nothing while exiting
+  successfully.
 - Run `mise run check:swift` and `mise run check:ios` for handwritten Swift
   changes.

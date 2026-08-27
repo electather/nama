@@ -21,9 +21,9 @@ enum HomeArtworkLayout {
 
 @MainActor
 struct HomeArtworkPresentationAccess {
-  let presentationState: (HomeMediaIdentity) -> HomeArtworkPresentationState?
-  let didAppear: (HomeMediaIdentity, HomeShelfIdentity, HomeArtworkSizeBucket) -> Void
-  let didDisappear: (HomeMediaIdentity, HomeShelfIdentity) -> Void
+  let presentationState: (MediaIdentity) -> HomeArtworkPresentationState?
+  let didAppear: (MediaIdentity, HomeShelfIdentity, ArtworkSizeBucket) -> Void
+  let didDisappear: (MediaIdentity, HomeShelfIdentity) -> Void
 
   static var empty: Self {
     Self(
@@ -66,11 +66,25 @@ private struct HomeMediaCard: View {
   @Environment(\.displayScale) private var displayScale
   @ScaledMetric(relativeTo: .body) private var cardWidth = HomeArtworkLayout.cardWidth
 
-  let item: HomeMediaSummary
+  let item: MediaSummary
   let shelf: HomeShelfIdentity
   let artwork: HomeArtworkPresentationAccess
 
+  @ViewBuilder
   var body: some View {
+    if item.kind == .movie {
+      NavigationLink(
+        value: MovieDetailsSelection(identity: item.identity, title: item.title)
+      ) {
+        cardContent
+      }
+      .buttonStyle(.plain)
+    } else {
+      cardContent
+    }
+  }
+
+  private var cardContent: some View {
     VStack(alignment: .leading, spacing: HomeArtworkLayout.cardSpacing) {
       HomePosterView(
         item: item,
@@ -106,13 +120,13 @@ private struct HomeMediaCard: View {
     }
   }
 
-  private var artworkSize: HomeArtworkSizeBucket {
+  private var artworkSize: ArtworkSizeBucket {
     .poster(displayWidth: cardWidth, scale: displayScale)
   }
 }
 
 private struct HomePosterView: View {
-  let item: HomeMediaSummary
+  let item: MediaSummary
   let artwork: HomeArtworkPresentation?
   let cardWidth: CGFloat
 
@@ -141,7 +155,7 @@ private struct HomePosterView: View {
 }
 
 private struct HomePlayabilityLabel: View {
-  let playability: HomePlayability
+  let playability: MediaPlayability
 
   var body: some View {
     switch playability {

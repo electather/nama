@@ -70,9 +70,9 @@ through real Connect over a supervised production Jellyfin scan.
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.
 
 The universal SwiftUI application consumes the generated public client for
-connection verification and provider-neutral Home on iOS, iPadOS, tvOS, and
-macOS. Its connection surface keeps manual HTTP(S) endpoint entry available
-beside explicit `_nama._tcp` LAN discovery.
+connection verification, provider-neutral Home, and stored canonical Movie
+Details on iOS, iPadOS, tvOS, and macOS. Its connection surface keeps manual
+HTTP(S) endpoint entry available beside explicit `_nama._tcp` LAN discovery.
 `NamaEndpoint` admits HTTPS or lexically approved local HTTP without
 DNS resolution, so manual entry, discovery, retry, and restoration reject every
 other HTTP destination before verification. Before the first request to a
@@ -99,24 +99,32 @@ rather than authorizing another endpoint. Safe failures retain the endpoint; a
 legacy forbidden HTTP value remains visible in a blocked HTTPS-required state
 until explicit Change Endpoint. The app implements native Better Auth device
 authorization, returned-interval polling, refresh rotation, a this-device-only
-endpoint-bound Keychain token record, and Home over stored canonical
-`LibraryService.GetHome` results. The universal target now contains exact-pinned
-AetherEngine `6.21.0` behind the complete Nama-owned player boundary. A
-per-load loopback broker enforces exact normalized allowed origins for initial,
-redirect, nested HLS, key, segment, and external-subtitle requests without
-exposing remote locators to the engine. Mac-hosted automation proves controlled
-rendering and controls plus rejection, replacement, expiry signaling, and
-surface shutdown. The connection, authorization, player, and Home baseline's
+endpoint-bound Keychain token record, Home over stored canonical
+`LibraryService.GetHome` results, and Movie Details over `GetMedia`. Home and
+Details reuse the safe artwork loader without exposing locators to views.
+Details emits only a typed opaque canonical Play intent and does not invoke
+playback execution. The universal target contains exact-pinned AetherEngine
+`6.21.0` behind the complete Nama-owned player boundary. A per-load loopback
+broker enforces exact normalized allowed origins for initial, redirect, nested
+HLS, key, segment, and external-subtitle requests without exposing remote
+locators to the engine. Mac-hosted automation proves controlled rendering and
+controls plus rejection, replacement, expiry signaling, and surface shutdown.
+The connection, authorization, player, Home, and Movie Details baseline's
 Apple-platform builds pass, and a signed Apple TV 4K simulator has completed
 the no-browser authorization, scoped consumer verification, Keychain commit,
 and relaunch restoration flow. Home loading, empty, long-title, failure, poster,
 and title-fallback fixtures have been inspected on iPhone 17 Pro, iPad Pro
-13-inch, and Apple TV 4K simulators. Loading, empty, long-title, and failure
-fixtures have also been inspected in an Apple Development-signed sandboxed Mac
-build; the same signed runtime opened the poster-and-fallback Home window, but
-its visual content remains unverified. Product consumer media coordination,
-physical Apple hardware, expiry-driven actual-surface refresh, and the
-remaining Apple surfaces remain unverified.
+13-inch, and Apple TV 4K simulators. Home loading, empty, long-title, and failure
+fixtures and Movie Details loading, content, long-synopsis, missing-artwork, and
+unavailable-source fixtures have also been inspected in an Apple
+Development-signed sandboxed Mac build. The same signed runtime opened the
+poster-and-fallback Home window, but its visual content remains unverified. The
+Details inspection confirmed adaptive bounds, scrollable long content,
+title-bearing artwork fallbacks, Play and Retry focus, and a visible loading
+state. The live stored-catalog Home-to-Details transition, successful artwork
+resolution, product consumer media coordination, physical Apple hardware,
+expiry-driven actual-surface refresh, and the remaining Apple surfaces remain
+unverified.
 
 ## Architectural decision records
 

@@ -263,8 +263,8 @@ private actor IgnoringHomeArtworkLoader: HomeArtworkLoading {
   }
 
   func image(
-    for _: HomeArtworkReference,
-    size _: HomeArtworkSizeBucket,
+    for _: ArtworkReference,
+    size _: ArtworkSizeBucket,
     authorization _: HomeAuthorizationIdentity
   ) -> HomeArtworkPresentation? {
     nil
@@ -296,11 +296,11 @@ private func homeSnapshot(movieTitle: String) -> HomeSnapshot {
 
 private func homeItem(
   identity: String,
-  kind: HomeMediaKind,
+  kind: MediaKind,
   title: String
-) -> HomeMediaSummary {
-  HomeMediaSummary(
-    identity: HomeMediaIdentity(identity),
+) -> MediaSummary {
+  MediaSummary(
+    identity: MediaIdentity(identity),
     kind: kind,
     title: title,
     releaseYear: nil,

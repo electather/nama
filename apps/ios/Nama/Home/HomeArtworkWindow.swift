@@ -6,16 +6,16 @@ final class HomeArtworkWindow {
   private static let usefulItemCount = 3
 
   @ObservationIgnored private var presentationStates:
-    [HomeMediaIdentity: HomeArtworkPresentationState] = [:]
+    [MediaIdentity: HomeArtworkPresentationState] = [:]
 
   @ObservationIgnored private let loader: any HomeArtworkLoading
   @ObservationIgnored private var authorizationTask: Task<Void, Never>?
   @ObservationIgnored private var tasks: [HomeArtworkRequestKey: Task<Void, Never>] = [:]
   @ObservationIgnored private var visibleArtwork:
-    [HomeShelfIdentity: [HomeMediaIdentity: HomeArtworkSizeBucket]] = [:]
+    [HomeShelfIdentity: [MediaIdentity: ArtworkSizeBucket]] = [:]
   @ObservationIgnored private var usefulRequests: Set<HomeArtworkRequestKey> = []
   @ObservationIgnored private var completedRequests: Set<HomeArtworkRequestKey> = []
-  @ObservationIgnored private var presentedRequests: [HomeMediaIdentity: HomeArtworkRequestKey] =
+  @ObservationIgnored private var presentedRequests: [MediaIdentity: HomeArtworkRequestKey] =
     [:]
   @ObservationIgnored private var authorization: HomeAuthorizationIdentity?
   @ObservationIgnored private var snapshot: HomeSnapshot?
@@ -70,21 +70,21 @@ final class HomeArtworkWindow {
   }
 
   func presentationState(
-    for media: HomeMediaIdentity
+    for media: MediaIdentity
   ) -> HomeArtworkPresentationState? {
     presentationStates[media]
   }
 
   func artworkDidAppear(
-    _ media: HomeMediaIdentity,
+    _ media: MediaIdentity,
     in shelf: HomeShelfIdentity,
-    size: HomeArtworkSizeBucket
+    size: ArtworkSizeBucket
   ) {
     visibleArtwork[shelf, default: [:]][media] = size
     reconcile()
   }
 
-  func artworkDidDisappear(_ media: HomeMediaIdentity, in shelf: HomeShelfIdentity) {
+  func artworkDidDisappear(_ media: MediaIdentity, in shelf: HomeShelfIdentity) {
     visibleArtwork[shelf]?.removeValue(forKey: media)
     if visibleArtwork[shelf]?.isEmpty == true {
       visibleArtwork.removeValue(forKey: shelf)
@@ -108,8 +108,8 @@ final class HomeArtworkWindow {
 
   private func requestedArtwork(
     in snapshot: HomeSnapshot
-  ) -> [HomeMediaIdentity: HomeArtworkWindowRequest] {
-    var requests: [HomeMediaIdentity: HomeArtworkWindowRequest] = [:]
+  ) -> [MediaIdentity: HomeArtworkWindowRequest] {
+    var requests: [MediaIdentity: HomeArtworkWindowRequest] = [:]
     for (shelfIdentity, visibleItems) in visibleArtwork {
       guard let shelf = snapshot.shelves.first(where: { $0.identity == shelfIdentity }) else {
         continue
@@ -127,10 +127,10 @@ final class HomeArtworkWindow {
   }
 
   private func addUsefulArtwork(
-    from visibleMedia: HomeMediaIdentity,
-    size: HomeArtworkSizeBucket,
+    from visibleMedia: MediaIdentity,
+    size: ArtworkSizeBucket,
     shelf: HomeShelf,
-    to requests: inout [HomeMediaIdentity: HomeArtworkWindowRequest]
+    to requests: inout [MediaIdentity: HomeArtworkWindowRequest]
   ) {
     guard let visibleIndex = shelf.items.firstIndex(where: { $0.identity == visibleMedia }) else {
       return
@@ -175,7 +175,7 @@ final class HomeArtworkWindow {
   }
 
   private func start(
-    _ requests: [HomeMediaIdentity: HomeArtworkWindowRequest],
+    _ requests: [MediaIdentity: HomeArtworkWindowRequest],
     authorization currentAuthorization: HomeAuthorizationIdentity
   ) {
     for (media, request) in requests {
@@ -263,12 +263,12 @@ final class HomeArtworkWindow {
 }
 
 nonisolated private struct HomeArtworkRequestKey: Hashable {
-  let media: HomeMediaIdentity
-  let reference: HomeArtworkIdentity
-  let size: HomeArtworkSizeBucket
+  let media: MediaIdentity
+  let reference: ArtworkIdentity
+  let size: ArtworkSizeBucket
 }
 
 nonisolated private struct HomeArtworkWindowRequest {
   let key: HomeArtworkRequestKey
-  let reference: HomeArtworkReference
+  let reference: ArtworkReference
 }
