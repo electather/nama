@@ -45,8 +45,6 @@ struct LibraryArtworkPresentationAccess {
 }
 
 struct LibraryView: View {
-  @Environment(\.scenePhase) private var scenePhase
-
   let feature: LibraryFeature
   let authorization: HomeAuthorizationIdentity
   let query: LibraryQuery
@@ -77,36 +75,12 @@ struct LibraryView: View {
       )
     )
     .onAppear {
-      activateIfNeeded()
+      feature.updateQuery(query)
+      feature.activate(authorization)
     }
     .onChange(of: query) { _, newQuery in
       feature.updateQuery(newQuery)
     }
-    .onChange(of: authorization) { _, newAuthorization in
-      if scenePhase == .active {
-        feature.activate(newAuthorization)
-      } else {
-        feature.deactivate()
-      }
-    }
-    .onChange(of: scenePhase) { _, phase in
-      if phase == .active {
-        activateIfNeeded()
-      } else {
-        feature.deactivate()
-      }
-    }
-    .onDisappear {
-      feature.deactivate()
-    }
-  }
-
-  private func activateIfNeeded() {
-    guard scenePhase == .active else {
-      return
-    }
-    feature.updateQuery(query)
-    feature.activate(authorization)
   }
 }
 

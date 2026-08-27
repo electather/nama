@@ -29,17 +29,14 @@ extension MediaDetailsFeature {
       return
     }
     if continuingExpiredPageRecovery {
-      guard childPageRecoveryIsActive else {
+      guard childPageContinuation.isActive else {
         return
       }
     } else {
-      childPageRecoveryIsActive = false
-      childPageRecoveryTokens.removeAll(keepingCapacity: true)
-      childPageRecoveryRemainingContinuations = 0
-      if case .pageFailed(_, _, .pageTokenInvalid) = childrenState {
-        childPageRecoveryIsActive = true
-        childPageRecoveryRemainingContinuations = load.items.count
-      }
+      childPageContinuation.begin(
+        currentPageToken: load.pageToken,
+        continuationAllowance: load.items.count
+      )
     }
 
     childrenState = .loadingMore(items: load.items, pageToken: load.pageToken)
@@ -134,72 +131,32 @@ extension MediaDetailsFeature {
     _ page: MediaChildrenPage,
     context: MediaChildPageAttempt
   ) {
-    guard
-      context.load.pageToken == nil
-        || page.nextPageToken != context.load.pageToken
-    else {
-      childrenState = .pageFailed(
-        items: context.load.items,
-        pageToken: context.load.pageToken,
-        failure: .incompatible
-      )
-      return
-    }
-    let items = Self.appendingUniqueChildren(context.load.items, page.items)
-    childrenState = .content(
-      items: items,
+    let items = appendingUniqueMediaSummaries(context.load.items, page.items)
+    let pageAddedIdentities = items.count > context.load.items.count
+    switch childPageContinuation.transition(
+      pageAddedIdentities: pageAddedIdentities,
       nextPageToken: page.nextPageToken
-    )
-    if !childPageRecoveryIsActive,
-      items.count == context.load.items.count,
-      page.nextPageToken != nil
-    {
-      childPageRecoveryIsActive = true
-      childPageRecoveryTokens.removeAll(keepingCapacity: true)
-      childPageRecoveryRemainingContinuations = items.count
-    }
-    guard childPageRecoveryIsActive else {
-      return
-    }
-    guard items.count == context.load.items.count else {
-      resetExpiredPageRecovery()
-      return
-    }
-    guard let nextPageToken = page.nextPageToken else {
-      resetExpiredPageRecovery()
-      return
-    }
-    guard
-      childPageRecoveryRemainingContinuations > 0,
-      childPageRecoveryTokens.insert(nextPageToken).inserted
-    else {
-      resetExpiredPageRecovery()
+    ) {
+    case .finished:
+      childrenState = .content(
+        items: items,
+        nextPageToken: page.nextPageToken
+      )
+
+    case .loadNext:
+      childrenState = .content(
+        items: items,
+        nextPageToken: page.nextPageToken
+      )
+      continueExpiredPageRecovery()
+
+    case .incompatible:
       childrenState = .pageFailed(
         items: items,
-        pageToken: nextPageToken,
+        pageToken: page.nextPageToken,
         failure: .incompatible
       )
-      return
     }
-    childPageRecoveryRemainingContinuations -= 1
-    continueExpiredPageRecovery()
-  }
-
-  private func resetExpiredPageRecovery() {
-    childPageRecoveryIsActive = false
-    childPageRecoveryTokens.removeAll(keepingCapacity: true)
-    childPageRecoveryRemainingContinuations = 0
-  }
-
-  static func appendingUniqueChildren(
-    _ confirmed: [MediaSummary],
-    _ candidates: [MediaSummary]
-  ) -> [MediaSummary] {
-    var identities = Set(confirmed.map(\.identity))
-    return confirmed
-      + candidates.filter { item in
-        identities.insert(item.identity).inserted
-      }
   }
 }
 

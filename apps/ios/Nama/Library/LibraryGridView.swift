@@ -166,35 +166,35 @@ private struct LibraryPageStatus: View {
 
   @ViewBuilder
   var body: some View {
-    if snapshot.isTerminal {
-      Label(terminalTitle, systemImage: "checkmark.circle")
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity)
-    } else {
-      #if os(tvOS)
-        Button(action: performPageAction) {
-          if isLoading {
-            ProgressView()
-          } else {
-            Text(pageActionTitle)
-          }
+    #if os(tvOS)
+      Button(action: performPageAction) {
+        if snapshot.isTerminal {
+          Label(terminalTitle, systemImage: "checkmark.circle")
+        } else if isLoading {
+          ProgressView()
+        } else {
+          Text(pageActionTitle)
         }
-        .id("library.load-more")
-        .accessibilityLabel(pageActionTitle)
-      #else
-        if isLoading {
-          ProgressView("Loading more…")
-            .frame(maxWidth: .infinity)
-        } else if let failure {
-          LibraryInlineFailureView(
-            failure: failure,
-            actionTitle: "Retry Page",
-            action: retry,
-            reauthorize: reauthorize
-          )
-        }
-      #endif
-    }
+      }
+      .id("library.load-more")
+      .accessibilityLabel(snapshot.isTerminal ? terminalTitle : pageActionTitle)
+    #else
+      if snapshot.isTerminal {
+        Label(terminalTitle, systemImage: "checkmark.circle")
+          .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity)
+      } else if isLoading {
+        ProgressView("Loading more…")
+          .frame(maxWidth: .infinity)
+      } else if let failure {
+        LibraryInlineFailureView(
+          failure: failure,
+          actionTitle: "Retry Page",
+          action: retry,
+          reauthorize: reauthorize
+        )
+      }
+    #endif
   }
 
   private var terminalTitle: LocalizedStringKey {
@@ -212,6 +212,10 @@ private struct LibraryPageStatus: View {
   }
 
   private func performPageAction() {
+    guard !snapshot.isTerminal else {
+      return
+    }
+
     if failure == .authorizationUnavailable {
       Task {
         await reauthorize()

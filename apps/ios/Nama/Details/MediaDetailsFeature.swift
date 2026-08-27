@@ -68,9 +68,7 @@ final class MediaDetailsFeature {
   @ObservationIgnored var authorization: HomeAuthorizationIdentity?
   @ObservationIgnored private var attempt: UInt64 = .zero
   @ObservationIgnored var childPageAttempt: UInt64 = .zero
-  @ObservationIgnored var childPageRecoveryIsActive = false
-  @ObservationIgnored var childPageRecoveryTokens = Set<String>()
-  @ObservationIgnored var childPageRecoveryRemainingContinuations = 0
+  @ObservationIgnored var childPageContinuation = MediaContinuationTracker()
 
   init(
     loader: any MediaChildrenLoading & MediaDetailsLoading,
@@ -191,13 +189,11 @@ final class MediaDetailsFeature {
   }
 
   func cancelChildPageRequest() {
-    let shouldPreserveExpiredPageRecovery = childPageRecoveryIsActive
+    let shouldPreserveExpiredPageRecovery = childPageContinuation.isActive
     childPageTask?.cancel()
     childPageTask = nil
     childPageAttempt &+= 1
-    childPageRecoveryIsActive = false
-    childPageRecoveryTokens.removeAll(keepingCapacity: true)
-    childPageRecoveryRemainingContinuations = 0
+    childPageContinuation.reset()
     if case .loadingMore(let items, let pageToken) = childrenState {
       childrenState =
         shouldPreserveExpiredPageRecovery && pageToken == nil
@@ -267,7 +263,7 @@ final class MediaDetailsFeature {
       childrenState =
         replacement.children.map { page in
           .content(
-            items: Self.appendingUniqueChildren([], page.items),
+            items: appendingUniqueMediaSummaries([], page.items),
             nextPageToken: page.nextPageToken
           )
         } ?? .notApplicable

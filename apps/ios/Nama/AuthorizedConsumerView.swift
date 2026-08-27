@@ -57,6 +57,20 @@ struct AuthorizedConsumerRootView: View {
     .onChange(of: navigation.restoration) { _, restoration in
       persist(restoration)
     }
+    .onChange(of: scenePhase) { _, phase in
+      guard phase == .active else {
+        library.deactivate()
+        return
+      }
+      activateLibraryIfVisible()
+    }
+    .onChange(of: homeAuthorization) { oldAuthorization, newAuthorization in
+      guard oldAuthorization != newAuthorization else {
+        return
+      }
+      library.deactivate()
+      activateLibraryIfVisible(identity: newAuthorization)
+    }
     .task(
       id: OAuthAuthorizationTaskID(
         endpoint: endpoint,
@@ -91,6 +105,20 @@ struct AuthorizedConsumerRootView: View {
     storedLibraryKind = restoration.libraryKindRawValue
     storedLibrarySort = restoration.librarySortRawValue
     storedSelectedMediaID = restoration.selectedMediaID ?? ""
+  }
+
+  private func activateLibraryIfVisible(
+    identity: HomeAuthorizationIdentity? = nil
+  ) {
+    guard
+      scenePhase == .active,
+      navigation.topLevel == .library,
+      let activeAuthorization = identity ?? homeAuthorization
+    else {
+      return
+    }
+    library.updateQuery(navigation.libraryQuery)
+    library.activate(activeAuthorization)
   }
 
   private func discardRejectedAuthorization(

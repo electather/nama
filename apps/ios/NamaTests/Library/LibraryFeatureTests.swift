@@ -264,3 +264,42 @@ struct LibraryFeatureTests {
     #expect(terminal.isTerminal)
   }
 }
+
+@Suite("Library nonterminal first page")
+@MainActor
+struct LibraryNonterminalFirstPageTests {
+  @Test("an empty nonterminal first page automatically advances to publish later items")
+  func emptyFirstPageAdvancesToLaterItems() async throws {
+    let loader = ManualLibraryPageLoader()
+    let feature = LibraryFeature(
+      loader: loader,
+      artworkLoader: IgnoringLibraryArtworkLoader()
+    )
+    feature.activate(try libraryAuthorization(generation: 7))
+    await eventually { await loader.calls.count == 1 }
+
+    await loader.resolve(
+      call: 0,
+      with: .success(LibraryPage(items: [], nextPageToken: "later"))
+    )
+    await eventually { await loader.calls.count == 2 }
+    #expect(await loader.calls.last?.pageToken == "later")
+
+    await loader.resolve(
+      call: 1,
+      with: .success(
+        LibraryPage(
+          items: [libraryItem("later", kind: .movie, title: "Later item")],
+          nextPageToken: nil
+        )
+      )
+    )
+    await eventually {
+      guard case .content(let snapshot) = feature.state else {
+        return false
+      }
+      return snapshot.items.map(\.title) == ["Later item"]
+        && snapshot.isTerminal
+    }
+  }
+}
