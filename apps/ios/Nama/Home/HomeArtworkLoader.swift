@@ -54,8 +54,8 @@ actor HomeArtworkLoader: HomeArtworkLoading {
   }
 
   func image(
-    for reference: HomeArtworkReference,
-    size: HomeArtworkSizeBucket,
+    for reference: ArtworkReference,
+    size: ArtworkSizeBucket,
     authorization requestedAuthorization: HomeAuthorizationIdentity
   ) async -> HomeArtworkPresentation? {
     startMemoryPressureMonitoringIfNeeded()
@@ -185,7 +185,7 @@ actor HomeArtworkLoader: HomeArtworkLoading {
     }
   }
 
-  private static func decode(_ data: Data, size: HomeArtworkSizeBucket) -> DecodedArtwork? {
+  private static func decode(_ data: Data, size: ArtworkSizeBucket) -> DecodedArtwork? {
     let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
     guard
       let source = CGImageSourceCreateWithData(data as CFData, sourceOptions),
@@ -236,8 +236,8 @@ actor HomeArtworkLoader: HomeArtworkLoading {
 }
 
 nonisolated private struct CacheKey: Hashable {
-  let reference: HomeArtworkIdentity
-  let size: HomeArtworkSizeBucket
+  let reference: ArtworkIdentity
+  let size: ArtworkSizeBucket
 }
 
 nonisolated private struct CacheEntry {

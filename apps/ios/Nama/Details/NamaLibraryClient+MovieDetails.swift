@@ -48,7 +48,7 @@ nonisolated extension NamaLibraryClient: MovieDetailsLoading {
     let media = response.media
     try validateMovieDetailsShape(media)
 
-    let summary = try mapHomeMediaSummary(media.summary, expectedKind: .movie)
+    let summary = try mapMediaSummary(media.summary, expectedKind: .movie)
     guard summary.identity == selection.identity else {
       throw MovieDetailsResponseMappingError.invalid
     }
@@ -58,8 +58,9 @@ nonisolated extension NamaLibraryClient: MovieDetailsLoading {
     let genres = try mapMovieDetailsStrings(media.genres)
     let studios = try mapMovieDetailsStrings(media.studios)
     let artwork = try media.artwork.compactMap(mapArtworkReference)
-    let credits = try media.credits.enumerated().compactMap { index, credit in
-      try mapMovieCredit(credit, order: index)
+    var creditOccurrences: [MovieCreditIdentitySeed: Int] = [:]
+    let credits = try media.credits.compactMap { credit in
+      try mapMovieCredit(credit, occurrences: &creditOccurrences)
     }
     let sourceSummaries = try media.sourceSummaries.map(mapSourceSummary)
     try validateMoviePlayability(summary, sourceSummaries: sourceSummaries)
@@ -110,7 +111,7 @@ nonisolated extension NamaLibraryClient: MovieDetailsLoading {
 
   private static func mapMovieCredit(
     _ credit: Nama_Api_V1_MediaCredit,
-    order: Int
+    occurrences: inout [MovieCreditIdentitySeed: Int]
   ) throws -> MovieCredit? {
     guard movieDetailsStringIsBounded(credit.name) else {
       throw MovieDetailsResponseMappingError.invalid
@@ -133,26 +134,24 @@ nonisolated extension NamaLibraryClient: MovieDetailsLoading {
       throw MovieDetailsResponseMappingError.invalid
     }
 
-    let portraitArtwork: HomeArtworkReference?
-    if credit.hasPortraitArtwork {
-      portraitArtwork = try mapArtworkReference(credit.portraitArtwork)
-      guard portraitArtwork?.role == .portrait else {
-        throw MovieDetailsResponseMappingError.invalid
-      }
-    } else {
-      portraitArtwork = nil
-    }
-    return MovieCredit(
-      identity: MovieCreditIdentity(order),
+    let characterName = try movieDetailsOptionalString(
+      credit.hasCharacterName,
+      credit.characterName,
+      maximumLength: MovieDetailsResponseBounds.maximumStringLength,
+      allowsEmpty: false
+    )
+    let seed = MovieCreditIdentitySeed(
       name: credit.name,
       role: role,
-      characterName: try movieDetailsOptionalString(
-        credit.hasCharacterName,
-        credit.characterName,
-        maximumLength: MovieDetailsResponseBounds.maximumStringLength,
-        allowsEmpty: false
-      ),
-      portraitArtwork: portraitArtwork
+      characterName: characterName
+    )
+    let occurrence = occurrences[seed, default: .zero]
+    occurrences[seed] = occurrence + 1
+    return MovieCredit(
+      name: seed.name,
+      role: seed.role,
+      characterName: seed.characterName,
+      occurrence: occurrence
     )
   }
 
@@ -187,8 +186,8 @@ nonisolated extension NamaLibraryClient: MovieDetailsLoading {
   }
 
   private static func validateMoviePlayability(
-    _ summary: HomeMediaSummary,
-    sourceSummaries: [HomeSourceSummary]
+    _ summary: MediaSummary,
+    sourceSummaries: [MediaSourceSummary]
   ) throws {
     switch summary.playability {
     case .playable:
@@ -222,6 +221,9 @@ nonisolated extension NamaLibraryClient: MovieDetailsLoading {
     _ error: ConnectError
   ) -> MovieDetailsFailure {
     let errorInfo: [Google_Rpc_ErrorInfo] = error.unpackedDetails()
+    if isCatalogNotReady(error) {
+      return .catalogNotReady(retryAfterSeconds: retryDelaySeconds(error))
+    }
     if error.code == .failedPrecondition,
       errorInfo.contains(where: { detail in
         detail.domain == apiErrorDomain && detail.reason == "CLIENT_VERSION_UNSUPPORTED"
@@ -250,7 +252,10 @@ nonisolated extension NamaLibraryClient: MovieDetailsLoading {
 
     case .unknown, .alreadyExists, .resourceExhausted, .failedPrecondition, .aborted,
       .unavailable, .internalError, .dataLoss:
-      .namaUnavailable(requestID: requestID(error))
+      .namaUnavailable(
+        requestID: requestID(error),
+        retryAfterSeconds: retryDelaySeconds(error)
+      )
     }
   }
 }
@@ -258,10 +263,16 @@ nonisolated extension NamaLibraryClient: MovieDetailsLoading {
 nonisolated private enum MovieDetailsResponseBounds {
   static let maximumArtworkReferences = 20
   static let maximumCredits = 100
+
   static let maximumMetadataItems = 50
   static let maximumSourceSummaries = 100
   static let maximumStringLength = 256
   static let maximumSynopsisLength = 16_384
+}
+nonisolated private struct MovieCreditIdentitySeed: Hashable {
+  let name: String
+  let role: MovieCreditRole
+  let characterName: String?
 }
 
 nonisolated private enum MovieDetailsResponseMappingError: Error {

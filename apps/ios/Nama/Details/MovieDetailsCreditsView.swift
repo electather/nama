@@ -30,15 +30,23 @@ struct MovieDetailsCreditsView: View {
 }
 
 private struct MovieConciseCrewView: View {
+  @Environment(\.locale) private var locale
+
   let directors: [MovieCredit]
   let writers: [MovieCredit]
 
   var body: some View {
     if !directors.isEmpty {
-      LabeledContent("Directors", value: directors.map(\.name).joined(separator: ", "))
+      LabeledContent(
+        "Directors",
+        value: movieDetailsFormattedList(directors.map(\.name), locale: locale)
+      )
     }
     if !writers.isEmpty {
-      LabeledContent("Writers", value: writers.map(\.name).joined(separator: ", "))
+      LabeledContent(
+        "Writers",
+        value: movieDetailsFormattedList(writers.map(\.name), locale: locale)
+      )
     }
   }
 }

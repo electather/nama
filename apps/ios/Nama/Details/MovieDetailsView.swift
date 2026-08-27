@@ -93,7 +93,7 @@ struct MovieDetailsView: View {
 @MainActor
 struct MovieDetailsArtworkPresentationAccess {
   let presentation: (MovieDetailsArtworkSlot) -> HomeArtworkPresentation?
-  let didAppear: (MovieDetailsArtworkSlot, HomeArtworkSizeBucket) -> Void
+  let didAppear: (MovieDetailsArtworkSlot, ArtworkSizeBucket) -> Void
   let didDisappear: (MovieDetailsArtworkSlot) -> Void
 
   static var empty: Self {
@@ -155,11 +155,19 @@ private struct MovieDetailsStateContent: View {
     case .loading(let selection):
       MovieDetailsLoadingView(title: selection.title)
 
+    case .catalogNotReady(let selection, let retryAfterSeconds):
+      MovieDetailsCatalogNotReadyView(
+        title: selection.title,
+        retryAfterSeconds: retryAfterSeconds,
+        retry: retry
+      )
+
     case .content(let details):
       MovieDetailsContentView(
         details: details,
         isRefreshing: false,
         refreshFailure: nil,
+        canRetryUnavailableSource: movieDetailsCanRetryUnavailableSource(state),
         refresh: refresh,
         play: play,
         reauthorize: reauthorize,
@@ -171,6 +179,7 @@ private struct MovieDetailsStateContent: View {
         details: details,
         isRefreshing: true,
         refreshFailure: nil,
+        canRetryUnavailableSource: movieDetailsCanRetryUnavailableSource(state),
         refresh: refresh,
         play: play,
         reauthorize: reauthorize,
@@ -182,6 +191,7 @@ private struct MovieDetailsStateContent: View {
         details: details,
         isRefreshing: false,
         refreshFailure: failure,
+        canRetryUnavailableSource: movieDetailsCanRetryUnavailableSource(state),
         refresh: refresh,
         play: play,
         reauthorize: reauthorize,
@@ -238,7 +248,20 @@ func movieDetailsCanRefresh(_ state: MovieDetailsState) -> Bool {
   case .refreshFailed(_, let failure):
     failure != .authorizationUnavailable
 
-  case .idle, .loading, .failed:
+  case .idle, .loading, .catalogNotReady, .failed:
+    false
+  }
+}
+
+func movieDetailsCanRetryUnavailableSource(_ state: MovieDetailsState) -> Bool {
+  switch state {
+  case .content, .refreshing:
+    true
+
+  case .refreshFailed(_, let failure):
+    failure != .authorizationUnavailable
+
+  case .idle, .loading, .catalogNotReady, .failed:
     false
   }
 }

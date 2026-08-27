@@ -3,136 +3,6 @@ import Testing
 
 @testable import Nama
 
-private enum MovieDetailsAdapterFixture {
-  static let clientVersion = "1.2.3"
-  static let generation: UInt64 = 11
-  static let releaseYear: UInt32 = 2_026
-  static let runtimeSeconds: Int64 = 7_200
-  static let runtime: Duration = .seconds(runtimeSeconds)
-  static let tokenExpiry: TimeInterval = 4_600
-  static let completeSynopsis =
-    "A long canonical synopsis that remains complete instead of being truncated by the adapter."
-  static let longSynopsisChunk = "Long canonical detail remains readable. "
-  static let longSynopsisRepetitions = 400
-
-  static let completeResponse = #"""
-    {
-      "media": {
-        "summary": {
-          "id": "movie-details",
-          "kind": "MEDIA_KIND_MOVIE",
-          "title": "The Canonical Movie",
-          "releaseYear": 2026,
-          "runtime": "7200s",
-          "contentRating": "PG-13",
-          "primaryGenre": "Drama",
-          "playability": "PLAYABILITY_PLAYABLE",
-          "defaultSource": {
-            "id": "source-default",
-            "label": "4K HDR",
-            "isDefault": true,
-            "availability": "SOURCE_AVAILABILITY_AVAILABLE",
-            "container": "mkv"
-          }
-        },
-        "tagline": "Everything changes at midnight.",
-        "synopsis": "A long canonical synopsis that remains complete instead of being truncated by the adapter.",
-        "genres": ["Drama", "Mystery"],
-        "studios": ["North Star Pictures", "Harbor Films"],
-        "credits": [
-          {
-            "name": "Ada Director",
-            "role": "MEDIA_CREDIT_ROLE_DIRECTOR"
-          },
-          {
-            "name": "Wes Writer",
-            "role": "MEDIA_CREDIT_ROLE_WRITER"
-          },
-          {
-            "name": "Sam Actor",
-            "role": "MEDIA_CREDIT_ROLE_ACTOR",
-            "characterName": "The Traveler",
-            "portraitArtwork": {
-              "id": "portrait-sam",
-              "role": "ARTWORK_ROLE_PORTRAIT",
-              "textPresence": "ARTWORK_TEXT_PRESENCE_UNKNOWN"
-            }
-          }
-        ],
-        "artwork": [
-          {
-            "id": "backdrop-textless",
-            "role": "ARTWORK_ROLE_BACKDROP",
-            "width": 1920,
-            "height": 1080,
-            "textPresence": "ARTWORK_TEXT_PRESENCE_TEXTLESS"
-          },
-          {
-            "id": "poster-textless",
-            "role": "ARTWORK_ROLE_POSTER",
-            "width": 1000,
-            "height": 1500,
-            "textPresence": "ARTWORK_TEXT_PRESENCE_TEXTLESS"
-          }
-        ],
-        "sourceSummaries": [
-          {
-            "id": "source-default",
-            "label": "4K HDR",
-            "isDefault": true,
-            "availability": "SOURCE_AVAILABILITY_AVAILABLE",
-            "container": "mkv"
-          }
-        ],
-        "movie": {
-          "releaseDate": {
-            "year": 2026,
-            "month": 8,
-            "day": 25
-          }
-        }
-      }
-    }
-    """#
-  static let minimalResponse = #"""
-    {
-      "media": {
-        "summary": {
-          "id": "movie-minimal",
-          "kind": "MEDIA_KIND_MOVIE",
-          "title": "Minimal Movie",
-          "playability": "PLAYABILITY_NO_AVAILABLE_SOURCE"
-        },
-        "movie": {}
-      }
-    }
-    """#
-
-  static let canonicalRequestID = "2f1c5f44-6a9b-4d2e-8c70-62df607c2efa"
-  static let unsupportedDetail = #"""
-    {
-      "type": "google.rpc.ErrorInfo",
-      "value": "ChpDTElFTlRfVkVSU0lPTl9VTlNVUFBPUlRFRBILbmFtYS5hcGkudjE="
-    }
-    """#
-  static let requestDetail = #"""
-    {
-      "type": "google.rpc.RequestInfo",
-      "value": "CiQyZjFjNWY0NC02YTliLTRkMmUtOGM3MC02MmRmNjA3YzJlZmE="
-    }
-    """#
-
-  static func failureResponse(code: String, detail: String? = nil) -> String {
-    let detailField = detail.map { ", \"details\": [\($0)]" } ?? ""
-    return """
-      {
-        "code": "\(code)",
-        "message": "safe failure"\(detailField)
-      }
-      """
-  }
-}
-
 @Suite("Movie Details LibraryService adapter", .serialized)
 @MainActor
 struct MovieDetailsAdapterTests {
@@ -146,7 +16,7 @@ struct MovieDetailsAdapterTests {
     let record = try movieDetailsTokenRecord()
     let client = movieDetailsClient(record: record, platform: "ios")
     let selection = MovieDetailsSelection(
-      identity: HomeMediaIdentity("movie-details"),
+      identity: MediaIdentity("movie-details"),
       title: "Home title"
     )
 
@@ -168,12 +38,49 @@ struct MovieDetailsAdapterTests {
     #expect(details.credits.map(\.name) == ["Ada Director", "Wes Writer", "Sam Actor"])
     #expect(details.credits.map(\.role) == [.director, .writer, .actor])
     #expect(details.credits.last?.characterName == "The Traveler")
-    #expect(details.credits.last?.portraitArtwork?.identity == HomeArtworkIdentity("portrait-sam"))
-    #expect(details.preferredBackdropArtwork?.identity == HomeArtworkIdentity("backdrop-textless"))
-    #expect(details.preferredPosterArtwork?.identity == HomeArtworkIdentity("poster-textless"))
+    #expect(details.preferredBackdropArtwork?.identity == ArtworkIdentity("backdrop-textless"))
+    #expect(details.preferredPosterArtwork?.identity == ArtworkIdentity("poster-textless"))
     #expect(details.playability == .playable)
-    #expect(details.defaultSource?.identity == HomeSourceIdentity("source-default"))
+    #expect(details.defaultSource?.identity == MediaSourceIdentity("source-default"))
     try assertMovieDetailsRequest()
+  }
+
+  @Test("credit identity survives an earlier insertion")
+  func creditIdentitySurvivesInsertion() async throws {
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.successfulHTTPStatus,
+      body: MovieDetailsAdapterFixture.completeResponse
+    )
+    defer { HomeConnectStubURLProtocol.reset() }
+    let record = try movieDetailsTokenRecord()
+    let client = movieDetailsClient(record: record, platform: "ios")
+    let selection = MovieDetailsSelection(
+      identity: MediaIdentity("movie-details"),
+      title: "Home title"
+    )
+    let original = try await client.load(
+      selection,
+      authorization: movieDetailsAuthorization(record: record)
+    )
+    let responseWithEarlierCredit =
+      MovieDetailsAdapterFixture.completeResponse.replacingOccurrences(
+        of: #""credits": ["#,
+        with:
+          #""credits": [{"name":"Earlier Actor","role":"MEDIA_CREDIT_ROLE_ACTOR"},"#
+      )
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.successfulHTTPStatus,
+      body: responseWithEarlierCredit
+    )
+
+    let refreshed = try await client.load(
+      selection,
+      authorization: movieDetailsAuthorization(record: record)
+    )
+    let originalActor = try #require(original.credits.first { $0.name == "Sam Actor" })
+    let refreshedActor = try #require(refreshed.credits.first { $0.name == "Sam Actor" })
+
+    #expect(refreshedActor.identity == originalActor.identity)
   }
 
   @Test("GetMedia preserves a long synopsis")
@@ -194,7 +101,7 @@ struct MovieDetailsAdapterTests {
     let record = try movieDetailsTokenRecord()
     let client = movieDetailsClient(record: record, platform: "macos")
     let selection = MovieDetailsSelection(
-      identity: HomeMediaIdentity("movie-details"),
+      identity: MediaIdentity("movie-details"),
       title: "Home title"
     )
 
@@ -216,7 +123,7 @@ struct MovieDetailsAdapterTests {
     let record = try movieDetailsTokenRecord()
     let client = movieDetailsClient(record: record, platform: "tvos")
     let selection = MovieDetailsSelection(
-      identity: HomeMediaIdentity("movie-minimal"),
+      identity: MediaIdentity("movie-minimal"),
       title: "Home title"
     )
 
@@ -269,29 +176,37 @@ struct MovieDetailsAdapterTests {
           code: "internal",
           detail: MovieDetailsAdapterFixture.requestDetail
         ),
-        .namaUnavailable(requestID: MovieDetailsAdapterFixture.canonicalRequestID)
+        .namaUnavailable(
+          requestID: MovieDetailsAdapterFixture.canonicalRequestID,
+          retryAfterSeconds: nil
+        )
       ),
     ]
-    let record = try movieDetailsTokenRecord()
-    let client = movieDetailsClient(record: record, platform: "ios")
-    let selection = MovieDetailsSelection(
-      identity: HomeMediaIdentity("movie-details"),
-      title: "Home title"
-    )
+    try await assertMovieDetailsFailureMappings(cases)
+  }
 
-    for (body, expectedFailure) in cases {
-      HomeConnectStubURLProtocol.configure(
-        status: HomeTransportFixture.unavailableHTTPStatus,
-        body: body
-      )
-      await #expect(throws: expectedFailure) {
-        try await client.load(
-          selection,
-          authorization: movieDetailsAuthorization(record: record)
-        )
-      }
-    }
-    HomeConnectStubURLProtocol.reset()
+  @Test("GetMedia preserves retry guidance")
+  func retryGuidanceMapping() async throws {
+    let cases: [(String, MovieDetailsFailure)] = [
+      (
+        MovieDetailsAdapterFixture.failureResponse(
+          code: "unavailable",
+          detail: MovieDetailsAdapterFixture.catalogNotReadyDetail,
+          additionalDetails: [MovieDetailsAdapterFixture.retryFiveSecondsDetail]
+        ),
+        .catalogNotReady(retryAfterSeconds: 5)
+      ),
+      (
+        MovieDetailsAdapterFixture.failureResponse(
+          code: "resource_exhausted",
+          detail: MovieDetailsAdapterFixture.rateLimitedDetail,
+          additionalDetails: [MovieDetailsAdapterFixture.retryFiveSecondsDetail]
+        ),
+        .namaUnavailable(requestID: nil, retryAfterSeconds: 5)
+      ),
+    ]
+
+    try await assertMovieDetailsFailureMappings(cases)
   }
 
   @Test("cancelled GetMedia work sends no request")
@@ -306,7 +221,7 @@ struct MovieDetailsAdapterTests {
       platform: "ios"
     )
     let selection = MovieDetailsSelection(
-      identity: HomeMediaIdentity("movie-details"),
+      identity: MediaIdentity("movie-details"),
       title: "Home title"
     )
     let task = Task {
@@ -325,6 +240,32 @@ struct MovieDetailsAdapterTests {
     }
     #expect(HomeConnectStubURLProtocol.recordedRequests.isEmpty)
   }
+}
+
+@MainActor
+private func assertMovieDetailsFailureMappings(
+  _ cases: [(String, MovieDetailsFailure)]
+) async throws {
+  let record = try movieDetailsTokenRecord()
+  let client = movieDetailsClient(record: record, platform: "ios")
+  let selection = MovieDetailsSelection(
+    identity: MediaIdentity("movie-details"),
+    title: "Home title"
+  )
+
+  for (body, expectedFailure) in cases {
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.unavailableHTTPStatus,
+      body: body
+    )
+    await #expect(throws: expectedFailure) {
+      try await client.load(
+        selection,
+        authorization: movieDetailsAuthorization(record: record)
+      )
+    }
+  }
+  HomeConnectStubURLProtocol.reset()
 }
 
 @MainActor

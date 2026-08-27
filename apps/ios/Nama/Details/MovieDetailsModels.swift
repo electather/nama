@@ -1,12 +1,12 @@
 import Foundation
 
 nonisolated struct MovieDetailsSelection: Equatable, Hashable, Sendable {
-  let identity: HomeMediaIdentity
+  let identity: MediaIdentity
   let title: String
 }
 
 nonisolated struct MoviePlayIntent: Equatable, Hashable, Sendable {
-  let mediaIdentity: HomeMediaIdentity
+  let mediaIdentity: MediaIdentity
 }
 
 nonisolated enum MovieDetailsArtworkSlot: Equatable, Hashable, Sendable {
@@ -14,18 +14,17 @@ nonisolated enum MovieDetailsArtworkSlot: Equatable, Hashable, Sendable {
   case backdrop
 }
 
-nonisolated struct MovieCreditIdentity: Equatable, Hashable, Sendable {
-  let rawValue: Int
-
-  init(_ rawValue: Int) {
-    self.rawValue = rawValue
-  }
-}
-
-nonisolated enum MovieCreditRole: Equatable, Sendable {
+nonisolated enum MovieCreditRole: Equatable, Hashable, Sendable {
   case actor
   case director
   case writer
+}
+
+nonisolated struct MovieCreditIdentity: Equatable, Hashable, Sendable {
+  let name: String
+  let role: MovieCreditRole
+  let characterName: String?
+  let occurrence: Int
 }
 
 nonisolated struct MovieCredit: Equatable, Identifiable, Sendable {
@@ -33,7 +32,23 @@ nonisolated struct MovieCredit: Equatable, Identifiable, Sendable {
   let name: String
   let role: MovieCreditRole
   let characterName: String?
-  let portraitArtwork: HomeArtworkReference?
+
+  init(
+    name: String,
+    role: MovieCreditRole,
+    characterName: String?,
+    occurrence: Int = .zero
+  ) {
+    identity = MovieCreditIdentity(
+      name: name,
+      role: role,
+      characterName: characterName,
+      occurrence: occurrence
+    )
+    self.name = name
+    self.role = role
+    self.characterName = characterName
+  }
 
   var id: MovieCreditIdentity {
     identity
@@ -42,7 +57,7 @@ nonisolated struct MovieCredit: Equatable, Identifiable, Sendable {
 
 nonisolated struct MovieDetails: Equatable, Sendable {
   private static let initialCastLimit = 8
-  let identity: HomeMediaIdentity
+  let identity: MediaIdentity
   let title: String
   let releaseYear: UInt32?
   let runtime: Duration?
@@ -53,9 +68,9 @@ nonisolated struct MovieDetails: Equatable, Sendable {
   let genres: [String]
   let studios: [String]
   let credits: [MovieCredit]
-  let artwork: [HomeArtworkReference]
-  let playability: HomePlayability
-  let defaultSource: HomeSourceSummary?
+  let artwork: [ArtworkReference]
+  let playability: MediaPlayability
+  let defaultSource: MediaSourceSummary?
 
   var directors: [MovieCredit] {
     credits.filter { $0.role == .director }
@@ -73,15 +88,15 @@ nonisolated struct MovieDetails: Equatable, Sendable {
     Array(cast.prefix(Self.initialCastLimit))
   }
 
-  var preferredPosterArtwork: HomeArtworkReference? {
+  var preferredPosterArtwork: ArtworkReference? {
     preferredArtwork(for: .poster)
   }
 
-  var preferredBackdropArtwork: HomeArtworkReference? {
+  var preferredBackdropArtwork: ArtworkReference? {
     preferredArtwork(for: .backdrop)
   }
 
-  private func preferredArtwork(for role: HomeArtworkRole) -> HomeArtworkReference? {
+  private func preferredArtwork(for role: ArtworkRole) -> ArtworkReference? {
     artwork.first { reference in
       reference.role == role && reference.textPresence == .textless
     } ?? artwork.first { $0.role == role }
@@ -90,15 +105,17 @@ nonisolated struct MovieDetails: Equatable, Sendable {
 
 nonisolated enum MovieDetailsFailure: Error, Equatable, Sendable {
   case notFound
+  case catalogNotReady(retryAfterSeconds: Int?)
   case transportUnavailable
   case authorizationUnavailable
   case incompatible
-  case namaUnavailable(requestID: String?)
+  case namaUnavailable(requestID: String?, retryAfterSeconds: Int?)
 }
 
 nonisolated enum MovieDetailsState: Equatable, Sendable {
   case idle
   case loading(MovieDetailsSelection)
+  case catalogNotReady(MovieDetailsSelection, retryAfterSeconds: Int?)
   case content(MovieDetails)
   case refreshing(MovieDetails)
   case refreshFailed(MovieDetails, MovieDetailsFailure)

@@ -1,7 +1,8 @@
-private struct MovieDetailsArtworkRequest {
+nonisolated struct MovieDetailsArtworkRequest: Equatable, Sendable {
   let slot: MovieDetailsArtworkSlot
-  let reference: HomeArtworkIdentity
-  let media: HomeMediaIdentity
+  let reference: ArtworkIdentity
+  let media: MediaIdentity
+  let size: ArtworkSizeBucket
   let authorization: HomeAuthorizationIdentity
 }
 
@@ -20,7 +21,7 @@ extension MovieDetailsFeature {
 
   func artworkDidAppear(
     _ slot: MovieDetailsArtworkSlot,
-    size: HomeArtworkSizeBucket
+    size: ArtworkSizeBucket
   ) {
     guard
       let details = confirmedDetails,
@@ -31,16 +32,22 @@ extension MovieDetailsFeature {
     guard let reference = artworkReference(for: slot, in: details) else {
       artworkTasks.removeValue(forKey: slot)?.cancel()
       replaceArtworkPresentation(nil, for: slot)
+      artworkRequests[slot] = nil
       return
     }
-    artworkTasks[slot]?.cancel()
-    replaceArtworkPresentation(nil, for: slot)
     let request = MovieDetailsArtworkRequest(
       slot: slot,
       reference: reference.identity,
       media: details.identity,
+      size: size,
       authorization: authorization
     )
+    guard artworkRequests[slot] != request else {
+      return
+    }
+    artworkRequests[slot] = request
+    artworkTasks[slot]?.cancel()
+    replaceArtworkPresentation(nil, for: slot)
     let currentArtworkLoader = artworkLoader
     artworkTasks[slot] = Task { [weak self] in
       await currentArtworkLoader.authorizationDidChange(to: request.authorization)
@@ -60,6 +67,7 @@ extension MovieDetailsFeature {
   }
 
   func artworkDidDisappear(_ slot: MovieDetailsArtworkSlot) {
+    artworkRequests[slot] = nil
     artworkTasks.removeValue(forKey: slot)?.cancel()
   }
 
@@ -68,6 +76,7 @@ extension MovieDetailsFeature {
       task.cancel()
     }
     artworkTasks.removeAll(keepingCapacity: true)
+    artworkRequests.removeAll(keepingCapacity: true)
     posterArtworkPresentation = nil
     backdropArtworkPresentation = nil
   }
@@ -75,7 +84,7 @@ extension MovieDetailsFeature {
   private func artworkReference(
     for slot: MovieDetailsArtworkSlot,
     in details: MovieDetails
-  ) -> HomeArtworkReference? {
+  ) -> ArtworkReference? {
     switch slot {
     case .poster:
       details.preferredPosterArtwork
@@ -90,6 +99,7 @@ extension MovieDetailsFeature {
     request: MovieDetailsArtworkRequest
   ) {
     guard
+      artworkRequests[request.slot] == request,
       authorization == request.authorization,
       let details = confirmedDetails,
       details.identity == request.media,

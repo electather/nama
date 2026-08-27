@@ -11,6 +11,8 @@ final class MovieDetailsFeature {
   @ObservationIgnored let artworkLoader: any HomeArtworkLoading
   @ObservationIgnored private var activeTask: Task<Void, Never>?
   @ObservationIgnored var artworkTasks: [MovieDetailsArtworkSlot: Task<Void, Never>] = [:]
+  @ObservationIgnored var artworkRequests: [MovieDetailsArtworkSlot: MovieDetailsArtworkRequest] =
+    [:]
   @ObservationIgnored private var selection: MovieDetailsSelection?
   @ObservationIgnored var authorization: HomeAuthorizationIdentity?
   @ObservationIgnored private var attempt: UInt64 = .zero
@@ -104,7 +106,7 @@ final class MovieDetailsFeature {
     case .content(let details), .refreshing(let details), .refreshFailed(let details, _):
       details
 
-    case .idle, .loading, .failed:
+    case .idle, .loading, .catalogNotReady, .failed:
       nil
     }
   }
@@ -168,10 +170,19 @@ final class MovieDetailsFeature {
     case .failure(let error):
       let failure =
         (error as? MovieDetailsFailure)
-        ?? .namaUnavailable(requestID: nil)
-      state =
-        details.map { .refreshFailed($0, failure) }
-        ?? .failed(expectedSelection, failure)
+        ?? .namaUnavailable(requestID: nil, retryAfterSeconds: nil)
+      if details == nil,
+        case .catalogNotReady(let retryAfterSeconds) = failure
+      {
+        state = .catalogNotReady(
+          expectedSelection,
+          retryAfterSeconds: retryAfterSeconds
+        )
+      } else {
+        state =
+          details.map { .refreshFailed($0, failure) }
+          ?? .failed(expectedSelection, failure)
+      }
     }
   }
 }

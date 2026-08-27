@@ -108,7 +108,7 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
     return Nama_Api_V1_LibraryServiceClient(client: protocolClient)
   }
 
-  private static func isCatalogNotReady(_ error: ConnectError) -> Bool {
+  static func isCatalogNotReady(_ error: ConnectError) -> Bool {
     let errorInfo: [Google_Rpc_ErrorInfo] = error.unpackedDetails()
     return error.code == .unavailable
       && errorInfo.contains { detail in
@@ -169,7 +169,7 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
     }
   }
 
-  private static func retryDelaySeconds(_ error: ConnectError) -> Int? {
+  static func retryDelaySeconds(_ error: ConnectError) -> Int? {
     let retryInfo: [Google_Rpc_RetryInfo] = error.unpackedDetails()
     guard
       let detail = retryInfo.first(where: \.hasRetryDelay),

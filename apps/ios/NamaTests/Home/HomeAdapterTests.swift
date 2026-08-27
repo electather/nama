@@ -160,15 +160,15 @@ struct HomeAdapterTests {
     defer { HomeConnectStubURLProtocol.reset() }
     let record = try homeTokenRecord()
     let client = homeClient(record: record, platform: "ios")
-    let reference = HomeArtworkReference(
-      identity: HomeArtworkIdentity("artwork-2"),
+    let reference = ArtworkReference(
+      identity: ArtworkIdentity("artwork-2"),
       role: .poster,
       width: nil,
       height: nil,
       locale: nil,
       textPresence: .textless
     )
-    let size = HomeArtworkSizeBucket.poster(displayWidth: 148, scale: 2)
+    let size = ArtworkSizeBucket.poster(displayWidth: 148, scale: 2)
 
     let locator = try await client.resolve(
       reference,
@@ -248,14 +248,14 @@ private func assertHomeSnapshot(_ snapshot: HomeSnapshot) throws {
   #expect(snapshot.movies?.items.map(\.title) == ["Second from server", "First from server"])
   #expect(snapshot.shows == nil)
   let item = try #require(snapshot.movies?.items.first)
-  #expect(item.identity == HomeMediaIdentity("movie-2"))
+  #expect(item.identity == MediaIdentity("movie-2"))
   #expect(item.releaseYear == HomeAdapterExpected.releaseYear)
   #expect(item.runtime == HomeAdapterExpected.runtime)
-  #expect(item.artwork.first?.identity == HomeArtworkIdentity("artwork-2"))
+  #expect(item.artwork.first?.identity == ArtworkIdentity("artwork-2"))
   #expect(item.artwork.first?.role == .poster)
   #expect(item.artwork.first?.textPresence == .textless)
   #expect(item.playability == .playable)
-  #expect(item.defaultSource?.identity == HomeSourceIdentity("source-2"))
+  #expect(item.defaultSource?.identity == MediaSourceIdentity("source-2"))
   #expect(item.defaultSource?.availability == .available)
   #expect(item.defaultSource?.videoQuality?.dynamicRange == .hdr10)
   #expect(item.defaultSource?.audioQuality?.spatialFormat == .dolbyAtmos)

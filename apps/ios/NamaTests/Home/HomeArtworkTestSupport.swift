@@ -3,16 +3,16 @@ import ImageIO
 
 @testable import Nama
 
-func homeArtworkItem(artwork: [HomeArtworkReference]) -> HomeMediaSummary {
+func homeArtworkItem(artwork: [ArtworkReference]) -> MediaSummary {
   homeArtworkItem(identity: "movie-1", artwork: artwork)
 }
 
 func homeArtworkItem(
   identity: String,
-  artwork: [HomeArtworkReference]
-) -> HomeMediaSummary {
-  HomeMediaSummary(
-    identity: HomeMediaIdentity(identity),
+  artwork: [ArtworkReference]
+) -> MediaSummary {
+  MediaSummary(
+    identity: MediaIdentity(identity),
     kind: .movie,
     title: "Movie title",
     releaseYear: nil,
@@ -25,7 +25,7 @@ func homeArtworkItem(
   )
 }
 
-func homeArtworkSnapshot(items: [HomeMediaSummary]) -> HomeSnapshot {
+func homeArtworkSnapshot(items: [MediaSummary]) -> HomeSnapshot {
   HomeSnapshot(
     movies: HomeShelf(
       identity: HomeShelfIdentity("movies"),
@@ -39,11 +39,11 @@ func homeArtworkSnapshot(items: [HomeMediaSummary]) -> HomeSnapshot {
 
 func homeArtworkReference(
   identity: String,
-  role: HomeArtworkRole,
-  textPresence: HomeArtworkTextPresence
-) -> HomeArtworkReference {
-  HomeArtworkReference(
-    identity: HomeArtworkIdentity(identity),
+  role: ArtworkRole,
+  textPresence: ArtworkTextPresence
+) -> ArtworkReference {
+  ArtworkReference(
+    identity: ArtworkIdentity(identity),
     role: role,
     width: nil,
     height: nil,
@@ -52,7 +52,7 @@ func homeArtworkReference(
   )
 }
 
-func homeTextlessPosterItem(number: Int) -> HomeMediaSummary {
+func homeTextlessPosterItem(number: Int) -> MediaSummary {
   let reference = homeArtworkReference(
     identity: "poster-\(number)",
     role: .poster,
@@ -92,7 +92,7 @@ func makeArtworkLoader(
 func loadArtwork(
   _ loader: HomeArtworkLoader,
   authorization: HomeAuthorizationIdentity,
-  size: HomeArtworkSizeBucket? = nil
+  size: ArtworkSizeBucket? = nil
 ) async -> HomeArtworkPresentation? {
   await loader.authorizationDidChange(to: authorization)
   return await loader.image(
@@ -102,7 +102,7 @@ func loadArtwork(
   )
 }
 
-nonisolated func artworkSize() -> HomeArtworkSizeBucket {
+nonisolated func artworkSize() -> ArtworkSizeBucket {
   .poster(
     displayWidth: ArtworkFixture.cardWidth,
     scale: ArtworkFixture.retinaScale
@@ -153,8 +153,8 @@ actor FixedArtworkResolver: HomeArtworkResolving {
   }
 
   func resolve(
-    _: HomeArtworkReference,
-    size _: HomeArtworkSizeBucket,
+    _: ArtworkReference,
+    size _: ArtworkSizeBucket,
     authorization _: HomeAuthorizationIdentity
   ) -> HomeArtworkResolvedLocator {
     locator
@@ -163,15 +163,15 @@ actor FixedArtworkResolver: HomeArtworkResolving {
 
 actor RecordingArtworkResolver: HomeArtworkResolving {
   let locator: HomeArtworkResolvedLocator
-  private(set) var requestedSizes: [HomeArtworkSizeBucket] = []
+  private(set) var requestedSizes: [ArtworkSizeBucket] = []
 
   init(locator: HomeArtworkResolvedLocator) {
     self.locator = locator
   }
 
   func resolve(
-    _: HomeArtworkReference,
-    size: HomeArtworkSizeBucket,
+    _: ArtworkReference,
+    size: ArtworkSizeBucket,
     authorization _: HomeAuthorizationIdentity
   ) -> HomeArtworkResolvedLocator {
     requestedSizes.append(size)
@@ -187,8 +187,8 @@ actor ManualArtworkResolver: HomeArtworkResolving {
   }
 
   func resolve(
-    _: HomeArtworkReference,
-    size _: HomeArtworkSizeBucket,
+    _: ArtworkReference,
+    size _: ArtworkSizeBucket,
     authorization _: HomeAuthorizationIdentity
   ) async throws -> HomeArtworkResolvedLocator {
     try await withCheckedThrowingContinuation { continuation in
@@ -214,15 +214,15 @@ actor ImmediateArtworkHomeLoader: HomeLoading {
 }
 
 actor RecordingArtworkLoader: HomeArtworkLoading {
-  private(set) var requestedIdentities: [HomeArtworkIdentity] = []
+  private(set) var requestedIdentities: [ArtworkIdentity] = []
 
   func authorizationDidChange(to _: HomeAuthorizationIdentity) {
     // This adapter has no cache to invalidate.
   }
 
   func image(
-    for reference: HomeArtworkReference,
-    size _: HomeArtworkSizeBucket,
+    for reference: ArtworkReference,
+    size _: ArtworkSizeBucket,
     authorization _: HomeAuthorizationIdentity
   ) -> HomeArtworkPresentation? {
     requestedIdentities.append(reference.identity)
@@ -239,8 +239,8 @@ actor HoldingArtworkLoader: HomeArtworkLoading {
   }
 
   func image(
-    for _: HomeArtworkReference,
-    size _: HomeArtworkSizeBucket,
+    for _: ArtworkReference,
+    size _: ArtworkSizeBucket,
     authorization _: HomeAuthorizationIdentity
   ) async -> HomeArtworkPresentation? {
     requestCount += 1

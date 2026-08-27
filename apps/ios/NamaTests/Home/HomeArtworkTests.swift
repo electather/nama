@@ -33,7 +33,7 @@ struct HomeArtworkTests {
     )
 
     let poster = try #require(item.preferredPosterArtwork)
-    #expect(poster.identity == HomeArtworkIdentity("first-textless-poster"))
+    #expect(poster.identity == ArtworkIdentity("first-textless-poster"))
   }
 
   @Test("rounds a poster request up to a bounded decoded-size bucket")
@@ -76,9 +76,9 @@ struct HomeArtworkTests {
 
     #expect(
       Set(await artworkLoader.requestedIdentities) == [
-        HomeArtworkIdentity("poster-1"),
-        HomeArtworkIdentity("poster-2"),
-        HomeArtworkIdentity("poster-3"),
+        ArtworkIdentity("poster-1"),
+        ArtworkIdentity("poster-2"),
+        ArtworkIdentity("poster-3"),
       ]
     )
   }
@@ -177,8 +177,8 @@ private actor ImmediateArtworkPresentationLoader: HomeArtworkLoading {
   }
 
   func image(
-    for _: HomeArtworkReference,
-    size _: HomeArtworkSizeBucket,
+    for _: ArtworkReference,
+    size _: ArtworkSizeBucket,
     authorization _: HomeAuthorizationIdentity
   ) -> HomeArtworkPresentation? {
     ArtworkFixture.presentation

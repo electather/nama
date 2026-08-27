@@ -8,8 +8,8 @@ nonisolated extension NamaLibraryClient: HomeArtworkResolving {
   private static let nanosecondsPerSecond: Int32 = 1_000_000_000
 
   func resolve(
-    _ reference: HomeArtworkReference,
-    size: HomeArtworkSizeBucket,
+    _ reference: ArtworkReference,
+    size: ArtworkSizeBucket,
     authorization: HomeAuthorizationIdentity
   ) async throws -> HomeArtworkResolvedLocator {
     let snapshot = await tokenStore.load()

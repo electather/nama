@@ -75,6 +75,28 @@ struct MovieDetailsFeatureTests {
     await eventually { feature.state == .content(details) }
   }
 
+  @Test("catalog preparation remains a retry-guided state")
+  func catalogPreparationRemainsDistinct() async throws {
+    let loader = ManualMovieDetailsLoader()
+    let feature = MovieDetailsFeature(
+      loader: loader,
+      artworkLoader: MissingMovieDetailsArtworkLoader()
+    )
+    let selection = movieDetailsSelection(identity: "movie-catalog", title: "Catalog Movie")
+    let authorization = try movieDetailsAuthorization(generation: 1)
+
+    feature.select(selection, authorization: authorization)
+    await eventually { await loader.callCount == 1 }
+    await loader.resolve(
+      call: 0,
+      with: .failure(MovieDetailsFailure.catalogNotReady(retryAfterSeconds: 5))
+    )
+
+    await eventually {
+      feature.state == .catalogNotReady(selection, retryAfterSeconds: 5)
+    }
+  }
+
   @Test(
     "initial failures remain distinct",
     arguments: [
@@ -82,7 +104,7 @@ struct MovieDetailsFeatureTests {
       .transportUnavailable,
       .authorizationUnavailable,
       .incompatible,
-      .namaUnavailable(requestID: "request-safe-123"),
+      .namaUnavailable(requestID: "request-safe-123", retryAfterSeconds: nil),
     ]
   )
   func initialFailuresRemainDistinct(_ failure: MovieDetailsFailure) async throws {
@@ -176,11 +198,11 @@ struct MovieDetailsFeatureTests {
   @Test(
     "unavailable Movies emit no dead Play intent",
     arguments: [
-      HomePlayability.temporarilyUnavailable,
+      MediaPlayability.temporarilyUnavailable,
       .noAvailableSource,
     ]
   )
-  func unavailableMovieDoesNotEmitPlay(_ playability: HomePlayability) async throws {
+  func unavailableMovieDoesNotEmitPlay(_ playability: MediaPlayability) async throws {
     let loader = ManualMovieDetailsLoader()
     let feature = MovieDetailsFeature(
       loader: loader,

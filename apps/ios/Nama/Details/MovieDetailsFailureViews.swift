@@ -1,5 +1,25 @@
 import SwiftUI
 
+struct MovieDetailsCatalogNotReadyView: View {
+  let title: String
+  let retryAfterSeconds: Int?
+  let retry: @MainActor () -> Void
+
+  var body: some View {
+    ContentUnavailableView {
+      Label("Your library is being prepared", systemImage: "clock.arrow.circlepath")
+    } description: {
+      VStack(spacing: MovieDetailsLayout.metadataSpacing) {
+        Text(title)
+          .font(.headline)
+        MovieDetailsRetryGuidance(retryAfterSeconds: retryAfterSeconds)
+      }
+    } actions: {
+      Button("Retry", action: retry)
+        .buttonStyle(.borderedProminent)
+    }
+  }
+}
 struct MovieDetailsRefreshFailureView: View {
   let failure: MovieDetailsFailure
   let retry: @MainActor () -> Void
@@ -10,6 +30,9 @@ struct MovieDetailsRefreshFailureView: View {
       Label("Refresh failed", systemImage: "exclamationmark.triangle")
         .font(.headline)
       Text(movieDetailsFailureMessage(failure))
+      if let retryAfterSeconds = movieDetailsRetryAfterSeconds(failure) {
+        MovieDetailsRetryGuidance(retryAfterSeconds: retryAfterSeconds)
+      }
       MovieDetailsFailureRecoveryButton(
         failure: failure,
         retry: retry,
@@ -36,9 +59,12 @@ struct MovieDetailsFailureView: View {
         Text(title)
           .font(.headline)
         Text(movieDetailsFailureMessage(failure))
-        if case .namaUnavailable(let requestID?) = failure {
+        if case .namaUnavailable(let requestID?, _) = failure {
           Text("Request ID: \(requestID)")
             .font(.caption.monospaced())
+        }
+        if let retryAfterSeconds = movieDetailsRetryAfterSeconds(failure) {
+          MovieDetailsRetryGuidance(retryAfterSeconds: retryAfterSeconds)
         }
       }
     } actions: {
@@ -71,10 +97,25 @@ private struct MovieDetailsFailureRecoveryButton: View {
   }
 }
 
+private struct MovieDetailsRetryGuidance: View {
+  let retryAfterSeconds: Int?
+
+  var body: some View {
+    if let retryAfterSeconds {
+      Text("Try again in about \(retryAfterSeconds) seconds.")
+    } else {
+      Text("Try again shortly.")
+    }
+  }
+}
+
 private func movieDetailsFailureTitle(_ failure: MovieDetailsFailure) -> LocalizedStringKey {
   switch failure {
   case .notFound:
     "Movie not found"
+
+  case .catalogNotReady:
+    "Library is being prepared"
 
   case .transportUnavailable, .namaUnavailable:
     "Details are unavailable"
@@ -92,6 +133,9 @@ private func movieDetailsFailureSymbol(_ failure: MovieDetailsFailure) -> String
   case .notFound:
     "film.stack"
 
+  case .catalogNotReady:
+    "clock.arrow.circlepath"
+
   case .transportUnavailable, .namaUnavailable:
     "exclamationmark.triangle"
 
@@ -108,6 +152,9 @@ private func movieDetailsFailureMessage(_ failure: MovieDetailsFailure) -> Local
   case .notFound:
     "This Movie is no longer available in your library."
 
+  case .catalogNotReady:
+    "Movie Details will be available after Nama finishes preparing your library."
+
   case .transportUnavailable:
     "Check this device’s connection, then try again."
 
@@ -119,5 +166,18 @@ private func movieDetailsFailureMessage(_ failure: MovieDetailsFailure) -> Local
 
   case .namaUnavailable:
     "Nama could not load Movie Details. Try again."
+  }
+}
+
+private func movieDetailsRetryAfterSeconds(_ failure: MovieDetailsFailure) -> Int? {
+  switch failure {
+  case .catalogNotReady(let retryAfterSeconds):
+    retryAfterSeconds
+
+  case .namaUnavailable(_, let retryAfterSeconds):
+    retryAfterSeconds
+
+  case .notFound, .transportUnavailable, .authorizationUnavailable, .incompatible:
+    nil
   }
 }

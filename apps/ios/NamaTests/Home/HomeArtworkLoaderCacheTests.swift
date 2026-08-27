@@ -13,7 +13,7 @@ extension HomeArtworkLoaderTests {
     let loader = makeArtworkLoader(resolver: resolver)
     let authorization = try artworkAuthorization(generation: 6)
     let standardSize = artworkSize()
-    let largerSize = HomeArtworkSizeBucket.poster(
+    let largerSize = ArtworkSizeBucket.poster(
       displayWidth: ArtworkFixture.cardWidth,
       scale: ArtworkFixture.threeXScale
     )

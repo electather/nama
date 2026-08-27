@@ -22,7 +22,7 @@
       await Task.yield()
     }
 
-    static let loadedArtworkIdentity = HomeMediaIdentity("movie-loaded-artwork")
+    static let loadedArtworkIdentity = MediaIdentity("movie-loaded-artwork")
     static let artworkInspection = HomeSnapshot(
       movies: HomeShelf(
         identity: HomeShelfIdentity("movies"),
@@ -99,21 +99,21 @@
 
     private static func item(
       identity: String,
-      kind: HomeMediaKind,
+      kind: MediaKind,
       title: String,
       playable: Bool = true,
-      textPresence: HomeArtworkTextPresence = .unknown
-    ) -> HomeMediaSummary {
-      let posterArtwork = HomeArtworkReference(
-        identity: HomeArtworkIdentity("artwork-\(identity)"),
+      textPresence: ArtworkTextPresence = .unknown
+    ) -> MediaSummary {
+      let posterArtwork = ArtworkReference(
+        identity: ArtworkIdentity("artwork-\(identity)"),
         role: .poster,
         width: posterWidth,
         height: posterHeight,
         locale: nil,
         textPresence: textPresence
       )
-      return HomeMediaSummary(
-        identity: HomeMediaIdentity(identity),
+      return MediaSummary(
+        identity: MediaIdentity(identity),
         kind: kind,
         title: title,
         releaseYear: releaseYear,
@@ -123,13 +123,13 @@
         artwork: [posterArtwork],
         playability: playable ? .playable : .temporarilyUnavailable,
         defaultSource: playable
-          ? HomeSourceSummary(
-            identity: HomeSourceIdentity("source-\(identity)"),
+          ? MediaSourceSummary(
+            identity: MediaSourceIdentity("source-\(identity)"),
             label: "4K HDR",
             isDefault: true,
             availability: .available,
             container: "mkv",
-            videoQuality: HomeVideoQuality(
+            videoQuality: MediaVideoQuality(
               codec: "hevc",
               width: videoWidth,
               height: videoHeight,

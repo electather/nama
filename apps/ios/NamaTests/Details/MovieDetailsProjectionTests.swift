@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import Nama
@@ -10,11 +11,9 @@ struct MovieDetailsProjectionTests {
     let selection = movieDetailsSelection(identity: "movie-projection", title: "Projection Movie")
     let cast = (0..<MovieDetailsFeatureFixture.castCount).map { index in
       MovieCredit(
-        identity: MovieCreditIdentity(index + 1),
         name: "Actor \(index)",
         role: .actor,
         characterName: "Character \(index)",
-        portraitArtwork: nil
       )
     }
     let credits = movieProjectionCredits(cast: cast)
@@ -39,14 +38,14 @@ struct MovieDetailsProjectionTests {
         == cast.prefix(MovieDetailsFeatureFixture.initialCastLimit).map(\.name)
     )
     #expect(details.credits == credits)
-    #expect(details.preferredPosterArtwork?.identity == HomeArtworkIdentity("poster-textless"))
-    #expect(details.preferredBackdropArtwork?.identity == HomeArtworkIdentity("backdrop-textless"))
+    #expect(details.preferredPosterArtwork?.identity == ArtworkIdentity("poster-textless"))
+    #expect(details.preferredBackdropArtwork?.identity == ArtworkIdentity("backdrop-textless"))
     #expect(movieDetailsFixture(selection: selection).preferredBackdropArtwork == nil)
   }
 
   @Test("Details backdrop requests preserve a sixteen-by-nine size")
   func backdropSizeBucket() {
-    let bucket = HomeArtworkSizeBucket.backdrop(
+    let bucket = ArtworkSizeBucket.backdrop(
       displayWidth: MovieDetailsFeatureFixture.backdropDisplayWidth,
       scale: MovieDetailsFeatureFixture.backdropDisplayScale
     )
@@ -75,6 +74,26 @@ struct MovieDetailsProjectionTests {
       )
     )
     #expect(movieDetailsCanRefresh(.content(details)))
+    #expect(
+      !movieDetailsCanRetryUnavailableSource(
+        .refreshFailed(details, .authorizationUnavailable)
+      )
+    )
+    #expect(
+      movieDetailsCanRetryUnavailableSource(
+        .refreshFailed(details, .transportUnavailable)
+      )
+    )
+  }
+
+  @Test("metadata lists follow the active locale")
+  func metadataListsFollowLocale() {
+    #expect(
+      movieDetailsFormattedList(
+        ["Ada", "Wes", "Sam"],
+        locale: Locale(identifier: "en_US")
+      ) == "Ada, Wes, and Sam"
+    )
   }
 }
 
@@ -82,21 +101,17 @@ private func movieProjectionCredits(cast: [MovieCredit]) -> [MovieCredit] {
   var credits: [MovieCredit] = []
   credits.append(
     MovieCredit(
-      identity: MovieCreditIdentity(0),
       name: "Ada Director",
       role: .director,
       characterName: nil,
-      portraitArtwork: nil
     )
   )
   credits.append(contentsOf: cast)
   credits.append(
     MovieCredit(
-      identity: MovieCreditIdentity(MovieDetailsFeatureFixture.castCount + 1),
       name: "Wes Writer",
       role: .writer,
       characterName: nil,
-      portraitArtwork: nil
     )
   )
   return credits

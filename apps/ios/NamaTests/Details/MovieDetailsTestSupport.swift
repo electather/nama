@@ -72,8 +72,8 @@ actor MissingMovieDetailsArtworkLoader: HomeArtworkLoading {
   }
 
   func image(
-    for _: HomeArtworkReference,
-    size _: HomeArtworkSizeBucket,
+    for _: ArtworkReference,
+    size _: ArtworkSizeBucket,
     authorization _: HomeAuthorizationIdentity
   ) -> HomeArtworkPresentation? {
     callCount += 1
@@ -93,8 +93,8 @@ actor ManualMovieDetailsArtworkLoader: HomeArtworkLoading {
   }
 
   func image(
-    for _: HomeArtworkReference,
-    size _: HomeArtworkSizeBucket,
+    for _: ArtworkReference,
+    size _: ArtworkSizeBucket,
     authorization _: HomeAuthorizationIdentity
   ) async -> HomeArtworkPresentation? {
     await withCheckedContinuation { continuation in
@@ -108,7 +108,7 @@ actor ManualMovieDetailsArtworkLoader: HomeArtworkLoading {
 }
 
 func movieDetailsSelection(identity: String, title: String) -> MovieDetailsSelection {
-  MovieDetailsSelection(identity: HomeMediaIdentity(identity), title: title)
+  MovieDetailsSelection(identity: MediaIdentity(identity), title: title)
 }
 
 func movieDetailsAuthorization(generation: UInt64) throws -> HomeAuthorizationIdentity {
@@ -121,9 +121,9 @@ func movieDetailsAuthorization(generation: UInt64) throws -> HomeAuthorizationId
 
 func movieDetailsFixture(
   selection: MovieDetailsSelection,
-  playability: HomePlayability = .playable,
+  playability: MediaPlayability = .playable,
   credits: [MovieCredit] = movieDetailsDefaultCredits(),
-  artwork: [HomeArtworkReference] = []
+  artwork: [ArtworkReference] = []
 ) -> MovieDetails {
   MovieDetails(
     identity: selection.identity,
@@ -140,8 +140,8 @@ func movieDetailsFixture(
     artwork: artwork,
     playability: playability,
     defaultSource: playability == .playable
-      ? HomeSourceSummary(
-        identity: HomeSourceIdentity("source-default"),
+      ? MediaSourceSummary(
+        identity: MediaSourceIdentity("source-default"),
         label: "4K HDR",
         isDefault: true,
         availability: .available,
@@ -155,11 +155,11 @@ func movieDetailsFixture(
 
 func movieArtwork(
   identity: String,
-  role: HomeArtworkRole,
-  textPresence: HomeArtworkTextPresence
-) -> HomeArtworkReference {
-  HomeArtworkReference(
-    identity: HomeArtworkIdentity(identity),
+  role: ArtworkRole,
+  textPresence: ArtworkTextPresence
+) -> ArtworkReference {
+  ArtworkReference(
+    identity: ArtworkIdentity(identity),
     role: role,
     width: nil,
     height: nil,
@@ -171,18 +171,14 @@ func movieArtwork(
 private func movieDetailsDefaultCredits() -> [MovieCredit] {
   [
     MovieCredit(
-      identity: MovieCreditIdentity(0),
       name: "Ada Director",
       role: .director,
       characterName: nil,
-      portraitArtwork: nil
     ),
     MovieCredit(
-      identity: MovieCreditIdentity(1),
       name: "Sam Actor",
       role: .actor,
       characterName: "The Traveler",
-      portraitArtwork: nil
     ),
   ]
 }

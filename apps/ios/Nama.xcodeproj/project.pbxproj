@@ -105,6 +105,8 @@
 		100000000000000000000103 /* MovieDetailsFeature+Artwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000103 /* MovieDetailsFeature+Artwork.swift */; };
 		100000000000000000000104 /* MovieDetailsPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000104 /* MovieDetailsPreviewFixtures.swift */; };
 		100000000000000000000105 /* MovieDetailsArtworkFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000105 /* MovieDetailsArtworkFeatureTests.swift */; };
+		100000000000000000000116 /* MediaModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000116 /* MediaModels.swift */; };
+		100000000000000000000117 /* NamaLibraryClient+MediaMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000117 /* NamaLibraryClient+MediaMapping.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -218,6 +220,8 @@
 		200000000000000000000103 /* MovieDetailsFeature+Artwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MovieDetailsFeature+Artwork.swift"; sourceTree = "<group>"; };
 		200000000000000000000104 /* MovieDetailsPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovieDetailsPreviewFixtures.swift; sourceTree = "<group>"; };
 		200000000000000000000105 /* MovieDetailsArtworkFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovieDetailsArtworkFeatureTests.swift; sourceTree = "<group>"; };
+		200000000000000000000116 /* MediaModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaModels.swift; sourceTree = "<group>"; };
+		200000000000000000000117 /* NamaLibraryClient+MediaMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaLibraryClient+MediaMapping.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -253,6 +257,7 @@
 			isa = PBXGroup;
 			children = (
 				500000000000000000000009 /* OAuthAuthorization */,
+				500000000000000000000017 /* Media */,
 				500000000000000000000013 /* Home */,
 				500000000000000000000016 /* Details */,
 				500000000000000000000010 /* Playback */,
@@ -453,6 +458,15 @@
 			path = Details;
 			sourceTree = "<group>";
 		};
+		500000000000000000000017 /* Media */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000116 /* MediaModels.swift */,
+				200000000000000000000117 /* NamaLibraryClient+MediaMapping.swift */,
+			);
+			path = Media;
+			sourceTree = "<group>";
+		};
 		500000000000000000000005 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -603,6 +617,8 @@
 				100000000000000000000039 /* OAuthAuthorizationFeatureCommit.swift in Sources */,
 				100000000000000000000040 /* OAuthAuthorizationFeatureFlow.swift in Sources */,
 				100000000000000000000078 /* OAuthAuthorizationFeatureDiscard.swift in Sources */,
+				100000000000000000000116 /* MediaModels.swift in Sources */,
+				100000000000000000000117 /* NamaLibraryClient+MediaMapping.swift in Sources */,
 				100000000000000000000071 /* HomeModels.swift in Sources */,
 				100000000000000000000072 /* HomeFeature.swift in Sources */,
 				100000000000000000000073 /* HomeView.swift in Sources */,

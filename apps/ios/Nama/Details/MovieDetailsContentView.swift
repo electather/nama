@@ -1,9 +1,11 @@
+import Foundation
 import SwiftUI
 
 struct MovieDetailsContentView: View {
   let details: MovieDetails
   let isRefreshing: Bool
   let refreshFailure: MovieDetailsFailure?
+  let canRetryUnavailableSource: Bool
   let refresh: @MainActor () -> Void
   let play: @MainActor () -> Void
   let reauthorize: @MainActor () async -> Void
@@ -15,6 +17,7 @@ struct MovieDetailsContentView: View {
         details: details,
         isRefreshing: isRefreshing,
         refreshFailure: refreshFailure,
+        canRetryUnavailableSource: canRetryUnavailableSource,
         refresh: refresh,
         play: play,
         reauthorize: reauthorize,
@@ -30,6 +33,7 @@ private struct MovieDetailsContentSections: View {
   let details: MovieDetails
   let isRefreshing: Bool
   let refreshFailure: MovieDetailsFailure?
+  let canRetryUnavailableSource: Bool
   let refresh: @MainActor () -> Void
   let play: @MainActor () -> Void
   let reauthorize: @MainActor () async -> Void
@@ -47,6 +51,7 @@ private struct MovieDetailsContentSections: View {
       MovieDetailsPlayabilityView(
         playability: details.playability,
         isRefreshing: isRefreshing,
+        canRetryUnavailableSource: canRetryUnavailableSource,
         play: play,
         retry: refresh
       )
@@ -139,7 +144,7 @@ private struct MovieBackdropView: View {
   @State private var displayWidth = 0.0
 
   let title: String
-  let reference: HomeArtworkIdentity?
+  let reference: ArtworkIdentity?
   let presentation: HomeArtworkPresentation?
   let artwork: MovieDetailsArtworkPresentationAccess
 
@@ -179,7 +184,7 @@ private struct MoviePosterView: View {
   @ScaledMetric(relativeTo: .title) private var posterWidth = MovieDetailsLayout.posterWidth
 
   let title: String
-  let reference: HomeArtworkIdentity?
+  let reference: ArtworkIdentity?
   let presentation: HomeArtworkPresentation?
   let artwork: MovieDetailsArtworkPresentationAccess
 
@@ -300,8 +305,9 @@ private struct MovieDetailsConciseMetadataView: View {
 }
 
 private struct MovieDetailsPlayabilityView: View {
-  let playability: HomePlayability
+  let playability: MediaPlayability
   let isRefreshing: Bool
+  let canRetryUnavailableSource: Bool
   let play: @MainActor () -> Void
   let retry: @MainActor () -> Void
 
@@ -318,9 +324,11 @@ private struct MovieDetailsPlayabilityView: View {
           .font(.headline)
         Text("The default source cannot be reached right now.")
           .foregroundStyle(.secondary)
-        Button("Retry", action: retry)
-          .buttonStyle(.borderedProminent)
-          .disabled(isRefreshing)
+        if canRetryUnavailableSource {
+          Button("Retry", action: retry)
+            .buttonStyle(.borderedProminent)
+            .disabled(isRefreshing)
+        }
       }
 
     case .noAvailableSource, .unknown:
@@ -357,6 +365,8 @@ private struct MovieDetailsDescriptionView: View {
 }
 
 private struct MovieDetailsSupportingMetadataView: View {
+  @Environment(\.locale) private var locale
+
   let genres: [String]
   let studios: [String]
 
@@ -367,13 +377,23 @@ private struct MovieDetailsSupportingMetadataView: View {
           .font(.title2.bold())
           .accessibilityAddTraits(.isHeader)
         if !genres.isEmpty {
-          LabeledContent("Genres", value: genres.joined(separator: ", "))
+          LabeledContent(
+            "Genres",
+            value: movieDetailsFormattedList(genres, locale: locale)
+          )
         }
         if !studios.isEmpty {
-          LabeledContent("Studios", value: studios.joined(separator: ", "))
+          LabeledContent(
+            "Studios",
+            value: movieDetailsFormattedList(studios, locale: locale)
+          )
         }
       }
       .frame(maxWidth: MovieDetailsLayout.proseMaximumWidth, alignment: .leading)
     }
   }
+}
+
+func movieDetailsFormattedList(_ values: [String], locale: Locale) -> String {
+  values.formatted(.list(type: .and).locale(locale))
 }

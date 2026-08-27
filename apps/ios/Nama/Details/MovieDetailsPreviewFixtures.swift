@@ -4,7 +4,6 @@
   private enum MovieDetailsPreviewFixtures {
     static let backdropHeight: UInt32 = 1_080
     static let backdropWidth: UInt32 = 1_920
-    static let castIdentityOffset = 2
     static let castCount = 10
     static let longSynopsisRepetitions = 40
     static let posterHeight: UInt32 = 1_500
@@ -13,7 +12,7 @@
     static let runtimeSeconds: Int64 = 7_200
 
     static let selection = MovieDetailsSelection(
-      identity: HomeMediaIdentity("movie-preview"),
+      identity: MediaIdentity("movie-preview"),
       title: "The Canonical Movie"
     )
 
@@ -27,15 +26,15 @@
 
     static func details(
       title: String = selection.title,
-      playability: HomePlayability = .playable,
+      playability: MediaPlayability = .playable,
       includesArtwork: Bool = true,
       synopsis: String? = "A calm provider-neutral synopsis for the selected canonical Movie."
     ) -> MovieDetails {
-      let source: HomeSourceSummary?
+      let source: MediaSourceSummary?
       switch playability {
       case .playable:
-        source = HomeSourceSummary(
-          identity: HomeSourceIdentity("source-preview"),
+        source = MediaSourceSummary(
+          identity: MediaSourceIdentity("source-preview"),
           label: "4K HDR",
           isDefault: true,
           availability: .available,
@@ -45,8 +44,8 @@
         )
 
       case .temporarilyUnavailable:
-        source = HomeSourceSummary(
-          identity: HomeSourceIdentity("source-preview"),
+        source = MediaSourceSummary(
+          identity: MediaSourceIdentity("source-preview"),
           label: "4K HDR",
           isDefault: true,
           availability: .providerUnavailable,
@@ -83,18 +82,18 @@
       )
     }
 
-    private static var artwork: [HomeArtworkReference] {
+    private static var artwork: [ArtworkReference] {
       [
-        HomeArtworkReference(
-          identity: HomeArtworkIdentity("backdrop-preview"),
+        ArtworkReference(
+          identity: ArtworkIdentity("backdrop-preview"),
           role: .backdrop,
           width: backdropWidth,
           height: backdropHeight,
           locale: nil,
           textPresence: .textless
         ),
-        HomeArtworkReference(
-          identity: HomeArtworkIdentity("poster-preview"),
+        ArtworkReference(
+          identity: ArtworkIdentity("poster-preview"),
           role: .poster,
           width: posterWidth,
           height: posterHeight,
@@ -107,27 +106,21 @@
     private static var credits: [MovieCredit] {
       let cast = (0..<castCount).map { index in
         MovieCredit(
-          identity: MovieCreditIdentity(index + castIdentityOffset),
           name: "Cast Member \(index + 1)",
           role: .actor,
           characterName: "Character \(index + 1)",
-          portraitArtwork: nil
         )
       }
       return [
         MovieCredit(
-          identity: MovieCreditIdentity(0),
           name: "Ada Director",
           role: .director,
           characterName: nil,
-          portraitArtwork: nil
         ),
         MovieCredit(
-          identity: MovieCreditIdentity(1),
           name: "Wes Writer",
           role: .writer,
           characterName: nil,
-          portraitArtwork: nil
         ),
       ] + cast
     }

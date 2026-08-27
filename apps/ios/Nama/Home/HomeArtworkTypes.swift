@@ -19,8 +19,8 @@ nonisolated struct HomeArtworkResolvedLocator: Equatable, Sendable {
 
 nonisolated protocol HomeArtworkResolving: Sendable {
   func resolve(
-    _ reference: HomeArtworkReference,
-    size: HomeArtworkSizeBucket,
+    _ reference: ArtworkReference,
+    size: ArtworkSizeBucket,
     authorization: HomeAuthorizationIdentity
   ) async throws -> HomeArtworkResolvedLocator
 }
@@ -43,8 +43,8 @@ nonisolated protocol HomeArtworkLoading: Sendable {
   func authorizationDidChange(to authorization: HomeAuthorizationIdentity) async
 
   func image(
-    for reference: HomeArtworkReference,
-    size: HomeArtworkSizeBucket,
+    for reference: ArtworkReference,
+    size: ArtworkSizeBucket,
     authorization: HomeAuthorizationIdentity
   ) async -> HomeArtworkPresentation?
 }
