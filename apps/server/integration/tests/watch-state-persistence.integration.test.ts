@@ -27,24 +27,55 @@ const ACTIVITY_OCCURRED_AT = new Date("2026-08-27T14:15:16.789Z");
 const EQUAL_ACTIVITY_OCCURRED_AT = new Date("2026-08-27T15:16:17.890Z");
 const UPDATED_ACTIVITY_OCCURRED_AT = new Date("2026-08-27T16:17:18.901Z");
 const STALE_ACTIVITY_OCCURRED_AT = new Date("2026-08-27T17:18:19.012Z");
+const INITIAL_ACTIVITY_POSITION_SECONDS = 321n;
+const WATCHED_STATUS_ACTION_POSITION_SECONDS = 322n;
+const PROVIDER_REPLICA_POSITION_SECONDS = 323n;
 
 type DatabaseService = Database["Service"];
+const NAMA_PLAYBACK_ORIGIN: CanonicalWatchStateTarget["activity"]["origin"] = {
+  kind: "nama_playback",
+};
+const NAMA_WATCHED_STATUS_ACTION_ORIGIN: CanonicalWatchStateTarget["activity"]["origin"] = {
+  kind: "nama_watched_status_action",
+};
+const PROVIDER_REPLICA_ITEM_REFERENCE = "watch-state-provider-item-reference";
+const PROVIDER_REPLICA_ORIGIN: CanonicalWatchStateTarget["activity"]["origin"] = {
+  kind: "provider_replica",
+  providerInstanceId: PROVIDER_INSTANCE_ID,
+  providerItemReference: PROVIDER_REPLICA_ITEM_REFERENCE,
+};
+
+interface ActivityOriginCommitInput {
+  readonly canonicalItemId: string;
+  readonly expectedVersion?: bigint | undefined;
+  readonly origin: CanonicalWatchStateTarget["activity"]["origin"];
+  readonly positionSeconds: bigint;
+  readonly sourceId: string;
+}
+
+interface ActivityOriginReplacementInput {
+  readonly current: CanonicalWatchState;
+  readonly expectedOrigin: CanonicalWatchStateTarget["activity"]["origin"];
+  readonly nextOrigin: CanonicalWatchStateTarget["activity"]["origin"];
+  readonly positionSeconds: bigint;
+  readonly sourceId: string;
+}
 
 const LOCAL_STATE_ACTIVITY: CanonicalWatchStateTarget["activity"] = {
   occurredAt: ACTIVITY_OCCURRED_AT,
-  origin: "nama",
+  origin: NAMA_WATCHED_STATUS_ACTION_ORIGIN,
   reliability: "reliable",
   semantics: "state_changed",
 };
 const PROVIDER_HEURISTIC_ACTIVITY: CanonicalWatchStateTarget["activity"] = {
   occurredAt: ACTIVITY_OCCURRED_AT,
-  origin: "provider",
+  origin: PROVIDER_REPLICA_ORIGIN,
   reliability: "heuristic",
   semantics: "unknown",
 };
 const PROVIDER_PLAYBACK_ACTIVITY: CanonicalWatchStateTarget["activity"] = {
   occurredAt: ACTIVITY_OCCURRED_AT,
-  origin: "provider",
+  origin: PROVIDER_REPLICA_ORIGIN,
   reliability: "reliable",
   semantics: "playback_started",
 };
@@ -72,17 +103,68 @@ const observeMovieWithSource = (database: DatabaseService) =>
 const completeTarget = (canonicalItemId: string, sourceId: string): CanonicalWatchStateTarget => ({
   activity: {
     occurredAt: ACTIVITY_OCCURRED_AT,
-    origin: "provider",
+    origin: PROVIDER_REPLICA_ORIGIN,
     reliability: "reliable",
     semantics: "state_changed",
   },
   canonicalItemId,
   duration: { nanoseconds: 987_654_321, seconds: 7200n },
   lastSourceId: sourceId,
-  position: { nanoseconds: 123_456_789, seconds: 321n },
+  position: { nanoseconds: 123_456_789, seconds: INITIAL_ACTIVITY_POSITION_SECONDS },
   principalId: ADMINISTRATOR_ID,
   watched: true,
 });
+
+const loadedWatchState = (database: DatabaseService, canonicalItemId: string) =>
+  Effect.gen(function* loadPersistedCanonicalWatchState() {
+    const state = yield* database.watchState.load({
+      canonicalItemId,
+      principalId: ADMINISTRATOR_ID,
+    });
+    if (state === undefined) {
+      return yield* Effect.die("canonical Watch state was not persisted");
+    }
+    return state;
+  });
+
+const expectActivityOrigin = (
+  state: CanonicalWatchState,
+  origin: CanonicalWatchStateTarget["activity"]["origin"],
+): void => {
+  expect(state.activity.origin).toEqual(origin);
+};
+
+const commitActivityOrigin = (database: DatabaseService, input: ActivityOriginCommitInput) =>
+  Effect.gen(function* commitCanonicalWatchStateWithContractOrigin() {
+    const state = committedState(
+      yield* database.watchState.compareAndCommit({
+        expectedVersion: input.expectedVersion,
+        target: {
+          ...completeTarget(input.canonicalItemId, input.sourceId),
+          activity: {
+            occurredAt: ACTIVITY_OCCURRED_AT,
+            origin: input.origin,
+            reliability: "reliable",
+            semantics: "state_changed",
+          },
+          position: { nanoseconds: ZERO_NANOSECONDS, seconds: input.positionSeconds },
+        },
+      }),
+    );
+    expectActivityOrigin(state, input.origin);
+    expect(state.position).toEqual({
+      nanoseconds: ZERO_NANOSECONDS,
+      seconds: input.positionSeconds,
+    });
+
+    const loaded = yield* loadedWatchState(database, input.canonicalItemId);
+    expectActivityOrigin(loaded, input.origin);
+    expect(loaded.position).toEqual({
+      nanoseconds: ZERO_NANOSECONDS,
+      seconds: input.positionSeconds,
+    });
+    return loaded;
+  });
 
 const expectCompleteState = (
   state: CanonicalWatchState,
@@ -92,14 +174,14 @@ const expectCompleteState = (
   expect(state).toMatchObject({
     activity: {
       occurredAt: ACTIVITY_OCCURRED_AT,
-      origin: "provider",
+      origin: PROVIDER_REPLICA_ORIGIN,
       reliability: "reliable",
       semantics: "state_changed",
     },
     canonicalItemId,
     duration: { nanoseconds: 987_654_321, seconds: 7200n },
     lastSourceId: sourceId,
-    position: { nanoseconds: 123_456_789, seconds: 321n },
+    position: { nanoseconds: 123_456_789, seconds: INITIAL_ACTIVITY_POSITION_SECONDS },
     principalId: ADMINISTRATOR_ID,
     version: 1n,
     watched: true,
@@ -153,6 +235,73 @@ it.live("round-trips one accepted canonical Watch state after database reconstru
   withIsolatedDatabase(roundTripScenario),
 );
 
+const commitInitialActivityOrigin = (database: DatabaseService) =>
+  Effect.gen(function* commitInitialContractActivityOrigin() {
+    const { movie, sourceId } = yield* observeMovieWithSource(database);
+    const state = yield* commitActivityOrigin(database, {
+      canonicalItemId: movie.id,
+      expectedVersion: undefined,
+      origin: NAMA_PLAYBACK_ORIGIN,
+      positionSeconds: INITIAL_ACTIVITY_POSITION_SECONDS,
+      sourceId,
+    });
+    return { sourceId, state };
+  });
+
+const replaceActivityOrigin = (database: DatabaseService, input: ActivityOriginReplacementInput) =>
+  Effect.gen(function* replacePersistedActivityOrigin() {
+    const reconstructed = yield* loadedWatchState(database, input.current.canonicalItemId);
+    expectActivityOrigin(reconstructed, input.expectedOrigin);
+    return yield* commitActivityOrigin(database, {
+      canonicalItemId: input.current.canonicalItemId,
+      expectedVersion: input.current.version,
+      origin: input.nextOrigin,
+      positionSeconds: input.positionSeconds,
+      sourceId: input.sourceId,
+    });
+  });
+
+const activityOriginRoundTripCommits = (databaseUrl: string) =>
+  Effect.gen(function* commitContractActivityOriginsAcrossDatabaseReconstruction() {
+    const initial = yield* useDatabase(
+      databaseUrl,
+      productionMigrations,
+      commitInitialActivityOrigin,
+    );
+    const watchedStatusAction = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+      replaceActivityOrigin(database, {
+        current: initial.state,
+        expectedOrigin: NAMA_PLAYBACK_ORIGIN,
+        nextOrigin: NAMA_WATCHED_STATUS_ACTION_ORIGIN,
+        positionSeconds: WATCHED_STATUS_ACTION_POSITION_SECONDS,
+        sourceId: initial.sourceId,
+      }),
+    );
+    return yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+      replaceActivityOrigin(database, {
+        current: watchedStatusAction,
+        expectedOrigin: NAMA_WATCHED_STATUS_ACTION_ORIGIN,
+        nextOrigin: PROVIDER_REPLICA_ORIGIN,
+        positionSeconds: PROVIDER_REPLICA_POSITION_SECONDS,
+        sourceId: initial.sourceId,
+      }),
+    );
+  });
+
+const activityOriginRoundTripScenario = (databaseUrl: string) =>
+  Effect.gen(function* roundTripContractActivityOriginsAfterDatabaseReconstruction() {
+    yield* initializeWatchStateDatabase(databaseUrl);
+    const providerReplica = yield* activityOriginRoundTripCommits(databaseUrl);
+    const reconstructed = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+      loadedWatchState(database, providerReplica.canonicalItemId),
+    );
+    expect(reconstructed.activity.origin).toEqual(PROVIDER_REPLICA_ORIGIN);
+  });
+
+it.live("round-trips complete Activity origins after database reconstruction", () =>
+  withIsolatedDatabase(activityOriginRoundTripScenario),
+);
+
 const confirmEqualTarget = (
   database: DatabaseService,
   initial: CanonicalWatchState,
@@ -167,7 +316,7 @@ const confirmEqualTarget = (
         ...target,
         activity: {
           occurredAt: EQUAL_ACTIVITY_OCCURRED_AT,
-          origin: "nama",
+          origin: NAMA_PLAYBACK_ORIGIN,
           reliability: "heuristic",
           semantics: "playback_completed",
         },
@@ -189,7 +338,7 @@ const commitChangedTarget = (
       target: {
         activity: {
           occurredAt: UPDATED_ACTIVITY_OCCURRED_AT,
-          origin: "nama",
+          origin: NAMA_WATCHED_STATUS_ACTION_ORIGIN,
           reliability: "reliable",
           semantics: "state_changed",
         },
@@ -205,7 +354,7 @@ const commitChangedTarget = (
     expect(changed).toMatchObject({
       activity: {
         occurredAt: UPDATED_ACTIVITY_OCCURRED_AT,
-        origin: "nama",
+        origin: NAMA_WATCHED_STATUS_ACTION_ORIGIN,
         reliability: "reliable",
         semantics: "state_changed",
       },
@@ -236,7 +385,7 @@ const confirmStaleTarget = (
         ...target,
         activity: {
           occurredAt: STALE_ACTIVITY_OCCURRED_AT,
-          origin: "provider",
+          origin: PROVIDER_REPLICA_ORIGIN,
           reliability: "reliable",
           semantics: "playback_started",
         },
@@ -384,7 +533,7 @@ it.live("owns sparse canonical Watch state independently by principal and playab
 const nonPlayableTarget = (canonicalItemId: string): CanonicalWatchStateTarget => ({
   activity: {
     occurredAt: ACTIVITY_OCCURRED_AT,
-    origin: "provider",
+    origin: NAMA_WATCHED_STATUS_ACTION_ORIGIN,
     reliability: "reliable",
     semantics: "state_changed",
   },

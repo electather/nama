@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import type { SQLWrapper } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   bigint,
@@ -18,7 +19,15 @@ import { user } from "./auth-schema.ts";
 import { canonicalItem } from "./catalog-item-schema.ts";
 import type { databaseSchema } from "./schema.ts";
 
-type WatchActivityOrigin = "nama" | "provider";
+type PlayableCanonicalItemKind = "episode" | "movie";
+type WatchActivityOrigin =
+  | { readonly kind: "nama_playback" }
+  | { readonly kind: "nama_watched_status_action" }
+  | {
+      readonly kind: "provider_replica";
+      readonly providerInstanceId: string;
+      readonly providerItemReference: string;
+    };
 type WatchActivityReliability = "heuristic" | "reliable";
 type WatchActivitySemantics =
   | "playback_completed"
@@ -26,15 +35,46 @@ type WatchActivitySemantics =
   | "state_changed"
   | "unknown";
 
+type WatchActivityOriginColumns = Readonly<{
+  activityOriginKind: SQLWrapper;
+  activityProviderInstanceId: SQLWrapper;
+  activityProviderItemReference: SQLWrapper;
+}>;
+
+const activityOriginChecks = (table: WatchActivityOriginColumns) => [
+  check(
+    "canonical_watch_state_activity_origin_kind_check",
+    sql`${table.activityOriginKind} in ('nama_playback', 'nama_watched_status_action', 'provider_replica')`,
+  ),
+  check(
+    "canonical_watch_state_activity_provider_identity_pair_check",
+    sql`(${table.activityProviderInstanceId} is null) = (${table.activityProviderItemReference} is null)`,
+  ),
+  check(
+    "canonical_watch_state_activity_provider_identity_origin_check",
+    sql`(${table.activityOriginKind} = 'provider_replica') = (${table.activityProviderInstanceId} is not null)`,
+  ),
+  check(
+    "canonical_watch_state_activity_provider_instance_id_check",
+    sql`${table.activityProviderInstanceId} is null or char_length(${table.activityProviderInstanceId}) between 1 and 256`,
+  ),
+  check(
+    "canonical_watch_state_activity_provider_item_reference_check",
+    sql`${table.activityProviderItemReference} is null or char_length(${table.activityProviderItemReference}) between 1 and 256`,
+  ),
+];
+
 const canonicalWatchState = pgTable(
   "canonical_watch_state",
   {
     activityOccurredAt: timestamp("activity_occurred_at", { withTimezone: true }).notNull(),
-    activityOrigin: text("activity_origin").$type<WatchActivityOrigin>().notNull(),
+    activityOriginKind: text("activity_origin_kind").$type<WatchActivityOrigin["kind"]>().notNull(),
+    activityProviderInstanceId: text("activity_provider_instance_id"),
+    activityProviderItemReference: text("activity_provider_item_reference"),
     activityReliability: text("activity_reliability").$type<WatchActivityReliability>().notNull(),
     activitySemantics: text("activity_semantics").$type<WatchActivitySemantics>().notNull(),
     canonicalItemId: uuid("canonical_item_id").notNull(),
-    canonicalItemKind: text("canonical_item_kind").notNull(),
+    canonicalItemKind: text("canonical_item_kind").$type<PlayableCanonicalItemKind>().notNull(),
     committedAt: timestamp("committed_at", { withTimezone: true }).defaultNow().notNull(),
     durationNanoseconds: integer("duration_nanoseconds"),
     durationSeconds: bigint("duration_seconds", { mode: "bigint" }),
@@ -74,10 +114,7 @@ const canonicalWatchState = pgTable(
       "canonical_watch_state_duration_check",
       sql`${table.durationSeconds} is null or (${table.durationSeconds} >= 0 and ${table.durationNanoseconds} between 0 and 999999999)`,
     ),
-    check(
-      "canonical_watch_state_activity_origin_check",
-      sql`${table.activityOrigin} in ('nama', 'provider')`,
-    ),
+    ...activityOriginChecks(table),
     check(
       "canonical_watch_state_activity_reliability_check",
       sql`${table.activityReliability} in ('reliable', 'heuristic')`,
@@ -157,6 +194,7 @@ export {
   type CanonicalWatchStateKey,
   type CanonicalWatchStateTarget,
   type CompareAndCommitCanonicalWatchStateInput,
+  type PlayableCanonicalItemKind,
   type WatchActivityOrigin,
   type WatchActivityReliability,
   type WatchActivitySemantics,

@@ -89,5 +89,4 @@ export * from "./catalog-scan-schema.ts";
 export * from "./catalog-source-schema.ts";
 export * from "./catalog-track-schema.ts";
 export * from "./provider-schema.ts";
-export * from "./watch-state-model.ts";
-export { databaseSchema, generatedAuthenticationSchema, namaServerState };
+export { canonicalWatchState, databaseSchema, generatedAuthenticationSchema, namaServerState };

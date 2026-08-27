@@ -1,6 +1,8 @@
 CREATE TABLE "canonical_watch_state" (
 	"activity_occurred_at" timestamp with time zone NOT NULL,
-	"activity_origin" text NOT NULL,
+	"activity_origin_kind" text NOT NULL,
+	"activity_provider_instance_id" text,
+	"activity_provider_item_reference" text,
 	"activity_reliability" text NOT NULL,
 	"activity_semantics" text NOT NULL,
 	"canonical_item_id" uuid NOT NULL,
@@ -20,7 +22,11 @@ CREATE TABLE "canonical_watch_state" (
 	CONSTRAINT "canonical_watch_state_position_check" CHECK ("canonical_watch_state"."position_seconds" is null or ("canonical_watch_state"."position_seconds" >= 0 and "canonical_watch_state"."position_nanoseconds" between 0 and 999999999)),
 	CONSTRAINT "canonical_watch_state_duration_pair_check" CHECK (("canonical_watch_state"."duration_seconds" is null) = ("canonical_watch_state"."duration_nanoseconds" is null)),
 	CONSTRAINT "canonical_watch_state_duration_check" CHECK ("canonical_watch_state"."duration_seconds" is null or ("canonical_watch_state"."duration_seconds" >= 0 and "canonical_watch_state"."duration_nanoseconds" between 0 and 999999999)),
-	CONSTRAINT "canonical_watch_state_activity_origin_check" CHECK ("canonical_watch_state"."activity_origin" in ('nama', 'provider')),
+	CONSTRAINT "canonical_watch_state_activity_origin_kind_check" CHECK ("canonical_watch_state"."activity_origin_kind" in ('nama_playback', 'nama_watched_status_action', 'provider_replica')),
+	CONSTRAINT "canonical_watch_state_activity_provider_identity_pair_check" CHECK (("canonical_watch_state"."activity_provider_instance_id" is null) = ("canonical_watch_state"."activity_provider_item_reference" is null)),
+	CONSTRAINT "canonical_watch_state_activity_provider_identity_origin_check" CHECK (("canonical_watch_state"."activity_origin_kind" = 'provider_replica') = ("canonical_watch_state"."activity_provider_instance_id" is not null)),
+	CONSTRAINT "canonical_watch_state_activity_provider_instance_id_check" CHECK ("canonical_watch_state"."activity_provider_instance_id" is null or char_length("canonical_watch_state"."activity_provider_instance_id") between 1 and 256),
+	CONSTRAINT "canonical_watch_state_activity_provider_item_reference_check" CHECK ("canonical_watch_state"."activity_provider_item_reference" is null or char_length("canonical_watch_state"."activity_provider_item_reference") between 1 and 256),
 	CONSTRAINT "canonical_watch_state_activity_reliability_check" CHECK ("canonical_watch_state"."activity_reliability" in ('reliable', 'heuristic')),
 	CONSTRAINT "canonical_watch_state_activity_semantics_check" CHECK ("canonical_watch_state"."activity_semantics" in ('unknown', 'playback_started', 'playback_completed', 'state_changed')),
 	CONSTRAINT "canonical_watch_state_version_check" CHECK ("canonical_watch_state"."version" > 0)

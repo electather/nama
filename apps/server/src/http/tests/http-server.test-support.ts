@@ -17,6 +17,7 @@ import {
   unusedCatalogQueries,
 } from "../../database/tests/catalog-persistence.test-support.ts";
 import { unusedProviderPersistence } from "../../database/tests/provider-persistence.test-support.ts";
+import { unusedWatchStatePersistence } from "../../database/tests/watch-state-persistence.test-support.ts";
 import { RuntimeControl } from "../../lifecycle/runtime-control.ts";
 import { ProviderManagement } from "../../provider/provider-management.ts";
 import { HttpServer } from "../http-server.ts";
@@ -170,10 +171,7 @@ const makeDatabase = (
     checkReadiness,
     initialization,
     providers: unusedProviderPersistence,
-    watchState: {
-      compareAndCommit: () => Effect.die("unexpected Watch state commit"),
-      load: () => Effect.die("unexpected Watch state load"),
-    },
+    watchState: unusedWatchStatePersistence,
   });
 
 const makeHttpServerLayer = (emitStopping: (() => Effect.Effect<void>) | undefined) => {

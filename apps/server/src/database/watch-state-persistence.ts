@@ -9,49 +9,17 @@ import type {
   CanonicalWatchStateKey,
   CanonicalWatchStateTarget,
   CompareAndCommitCanonicalWatchStateInput,
+  PlayableCanonicalItemKind,
   WatchDuration,
   WatchStateDatabase,
-  WatchStatePersistenceFailure,
   WatchStateReader,
   WatchStateTransaction,
 } from "./watch-state-model.ts";
+import { activityOriginColumns, storedWatchState } from "./watch-state-persistence-private.ts";
 
 const FIRST_ROW = 0;
 const SINGLE_ROW_LIMIT = 1;
 const SQL_NULL = sql`null`;
-
-const storedDuration = (
-  seconds: bigint | null,
-  nanoseconds: number | null,
-): WatchDuration | undefined => {
-  if (seconds === null) {
-    if (nanoseconds !== null) {
-      throw new Error("stored Watch duration has nanoseconds without seconds");
-    }
-    return undefined;
-  }
-  if (nanoseconds === null) {
-    throw new Error("stored Watch duration has seconds without nanoseconds");
-  }
-  return { nanoseconds, seconds };
-};
-
-const storedWatchState = (row: typeof canonicalWatchState.$inferSelect): CanonicalWatchState => ({
-  activity: {
-    occurredAt: row.activityOccurredAt,
-    origin: row.activityOrigin,
-    reliability: row.activityReliability,
-    semantics: row.activitySemantics,
-  },
-  canonicalItemId: row.canonicalItemId,
-  committedAt: row.committedAt,
-  duration: storedDuration(row.durationSeconds, row.durationNanoseconds),
-  lastSourceId: row.lastSourceId ?? undefined,
-  position: storedDuration(row.positionSeconds, row.positionNanoseconds),
-  principalId: row.principalId,
-  version: row.version,
-  watched: row.watched,
-});
 
 const optionalDurationEquals = (
   stored: WatchDuration | undefined,
@@ -103,7 +71,7 @@ const loadCanonicalWatchState = async (
 const lockPlayableCanonicalItem = async (
   transaction: WatchStateTransaction,
   canonicalItemId: string,
-): Promise<"episode" | "movie"> => {
+): Promise<PlayableCanonicalItemKind> => {
   const rows = await transaction
     .select({ kind: canonicalItem.kind })
     .from(canonicalItem)
@@ -120,13 +88,13 @@ const lockPlayableCanonicalItem = async (
 const insertCanonicalWatchState = async (
   transaction: WatchStateTransaction,
   target: CanonicalWatchStateTarget,
-  canonicalItemKind: "episode" | "movie",
+  canonicalItemKind: PlayableCanonicalItemKind,
 ): Promise<CanonicalWatchState> => {
   const rows = await transaction
     .insert(canonicalWatchState)
     .values({
+      ...activityOriginColumns(target.activity.origin),
       activityOccurredAt: target.activity.occurredAt,
-      activityOrigin: target.activity.origin,
       activityReliability: target.activity.reliability,
       activitySemantics: target.activity.semantics,
       canonicalItemId: target.canonicalItemId,
@@ -164,6 +132,7 @@ const canonicalWatchStateUpdate = (target: CanonicalWatchStateTarget) => {
     position: targetPosition,
     watched,
   } = target;
+  const activityOrigin = activityOriginColumns(activity.origin);
   const duration = nullableDurationColumns(targetDuration);
   const position = nullableDurationColumns(targetPosition);
   let lastSourceId: string | typeof SQL_NULL = SQL_NULL;
@@ -171,8 +140,8 @@ const canonicalWatchStateUpdate = (target: CanonicalWatchStateTarget) => {
     lastSourceId = targetLastSourceId;
   }
   return {
+    ...activityOrigin,
     activityOccurredAt: activity.occurredAt,
-    activityOrigin: activity.origin,
     activityReliability: activity.reliability,
     activitySemantics: activity.semantics,
     committedAt: sql`transaction_timestamp()`,
@@ -212,7 +181,7 @@ const updateCanonicalWatchState = async (
 const commitAbsentCanonicalWatchState = async (
   transaction: WatchStateTransaction,
   input: CompareAndCommitCanonicalWatchStateInput,
-  canonicalItemKind: "episode" | "movie",
+  canonicalItemKind: PlayableCanonicalItemKind,
 ): Promise<CanonicalWatchStateCommitResult> => {
   if (input.expectedVersion !== undefined) {
     return { state: undefined, status: "stale" };
@@ -222,7 +191,7 @@ const commitAbsentCanonicalWatchState = async (
 };
 
 interface LoadedCanonicalWatchStateCommit {
-  readonly canonicalItemKind: "episode" | "movie";
+  readonly canonicalItemKind: PlayableCanonicalItemKind;
   readonly current: CanonicalWatchState | undefined;
   readonly input: CompareAndCommitCanonicalWatchStateInput;
   readonly transaction: WatchStateTransaction;
@@ -265,35 +234,25 @@ const compareAndCommitCanonicalWatchState = (
     });
   });
 
-interface WatchStatePersistence {
-  readonly compareAndCommit: (
-    input: CompareAndCommitCanonicalWatchStateInput,
-  ) => Effect.Effect<CanonicalWatchStateCommitResult, WatchStatePersistenceFailure>;
-  readonly load: (
-    key: CanonicalWatchStateKey,
-  ) => Effect.Effect<CanonicalWatchState | undefined, WatchStatePersistenceFailure>;
-}
-
-const makeWatchStatePersistence = (database: WatchStateDatabase): WatchStatePersistence => ({
-  compareAndCommit: (input) =>
+const makeWatchStatePersistence = (database: WatchStateDatabase) => ({
+  compareAndCommit: (input: CompareAndCommitCanonicalWatchStateInput) =>
     Effect.tryPromise({
       catch: watchStatePersistenceFailure,
       try: () => compareAndCommitCanonicalWatchState(database, input),
     }),
-  load: (key) =>
+  load: (key: CanonicalWatchStateKey) =>
     Effect.tryPromise({
       catch: watchStatePersistenceFailure,
       try: () => loadCanonicalWatchState(database, key),
     }),
 });
 
+type WatchStatePersistence = ReturnType<typeof makeWatchStatePersistence>;
+
 export {
   type CanonicalWatchState,
   type CanonicalWatchStateCommitResult,
-  type CanonicalWatchStateKey,
   type CanonicalWatchStateTarget,
-  type CompareAndCommitCanonicalWatchStateInput,
   type WatchStatePersistence,
-  type WatchStatePersistenceFailure,
   makeWatchStatePersistence,
 };
