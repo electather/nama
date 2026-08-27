@@ -6,7 +6,7 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
   private let clientVersion: String
   private let platform: String
   private let sessionConfiguration: URLSessionConfiguration
-  private let tokenStore: any OAuthTokenStoring
+  let tokenStore: any OAuthTokenStoring
 
   private static let apiErrorDomain = "nama.api.v1"
   private static let requestTimeout: TimeInterval = 10
@@ -76,6 +76,15 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
   private func getHome(
     using record: EndpointBoundOAuthTokenRecord
   ) async -> Result<Nama_Api_V1_GetHomeResponse, ConnectError> {
+    let response = await libraryClient(using: record).getHome(
+      request: Nama_Api_V1_GetHomeRequest()
+    )
+    return response.result
+  }
+
+  func libraryClient(
+    using record: EndpointBoundOAuthTokenRecord
+  ) -> Nama_Api_V1_LibraryServiceClient {
     let transport = NamaUnaryURLSessionHTTPClient(
       endpoint: record.endpoint,
       configuration: sessionConfiguration
@@ -96,9 +105,7 @@ nonisolated struct NamaLibraryClient: OAuthScopedAccessVerifying, HomeLoading {
         interceptors: [metadataInterceptor]
       )
     )
-    let client = Nama_Api_V1_LibraryServiceClient(client: protocolClient)
-    let response = await client.getHome(request: Nama_Api_V1_GetHomeRequest())
-    return response.result
+    return Nama_Api_V1_LibraryServiceClient(client: protocolClient)
   }
 
   private static func isCatalogNotReady(_ error: ConnectError) -> Bool {

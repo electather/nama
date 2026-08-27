@@ -4,13 +4,6 @@ private enum HomeLayout {
   static let cardContentSpacing: CGFloat = 8
   static let cardCornerRadius: CGFloat = 12
   static let cardSpacing: CGFloat = 16
-
-  #if os(tvOS)
-    static let cardWidth: CGFloat = 300
-  #else
-    static let cardWidth: CGFloat = 148
-  #endif
-
   static let contentPadding: CGFloat = 24
   static let loadingCardCount = 5
   static let metadataSpacing: CGFloat = 6
@@ -37,7 +30,12 @@ struct HomeView: View {
       retry: feature.retry,
       refresh: feature.refresh,
       changeEndpoint: changeEndpoint,
-      reauthorize: reauthorize
+      reauthorize: reauthorize,
+      artwork: HomeArtworkPresentationAccess(
+        presentationState: feature.artworkPresentationState,
+        didAppear: feature.artworkDidAppear,
+        didDisappear: feature.artworkDidDisappear
+      )
     )
     .onAppear {
       if scenePhase == .active {
@@ -70,6 +68,23 @@ struct HomePresentationView: View {
   let refresh: @MainActor () -> Void
   let changeEndpoint: @MainActor () async -> Void
   let reauthorize: @MainActor () async -> Void
+  let artwork: HomeArtworkPresentationAccess
+
+  init(
+    state: HomeState,
+    retry: @escaping @MainActor () -> Void,
+    refresh: @escaping @MainActor () -> Void,
+    changeEndpoint: @escaping @MainActor () async -> Void,
+    reauthorize: @escaping @MainActor () async -> Void,
+    artwork: HomeArtworkPresentationAccess = .empty
+  ) {
+    self.state = state
+    self.retry = retry
+    self.refresh = refresh
+    self.changeEndpoint = changeEndpoint
+    self.reauthorize = reauthorize
+    self.artwork = artwork
+  }
 
   var body: some View {
     NavigationStack {
@@ -77,7 +92,8 @@ struct HomePresentationView: View {
         state: state,
         retry: retry,
         refresh: refresh,
-        reauthorize: reauthorize
+        reauthorize: reauthorize,
+        artwork: artwork
       )
       .navigationTitle("Home")
       .toolbar {
@@ -87,7 +103,7 @@ struct HomePresentationView: View {
               .disabled(homeIsRefreshing(state))
           }
         }
-        ToolbarItem(placement: .automatic) {
+        ToolbarItem(placement: changeEndpointPlacement) {
           Button("Change Endpoint", systemImage: "network") {
             Task {
               await changeEndpoint()
@@ -97,6 +113,14 @@ struct HomePresentationView: View {
       }
     }
   }
+
+  private var changeEndpointPlacement: ToolbarItemPlacement {
+    #if os(tvOS)
+      .automatic
+    #else
+      .secondaryAction
+    #endif
+  }
 }
 
 private struct HomeStateContent: View {
@@ -104,6 +128,7 @@ private struct HomeStateContent: View {
   let retry: @MainActor () -> Void
   let refresh: @MainActor () -> Void
   let reauthorize: @MainActor () async -> Void
+  let artwork: HomeArtworkPresentationAccess
 
   @ViewBuilder
   var body: some View {
@@ -133,7 +158,8 @@ private struct HomeStateContent: View {
         isRefreshing: false,
         refreshFailure: nil,
         refresh: refresh,
-        reauthorize: reauthorize
+        reauthorize: reauthorize,
+        artwork: artwork
       )
 
     case .refreshing(let snapshot):
@@ -142,7 +168,8 @@ private struct HomeStateContent: View {
         isRefreshing: true,
         refreshFailure: nil,
         refresh: refresh,
-        reauthorize: reauthorize
+        reauthorize: reauthorize,
+        artwork: artwork
       )
 
     case .refreshFailed(let snapshot, let failure):
@@ -151,7 +178,8 @@ private struct HomeStateContent: View {
         isRefreshing: false,
         refreshFailure: failure,
         refresh: refresh,
-        reauthorize: reauthorize
+        reauthorize: reauthorize,
+        artwork: artwork
       )
 
     case .failed(let failure):
@@ -178,7 +206,7 @@ private struct HomeLoadingView: View {
 }
 
 private struct HomeLoadingShelf: View {
-  @ScaledMetric(relativeTo: .body) private var cardWidth = HomeLayout.cardWidth
+  @ScaledMetric(relativeTo: .body) private var cardWidth = HomeArtworkLayout.cardWidth
 
   let title: LocalizedStringKey
 
@@ -232,6 +260,7 @@ private struct HomeContentView: View {
   let refreshFailure: HomeLoadingFailure?
   let refresh: @MainActor () -> Void
   let reauthorize: @MainActor () async -> Void
+  let artwork: HomeArtworkPresentationAccess
 
   var body: some View {
     ScrollView {
@@ -247,89 +276,13 @@ private struct HomeContentView: View {
           ProgressView("Refreshing…")
         }
         if let movies = snapshot.movies {
-          HomeShelfView(shelf: movies)
+          HomeShelfView(shelf: movies, artwork: artwork)
         }
         if let shows = snapshot.shows {
-          HomeShelfView(shelf: shows)
+          HomeShelfView(shelf: shows, artwork: artwork)
         }
       }
       .padding(HomeLayout.contentPadding)
-    }
-  }
-}
-
-private struct HomeShelfView: View {
-  let shelf: HomeShelf
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: HomeLayout.shelfSpacing) {
-      Text(verbatim: shelf.title)
-        .font(.title2.bold())
-      ScrollView(.horizontal) {
-        LazyHStack(alignment: .top, spacing: HomeLayout.cardSpacing) {
-          ForEach(shelf.items) { item in
-            HomeMediaCard(item: item)
-          }
-        }
-      }
-      .scrollIndicators(.hidden)
-    }
-  }
-}
-
-private struct HomeMediaCard: View {
-  @ScaledMetric(relativeTo: .body) private var cardWidth = HomeLayout.cardWidth
-
-  let item: HomeMediaSummary
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: HomeLayout.cardContentSpacing) {
-      RoundedRectangle(cornerRadius: HomeLayout.cardCornerRadius)
-        .fill(.quaternary)
-        .aspectRatio(HomeLayout.posterAspectRatio, contentMode: .fit)
-        .overlay {
-          Image(systemName: item.kind == .movie ? "film" : "tv")
-            .font(.title)
-            .foregroundStyle(.secondary)
-            .accessibilityHidden(true)
-        }
-      Text(verbatim: item.title)
-        .font(.headline)
-        .lineLimit(HomeLayout.titleLineLimit, reservesSpace: true)
-      HStack(spacing: HomeLayout.metadataSpacing) {
-        if let releaseYear = item.releaseYear {
-          Text(releaseYear, format: .number.grouping(.never))
-        }
-        if let label = item.defaultSource?.label {
-          Text(verbatim: label)
-            .lineLimit(HomeLayout.sourceLabelLineLimit)
-        }
-      }
-      .font(.subheadline)
-      .foregroundStyle(.secondary)
-      HomePlayabilityLabel(playability: item.playability)
-    }
-    .frame(width: cardWidth, alignment: .leading)
-    .accessibilityElement(children: .combine)
-  }
-}
-
-private struct HomePlayabilityLabel: View {
-  let playability: HomePlayability
-
-  var body: some View {
-    switch playability {
-    case .playable:
-      Label("Playable", systemImage: "play.circle.fill")
-        .foregroundStyle(.secondary)
-
-    case .temporarilyUnavailable:
-      Label("Temporarily unavailable", systemImage: "exclamationmark.circle")
-        .foregroundStyle(.secondary)
-
-    case .noAvailableSource, .unknown:
-      Label("No playable source", systemImage: "nosign")
-        .foregroundStyle(.secondary)
     }
   }
 }

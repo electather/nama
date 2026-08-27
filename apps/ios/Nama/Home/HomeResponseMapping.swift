@@ -158,6 +158,7 @@ nonisolated extension NamaLibraryClient {
       return nil
     }
     let textPresence = try map(artwork.textPresence)
+
     let locale = try optionalString(artwork.hasLocale, artwork.locale)
     guard locale.map(isValidArtworkLocale) ?? true else {
       throw HomeResponseMappingError.invalid

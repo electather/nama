@@ -7,6 +7,7 @@ struct NamaApp: App {
   private let oauthClient: BetterAuthOAuthAuthorizationClient
   private let tokenStore: KeychainOAuthTokenStore
   private let libraryClient: NamaLibraryClient
+  private let artworkLoader: HomeArtworkLoader
   private let authorizationSession: OAuthAuthorizationSession
 
   init() {
@@ -17,15 +18,17 @@ struct NamaApp: App {
     else {
       preconditionFailure("CFBundleShortVersionString must be configured")
     }
-    let keychainTokenStore = KeychainOAuthTokenStore()
+    let newTokenStore = KeychainOAuthTokenStore()
     clientVersion = version
     endpointStore = UserDefaultsVerifiedEndpointStore()
     oauthClient = BetterAuthOAuthAuthorizationClient()
-    tokenStore = keychainTokenStore
-    libraryClient = NamaLibraryClient(
+    tokenStore = newTokenStore
+    let newLibraryClient = NamaLibraryClient(
       clientVersion: version,
-      tokenStore: keychainTokenStore
+      tokenStore: newTokenStore
     )
+    libraryClient = newLibraryClient
+    artworkLoader = HomeArtworkLoader(resolver: newLibraryClient)
     authorizationSession = OAuthAuthorizationSession()
   }
 
@@ -37,6 +40,7 @@ struct NamaApp: App {
         oauthClient: oauthClient,
         tokenStore: tokenStore,
         libraryClient: libraryClient,
+        artworkLoader: artworkLoader,
         authorizationSession: authorizationSession
       )
     }
@@ -55,6 +59,7 @@ private struct ConnectionWindow: View {
     oauthClient: any OAuthAuthorizationClient,
     tokenStore: any OAuthTokenStoring,
     libraryClient: NamaLibraryClient,
+    artworkLoader: any HomeArtworkLoading,
     authorizationSession: OAuthAuthorizationSession
   ) {
     _connection = State(
@@ -72,7 +77,9 @@ private struct ConnectionWindow: View {
         session: authorizationSession
       )
     )
-    _home = State(initialValue: HomeFeature(loader: libraryClient))
+    _home = State(
+      initialValue: HomeFeature(loader: libraryClient, artworkLoader: artworkLoader)
+    )
   }
 
   var body: some View {

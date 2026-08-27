@@ -79,6 +79,17 @@
 		100000000000000000000076 /* HomeFailureViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000078 /* HomeFailureViews.swift */; };
 		100000000000000000000077 /* HomeAdapterTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000079 /* HomeAdapterTestSupport.swift */; };
 		100000000000000000000078 /* OAuthAuthorizationFeatureDiscard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000080 /* OAuthAuthorizationFeatureDiscard.swift */; };
+		100000000000000000000081 /* HomeArtworkHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000081 /* HomeArtworkHTTPClient.swift */; };
+		100000000000000000000082 /* HomeArtworkLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000082 /* HomeArtworkLoader.swift */; };
+		100000000000000000000083 /* HomeArtworkTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000083 /* HomeArtworkTypes.swift */; };
+		100000000000000000000084 /* HomeArtworkWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000084 /* HomeArtworkWindow.swift */; };
+		100000000000000000000085 /* NamaLibraryClient+Artwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000085 /* NamaLibraryClient+Artwork.swift */; };
+		100000000000000000000086 /* HomeArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000086 /* HomeArtworkView.swift */; };
+		100000000000000000000087 /* HomeArtworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000087 /* HomeArtworkTests.swift */; };
+		100000000000000000000088 /* HomeArtworkLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000088 /* HomeArtworkLoaderTests.swift */; };
+		100000000000000000000091 /* HomeArtworkLoaderCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000091 /* HomeArtworkLoaderCacheTests.swift */; };
+		100000000000000000000089 /* HomeArtworkTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000089 /* HomeArtworkTestSupport.swift */; };
+		100000000000000000000090 /* OAuthAuthorizationRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000090 /* OAuthAuthorizationRetryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -166,6 +177,17 @@
 		200000000000000000000078 /* HomeFailureViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFailureViews.swift; sourceTree = "<group>"; };
 		200000000000000000000079 /* HomeAdapterTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAdapterTestSupport.swift; sourceTree = "<group>"; };
 		200000000000000000000080 /* OAuthAuthorizationFeatureDiscard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationFeatureDiscard.swift; sourceTree = "<group>"; };
+		200000000000000000000081 /* HomeArtworkHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeArtworkHTTPClient.swift; sourceTree = "<group>"; };
+		200000000000000000000082 /* HomeArtworkLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeArtworkLoader.swift; sourceTree = "<group>"; };
+		200000000000000000000083 /* HomeArtworkTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeArtworkTypes.swift; sourceTree = "<group>"; };
+		200000000000000000000084 /* HomeArtworkWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeArtworkWindow.swift; sourceTree = "<group>"; };
+		200000000000000000000085 /* NamaLibraryClient+Artwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaLibraryClient+Artwork.swift"; sourceTree = "<group>"; };
+		200000000000000000000086 /* HomeArtworkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeArtworkView.swift; sourceTree = "<group>"; };
+		200000000000000000000087 /* HomeArtworkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeArtworkTests.swift; sourceTree = "<group>"; };
+		200000000000000000000088 /* HomeArtworkLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeArtworkLoaderTests.swift; sourceTree = "<group>"; };
+		200000000000000000000091 /* HomeArtworkLoaderCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeArtworkLoaderCacheTests.swift; sourceTree = "<group>"; };
+		200000000000000000000089 /* HomeArtworkTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeArtworkTestSupport.swift; sourceTree = "<group>"; };
+		200000000000000000000090 /* OAuthAuthorizationRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthAuthorizationRetryTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -271,6 +293,7 @@
 			children = (
 				200000000000000000000031 /* OAuthAuthorizationFeatureTests.swift */,
 				200000000000000000000038 /* OAuthAuthorizationLifecycleTests.swift */,
+				200000000000000000000090 /* OAuthAuthorizationRetryTests.swift */,
 				200000000000000000000039 /* OAuthAuthorizationTransportTests.swift */,
 				200000000000000000000040 /* OAuthTokenStoreTests.swift */,
 				200000000000000000000041 /* OAuthAuthorizationTestSupport.swift */,
@@ -345,6 +368,12 @@
 				200000000000000000000078 /* HomeFailureViews.swift */,
 				200000000000000000000075 /* HomeView.swift */,
 				200000000000000000000076 /* HomePreviewFixtures.swift */,
+				200000000000000000000081 /* HomeArtworkHTTPClient.swift */,
+				200000000000000000000082 /* HomeArtworkLoader.swift */,
+				200000000000000000000083 /* HomeArtworkTypes.swift */,
+				200000000000000000000084 /* HomeArtworkWindow.swift */,
+				200000000000000000000085 /* NamaLibraryClient+Artwork.swift */,
+				200000000000000000000086 /* HomeArtworkView.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -355,6 +384,10 @@
 				200000000000000000000071 /* HomeFeatureTests.swift */,
 				200000000000000000000072 /* HomeAdapterTests.swift */,
 				200000000000000000000079 /* HomeAdapterTestSupport.swift */,
+				200000000000000000000087 /* HomeArtworkTests.swift */,
+				200000000000000000000088 /* HomeArtworkLoaderTests.swift */,
+				200000000000000000000091 /* HomeArtworkLoaderCacheTests.swift */,
+				200000000000000000000089 /* HomeArtworkTestSupport.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -515,6 +548,12 @@
 				100000000000000000000074 /* HomePreviewFixtures.swift in Sources */,
 				100000000000000000000075 /* HomeResponseMapping.swift in Sources */,
 				100000000000000000000076 /* HomeFailureViews.swift in Sources */,
+				100000000000000000000081 /* HomeArtworkHTTPClient.swift in Sources */,
+				100000000000000000000082 /* HomeArtworkLoader.swift in Sources */,
+				100000000000000000000083 /* HomeArtworkTypes.swift in Sources */,
+				100000000000000000000084 /* HomeArtworkWindow.swift in Sources */,
+				100000000000000000000085 /* NamaLibraryClient+Artwork.swift in Sources */,
+				100000000000000000000086 /* HomeArtworkView.swift in Sources */,
 				100000000000000000000047 /* PlaybackModels.swift in Sources */,
 				100000000000000000000048 /* NamaPlayer.swift in Sources */,
 				100000000000000000000052 /* NamaPlayer+EngineMapping.swift in Sources */,
@@ -543,12 +582,17 @@
 				100000000000000000000014 /* TestSupport.swift in Sources */,
 				100000000000000000000028 /* OAuthAuthorizationFeatureTests.swift in Sources */,
 				100000000000000000000035 /* OAuthAuthorizationLifecycleTests.swift in Sources */,
+				100000000000000000000090 /* OAuthAuthorizationRetryTests.swift in Sources */,
 				100000000000000000000036 /* OAuthAuthorizationTransportTests.swift in Sources */,
 				100000000000000000000037 /* OAuthTokenStoreTests.swift in Sources */,
 				100000000000000000000038 /* OAuthAuthorizationTestSupport.swift in Sources */,
 				100000000000000000000069 /* HomeFeatureTests.swift in Sources */,
 				100000000000000000000070 /* HomeAdapterTests.swift in Sources */,
 				100000000000000000000077 /* HomeAdapterTestSupport.swift in Sources */,
+				100000000000000000000087 /* HomeArtworkTests.swift in Sources */,
+				100000000000000000000088 /* HomeArtworkLoaderTests.swift in Sources */,
+				100000000000000000000091 /* HomeArtworkLoaderCacheTests.swift in Sources */,
+				100000000000000000000089 /* HomeArtworkTestSupport.swift in Sources */,
 				100000000000000000000041 /* NamaPlayerTests.swift in Sources */,
 				100000000000000000000059 /* NamaPlayerSecurityTests.swift in Sources */,
 				100000000000000000000060 /* NamaPlayerHLSRequestSecurityTests.swift in Sources */,

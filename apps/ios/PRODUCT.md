@@ -21,8 +21,9 @@ across Apple platforms. Its connection and authorization flow turns an
 explicitly discovered, manually entered, or restored transport address into a
 verified Nama endpoint and one endpoint-bound OAuth grant without guessing
 identity or weakening platform security. Home then presents provider-neutral
-stored media through the public `LibraryService`. Library browsing, Search,
-Details, artwork loading, Watch State, and Playback remain unimplemented.
+stored media through the public `LibraryService` and resolves safe textless
+poster artwork without exposing locator details to views. Library browsing,
+Search, Details, Watch State, and Playback remain unimplemented.
 
 ## Positioning
 

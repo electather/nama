@@ -151,6 +151,57 @@ struct HomeAdapterTests {
     }
   }
 
+  @Test("ResolveArtwork maps a bounded locator behind app-owned values")
+  func artworkResolutionMapping() async throws {
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.successfulHTTPStatus,
+      body: HomeTransportFixture.artworkResponse
+    )
+    defer { HomeConnectStubURLProtocol.reset() }
+    let record = try homeTokenRecord()
+    let client = homeClient(record: record, platform: "ios")
+    let reference = HomeArtworkReference(
+      identity: HomeArtworkIdentity("artwork-2"),
+      role: .poster,
+      width: nil,
+      height: nil,
+      locale: nil,
+      textPresence: .textless
+    )
+    let size = HomeArtworkSizeBucket.poster(displayWidth: 148, scale: 2)
+
+    let locator = try await client.resolve(
+      reference,
+      size: size,
+      authorization: homeAuthorization(record: record, generation: 15)
+    )
+
+    #expect(locator.url == "https://artwork.example.test/poster?lease=short-lived")
+    #expect(
+      locator.headers == [
+        HomeArtworkHeader(name: "X-Artwork-Token", value: "short-lived-secret")
+      ]
+    )
+    #expect(
+      locator.allowedRedirectOrigins == [
+        "https://artwork.example.test",
+        "https://cdn.example.test",
+      ]
+    )
+    #expect(locator.width == 384)
+    #expect(locator.height == 576)
+    let request = try #require(HomeConnectStubURLProtocol.recordedRequests.first)
+    #expect(request.url?.path == "/nama.api.v1.LibraryService/ResolveArtwork")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access-token-secret")
+    let body = try #require(HomeConnectStubURLProtocol.recordedRequestBodies.first)
+    let requestJSON = try #require(
+      JSONSerialization.jsonObject(with: body) as? [String: Any]
+    )
+    #expect(requestJSON["artworkId"] as? String == "artwork-2")
+    #expect(requestJSON["maxWidth"] as? Int == 384)
+    #expect(requestJSON["maxHeight"] as? Int == 576)
+  }
+
   @Test("a changed authorization record cannot send the previous access token")
   func changedAuthorizationRejectsOldRecord() async throws {
     HomeConnectStubURLProtocol.reset()
