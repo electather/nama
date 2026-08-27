@@ -18,12 +18,16 @@ run on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K simulators and an Apple
 Development-signed sandboxed Mac build. Those hierarchy runs confirmed
 kind-valid metadata, title-bearing artwork fallback, canonical parent context,
 child rows, long titles, and Episode Play. Source inspection has self-contained
-choosing, technical, unavailable, and stale-response previews, but has not been
-inspected on an actual Apple surface. Apple TV Load More focus interaction,
+choosing, technical, unavailable, distinct-unlabeled-choice, and stale-response
+previews. The unlabeled fixture has run on iPhone 17 Pro and iPad Pro 13-inch
+(M5) simulators, an Apple TV 4K (3rd generation) simulator, and an Apple
+Development-signed sandboxed Mac build; simulated touch, Apple TV remote focus,
+Mac pointer, and Mac keyboard operation selected both distinct choices and
+retained their matching technical titles. Apple TV Load More focus interaction,
 focus return after nested Details, the live OAuth-authorized stored-catalog
-hierarchy, successful artwork resolution, physical Apple hardware,
-expiry-driven actual-surface refresh, and the remaining Apple surfaces remain
-unverified.
+hierarchy, successful artwork resolution, VoiceOver inspection, physical Apple
+hardware, expiry-driven actual-surface refresh, and the remaining Apple
+surfaces remain unverified.
 
 ## Authority and fixed decisions
 
@@ -284,22 +288,30 @@ loading, content, long synopsis, missing artwork, unavailable source, and
 not-found states plus Show Seasons, later-page failure, Season Episodes, long
 child titles, missing hierarchy artwork, Episode Play, and unavailable Episode
 states. Sources previews cover choosing, normalized technical details,
-unavailable selection, and stale-response recovery. Show, Season, and Episode
-fixtures have run in the Debug application on iPhone 17 Pro, iPad Pro 13-inch,
-and Apple TV 4K simulators and an Apple Development-signed sandboxed Mac build.
-They confirmed adaptive bounds, kind-specific navigation titles and metadata,
-title-bearing artwork fallbacks, canonical parent context, Season and Episode
-child rows, and Episode Play. The Apple TV runs did not exercise Load More
-focus movement, and no run exercised focus return after nested Details. No
-Source preview has been inspected on Mac, iPhone, iPad, or Apple TV with
-keyboard, pointer, touch, or remote focus. These fixture surfaces do not prove
-the live stored-catalog hierarchy or successful artwork resolution. `check:ios`
-lints Swift formatting, runs the test target through its macOS host, inspects
-the built ATS shape, and performs signing-disabled iOS, tvOS, and macOS builds.
-The real-player tests prove controlled SDR HLS rendering and control flow plus
-adversarial locator and shared lifecycle policy through the real adapter on the
-macOS host. Generic builds do not prove physical-device privacy prompts, focus,
-accessibility, or playback.
+unavailable selection, distinct unlabeled choices, and stale-response recovery.
+Show, Season, and Episode fixtures have run in the Debug application on iPhone
+17 Pro, iPad Pro 13-inch, and Apple TV 4K simulators and an Apple
+Development-signed sandboxed Mac build. They confirmed adaptive bounds,
+kind-specific navigation titles and metadata, title-bearing artwork fallbacks,
+canonical parent context, Season and Episode child rows, and Episode Play. The
+Apple TV runs did not exercise Load More focus movement, and no run exercised
+focus return after nested Details.
+
+The unlabeled Sources fixture ran in the Debug application on iPhone 17 Pro and
+iPad Pro 13-inch (M5) simulators, an Apple TV 4K (3rd generation) simulator, and
+an Apple Development-signed sandboxed Mac build. Simulated touch selected
+Source 1 on iPhone and Source 2 on iPad. Apple TV remote focus moved between
+both actions and selected each. Mac pointer input selected Source 2, while full
+keyboard access focused Source 1 and activated it with Space. Every selected
+technical section retained the matching positional title. These fixture
+surfaces do not prove the live OAuth-authorized stored-catalog hierarchy,
+successful artwork resolution, VoiceOver output, or physical-device input.
+`check:ios` lints Swift formatting, runs the test target through its macOS host,
+inspects the built ATS shape, and performs signing-disabled iOS, tvOS, and macOS
+builds. The real-player tests prove controlled SDR HLS rendering and control
+flow plus adversarial locator and shared lifecycle policy through the real
+adapter on the macOS host. Generic builds do not prove physical-device privacy
+prompts, focus, accessibility, or playback.
 
 This baseline implements endpoint eligibility, endpoint-bound persistent
 local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP

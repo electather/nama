@@ -118,6 +118,47 @@ struct MediaSourcesFeatureTests {
     await eventually { await loader.callCount == 2 }
   }
 
+  @Test("returning to Sources refreshes the previously inspected exact request")
+  func foregroundReturnRefreshesInspectedSource() async throws {
+    let loader = ManualMediaSourceLoader()
+    let feature = MediaSourcesFeature(loader: loader)
+    let authorization = try movieDetailsAuthorization(generation: 1)
+    let summary = movieSourceSummary(
+      identity: "source-foreground-refresh",
+      isDefault: true,
+      availability: .available
+    )
+    let selection = MediaSourcesSelection(
+      mediaIdentity: MediaIdentity("movie-foreground-refresh"),
+      mediaKind: .movie,
+      mediaTitle: "Foreground refresh",
+      sourceSummaries: [summary]
+    )
+    let source = mediaSourceFixture(selection: selection, summary: summary)
+    let request = ManualMediaSourceLoader.Request(
+      mediaIdentity: selection.mediaIdentity,
+      sourceIdentity: summary.identity,
+      authorization: authorization
+    )
+
+    feature.select(selection, authorization: authorization)
+    feature.inspect(summary.identity)
+    await eventually { await loader.callCount == 1 }
+    #expect(await loader.request(at: 0) == request)
+    await loader.resolve(call: 0, with: .success(source))
+    await eventually { feature.state == .inspected(selection, summary, source) }
+
+    feature.select(selection, authorization: authorization)
+    await Task.yield()
+    #expect(await loader.callCount == 1)
+
+    feature.deactivate(selection)
+    feature.select(selection, authorization: authorization)
+
+    await eventually { await loader.callCount == 2 }
+    #expect(await loader.request(at: 1) == request)
+  }
+
   @Test("leaving Sources cancels technical loading without discarding the parent choice")
   func deactivationCancelsInspection() async throws {
     let loader = ManualMediaSourceLoader()
@@ -214,9 +255,14 @@ private func mediaSourceFixture(
 }
 
 private actor ManualMediaSourceLoader: MediaSourceLoading {
-  private struct PendingLoad {
+  struct Request: Equatable, Sendable {
     let mediaIdentity: MediaIdentity
     let sourceIdentity: MediaSourceIdentity
+    let authorization: HomeAuthorizationIdentity
+  }
+
+  private struct PendingLoad {
+    let request: Request
     let continuation: CheckedContinuation<MediaSource, any Error>
   }
 
@@ -231,17 +277,24 @@ private actor ManualMediaSourceLoader: MediaSourceLoading {
     cancelledLoads
   }
 
+  func request(at index: Int) -> Request? {
+    pendingLoads.indices.contains(index) ? pendingLoads[index].request : nil
+  }
+
   func loadSource(
     mediaIdentity: MediaIdentity,
     sourceIdentity: MediaSourceIdentity,
-    authorization _: HomeAuthorizationIdentity
+    authorization: HomeAuthorizationIdentity
   ) async throws -> MediaSource {
     try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
         pendingLoads.append(
           PendingLoad(
-            mediaIdentity: mediaIdentity,
-            sourceIdentity: sourceIdentity,
+            request: Request(
+              mediaIdentity: mediaIdentity,
+              sourceIdentity: sourceIdentity,
+              authorization: authorization
+            ),
             continuation: continuation
           )
         )

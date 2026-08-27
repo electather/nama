@@ -55,11 +55,35 @@
         spatialFormat: .nonSpatial
       )
     )
+    static let firstUnlabeledSummary = MediaSourceSummary(
+      identity: MediaSourceIdentity("source-unlabeled-first-preview"),
+      label: nil,
+      isDefault: true,
+      availability: .available,
+      container: nil,
+      videoQuality: nil,
+      audioQuality: nil
+    )
+    static let secondUnlabeledSummary = MediaSourceSummary(
+      identity: MediaSourceIdentity("source-unlabeled-second-preview"),
+      label: nil,
+      isDefault: false,
+      availability: .available,
+      container: nil,
+      videoQuality: nil,
+      audioQuality: nil
+    )
     static let selection = MediaSourcesSelection(
       mediaIdentity: MediaIdentity("movie-sources-preview"),
       mediaKind: .movie,
       mediaTitle: "A Canonical Movie With Several Carefully Preserved Sources",
       sourceSummaries: [defaultSummary, unavailableSummary]
+    )
+    static let unlabeledSelection = MediaSourcesSelection(
+      mediaIdentity: MediaIdentity("movie-unlabeled-sources-preview"),
+      mediaKind: .movie,
+      mediaTitle: "A Movie With Unlabeled Sources",
+      sourceSummaries: [firstUnlabeledSummary, secondUnlabeledSummary]
     )
     static let part = MediaPart(
       identity: MediaPartIdentity("part-preview"),
@@ -124,6 +148,15 @@
       bitRateBps: bitRateBps,
       parts: [part]
     )
+    static let unlabeledSource = MediaSource(
+      identity: secondUnlabeledSummary.identity,
+      mediaIdentity: unlabeledSelection.mediaIdentity,
+      label: nil,
+      availability: .available,
+      runtime: nil,
+      bitRateBps: nil,
+      parts: []
+    )
 
     static let noAction: @MainActor () -> Void = {
       // Static inspection fixtures perform no action.
@@ -137,10 +170,13 @@
   }
 
   @MainActor
-  private func mediaSourcesPreview(_ state: MediaSourcesState) -> some View {
+  private func mediaSourcesPreview(
+    _ state: MediaSourcesState,
+    selection: MediaSourcesSelection = MediaSourcesPreviewFixtures.selection
+  ) -> some View {
     NavigationStack {
       MediaSourcesPresentationView(
-        selection: MediaSourcesPreviewFixtures.selection,
+        selection: selection,
         state: state,
         inspect: MediaSourcesPreviewFixtures.noSourceAction,
         retry: MediaSourcesPreviewFixtures.noAction,
@@ -153,6 +189,17 @@
 
   #Preview("Sources — Choosing") {
     mediaSourcesPreview(.choosing(MediaSourcesPreviewFixtures.selection))
+  }
+
+  #Preview("Sources — Unlabeled") {
+    mediaSourcesPreview(
+      .inspected(
+        MediaSourcesPreviewFixtures.unlabeledSelection,
+        MediaSourcesPreviewFixtures.secondUnlabeledSummary,
+        MediaSourcesPreviewFixtures.unlabeledSource
+      ),
+      selection: MediaSourcesPreviewFixtures.unlabeledSelection
+    )
   }
 
   #Preview("Sources — Technical details") {

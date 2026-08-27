@@ -63,19 +63,41 @@ struct MediaSourceAdapterTests {
     let record = try movieDetailsTokenRecord()
     let client = movieDetailsClient(record: record, platform: "ios")
 
-    do {
-      let source = try await client.loadSource(
-        mediaIdentity: MediaIdentity("canonical-media"),
-        sourceIdentity: MediaSourceIdentity("canonical-source"),
-        authorization: movieDetailsAuthorization(record: record)
-      )
-      let reflectedSource = String(reflecting: source)
-      #expect(!reflectedSource.contains(MediaSourceAdapterFixture.providerSentinel))
-      #expect(!reflectedSource.contains(MediaSourceAdapterFixture.pathSentinel))
-      #expect(!reflectedSource.contains(MediaSourceAdapterFixture.streamIndexSentinel))
-    } catch {
-      #expect(error as? MediaSourceFailure == .incompatible)
-    }
+    let source = try await client.loadSource(
+      mediaIdentity: MediaIdentity("canonical-media"),
+      sourceIdentity: MediaSourceIdentity("canonical-source"),
+      authorization: movieDetailsAuthorization(record: record)
+    )
+    let reflectedSource = String(reflecting: source)
+    #expect(!reflectedSource.contains(MediaSourceAdapterFixture.providerSentinel))
+    #expect(!reflectedSource.contains(MediaSourceAdapterFixture.pathSentinel))
+    #expect(!reflectedSource.contains(MediaSourceAdapterFixture.streamIndexSentinel))
+  }
+  @Test("GetMedia retains an unavailable canonical default")
+  func unavailableCanonicalDefaultMapping() async throws {
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.successfulHTTPStatus,
+      body: MovieDetailsAdapterFixture.unavailableCanonicalDefaultResponse
+    )
+    defer { HomeConnectStubURLProtocol.reset() }
+    let record = try movieDetailsTokenRecord()
+    let client = movieDetailsClient(record: record, platform: "ios")
+    let selection = MediaDetailsSelection(
+      identity: MediaIdentity("movie-unavailable-default"),
+      kind: .movie,
+      title: "Home title"
+    )
+
+    let details = try await client.load(
+      selection,
+      authorization: movieDetailsAuthorization(record: record)
+    )
+
+    let defaultSource = try #require(details.defaultSource)
+    #expect(details.playability == .noAvailableSource)
+    #expect(defaultSource.identity == MediaSourceIdentity("source-unavailable-default"))
+    #expect(defaultSource.availability == .unsupported)
+    #expect(details.sourceSummaries == [defaultSource])
   }
 }
 

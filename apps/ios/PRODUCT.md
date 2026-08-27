@@ -72,18 +72,22 @@ where a standard platform control already communicates the action.
 The current implementation contains native connection, OAuth authorization,
 Home, media Details, and Sources views with self-contained previews for
 loading, content, recovery, long content, missing artwork, unavailable sources,
-canonical children, later-page failure, normalized technical details, and stale
-Source recovery. `DESIGN.md` records the native system presentation rules.
-Show, Season, and Episode fixtures have run in the Debug application on iPhone
-17 Pro, iPad Pro 13-inch, and Apple TV 4K simulators and an Apple
-Development-signed sandboxed Mac build. Those runs confirmed kind-specific
-titles and metadata, title-bearing artwork fallbacks, canonical parent context,
-Season and Episode child rows, long child titles, and Episode Play. Sources has
-not been inspected on Mac, iPhone, iPad, or Apple TV with keyboard, pointer,
-touch, or remote focus. Apple TV Load More focus interaction, focus return
-after nested Details, the live OAuth-authorized stored-catalog hierarchy,
-successful artwork resolution, and physical Apple hardware remain unverified
-actual surfaces.
+canonical children, later-page failure, normalized technical details, distinct
+unlabeled Source choices, and stale Source recovery. `DESIGN.md` records the
+native system presentation rules. Show, Season, and Episode fixtures have run
+in the Debug application on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K
+simulators and an Apple Development-signed sandboxed Mac build. Those runs
+confirmed kind-specific titles and metadata, title-bearing artwork fallbacks,
+canonical parent context, Season and Episode child rows, long child titles, and
+Episode Play. The unlabeled Sources fixture has run on iPhone 17 Pro and iPad
+Pro 13-inch (M5) simulators, an Apple TV 4K (3rd generation) simulator, and an
+Apple Development-signed sandboxed Mac build. Those runs confirmed distinct
+Source 1 and Source 2 actions and matching technical titles through simulated
+touch, Apple TV remote focus and selection, and Mac pointer and keyboard
+operation. Apple TV Load More focus interaction, focus return after nested
+Details, the live OAuth-authorized stored-catalog hierarchy, successful artwork
+resolution, VoiceOver inspection, and physical Apple hardware remain
+unverified actual surfaces.
 
 ## Product Principles
 

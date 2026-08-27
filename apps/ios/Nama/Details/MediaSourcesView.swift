@@ -89,18 +89,16 @@ struct MediaSourcesPresentationView: View {
     case .idle, .choosing:
       EmptyView()
 
-    case .loading(_, let summary):
+    case .loading(let loadingSelection, let summary):
+      let title = mediaSourceTitle(summary, in: loadingSelection.sourceSummaries)
       HStack(spacing: MediaDetailsLayout.metadataSpacing) {
         ProgressView()
-        if let label = summary.label {
-          Text("Loading \(label) details…")
-        } else {
-          Text("Loading Source details…")
-        }
+        Text("Loading \(title) details…")
       }
 
-    case .inspected(_, let summary, let source):
+    case .inspected(let inspectedSelection, let summary, let source):
       MediaSourceTechnicalView(
+        title: mediaSourceTitle(summary, in: inspectedSelection.sourceSummaries),
         summary: summary,
         source: source,
         play: play,
@@ -141,28 +139,67 @@ private struct MediaSourceChoicesView: View {
           description: Text("Return to Details and refresh this item.")
         )
       } else {
-        ForEach(summaries, id: \.identity) { summary in
-          Button {
-            inspect(summary.identity)
-          } label: {
-            HStack(alignment: .top, spacing: MediaDetailsLayout.metadataSpacing) {
-              MediaSourceSummaryView(summary: summary, availability: summary.availability)
-              Spacer(minLength: MediaDetailsLayout.metadataSpacing)
-              if loadingIdentity == summary.identity {
-                ProgressView()
-              } else {
-                Image(systemName: "info.circle")
-                  .accessibilityHidden(true)
-              }
-            }
-          }
-          .buttonStyle(.bordered)
-          .disabled(loadingIdentity == summary.identity)
-          .accessibilityHint("Loads technical details for this source")
+        ForEach(summaries.enumerated(), id: \.element.identity) { index, summary in
+          MediaSourceChoiceButton(
+            title: mediaSourceTitle(summary, at: index),
+            summary: summary,
+            isLoading: loadingIdentity == summary.identity,
+            inspect: inspect
+          )
         }
       }
     }
   }
+}
+
+private struct MediaSourceChoiceButton: View {
+  let title: String
+  let summary: MediaSourceSummary
+  let isLoading: Bool
+  let inspect: @MainActor (MediaSourceIdentity) -> Void
+
+  var body: some View {
+    Button {
+      inspect(summary.identity)
+    } label: {
+      HStack(alignment: .top, spacing: MediaDetailsLayout.metadataSpacing) {
+        MediaSourceSummaryView(
+          title: title,
+          summary: summary,
+          availability: summary.availability
+        )
+        Spacer(minLength: MediaDetailsLayout.metadataSpacing)
+        if isLoading {
+          ProgressView()
+        } else {
+          Image(systemName: "info.circle")
+            .accessibilityHidden(true)
+        }
+      }
+    }
+    .buttonStyle(.bordered)
+    .disabled(isLoading)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(title)
+    .accessibilityValue(
+      Text(mediaSourceAvailabilityPresentation(summary.availability).title)
+    )
+    .accessibilityHint("Loads technical details for this source")
+  }
+}
+
+private func mediaSourceTitle(_ summary: MediaSourceSummary, at index: Int) -> String {
+  summary.label ?? "Source \(index + 1)"
+}
+
+private func mediaSourceTitle(
+  _ summary: MediaSourceSummary,
+  in summaries: [MediaSourceSummary]
+) -> String {
+  guard let index = summaries.firstIndex(where: { $0.identity == summary.identity }) else {
+    return summary.label ?? "Source"
+  }
+  return mediaSourceTitle(summary, at: index)
 }
 
 private struct MediaSourceFailureView: View {

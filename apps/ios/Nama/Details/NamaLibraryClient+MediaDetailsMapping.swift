@@ -354,11 +354,7 @@ nonisolated extension NamaLibraryClient {
         let defaultSource = summary.defaultSource,
         defaultSource.isDefault,
         defaultSource.availability == .available,
-        sourceSummaries.contains(where: { source in
-          source.identity == defaultSource.identity
-            && source.isDefault
-            && source.availability == .available
-        })
+        sourceSummaries.contains(defaultSource)
       else {
         throw MediaDetailsResponseMappingError.invalid
       }
@@ -367,7 +363,14 @@ nonisolated extension NamaLibraryClient {
       break
 
     case .noAvailableSource:
-      guard summary.defaultSource == nil else {
+      guard let defaultSource = summary.defaultSource else {
+        break
+      }
+      guard
+        defaultSource.isDefault,
+        defaultSource.availability != .available,
+        sourceSummaries.contains(defaultSource)
+      else {
         throw MediaDetailsResponseMappingError.invalid
       }
 

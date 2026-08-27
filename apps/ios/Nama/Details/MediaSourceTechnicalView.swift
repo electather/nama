@@ -1,19 +1,14 @@
 import SwiftUI
 
 struct MediaSourceSummaryView: View {
+  let title: String
   let summary: MediaSourceSummary
   let availability: MediaSourceAvailability
 
   var body: some View {
     VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
-      Group {
-        if let label = summary.label {
-          Text(label)
-        } else {
-          Text("Source")
-        }
-      }
-      .font(.headline)
+      Text(title)
+        .font(.headline)
       MediaSourceAvailabilityView(availability: availability)
       if let container = summary.container {
         LabeledContent("Container", value: container)
@@ -31,6 +26,7 @@ struct MediaSourceSummaryView: View {
 }
 
 struct MediaSourceTechnicalView: View {
+  let title: String
   let summary: MediaSourceSummary
   let source: MediaSource
   let play: @MainActor () -> Void
@@ -38,7 +34,7 @@ struct MediaSourceTechnicalView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
-      MediaSourceAggregateView(summary: summary, source: source)
+      MediaSourceAggregateView(title: title, summary: summary, source: source)
       ForEach(source.parts, id: \.identity) { part in
         MediaPartTechnicalView(part: part)
       }
@@ -52,6 +48,7 @@ struct MediaSourceTechnicalView: View {
 }
 
 private struct MediaSourceAggregateView: View {
+  let title: String
   let summary: MediaSourceSummary
   let source: MediaSource
 
@@ -60,7 +57,11 @@ private struct MediaSourceAggregateView: View {
       Text("Source Details")
         .font(.title2.bold())
         .accessibilityAddTraits(.isHeader)
-      MediaSourceSummaryView(summary: summary, availability: source.availability)
+      MediaSourceSummaryView(
+        title: title,
+        summary: summary,
+        availability: source.availability
+      )
       if let runtime = source.runtime {
         LabeledContent("Runtime") {
           Text(runtime, format: .time(pattern: .hourMinuteSecond))
@@ -176,44 +177,43 @@ private struct MediaSourceAvailabilityView: View {
   let availability: MediaSourceAvailability
 
   var body: some View {
-    Label(
-      mediaSourceAvailabilityTitle(availability),
-      systemImage: mediaSourceAvailabilitySymbol(availability)
-    )
-    .foregroundStyle(availability == .available ? .primary : .secondary)
+    let presentation = mediaSourceAvailabilityPresentation(availability)
+    Label(presentation.title, systemImage: presentation.symbol)
+      .foregroundStyle(availability == .available ? .primary : .secondary)
   }
 }
 
-private func mediaSourceAvailabilityTitle(
+struct MediaSourceAvailabilityPresentation {
+  let title: LocalizedStringKey
+  let symbol: String
+}
+
+func mediaSourceAvailabilityPresentation(
   _ availability: MediaSourceAvailability
-) -> LocalizedStringKey {
+) -> MediaSourceAvailabilityPresentation {
   switch availability {
   case .available:
-    "Available"
+    MediaSourceAvailabilityPresentation(
+      title: "Available",
+      symbol: "checkmark.circle"
+    )
 
   case .providerUnavailable:
-    "Temporarily unavailable"
+    MediaSourceAvailabilityPresentation(
+      title: "Temporarily unavailable",
+      symbol: "exclamationmark.circle"
+    )
 
   case .unsupported:
-    "Unsupported"
+    MediaSourceAvailabilityPresentation(
+      title: "Unsupported",
+      symbol: "nosign"
+    )
 
   case .unknown:
-    "Availability unknown"
-  }
-}
-
-private func mediaSourceAvailabilitySymbol(_ availability: MediaSourceAvailability) -> String {
-  switch availability {
-  case .available:
-    "checkmark.circle"
-
-  case .providerUnavailable:
-    "exclamationmark.circle"
-
-  case .unsupported:
-    "nosign"
-
-  case .unknown:
-    "questionmark.circle"
+    MediaSourceAvailabilityPresentation(
+      title: "Availability unknown",
+      symbol: "questionmark.circle"
+    )
   }
 }

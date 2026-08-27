@@ -10,6 +10,7 @@ final class MediaSourcesFeature {
   @ObservationIgnored private var selection: MediaSourcesSelection?
   @ObservationIgnored private var authorization: HomeAuthorizationIdentity?
   @ObservationIgnored private var attempt: UInt64 = .zero
+  @ObservationIgnored private var deactivatedInspectedSourceIdentity: MediaSourceIdentity?
 
   init(loader: any MediaSourceLoading) {
     self.loader = loader
@@ -23,11 +24,17 @@ final class MediaSourcesFeature {
     _ newSelection: MediaSourcesSelection,
     authorization newAuthorization: HomeAuthorizationIdentity
   ) {
-    guard selection != newSelection || authorization != newAuthorization else {
+    if selection == newSelection, authorization == newAuthorization {
+      guard let sourceIdentity = deactivatedInspectedSourceIdentity else {
+        return
+      }
+      deactivatedInspectedSourceIdentity = nil
+      inspect(sourceIdentity)
       return
     }
     activeTask?.cancel()
     attempt &+= 1
+    deactivatedInspectedSourceIdentity = nil
     selection = newSelection
     authorization = newAuthorization
     state = .choosing(newSelection)
@@ -36,6 +43,12 @@ final class MediaSourcesFeature {
   func deactivate(_ expectedSelection: MediaSourcesSelection) {
     guard selection == expectedSelection else {
       return
+    }
+    deactivatedInspectedSourceIdentity = nil
+    if case .inspected(let inspectedSelection, let summary, _) = state,
+      inspectedSelection == expectedSelection
+    {
+      deactivatedInspectedSourceIdentity = summary.identity
     }
     activeTask?.cancel()
     activeTask = nil
@@ -46,6 +59,7 @@ final class MediaSourcesFeature {
   }
 
   func inspect(_ sourceIdentity: MediaSourceIdentity) {
+    deactivatedInspectedSourceIdentity = nil
     guard
       let selection,
       let authorization,
