@@ -145,9 +145,18 @@ func movieDetailsFixture(
   selection: MediaDetailsSelection,
   playability: MediaPlayability = .playable,
   credits: [MediaCredit] = movieDetailsDefaultCredits(),
-  artwork: [ArtworkReference] = []
+  artwork: [ArtworkReference] = [],
+  sourceSummaries: [MediaSourceSummary] = []
 ) -> MediaDetails {
-  MediaDetails(
+  let defaultSource =
+    playability == .playable
+    ? movieSourceSummary(
+      identity: "source-default",
+      isDefault: true,
+      availability: .available
+    )
+    : nil
+  return MediaDetails(
     identity: selection.identity,
     title: requiredMediaSelectionTitle(selection),
     releaseYear: MovieDetailsFeatureFixture.releaseYear,
@@ -162,17 +171,8 @@ func movieDetailsFixture(
     artwork: artwork,
     parents: [],
     playability: playability,
-    defaultSource: playability == .playable
-      ? MediaSourceSummary(
-        identity: MediaSourceIdentity("source-default"),
-        label: "4K HDR",
-        isDefault: true,
-        availability: .available,
-        container: "mkv",
-        videoQuality: nil,
-        audioQuality: nil
-      )
-      : nil,
+    defaultSource: defaultSource,
+    sourceSummaries: sourceSummaries.isEmpty ? defaultSource.map { [$0] } ?? [] : sourceSummaries,
     kindDetails: .movie(
       releaseDate: MediaCalendarDate(
         year: Int32(MovieDetailsFeatureFixture.releaseYear),
@@ -180,6 +180,22 @@ func movieDetailsFixture(
         day: MovieDetailsFeatureFixture.releaseDay
       )
     )
+  )
+}
+
+func movieSourceSummary(
+  identity: String,
+  isDefault: Bool,
+  availability: MediaSourceAvailability
+) -> MediaSourceSummary {
+  MediaSourceSummary(
+    identity: MediaSourceIdentity(identity),
+    label: isDefault ? "4K HDR" : "1080p",
+    isDefault: isDefault,
+    availability: availability,
+    container: "mkv",
+    videoQuality: nil,
+    audioQuality: nil
   )
 }
 

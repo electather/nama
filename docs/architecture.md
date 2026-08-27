@@ -30,7 +30,7 @@ The target installation is one private deployment with one administrator, Jellyf
 
 The MVP authorization path is complete without a browser: an already authenticated Go CLI sends the Apple app's displayed user code through role-neutral `AuthService.ApproveDeviceAuthorization`, and the core binds the grant to that session principal before invoking Better Auth's internal verification and approval APIs. The request selects no target user and grants no Administrator authority. Issue #167 may add a narrow browser approval web app over the same internal application service; it does not become a prerequisite for Apple authorization or a general web console.
 
-The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, and the authenticated plugin supervisor. Provider discovery, connection testing, provider-instance lifecycle management, initial canonical catalog ingestion, and stored public Library reads are executable; playback remains unimplemented.
+The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, initial canonical catalog ingestion, stored public Library reads, and sparse versioned canonical Watch state persistence. Playback and public user-state behavior remain unimplemented.
 
 The same listener now exposes the fixed Apple public client's allowlisted Better Auth metadata, JWKS, device-code, token, refresh, and revocation routes. Generated `AuthService` handlers approve the current session principal's grant and revoke the fixed client's refresh-token families; Connect consumer authority verifies audience-bound, fixed-client, method-scoped JWTs locally without treating them as Administrator sessions.
 
@@ -102,32 +102,37 @@ until explicit Change Endpoint. The app implements native Better Auth device
 authorization, returned-interval polling, refresh rotation, a this-device-only
 endpoint-bound Keychain token record, Home over stored canonical
 `LibraryService.GetHome` results, paginated Movie and Show Library reads over
-`ListLibrary`, and canonical Details hierarchy reads over `GetMedia` and
-bounded `ListChildren` pages. Home, Library, and Details reuse the safe artwork
-loader without exposing locators to views. Details emits only a typed opaque
-canonical Play intent for playable Movies and Episodes and does not invoke
-playback execution. The universal target contains exact-pinned
+`ListLibrary`, canonical Details hierarchy reads over `GetMedia` and bounded
+`ListChildren` pages, and on-demand canonical Source inspection over
+`GetMediaSource`. Home, Library, and Details reuse the safe artwork loader
+without exposing locators to views. Details emits only typed opaque canonical
+Play intents for playable Movies and Episodes: the primary action leaves the
+default source implicit, while a deliberate Source choice carries its opaque
+canonical source ID. Details does not invoke playback execution. The universal
+target contains exact-pinned
 AetherEngine `6.21.0` behind the complete Nama-owned player boundary. A
 per-load loopback
 broker enforces exact normalized allowed origins for initial, redirect, nested
 HLS, key, segment, and external-subtitle requests without exposing remote
 locators to the engine. Mac-hosted automation proves controlled rendering and
 controls plus rejection, replacement, expiry signaling, and surface shutdown.
-The connection, authorization, player, Home, Library, and media Details
+The connection, authorization, player, Home, Library, media Details, and Sources
 baseline's Apple-platform builds pass, and a signed Apple TV 4K simulator has
 completed the no-browser authorization, scoped consumer verification, Keychain
-commit, and relaunch restoration flow. Library fixtures rendered the iPhone
-and Apple TV tabs, iPad split navigation, adaptive long-title grids, terminal
+commit, and relaunch restoration flow. Library fixtures rendered the iPhone and
+Apple TV tabs, iPad split navigation, adaptive long-title grids, terminal
 content, and a visible Apple TV Load More action. Existing Show, Season, and
-Episode fixture evidence still confirms adaptive bounds, kind-valid metadata,
-canonical parents and children, long titles, and Episode Play across the
-recorded Apple surfaces. An Apple Development-signed sandboxed Mac build created
-an onscreen Library window, while pixel capture and
-keyboard or pointer inspection were unavailable. Apple TV Load More focus
-interaction, compact iPad collapse, nested Details focus return, live
-OAuth-authorized catalog browsing, successful artwork resolution, product
-consumer media coordination, physical Apple hardware, expiry-driven
-actual-surface refresh, and the remaining Apple surfaces remain unverified.
+Episode fixture evidence confirms adaptive bounds, kind-valid metadata,
+title-bearing artwork fallbacks, canonical parents and children, long titles,
+and Episode Play across the recorded Apple surfaces. Source inspection has
+self-contained choosing, technical, unavailable, distinct-unlabeled-choice, and
+stale-response previews. An Apple Development-signed sandboxed Mac build created
+an onscreen Library window, while pixel capture and Library keyboard or pointer
+inspection were unavailable. Apple TV Load More focus interaction, compact iPad
+collapse, focus return after nested Details, live OAuth-authorized catalog
+browsing, successful artwork resolution, product consumer media coordination,
+VoiceOver inspection, physical Apple hardware, expiry-driven actual-surface
+refresh, and the remaining Apple surfaces remain unverified.
 
 ## Architectural decision records
 
@@ -166,10 +171,11 @@ ADRs record the choices and rationale below; superseded records remain linked as
 31. [ADR-0031 — Separate Device credential verification from Pairing delivery (superseded by ADR-0033)](adr/0031-separate-device-verification-from-pairing-delivery.md)
 32. [ADR-0032 — Use AetherEngine 6.21.0 with a bounded MVP security exception](adr/0032-aetherengine-mvp-security-exception.md)
 33. [ADR-0033 — Use Better Auth OAuth device authorization](adr/0033-better-auth-oauth-device-authorization.md)
+34. [ADR-0034 — Persist watch state as versioned relational snapshots](adr/0034-versioned-watch-state-snapshots.md)
 
 ## Invariants
 
-1. The core is the source of truth for Nama-owned user and watch state; plugins never become hidden databases. See [ADR-0006](adr/0006-stateless-supervised-plugin-subprocesses.md), [ADR-0022](adr/0022-canonical-provider-neutral-media-model.md), and [ADR-0023](adr/0023-canonical-watch-state-reconciliation.md).
+1. The core is the source of truth for Nama-owned user and watch state; plugins never become hidden databases. See [ADR-0006](adr/0006-stateless-supervised-plugin-subprocesses.md), [ADR-0022](adr/0022-canonical-provider-neutral-media-model.md), [ADR-0023](adr/0023-canonical-watch-state-reconciliation.md), and [ADR-0034](adr/0034-versioned-watch-state-snapshots.md).
 2. Remote provider resource IDs, errors, SDK types, and provider-specific consumer shapes stop at plugin boundaries. Installed provider type IDs and schema-driven configuration are authenticated Nama management resources; public consumers otherwise see Nama concepts. See [ADR-0005](adr/0005-provider-neutral-public-api.md) and [ADR-0019](adr/0019-restricted-schema-driven-provider-configuration.md).
 3. Protobuf is the source of truth for every supported Nama client, CLI, and plugin RPC. Better Auth's standard OAuth authorization-server endpoints are the deliberate public authentication exception and are not mirrored through Protobuf. See [ADR-0003](adr/0003-protobuf-connectrpc-boundary.md), [ADR-0004](adr/0004-independent-public-plugin-protobuf-packages.md), [ADR-0007](adr/0007-private-better-auth-adapter.md), and [ADR-0033](adr/0033-better-auth-oauth-device-authorization.md).
 4. Media bytes do not pass through the core in normal playback. Locators remain short-lived and restricted to core-validated redirect origins; the selected Apple MVP engine carries the bounded logging and header-replay exceptions recorded in ADR-0032. See [ADR-0013](adr/0013-origin-scoped-short-lived-locators.md) and [ADR-0032](adr/0032-aetherengine-mvp-security-exception.md).

@@ -19,23 +19,11 @@ nonisolated extension NamaLibraryClient {
     }
     let episodePosition = try mapEpisodePosition(summary, kind: kind)
 
-    let runtime: Duration?
-    if summary.hasRuntime {
-      guard
-        summary.runtime.seconds >= 0,
-        summary.runtime.nanos >= 0,
-        summary.runtime.nanos < MediaResponseBounds.nanosecondsPerSecond
-      else {
-        throw MediaResponseMappingError.invalid
-      }
-      runtime = Duration(
-        secondsComponent: summary.runtime.seconds,
-        attosecondsComponent: Int64(summary.runtime.nanos)
-          * MediaResponseBounds.attosecondsPerNanosecond
-      )
-    } else {
-      runtime = nil
-    }
+    let runtime = try mapMediaDuration(
+      isPresent: summary.hasRuntime,
+      seconds: summary.runtime.seconds,
+      nanoseconds: summary.runtime.nanos
+    )
 
     return MediaSummary(
       identity: MediaIdentity(summary.id),
@@ -196,23 +184,7 @@ nonisolated extension NamaLibraryClient {
       throw MediaResponseMappingError.invalid
     }
 
-    let availability: MediaSourceAvailability
-    switch source.availability {
-    case .available:
-      availability = .available
-
-    case .providerUnavailable:
-      availability = .providerUnavailable
-
-    case .unsupported:
-      availability = .unsupported
-
-    case .UNRECOGNIZED:
-      availability = .unknown
-
-    case .unspecified:
-      throw MediaResponseMappingError.invalid
-    }
+    let availability = try mapSourceAvailability(source.availability)
 
     return MediaSourceSummary(
       identity: MediaSourceIdentity(source.id),
@@ -233,33 +205,10 @@ nonisolated extension NamaLibraryClient {
     else {
       throw MediaResponseMappingError.invalid
     }
-    let dynamicRange: MediaDynamicRange?
-    if quality.hasDynamicRange {
-      switch quality.dynamicRange {
-      case .sdr:
-        dynamicRange = .sdr
-
-      case .hdr10:
-        dynamicRange = .hdr10
-
-      case .hdr10Plus:
-        dynamicRange = .hdr10Plus
-
-      case .hlg:
-        dynamicRange = .hlg
-
-      case .dolbyVision:
-        dynamicRange = .dolbyVision
-
-      case .UNRECOGNIZED:
-        dynamicRange = .unknown
-
-      case .unspecified:
-        throw MediaResponseMappingError.invalid
-      }
-    } else {
-      dynamicRange = nil
-    }
+    let dynamicRange =
+      quality.hasDynamicRange
+      ? try mapDynamicRange(quality.dynamicRange)
+      : nil
 
     return MediaVideoQuality(
       codec: quality.codec,
@@ -273,33 +222,106 @@ nonisolated extension NamaLibraryClient {
     guard mediaStringIsBounded(quality.codec) else {
       throw MediaResponseMappingError.invalid
     }
-    let spatialFormat: MediaSpatialAudioFormat?
-    if quality.hasSpatialFormat {
-      switch quality.spatialFormat {
-      case .none:
-        spatialFormat = .nonSpatial
-
-      case .dolbyAtmos:
-        spatialFormat = .dolbyAtmos
-
-      case .dtsX:
-        spatialFormat = .dtsX
-
-      case .UNRECOGNIZED:
-        spatialFormat = .unknown
-
-      case .unspecified:
-        throw MediaResponseMappingError.invalid
-      }
-    } else {
-      spatialFormat = nil
-    }
+    let spatialFormat =
+      quality.hasSpatialFormat
+      ? try mapSpatialAudioFormat(quality.spatialFormat)
+      : nil
 
     return MediaAudioQuality(
       codec: quality.codec,
       channelCount: quality.hasChannelCount ? quality.channelCount : nil,
       spatialFormat: spatialFormat
     )
+  }
+
+  static func mapMediaDuration(
+    isPresent: Bool,
+    seconds: Int64,
+    nanoseconds: Int32
+  ) throws -> Duration? {
+    guard isPresent else {
+      return nil
+    }
+    guard
+      seconds >= 0,
+      nanoseconds >= 0,
+      nanoseconds < MediaResponseBounds.nanosecondsPerSecond
+    else {
+      throw MediaResponseMappingError.invalid
+    }
+    return Duration(
+      secondsComponent: seconds,
+      attosecondsComponent: Int64(nanoseconds) * MediaResponseBounds.attosecondsPerNanosecond
+    )
+  }
+
+  static func mapSourceAvailability(
+    _ availability: Nama_Api_V1_SourceAvailability
+  ) throws -> MediaSourceAvailability {
+    switch availability {
+    case .available:
+      .available
+
+    case .providerUnavailable:
+      .providerUnavailable
+
+    case .unsupported:
+      .unsupported
+
+    case .UNRECOGNIZED:
+      .unknown
+
+    case .unspecified:
+      throw MediaResponseMappingError.invalid
+    }
+  }
+
+  static func mapDynamicRange(
+    _ dynamicRange: Nama_Api_V1_DynamicRange
+  ) throws -> MediaDynamicRange {
+    switch dynamicRange {
+    case .sdr:
+      .sdr
+
+    case .hdr10:
+      .hdr10
+
+    case .hdr10Plus:
+      .hdr10Plus
+
+    case .hlg:
+      .hlg
+
+    case .dolbyVision:
+      .dolbyVision
+
+    case .UNRECOGNIZED:
+      .unknown
+
+    case .unspecified:
+      throw MediaResponseMappingError.invalid
+    }
+  }
+
+  static func mapSpatialAudioFormat(
+    _ spatialFormat: Nama_Api_V1_SpatialAudioFormat
+  ) throws -> MediaSpatialAudioFormat {
+    switch spatialFormat {
+    case .none:
+      .nonSpatial
+
+    case .dolbyAtmos:
+      .dolbyAtmos
+
+    case .dtsX:
+      .dtsX
+
+    case .UNRECOGNIZED:
+      .unknown
+
+    case .unspecified:
+      throw MediaResponseMappingError.invalid
+    }
   }
 
   static func mediaStringIsBounded(_ value: String) -> Bool {

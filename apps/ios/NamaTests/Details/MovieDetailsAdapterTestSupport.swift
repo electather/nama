@@ -149,6 +149,36 @@ enum MovieDetailsAdapterFixture {
     }
     """#
 
+  static let unavailableCanonicalDefaultResponse = #"""
+    {
+      "media": {
+        "summary": {
+          "id": "movie-unavailable-default",
+          "kind": "MEDIA_KIND_MOVIE",
+          "title": "Unavailable Canonical Default",
+          "playability": "PLAYABILITY_NO_AVAILABLE_SOURCE",
+          "defaultSource": {
+            "id": "source-unavailable-default",
+            "label": "Unsupported Remote Copy",
+            "isDefault": true,
+            "availability": "SOURCE_AVAILABILITY_UNSUPPORTED",
+            "container": "mkv"
+          }
+        },
+        "sourceSummaries": [
+          {
+            "id": "source-unavailable-default",
+            "label": "Unsupported Remote Copy",
+            "isDefault": true,
+            "availability": "SOURCE_AVAILABILITY_UNSUPPORTED",
+            "container": "mkv"
+          }
+        ],
+        "movie": {}
+      }
+    }
+    """#
+
   static let canonicalRequestID = "2f1c5f44-6a9b-4d2e-8c70-62df607c2efa"
   static let unsupportedDetail = #"""
     {

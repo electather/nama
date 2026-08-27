@@ -44,6 +44,7 @@ struct MovieDetailsAdapterTests {
     #expect(details.preferredPosterArtwork?.identity == ArtworkIdentity("poster-textless"))
     #expect(details.playability == .playable)
     #expect(details.defaultSource?.identity == MediaSourceIdentity("source-default"))
+    #expect(details.sourceSummaries.map(\.identity) == [MediaSourceIdentity("source-default")])
     try assertMovieDetailsRequest()
   }
 

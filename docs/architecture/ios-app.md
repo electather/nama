@@ -5,23 +5,34 @@ acknowledged eligible local HTTP, foreground LAN discovery, native Better Auth
 device authorization, refresh rotation, endpoint-bound Keychain token storage,
 provider-neutral Home, exhaustive paginated Movie and Show Library browsing,
 safe artwork loading, stored-canonical Movie, Show, Season, and Episode Details,
-canonical child paging, and typed opaque Play intent are implemented. The
-connection and authorization baseline's Apple-platform builds and macOS-host
-tests pass. A signed Apple TV 4K simulator has completed local-HTTP
-acknowledgement, no-browser authorization through the generated CLI, scoped
-consumer verification, Keychain commit, and relaunch restoration. The
-production `NamaPlayer` boundary is implemented; controlled rendering and
-adversarial locator, replacement, expiry, and shared lifecycle behavior pass
-through its macOS-hosted real-engine tests.
+canonical child paging, on-demand canonical Source inspection and choice, and
+typed opaque Play intent are implemented. The connection and authorization
+baseline's Apple-platform builds and macOS-host tests pass. A signed Apple TV 4K
+simulator has completed local-HTTP acknowledgement, no-browser authorization
+through the generated CLI, scoped consumer verification, Keychain commit, and
+relaunch restoration. The production `NamaPlayer` boundary is implemented;
+controlled rendering and adversarial locator, replacement, expiry, and shared
+lifecycle behavior pass through its macOS-hosted real-engine tests.
 
 Library fixtures rendered the iPhone and Apple TV tabs, iPad split navigation,
 adaptive long-title grids, terminal content, and a visible Apple TV Load More
 action. An Apple Development-signed sandboxed Mac build created an onscreen
-Library window, while pixel capture and keyboard or pointer inspection were
-unavailable. Apple TV Load More focus interaction, compact iPad collapse,
-nested Details focus return, live OAuth-authorized stored-catalog browsing,
-successful artwork resolution, physical Apple hardware, and expiry-driven
-actual-surface refresh remain unverified.
+Library window, while pixel capture and Library keyboard or pointer inspection
+were unavailable. Show, Season, and Episode fixtures have run on iPhone 17 Pro,
+iPad Pro 13-inch, and Apple TV 4K simulators and an Apple Development-signed
+sandboxed Mac build. Those hierarchy runs confirmed kind-valid metadata,
+title-bearing artwork fallback, canonical parent context, child rows, long
+titles, and Episode Play. Source inspection has self-contained choosing,
+technical, unavailable, distinct-unlabeled-choice, and stale-response previews.
+The unlabeled fixture has run on iPhone 17 Pro and iPad Pro 13-inch (M5)
+simulators, an Apple TV 4K (3rd generation) simulator, and an Apple
+Development-signed sandboxed Mac build; simulated touch, Apple TV remote focus,
+Mac pointer, and Mac keyboard operation selected both distinct choices and
+retained their matching technical titles. Apple TV Load More focus interaction,
+compact iPad collapse, focus return after nested Details, the live
+OAuth-authorized stored-catalog hierarchy, successful artwork resolution,
+VoiceOver inspection, physical Apple hardware, expiry-driven actual-surface
+refresh, and the remaining Apple surfaces remain unverified.
 
 ## Authority and fixed decisions
 
@@ -171,13 +182,15 @@ device authorization:
   query and confirmed pages; Details retains projections, hierarchy paging, and
   presentation.
 - `NamaLibraryClient` is the concrete generated `LibraryService` adapter for
-  scoped-access verification, Home, paginated Library, and canonical Details
-  hierarchy reads. It sends bearer and allowlisted client metadata, accepts
-  `CATALOG_NOT_READY` as authenticated access, treats catalog preparation and
-  invalid page tokens as recoverable feature failures, treats an unimplemented
-  handler as incompatible, and maps generated summaries, browse pages, Details,
-  child pages, and other Connect failures into feature-owned values and closed
-  safe failures.
+  scoped-access verification, Home, paginated Library, canonical Details
+  hierarchy reads, and exact item/Source technical reads. It sends bearer and
+  allowlisted client metadata, accepts `CATALOG_NOT_READY` as authenticated
+  access, treats catalog preparation and invalid page tokens as recoverable
+  feature failures, treats an unimplemented handler as incompatible, and maps
+  generated summaries, browse pages, Details, child pages, Source parts and
+  normalized tracks, and other Connect failures into feature-owned values and
+  closed safe failures. Generated, provider, filesystem-path, and stream-index
+  values remain below this adapter seam.
 - `NamaLibraryClient` resolves opaque Home and Library artwork references through
   `ResolveArtwork` and maps the response into app-owned locator values. Generated
   messages, URLs, headers, redirect origins, deadlines, and resolution failures
@@ -237,6 +250,13 @@ device authorization:
   title fallbacks. Touch and pointer rows advance near the confirmed end; Apple
   TV retains one enabled, truthfully labelled, stable focusable Load More item
   while pages append.
+- One `MediaSourcesFeature` per Sources destination starts with confirmed
+  source summaries and loads technical data only after deliberate selection.
+  Replacement and deactivation cancel obsolete work; attempt identity rejects
+  stale completion. Missing, unavailable, canceled, incompatible, and stale
+  results retain the parent item and source choices with explicit recovery.
+  Available selection emits the same typed Play intent with one opaque canonical
+  source ID, while primary Details Play leaves the default source implicit.
 
 The Swift Testing target covers endpoint normalization and every approved and
 forbidden address-class boundary, mapped and scoped IPv6, local DNS label and
@@ -265,14 +285,17 @@ sort replacement, server-ordered ID-only deduplication, bounded request mapping,
 near-end paging, later-page failure and retry, expired-continuation recovery,
 refresh preservation, distinct preparation/empty/terminal states, Home See All
 routing, ID-only Details restoration, platform container choice, and
-multi-window independence. Media Details coverage adds bounded `GetMedia` and
-`ListChildren` mapping, catalog-preparation and expired-page recovery, all four
-kind projections, optional and long metadata, ordered canonical parents and
-children, first- and later-page deduplication, kind-appropriate child artwork
-and fallback, refresh-time artwork replacement, playability, distinct safe
-failures, cancellation, stale-selection, stale-page, and stale-artwork
-rejection, retry preservation, near-end advancement, Apple TV page-action
-projection, and typed Movie and Episode Play-intent emission. Playback tests
+multi-window independence. Media Details coverage adds bounded `GetMedia`,
+`ListChildren`, and exact-pair `GetMediaSource` mapping, catalog-preparation and
+expired-page recovery, all four kind projections, optional and long metadata,
+ordered canonical parents, children, Source parts, and normalized tracks,
+unknown future technical enums, first- and later-page deduplication,
+kind-appropriate child artwork and fallback, refresh-time artwork replacement,
+default-source bypass and conditional Sources visibility, distinct safe
+failures, cancellation, stale-selection, stale-page, stale-artwork, and stale
+Source rejection, retry preservation, near-end advancement, Apple TV
+page-action projection, and typed Movie and Episode Play-intent emission with
+an explicit source ID only after deliberate choice. Playback tests
 cover
 exact normalized origins, rejected initial and redirect targets, allowed
 redirect header replay, nested HLS playlists, variants, renditions, segments
@@ -284,23 +307,42 @@ Self-contained previews render discovery outcomes, local-HTTP confirmation with
 a long endpoint, persistent ready and failure warnings, blocked restoration,
 Home loading, empty, long-title content, artwork and title fallback, refresh,
 catalog-preparation, and failure fixtures. Library previews cover loading,
-adaptive long-title content, legitimate empty, and later-page failure inside
-the real top-level container. Media Details previews cover Movie loading,
-content, long synopsis, missing artwork, unavailable source, and not-found
-states plus Show Seasons, later-page failure, Season Episodes, long child
-titles, missing hierarchy artwork, Episode Play, and unavailable Episode states.
+adaptive long-title content, legitimate empty, and later-page failure inside the
+real top-level container. Media Details previews cover Movie loading, content,
+long synopsis, missing artwork, unavailable source, and not-found states plus
+Show Seasons, later-page failure, Season Episodes, long child titles, missing
+hierarchy artwork, Episode Play, and unavailable Episode states. Sources
+previews cover choosing, normalized technical details, unavailable selection,
+distinct unlabeled choices, and stale-response recovery.
 
 Library fixtures rendered the two-item iPhone and Apple TV tabs, iPad split
 navigation, adaptive long-title grids, terminal content, and a visible Apple TV
 Load More action on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K simulators.
 An Apple Development-signed sandboxed Mac build created an onscreen Library
-window, while pixel capture and keyboard or pointer inspection were unavailable.
-Apple TV Load More focus interaction, compact iPad collapse, nested Details
-focus return, live OAuth-authorized stored-catalog browsing, successful artwork
-resolution, and physical hardware remain unverified. `check:ios` lints Swift
-formatting, runs the test target through its macOS host, inspects the built ATS
-shape, and performs signing-disabled iOS, tvOS, and macOS builds. Generic builds
-do not prove physical-device privacy prompts, focus, or accessibility.
+window, while pixel capture and Library keyboard or pointer inspection were
+unavailable. Show, Season, and Episode fixtures have run in the Debug
+application on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K simulators and an
+Apple Development-signed sandboxed Mac build. They confirmed adaptive bounds,
+kind-specific navigation titles and metadata, title-bearing artwork fallbacks,
+canonical parent context, Season and Episode child rows, and Episode Play. The
+Apple TV runs did not exercise Load More focus movement, and no run exercised
+focus return after nested Details.
+
+The unlabeled Sources fixture ran in the Debug application on iPhone 17 Pro and
+iPad Pro 13-inch (M5) simulators, an Apple TV 4K (3rd generation) simulator, and
+an Apple Development-signed sandboxed Mac build. Simulated touch selected Source
+1 on iPhone and Source 2 on iPad. Apple TV remote focus moved between both
+actions and selected each. Mac pointer input selected Source 2, while full
+keyboard access focused Source 1 and activated it with Space. Every selected
+technical section retained the matching positional title. These fixture
+surfaces do not prove the live OAuth-authorized stored-catalog hierarchy,
+successful artwork resolution, VoiceOver output, or physical-device input.
+`check:ios` lints Swift formatting, runs the test target through its macOS host,
+inspects the built ATS shape, and performs signing-disabled iOS, tvOS, and macOS
+builds. The real-player tests prove controlled SDR HLS rendering and control
+flow plus adversarial locator and shared lifecycle policy through the real
+adapter on the macOS host. Generic builds do not prove physical-device privacy
+prompts, focus, accessibility, or playback.
 
 This baseline implements endpoint eligibility, endpoint-bound persistent
 local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP
@@ -308,11 +350,12 @@ recovery, endpoint-scoped local-HTTP proxy bypass, the narrow ATS
 local-networking allowance, Better Auth device authorization and refresh,
 endpoint-bound Keychain tokens, provider-neutral Home over stored `GetHome`
 results, exhaustive paginated Movie and Show Library browsing over
-`ListLibrary`, safe artwork resolution and fallback, and stored canonical
-Movie, Show, Season, and Episode Details over `GetMedia` and `ListChildren`.
-Details owns hierarchy presentation and emits only a typed, opaque canonical
-Play intent; it does not invoke playback planning, opening, or engine code.
-Search, Watch State, and playback product behavior remain unimplemented.
+`ListLibrary`, safe artwork resolution and fallback, stored canonical Movie,
+Show, Season, and Episode Details over `GetMedia` and `ListChildren`, and
+deliberate canonical Source inspection over `GetMediaSource`. Details owns
+hierarchy and Sources presentation and emits only typed opaque canonical Play
+intents; it does not invoke playback planning, opening, or engine code. Search,
+Watch State, and playback product behavior remain unimplemented.
 
 ## Target runtime topology
 
@@ -413,11 +456,11 @@ generated messages and Connect failures do not cross it. The core is the only
 media data source in the MVP, so the application adds no generic repository
 layer.
 
-Milestone 4 browse delivery continues from the implemented Home and artwork
-boundaries into Library/Search and Details/hierarchy/source behavior behind
-their feature interfaces before scene-local navigation integrates them.
-Universal actual-surface and stored-catalog acceptance closes the slice. This
-sequence creates no platform-specific feature fork or empty package.
+Milestone 4 browse delivery continues from the implemented Home, artwork,
+Details hierarchy, and Source-choice boundaries into Library and Search behind
+their feature interfaces. Universal actual-surface and stored-catalog
+acceptance closes the slice. This sequence creates no platform-specific feature
+fork or empty package.
 
 ## Session, windows, and navigation
 

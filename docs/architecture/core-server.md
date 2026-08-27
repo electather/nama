@@ -1,6 +1,6 @@
 # Core server
 
-Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, authenticated plugin-subprocess supervisor, bundled-provider discovery/listing, candidate and stored-instance connection testing, verified provider-instance create/list/get/update/delete including disable and re-enable, initial catalog ingestion, and stored public Library reads are implemented and verified.
+Status: the bootable lifecycle, production persistence, durable initialization, bootstrap-token boundary, Connect setup/authentication runtime, authenticated plugin-subprocess supervisor, bundled-provider discovery/listing, candidate and stored-instance connection testing, verified provider-instance create/list/get/update/delete including disable and re-enable, initial catalog ingestion, stored public Library reads, and sparse versioned canonical Watch state persistence are implemented and verified.
 
 This note is the canonical record for durable core-server boundaries. The implementation under `apps/server/` owns mechanics.
 
@@ -19,7 +19,7 @@ This note is the canonical record for durable core-server boundaries. The implem
 - runtime-controlled readiness and fatal post-bind failure;
 - one Effect-scoped authenticated, on-demand plugin-subprocess supervisor with context-free discovery, one-shot candidate, exact-revision instance launches, and bounded idle retirement;
 - one code-owned bundled-provider registry with bounded startup discovery, instance-local credential containment, compatible installation reconciliation, safe availability status, authenticated provider-type and connection-test reads, and provider-instance create/list/get/update/delete;
-- one durable initial catalog importer and stored canonical query owner;
+- one durable initial catalog importer, stored canonical query owner, and sparse canonical Watch state persistence boundary;
 - authenticated `LibraryService` home, list, search, details, hierarchy, source, and validated artwork-locator reads; and
 - deterministic signal shutdown, bounded drain, process-group termination, and resource finalization.
 

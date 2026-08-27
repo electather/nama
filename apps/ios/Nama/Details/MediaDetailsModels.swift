@@ -18,8 +18,24 @@ nonisolated struct MediaDetailsSelection: Equatable, Hashable, Sendable {
   }
 }
 
+nonisolated struct MediaSourcesSelection: Equatable, Hashable, Sendable {
+  let mediaIdentity: MediaIdentity
+  let mediaKind: MediaKind
+  let mediaTitle: String
+  let sourceSummaries: [MediaSourceSummary]
+}
+
 nonisolated struct MediaPlayIntent: Equatable, Hashable, Sendable {
   let mediaIdentity: MediaIdentity
+  let sourceIdentity: MediaSourceIdentity?
+
+  init(
+    mediaIdentity: MediaIdentity,
+    sourceIdentity: MediaSourceIdentity? = nil
+  ) {
+    self.mediaIdentity = mediaIdentity
+    self.sourceIdentity = sourceIdentity
+  }
 }
 
 nonisolated enum MediaDetailsArtworkSlot: Equatable, Hashable, Sendable {
@@ -144,6 +160,7 @@ nonisolated struct MediaDetails: Equatable, Sendable {
   let parents: [MediaDetailsParent]
   let playability: MediaPlayability
   let defaultSource: MediaSourceSummary?
+  let sourceSummaries: [MediaSourceSummary]
   let kindDetails: MediaDetailsKind
 
   var directors: [MediaCredit] {
@@ -176,6 +193,22 @@ nonisolated struct MediaDetails: Equatable, Sendable {
 
   var preferredBackdropArtwork: ArtworkReference? {
     preferredArtwork(for: .backdrop)
+  }
+
+  var sourcesSelection: MediaSourcesSelection? {
+    guard
+      !sourceSummaries.isEmpty,
+      kindDetails.mediaKind == .movie || kindDetails.mediaKind == .episode,
+      sourceSummaries.count > 1 || defaultSource?.availability != .available
+    else {
+      return nil
+    }
+    return MediaSourcesSelection(
+      mediaIdentity: identity,
+      mediaKind: kindDetails.mediaKind,
+      mediaTitle: title,
+      sourceSummaries: sourceSummaries
+    )
   }
 
   private func preferredArtwork(for role: ArtworkRole) -> ArtworkReference? {

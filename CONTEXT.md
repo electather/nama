@@ -60,15 +60,19 @@ The active Nama-owned playback identity created when a playback plan is opened, 
 _Avoid_: Provider session, playback plan
 
 **Watch state**:
-Nama's record of whether a playable item is watched and, when present, its resumable position and duration.
+Nama's per-person record of whether one playable canonical item is watched and, when present, its resumable position, duration, and last known playback Source. Its absence means Nama has accepted no watch-state evidence, not that the item is unwatched.
 _Avoid_: Playback state, progress
 
 **Provider observation**:
 Incoming evidence from a provider instance before Nama records its normalized form.
 
 **Provider replica**:
-Nama's stored normalized observation of watch state from one provider instance, used as reconciliation evidence rather than canonical truth.
+Nama's stored per-person normalized observation of watch state from one exact provider item mapping, used as reconciliation evidence rather than canonical truth. Its existence does not imply that Nama has accepted canonical Watch state.
 _Avoid_: Provider state, source state
+
+**Activity origin**:
+The provenance of a watch-state activity: Nama playback, a Nama watched-status action, or one exact Provider replica. It is not a media Source.
+_Avoid_: Source
 
 **Operation ID**:
 A client-created opaque identifier for one logical mutation across transport attempts.

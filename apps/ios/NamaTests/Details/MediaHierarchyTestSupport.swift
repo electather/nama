@@ -104,6 +104,7 @@ func hierarchyDetails(
     parents: [],
     playability: playability,
     defaultSource: source,
+    sourceSummaries: source.map { [$0] } ?? [],
     kindDetails: kindDetails
   )
 }

@@ -168,6 +168,39 @@ struct MediaDetailsDestination: View {
   }
 }
 
+struct MediaSourcesDestination: View {
+  @State private var feature: MediaSourcesFeature
+
+  let selection: MediaSourcesSelection
+  let authorization: HomeAuthorizationIdentity
+  let emitPlayIntent: @MainActor (MediaPlayIntent) -> Void
+  let reauthorize: @MainActor () async -> Void
+
+  init(
+    selection: MediaSourcesSelection,
+    authorization: HomeAuthorizationIdentity,
+    loader: any MediaSourceLoading,
+    emitPlayIntent: @escaping @MainActor (MediaPlayIntent) -> Void,
+    reauthorize: @escaping @MainActor () async -> Void
+  ) {
+    _feature = State(initialValue: MediaSourcesFeature(loader: loader))
+    self.selection = selection
+    self.authorization = authorization
+    self.emitPlayIntent = emitPlayIntent
+    self.reauthorize = reauthorize
+  }
+
+  var body: some View {
+    MediaSourcesView(
+      feature: feature,
+      selection: selection,
+      authorization: authorization,
+      emitPlayIntent: emitPlayIntent,
+      reauthorize: reauthorize
+    )
+  }
+}
+
 struct OAuthAuthorizationTaskID: Hashable {
   let endpoint: NamaEndpoint
   let retryGeneration: Int

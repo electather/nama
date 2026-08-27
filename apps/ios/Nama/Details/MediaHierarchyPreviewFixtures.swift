@@ -109,7 +109,19 @@
       playability: MediaPlayability = .noAvailableSource,
       runtime: Duration? = nil
     ) -> MediaDetails {
-      MediaDetails(
+      let source =
+        playability == .playable
+        ? MediaSourceSummary(
+          identity: MediaSourceIdentity("source-preview"),
+          label: nil,
+          isDefault: true,
+          availability: .available,
+          container: nil,
+          videoQuality: nil,
+          audioQuality: nil
+        )
+        : nil
+      return MediaDetails(
         identity: MediaIdentity(identity),
         title: title,
         releaseYear: nil,
@@ -125,17 +137,8 @@
         artwork: [],
         parents: parents,
         playability: playability,
-        defaultSource: playability == .playable
-          ? MediaSourceSummary(
-            identity: MediaSourceIdentity("source-preview"),
-            label: nil,
-            isDefault: true,
-            availability: .available,
-            container: nil,
-            videoQuality: nil,
-            audioQuality: nil
-          )
-          : nil,
+        defaultSource: source,
+        sourceSummaries: source.map { [$0] } ?? [],
         kindDetails: kindDetails
       )
     }

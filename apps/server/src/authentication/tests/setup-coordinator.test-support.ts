@@ -8,6 +8,7 @@ import { Database } from "../../database/database.ts";
 import { databaseSchema } from "../../database/schema.ts";
 import { unusedCatalog } from "../../database/tests/catalog-persistence.test-support.ts";
 import { unusedProviderPersistence } from "../../database/tests/provider-persistence.test-support.ts";
+import { unusedWatchStatePersistence } from "../../database/tests/watch-state-persistence.test-support.ts";
 import type { RuntimeControl } from "../../lifecycle/runtime-control.ts";
 import { makeBootstrapToken } from "../../setup/bootstrap-token.ts";
 import type { BootstrapTokenService } from "../../setup/bootstrap-token.ts";
@@ -132,6 +133,7 @@ const makeCoordinatorFixture = (
     checkReadiness: Effect.succeed(true),
     initialization,
     providers: unusedProviderPersistence,
+    watchState: unusedWatchStatePersistence,
   });
   const coordinator = makeSetupCoordinator({
     betterAuthAdapter: options.adapter ?? defaultAdapter,

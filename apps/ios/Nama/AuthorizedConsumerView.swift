@@ -20,7 +20,7 @@ struct AuthorizedConsumerRootView: View {
   let authorization: OAuthAuthorizationFeature
   let home: HomeFeature
   let library: LibraryFeature
-  let detailsLoader: any MediaChildrenLoading & MediaDetailsLoading
+  let detailsLoader: any MediaChildrenLoading & MediaDetailsLoading & MediaSourceLoading
   let artworkLoader: any HomeArtworkLoading
   let emitPlayIntent: @MainActor (MediaPlayIntent) -> Void
   let endpoint: NamaEndpoint
@@ -156,7 +156,7 @@ struct AuthorizedTopLevelView: View {
   let home: HomeFeature
   let library: LibraryFeature
   let authorization: HomeAuthorizationIdentity
-  let detailsLoader: any MediaChildrenLoading & MediaDetailsLoading
+  let detailsLoader: any MediaChildrenLoading & MediaDetailsLoading & MediaSourceLoading
   let artworkLoader: any HomeArtworkLoading
   let emitPlayIntent: @MainActor (MediaPlayIntent) -> Void
   let changeEndpoint: @MainActor () async -> Void
@@ -204,6 +204,15 @@ struct AuthorizedTopLevelView: View {
             authorization: authorization,
             loader: detailsLoader,
             artworkLoader: artworkLoader,
+            emitPlayIntent: emitPlayIntent,
+            reauthorize: reauthorize
+          )
+        }
+        .navigationDestination(for: MediaSourcesSelection.self) { selection in
+          MediaSourcesDestination(
+            selection: selection,
+            authorization: authorization,
+            loader: detailsLoader,
             emitPlayIntent: emitPlayIntent,
             reauthorize: reauthorize
           )

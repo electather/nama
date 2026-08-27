@@ -1,4 +1,4 @@
-// oxlint-disable import/max-dependencies -- The database composition boundary owns one pool and wires migrations, authentication, catalog, initialization, and provider persistence.
+// oxlint-disable import/max-dependencies -- The database composition boundary owns one pool and wires migrations, authentication, catalog, initialization, provider, and Watch state persistence.
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -17,6 +17,8 @@ import { reconcileOAuthConfiguration } from "./oauth-configuration-persistence.t
 import { makeProviderPersistence } from "./provider-persistence.ts";
 import type { ProviderPersistence } from "./provider-persistence.ts";
 import { databaseSchema, namaServerState } from "./schema.ts";
+import { makeWatchStatePersistence } from "./watch-state-persistence.ts";
+import type { WatchStatePersistence } from "./watch-state-persistence.ts";
 
 const EXPECTED_SINGLE_UPDATED_MARKER_COUNT = 1;
 const PROBE_TIMEOUT_MILLISECONDS = 2000;
@@ -54,6 +56,7 @@ interface DatabaseService {
   readonly initialization: DatabaseInitialization;
   readonly checkReadiness: Effect.Effect<boolean>;
   readonly providers: ProviderPersistence;
+  readonly watchState: WatchStatePersistence;
 }
 const ignoreIdlePoolError = (): void => {
   // The bounded readiness probe reports idle connection loss without retaining PostgreSQL details.
@@ -190,6 +193,7 @@ const makeDatabase = (migrationsFolder: string) =>
       checkReadiness: makeReadinessProbe(pool),
       initialization,
       providers: providerPersistence.service,
+      watchState: makeWatchStatePersistence(database),
     });
   });
 

@@ -93,7 +93,10 @@
     }
   }
 
-  private actor LibraryInspectionDetailsLoader: MediaDetailsLoading, MediaChildrenLoading {
+  private typealias LibraryInspectionMediaLoading =
+    MediaDetailsLoading & MediaChildrenLoading & MediaSourceLoading
+
+  private actor LibraryInspectionDetailsLoader: LibraryInspectionMediaLoading {
     func load(
       _: MediaDetailsSelection,
       authorization _: HomeAuthorizationIdentity
@@ -107,6 +110,14 @@
       authorization _: HomeAuthorizationIdentity
     ) throws -> MediaChildrenPage {
       throw MediaDetailsFailure.incompatible
+    }
+
+    func loadSource(
+      mediaIdentity _: MediaIdentity,
+      sourceIdentity _: MediaSourceIdentity,
+      authorization _: HomeAuthorizationIdentity
+    ) throws -> MediaSource {
+      throw MediaSourceFailure.incompatible
     }
   }
 

@@ -122,26 +122,36 @@
 		100000000000000000000121 /* MediaDetailsFeature+ChildArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000121 /* MediaDetailsFeature+ChildArtwork.swift */; };
 		100000000000000000000122 /* MediaModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000122 /* MediaModels.swift */; };
 		100000000000000000000123 /* MediaChildRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000123 /* MediaChildRow.swift */; };
-		100000000000000000000124 /* LibraryFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000124 /* LibraryFeatureTests.swift */; };
-		100000000000000000000125 /* LibraryAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000125 /* LibraryAdapterTests.swift */; };
-		100000000000000000000126 /* ConsumerNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000126 /* ConsumerNavigationTests.swift */; };
-		100000000000000000000127 /* LibraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000127 /* LibraryModels.swift */; };
-		100000000000000000000128 /* LibraryFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000128 /* LibraryFeature.swift */; };
-		100000000000000000000129 /* ConsumerNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000129 /* ConsumerNavigation.swift */; };
-		100000000000000000000130 /* NamaLibraryClient+Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000130 /* NamaLibraryClient+Library.swift */; };
-		100000000000000000000131 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000131 /* LibraryView.swift */; };
-		100000000000000000000132 /* AuthorizedConsumerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000132 /* AuthorizedConsumerView.swift */; };
-		100000000000000000000133 /* LibraryPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000133 /* LibraryPreviewFixtures.swift */; };
-		100000000000000000000134 /* LibraryGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000134 /* LibraryGridView.swift */; };
-		100000000000000000000135 /* LibraryFailureViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000135 /* LibraryFailureViews.swift */; };
-		100000000000000000000136 /* MediaHierarchyTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000136 /* MediaHierarchyTestSupport.swift */; };
-		100000000000000000000137 /* LibraryFeatureTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000137 /* LibraryFeatureTestSupport.swift */; };
-		100000000000000000000138 /* LibraryPageRecoveryFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000138 /* LibraryPageRecoveryFeatureTests.swift */; };
-		100000000000000000000139 /* LibraryFeatureSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000139 /* LibraryFeatureSupport.swift */; };
-		100000000000000000000140 /* LibraryRefreshFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000140 /* LibraryRefreshFeatureTests.swift */; };
-		100000000000000000000141 /* MediaRestorationPagingFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000141 /* MediaRestorationPagingFeatureTests.swift */; };
-		100000000000000000000142 /* LibraryFeature+Artwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000142 /* LibraryFeature+Artwork.swift */; };
-		100000000000000000000143 /* LibraryFeature+Paging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000143 /* LibraryFeature+Paging.swift */; };
+		100000000000000000000124 /* MediaSourcesFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000124 /* MediaSourcesFeatureTests.swift */; };
+		100000000000000000000125 /* MediaSourceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000125 /* MediaSourceModels.swift */; };
+		100000000000000000000126 /* MediaSourcesFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000126 /* MediaSourcesFeature.swift */; };
+		100000000000000000000127 /* MediaSourceAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000127 /* MediaSourceAdapterTests.swift */; };
+		100000000000000000000128 /* NamaLibraryClient+MediaSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000128 /* NamaLibraryClient+MediaSource.swift */; };
+		100000000000000000000129 /* MediaSourceTechnicalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000129 /* MediaSourceTechnicalView.swift */; };
+		100000000000000000000130 /* MediaSourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000130 /* MediaSourcesView.swift */; };
+		100000000000000000000131 /* MediaSourcesPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000131 /* MediaSourcesPreviewFixtures.swift */; };
+		100000000000000000000132 /* MediaDetailsPlayabilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000132 /* MediaDetailsPlayabilityView.swift */; };
+		100000000000000000000133 /* MediaTrackTechnicalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000133 /* MediaTrackTechnicalView.swift */; };
+		100000000000000000000134 /* LibraryFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000134 /* LibraryFeatureTests.swift */; };
+		100000000000000000000135 /* LibraryAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000135 /* LibraryAdapterTests.swift */; };
+		100000000000000000000136 /* ConsumerNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000136 /* ConsumerNavigationTests.swift */; };
+		100000000000000000000137 /* LibraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000137 /* LibraryModels.swift */; };
+		100000000000000000000138 /* LibraryFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000138 /* LibraryFeature.swift */; };
+		100000000000000000000139 /* ConsumerNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000139 /* ConsumerNavigation.swift */; };
+		100000000000000000000140 /* NamaLibraryClient+Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000140 /* NamaLibraryClient+Library.swift */; };
+		100000000000000000000141 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000141 /* LibraryView.swift */; };
+		100000000000000000000142 /* AuthorizedConsumerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000142 /* AuthorizedConsumerView.swift */; };
+		100000000000000000000143 /* LibraryPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000143 /* LibraryPreviewFixtures.swift */; };
+		100000000000000000000144 /* LibraryGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000144 /* LibraryGridView.swift */; };
+		100000000000000000000145 /* LibraryFailureViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000145 /* LibraryFailureViews.swift */; };
+		100000000000000000000146 /* MediaHierarchyTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000146 /* MediaHierarchyTestSupport.swift */; };
+		100000000000000000000147 /* LibraryFeatureTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000147 /* LibraryFeatureTestSupport.swift */; };
+		100000000000000000000148 /* LibraryPageRecoveryFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000148 /* LibraryPageRecoveryFeatureTests.swift */; };
+		100000000000000000000149 /* LibraryFeatureSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000149 /* LibraryFeatureSupport.swift */; };
+		100000000000000000000150 /* LibraryRefreshFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000150 /* LibraryRefreshFeatureTests.swift */; };
+		100000000000000000000151 /* MediaRestorationPagingFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000151 /* MediaRestorationPagingFeatureTests.swift */; };
+		100000000000000000000152 /* LibraryFeature+Artwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000152 /* LibraryFeature+Artwork.swift */; };
+		100000000000000000000153 /* LibraryFeature+Paging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000153 /* LibraryFeature+Paging.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -272,26 +282,36 @@
 		200000000000000000000121 /* MediaDetailsFeature+ChildArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MediaDetailsFeature+ChildArtwork.swift"; sourceTree = "<group>"; };
 		200000000000000000000122 /* MediaModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaModels.swift; sourceTree = "<group>"; };
 		200000000000000000000123 /* MediaChildRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaChildRow.swift; sourceTree = "<group>"; };
-		200000000000000000000124 /* LibraryFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFeatureTests.swift; sourceTree = "<group>"; };
-		200000000000000000000125 /* LibraryAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryAdapterTests.swift; sourceTree = "<group>"; };
-		200000000000000000000126 /* ConsumerNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsumerNavigationTests.swift; sourceTree = "<group>"; };
-		200000000000000000000127 /* LibraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryModels.swift; sourceTree = "<group>"; };
-		200000000000000000000128 /* LibraryFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFeature.swift; sourceTree = "<group>"; };
-		200000000000000000000129 /* ConsumerNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsumerNavigation.swift; sourceTree = "<group>"; };
-		200000000000000000000130 /* NamaLibraryClient+Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaLibraryClient+Library.swift"; sourceTree = "<group>"; };
-		200000000000000000000131 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
-		200000000000000000000132 /* AuthorizedConsumerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorizedConsumerView.swift; sourceTree = "<group>"; };
-		200000000000000000000133 /* LibraryPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPreviewFixtures.swift; sourceTree = "<group>"; };
-		200000000000000000000134 /* LibraryGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryGridView.swift; sourceTree = "<group>"; };
-		200000000000000000000135 /* LibraryFailureViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFailureViews.swift; sourceTree = "<group>"; };
-		200000000000000000000136 /* MediaHierarchyTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaHierarchyTestSupport.swift; sourceTree = "<group>"; };
-		200000000000000000000137 /* LibraryFeatureTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFeatureTestSupport.swift; sourceTree = "<group>"; };
-		200000000000000000000138 /* LibraryPageRecoveryFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPageRecoveryFeatureTests.swift; sourceTree = "<group>"; };
-		200000000000000000000139 /* LibraryFeatureSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFeatureSupport.swift; sourceTree = "<group>"; };
-		200000000000000000000140 /* LibraryRefreshFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryRefreshFeatureTests.swift; sourceTree = "<group>"; };
-		200000000000000000000141 /* MediaRestorationPagingFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaRestorationPagingFeatureTests.swift; sourceTree = "<group>"; };
-		200000000000000000000142 /* LibraryFeature+Artwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryFeature+Artwork.swift"; sourceTree = "<group>"; };
-		200000000000000000000143 /* LibraryFeature+Paging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryFeature+Paging.swift"; sourceTree = "<group>"; };
+		200000000000000000000124 /* MediaSourcesFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourcesFeatureTests.swift; sourceTree = "<group>"; };
+		200000000000000000000125 /* MediaSourceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourceModels.swift; sourceTree = "<group>"; };
+		200000000000000000000126 /* MediaSourcesFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourcesFeature.swift; sourceTree = "<group>"; };
+		200000000000000000000127 /* MediaSourceAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourceAdapterTests.swift; sourceTree = "<group>"; };
+		200000000000000000000128 /* NamaLibraryClient+MediaSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaLibraryClient+MediaSource.swift"; sourceTree = "<group>"; };
+		200000000000000000000129 /* MediaSourceTechnicalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourceTechnicalView.swift; sourceTree = "<group>"; };
+		200000000000000000000130 /* MediaSourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourcesView.swift; sourceTree = "<group>"; };
+		200000000000000000000131 /* MediaSourcesPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourcesPreviewFixtures.swift; sourceTree = "<group>"; };
+		200000000000000000000132 /* MediaDetailsPlayabilityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaDetailsPlayabilityView.swift; sourceTree = "<group>"; };
+		200000000000000000000133 /* MediaTrackTechnicalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaTrackTechnicalView.swift; sourceTree = "<group>"; };
+		200000000000000000000134 /* LibraryFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFeatureTests.swift; sourceTree = "<group>"; };
+		200000000000000000000135 /* LibraryAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryAdapterTests.swift; sourceTree = "<group>"; };
+		200000000000000000000136 /* ConsumerNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsumerNavigationTests.swift; sourceTree = "<group>"; };
+		200000000000000000000137 /* LibraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryModels.swift; sourceTree = "<group>"; };
+		200000000000000000000138 /* LibraryFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFeature.swift; sourceTree = "<group>"; };
+		200000000000000000000139 /* ConsumerNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsumerNavigation.swift; sourceTree = "<group>"; };
+		200000000000000000000140 /* NamaLibraryClient+Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaLibraryClient+Library.swift"; sourceTree = "<group>"; };
+		200000000000000000000141 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		200000000000000000000142 /* AuthorizedConsumerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorizedConsumerView.swift; sourceTree = "<group>"; };
+		200000000000000000000143 /* LibraryPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPreviewFixtures.swift; sourceTree = "<group>"; };
+		200000000000000000000144 /* LibraryGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryGridView.swift; sourceTree = "<group>"; };
+		200000000000000000000145 /* LibraryFailureViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFailureViews.swift; sourceTree = "<group>"; };
+		200000000000000000000146 /* MediaHierarchyTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaHierarchyTestSupport.swift; sourceTree = "<group>"; };
+		200000000000000000000147 /* LibraryFeatureTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFeatureTestSupport.swift; sourceTree = "<group>"; };
+		200000000000000000000148 /* LibraryPageRecoveryFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPageRecoveryFeatureTests.swift; sourceTree = "<group>"; };
+		200000000000000000000149 /* LibraryFeatureSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFeatureSupport.swift; sourceTree = "<group>"; };
+		200000000000000000000150 /* LibraryRefreshFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryRefreshFeatureTests.swift; sourceTree = "<group>"; };
+		200000000000000000000151 /* MediaRestorationPagingFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaRestorationPagingFeatureTests.swift; sourceTree = "<group>"; };
+		200000000000000000000152 /* LibraryFeature+Artwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryFeature+Artwork.swift"; sourceTree = "<group>"; };
+		200000000000000000000153 /* LibraryFeature+Paging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryFeature+Paging.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -333,8 +353,8 @@
 				500000000000000000000016 /* Details */,
 				500000000000000000000010 /* Playback */,
 				200000000000000000000001 /* NamaApp.swift */,
-				200000000000000000000129 /* ConsumerNavigation.swift */,
-				200000000000000000000132 /* AuthorizedConsumerView.swift */,
+				200000000000000000000139 /* ConsumerNavigation.swift */,
+				200000000000000000000142 /* AuthorizedConsumerView.swift */,
 				500000000000000000000006 /* Connection */,
 				500000000000000000000005 /* Resources */,
 			);
@@ -501,16 +521,16 @@
 		500000000000000000000019 /* Library */ = {
 			isa = PBXGroup;
 			children = (
-				200000000000000000000127 /* LibraryModels.swift */,
-				200000000000000000000128 /* LibraryFeature.swift */,
-				200000000000000000000142 /* LibraryFeature+Artwork.swift */,
-				200000000000000000000143 /* LibraryFeature+Paging.swift */,
-				200000000000000000000130 /* NamaLibraryClient+Library.swift */,
-				200000000000000000000131 /* LibraryView.swift */,
-				200000000000000000000133 /* LibraryPreviewFixtures.swift */,
-				200000000000000000000134 /* LibraryGridView.swift */,
-				200000000000000000000135 /* LibraryFailureViews.swift */,
-				200000000000000000000139 /* LibraryFeatureSupport.swift */,
+				200000000000000000000137 /* LibraryModels.swift */,
+				200000000000000000000138 /* LibraryFeature.swift */,
+				200000000000000000000152 /* LibraryFeature+Artwork.swift */,
+				200000000000000000000153 /* LibraryFeature+Paging.swift */,
+				200000000000000000000140 /* NamaLibraryClient+Library.swift */,
+				200000000000000000000141 /* LibraryView.swift */,
+				200000000000000000000143 /* LibraryPreviewFixtures.swift */,
+				200000000000000000000144 /* LibraryGridView.swift */,
+				200000000000000000000145 /* LibraryFailureViews.swift */,
+				200000000000000000000149 /* LibraryFeatureSupport.swift */,
 			);
 			path = Library;
 			sourceTree = "<group>";
@@ -534,12 +554,14 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000106 /* MovieDetailsFeatureTests.swift */,
+				200000000000000000000127 /* MediaSourceAdapterTests.swift */,
+				200000000000000000000124 /* MediaSourcesFeatureTests.swift */,
 				200000000000000000000109 /* MediaDetailsKindAdapterTests.swift */,
 				200000000000000000000110 /* MediaChildrenAdapterTests.swift */,
 				200000000000000000000094 /* MovieDetailsAdapterTests.swift */,
 				200000000000000000000112 /* MediaHierarchyFeatureTests.swift */,
-				200000000000000000000136 /* MediaHierarchyTestSupport.swift */,
-				200000000000000000000141 /* MediaRestorationPagingFeatureTests.swift */,
+				200000000000000000000146 /* MediaHierarchyTestSupport.swift */,
+				200000000000000000000151 /* MediaRestorationPagingFeatureTests.swift */,
 				200000000000000000000119 /* MediaPageRecoveryFeatureTests.swift */,
 				200000000000000000000120 /* MediaChildArtworkFeatureTests.swift */,
 				200000000000000000000100 /* MovieDetailsTestSupport.swift */,
@@ -554,12 +576,12 @@
 		500000000000000000000018 /* Library */ = {
 			isa = PBXGroup;
 			children = (
-				200000000000000000000124 /* LibraryFeatureTests.swift */,
-				200000000000000000000125 /* LibraryAdapterTests.swift */,
-				200000000000000000000126 /* ConsumerNavigationTests.swift */,
-				200000000000000000000137 /* LibraryFeatureTestSupport.swift */,
-				200000000000000000000138 /* LibraryPageRecoveryFeatureTests.swift */,
-				200000000000000000000140 /* LibraryRefreshFeatureTests.swift */,
+				200000000000000000000134 /* LibraryFeatureTests.swift */,
+				200000000000000000000135 /* LibraryAdapterTests.swift */,
+				200000000000000000000136 /* ConsumerNavigationTests.swift */,
+				200000000000000000000147 /* LibraryFeatureTestSupport.swift */,
+				200000000000000000000148 /* LibraryPageRecoveryFeatureTests.swift */,
+				200000000000000000000150 /* LibraryRefreshFeatureTests.swift */,
 			);
 			path = Library;
 			sourceTree = "<group>";
@@ -568,7 +590,15 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000092 /* MediaDetailsModels.swift */,
+				200000000000000000000125 /* MediaSourceModels.swift */,
+				200000000000000000000126 /* MediaSourcesFeature.swift */,
 				200000000000000000000115 /* MediaDetailsProjection.swift */,
+				200000000000000000000128 /* NamaLibraryClient+MediaSource.swift */,
+				200000000000000000000129 /* MediaSourceTechnicalView.swift */,
+				200000000000000000000130 /* MediaSourcesView.swift */,
+				200000000000000000000131 /* MediaSourcesPreviewFixtures.swift */,
+				200000000000000000000132 /* MediaDetailsPlayabilityView.swift */,
+				200000000000000000000133 /* MediaTrackTechnicalView.swift */,
 				200000000000000000000093 /* MediaDetailsFeature.swift */,
 				200000000000000000000103 /* MediaDetailsFeature+Artwork.swift */,
 				200000000000000000000111 /* NamaLibraryClient+MediaChildren.swift */,
@@ -752,25 +782,33 @@
 				100000000000000000000084 /* MediaArtworkWindow.swift in Sources */,
 				100000000000000000000085 /* NamaLibraryClient+Artwork.swift in Sources */,
 				100000000000000000000086 /* HomeArtworkView.swift in Sources */,
-				100000000000000000000127 /* LibraryModels.swift in Sources */,
-				100000000000000000000128 /* LibraryFeature.swift in Sources */,
-				100000000000000000000142 /* LibraryFeature+Artwork.swift in Sources */,
-				100000000000000000000143 /* LibraryFeature+Paging.swift in Sources */,
-				100000000000000000000129 /* ConsumerNavigation.swift in Sources */,
-				100000000000000000000130 /* NamaLibraryClient+Library.swift in Sources */,
-				100000000000000000000131 /* LibraryView.swift in Sources */,
-				100000000000000000000132 /* AuthorizedConsumerView.swift in Sources */,
-				100000000000000000000133 /* LibraryPreviewFixtures.swift in Sources */,
-				100000000000000000000134 /* LibraryGridView.swift in Sources */,
-				100000000000000000000135 /* LibraryFailureViews.swift in Sources */,
-				100000000000000000000139 /* LibraryFeatureSupport.swift in Sources */,
+				100000000000000000000137 /* LibraryModels.swift in Sources */,
+				100000000000000000000138 /* LibraryFeature.swift in Sources */,
+				100000000000000000000152 /* LibraryFeature+Artwork.swift in Sources */,
+				100000000000000000000153 /* LibraryFeature+Paging.swift in Sources */,
+				100000000000000000000139 /* ConsumerNavigation.swift in Sources */,
+				100000000000000000000140 /* NamaLibraryClient+Library.swift in Sources */,
+				100000000000000000000141 /* LibraryView.swift in Sources */,
+				100000000000000000000142 /* AuthorizedConsumerView.swift in Sources */,
+				100000000000000000000143 /* LibraryPreviewFixtures.swift in Sources */,
+				100000000000000000000144 /* LibraryGridView.swift in Sources */,
+				100000000000000000000145 /* LibraryFailureViews.swift in Sources */,
+				100000000000000000000149 /* LibraryFeatureSupport.swift in Sources */,
 				100000000000000000000092 /* MediaDetailsModels.swift in Sources */,
 				100000000000000000000093 /* MediaDetailsFeature.swift in Sources */,
+				100000000000000000000125 /* MediaSourceModels.swift in Sources */,
+				100000000000000000000126 /* MediaSourcesFeature.swift in Sources */,
 				100000000000000000000115 /* MediaDetailsProjection.swift in Sources */,
 				100000000000000000000103 /* MediaDetailsFeature+Artwork.swift in Sources */,
 				100000000000000000000108 /* NamaLibraryClient+MediaDetailsMapping.swift in Sources */,
 				100000000000000000000095 /* NamaLibraryClient+MediaDetails.swift in Sources */,
 				100000000000000000000117 /* MediaDetailsFeature+Children.swift in Sources */,
+				100000000000000000000128 /* NamaLibraryClient+MediaSource.swift in Sources */,
+				100000000000000000000129 /* MediaSourceTechnicalView.swift in Sources */,
+				100000000000000000000130 /* MediaSourcesView.swift in Sources */,
+				100000000000000000000131 /* MediaSourcesPreviewFixtures.swift in Sources */,
+				100000000000000000000132 /* MediaDetailsPlayabilityView.swift in Sources */,
+				100000000000000000000133 /* MediaTrackTechnicalView.swift in Sources */,
 				100000000000000000000096 /* MediaDetailsView.swift in Sources */,
 				100000000000000000000111 /* NamaLibraryClient+MediaChildren.swift in Sources */,
 				100000000000000000000097 /* MediaDetailsContentView.swift in Sources */,
@@ -819,28 +857,30 @@
 				100000000000000000000087 /* HomeArtworkTests.swift in Sources */,
 				100000000000000000000088 /* HomeArtworkLoaderTests.swift in Sources */,
 				100000000000000000000091 /* HomeArtworkLoaderCacheTests.swift in Sources */,
+				100000000000000000000127 /* MediaSourceAdapterTests.swift in Sources */,
 				100000000000000000000089 /* HomeArtworkTestSupport.swift in Sources */,
 				100000000000000000000113 /* HomeDetailsSelectionTests.swift in Sources */,
 				100000000000000000000106 /* MovieDetailsFeatureTests.swift in Sources */,
+				100000000000000000000124 /* MediaSourcesFeatureTests.swift in Sources */,
 				100000000000000000000094 /* MovieDetailsAdapterTests.swift in Sources */,
 				100000000000000000000100 /* MovieDetailsTestSupport.swift in Sources */,
 				100000000000000000000109 /* MediaDetailsKindAdapterTests.swift in Sources */,
 				100000000000000000000110 /* MediaChildrenAdapterTests.swift in Sources */,
 				100000000000000000000112 /* MediaHierarchyFeatureTests.swift in Sources */,
-				100000000000000000000136 /* MediaHierarchyTestSupport.swift in Sources */,
-				100000000000000000000141 /* MediaRestorationPagingFeatureTests.swift in Sources */,
+				100000000000000000000146 /* MediaHierarchyTestSupport.swift in Sources */,
+				100000000000000000000151 /* MediaRestorationPagingFeatureTests.swift in Sources */,
 				100000000000000000000101 /* MovieDetailsProjectionTests.swift in Sources */,
 				100000000000000000000102 /* MovieDetailsAdapterTestSupport.swift in Sources */,
 				100000000000000000000114 /* MediaKindProjectionTests.swift in Sources */,
 				100000000000000000000105 /* MovieDetailsArtworkFeatureTests.swift in Sources */,
 				100000000000000000000119 /* MediaPageRecoveryFeatureTests.swift in Sources */,
 				100000000000000000000120 /* MediaChildArtworkFeatureTests.swift in Sources */,
-				100000000000000000000124 /* LibraryFeatureTests.swift in Sources */,
-				100000000000000000000125 /* LibraryAdapterTests.swift in Sources */,
-				100000000000000000000126 /* ConsumerNavigationTests.swift in Sources */,
-				100000000000000000000137 /* LibraryFeatureTestSupport.swift in Sources */,
-				100000000000000000000138 /* LibraryPageRecoveryFeatureTests.swift in Sources */,
-				100000000000000000000140 /* LibraryRefreshFeatureTests.swift in Sources */,
+				100000000000000000000134 /* LibraryFeatureTests.swift in Sources */,
+				100000000000000000000135 /* LibraryAdapterTests.swift in Sources */,
+				100000000000000000000136 /* ConsumerNavigationTests.swift in Sources */,
+				100000000000000000000147 /* LibraryFeatureTestSupport.swift in Sources */,
+				100000000000000000000148 /* LibraryPageRecoveryFeatureTests.swift in Sources */,
+				100000000000000000000150 /* LibraryRefreshFeatureTests.swift in Sources */,
 				100000000000000000000041 /* NamaPlayerTests.swift in Sources */,
 				100000000000000000000059 /* NamaPlayerSecurityTests.swift in Sources */,
 				100000000000000000000060 /* NamaPlayerHLSRequestSecurityTests.swift in Sources */,
