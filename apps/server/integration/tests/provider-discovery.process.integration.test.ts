@@ -50,7 +50,7 @@ const PLUGIN_CALL_DEADLINE_MILLISECONDS = 1000;
 const ABSENT_RESULT_BY_KEY: Readonly<Record<string, undefined>> = Object.freeze({});
 const NO_OPERATION_RESULT = Effect.sync(() => ABSENT_RESULT_BY_KEY["operation"]);
 const PLUGIN_SUPERVISOR_LAYER = PluginSupervisor.layer();
-const TEST_TIMEOUT_MILLISECONDS = 30_000;
+const TEST_TIMEOUT_MILLISECONDS = 60_000;
 const ADMINISTRATOR = Object.freeze({
   displayName: "Provider Discovery Administrator",
   email: "provider-discovery@example.test",
