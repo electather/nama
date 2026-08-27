@@ -14,10 +14,11 @@
     static let releaseYear: UInt32 = 2_026
     static let runtimeSeconds: Int64 = 7_200
 
+    static let title = "The Canonical Movie"
     static let selection = MediaDetailsSelection(
       identity: MediaIdentity("movie-preview"),
       kind: .movie,
-      title: "The Canonical Movie"
+      title: title
     )
 
     static func noAction() {
@@ -33,7 +34,7 @@
     }
 
     static func details(
-      title: String = selection.title,
+      title: String = Self.title,
       playability: MediaPlayability = .playable,
       includesArtwork: Bool = true,
       synopsis: String? = "A calm provider-neutral synopsis for the selected canonical Movie."

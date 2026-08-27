@@ -23,6 +23,8 @@ struct HomeView: View {
   let authorization: HomeAuthorizationIdentity
   let changeEndpoint: @MainActor () async -> Void
   let reauthorize: @MainActor () async -> Void
+  let selectMedia: @MainActor (MediaDetailsSelection) -> Void
+  let seeAll: @MainActor (HomeShelfKind) -> Void
 
   var body: some View {
     HomePresentationView(
@@ -31,6 +33,8 @@ struct HomeView: View {
       refresh: feature.refresh,
       changeEndpoint: changeEndpoint,
       reauthorize: reauthorize,
+      selectMedia: selectMedia,
+      seeAll: seeAll,
       artwork: HomeArtworkPresentationAccess(
         presentationState: feature.artworkPresentationState,
         didAppear: feature.artworkDidAppear,
@@ -68,6 +72,8 @@ struct HomePresentationView: View {
   let refresh: @MainActor () -> Void
   let changeEndpoint: @MainActor () async -> Void
   let reauthorize: @MainActor () async -> Void
+  let selectMedia: @MainActor (MediaDetailsSelection) -> Void
+  let seeAll: @MainActor (HomeShelfKind) -> Void
   let artwork: HomeArtworkPresentationAccess
 
   init(
@@ -76,6 +82,8 @@ struct HomePresentationView: View {
     refresh: @escaping @MainActor () -> Void,
     changeEndpoint: @escaping @MainActor () async -> Void,
     reauthorize: @escaping @MainActor () async -> Void,
+    selectMedia: @escaping @MainActor (MediaDetailsSelection) -> Void,
+    seeAll: @escaping @MainActor (HomeShelfKind) -> Void,
     artwork: HomeArtworkPresentationAccess = .empty
   ) {
     self.state = state
@@ -83,6 +91,8 @@ struct HomePresentationView: View {
     self.refresh = refresh
     self.changeEndpoint = changeEndpoint
     self.reauthorize = reauthorize
+    self.selectMedia = selectMedia
+    self.seeAll = seeAll
     self.artwork = artwork
   }
 
@@ -92,6 +102,8 @@ struct HomePresentationView: View {
       retry: retry,
       refresh: refresh,
       reauthorize: reauthorize,
+      selectMedia: selectMedia,
+      seeAll: seeAll,
       artwork: artwork
     )
     .navigationTitle("Home")
@@ -126,6 +138,8 @@ private struct HomeStateContent: View {
   let retry: @MainActor () -> Void
   let refresh: @MainActor () -> Void
   let reauthorize: @MainActor () async -> Void
+  let selectMedia: @MainActor (MediaDetailsSelection) -> Void
+  let seeAll: @MainActor (HomeShelfKind) -> Void
   let artwork: HomeArtworkPresentationAccess
 
   @ViewBuilder
@@ -157,6 +171,8 @@ private struct HomeStateContent: View {
         refreshFailure: nil,
         refresh: refresh,
         reauthorize: reauthorize,
+        selectMedia: selectMedia,
+        seeAll: seeAll,
         artwork: artwork
       )
 
@@ -167,6 +183,8 @@ private struct HomeStateContent: View {
         refreshFailure: nil,
         refresh: refresh,
         reauthorize: reauthorize,
+        selectMedia: selectMedia,
+        seeAll: seeAll,
         artwork: artwork
       )
 
@@ -177,6 +195,8 @@ private struct HomeStateContent: View {
         refreshFailure: failure,
         refresh: refresh,
         reauthorize: reauthorize,
+        selectMedia: selectMedia,
+        seeAll: seeAll,
         artwork: artwork
       )
 
@@ -258,6 +278,8 @@ private struct HomeContentView: View {
   let refreshFailure: HomeLoadingFailure?
   let refresh: @MainActor () -> Void
   let reauthorize: @MainActor () async -> Void
+  let selectMedia: @MainActor (MediaDetailsSelection) -> Void
+  let seeAll: @MainActor (HomeShelfKind) -> Void
   let artwork: HomeArtworkPresentationAccess
 
   var body: some View {
@@ -274,10 +296,20 @@ private struct HomeContentView: View {
           ProgressView("Refreshing…")
         }
         if let movies = snapshot.movies {
-          HomeShelfView(shelf: movies, artwork: artwork)
+          HomeShelfView(
+            shelf: movies,
+            artwork: artwork,
+            selectMedia: selectMedia,
+            seeAll: seeAll
+          )
         }
         if let shows = snapshot.shows {
-          HomeShelfView(shelf: shows, artwork: artwork)
+          HomeShelfView(
+            shelf: shows,
+            artwork: artwork,
+            selectMedia: selectMedia,
+            seeAll: seeAll
+          )
         }
       }
       .padding(HomeLayout.contentPadding)

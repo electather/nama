@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import Nama
@@ -164,6 +165,33 @@ struct MediaDetailsKindAdapterTests {
         )
     )
     #expect(details.parents.isEmpty)
+  }
+
+  @Test("an ID-only restored selection reloads canonical Details from GetMedia")
+  func restoredSelectionMapping() async throws {
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.successfulHTTPStatus,
+      body: MediaDetailsKindAdapterFixture.showResponse
+    )
+    defer { HomeConnectStubURLProtocol.reset() }
+    let record = try movieDetailsTokenRecord()
+    let client = movieDetailsClient(record: record, platform: "ios")
+    let selection = MediaDetailsSelection(restoredIdentity: MediaIdentity("show-details"))
+
+    let details = try await client.load(
+      selection,
+      authorization: movieDetailsAuthorization(record: record)
+    )
+
+    #expect(details.kindDetails.mediaKind == .show)
+    #expect(details.title == "The Canonical Show")
+    let request = try #require(HomeConnectStubURLProtocol.recordedRequests.first)
+    #expect(request.url?.path == "/nama.api.v1.LibraryService/GetMedia")
+    let body = try #require(HomeConnectStubURLProtocol.recordedRequestBodies.first)
+    let requestJSON = try #require(
+      JSONSerialization.jsonObject(with: body) as? [String: Any]
+    )
+    #expect(requestJSON["mediaId"] as? String == "show-details")
   }
 
   @Test("GetMedia maps a direct opaque Season with canonical Show parent")

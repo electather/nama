@@ -134,6 +134,13 @@ func movieDetailsAuthorization(generation: UInt64) throws -> HomeAuthorizationId
   )
 }
 
+func requiredMediaSelectionTitle(_ selection: MediaDetailsSelection) -> String {
+  guard let title = selection.title else {
+    preconditionFailure("Fixture selections require a title")
+  }
+  return title
+}
+
 func movieDetailsFixture(
   selection: MediaDetailsSelection,
   playability: MediaPlayability = .playable,
@@ -151,7 +158,7 @@ func movieDetailsFixture(
     : nil
   return MediaDetails(
     identity: selection.identity,
-    title: selection.title,
+    title: requiredMediaSelectionTitle(selection),
     releaseYear: MovieDetailsFeatureFixture.releaseYear,
     runtime: .seconds(MovieDetailsFeatureFixture.runtimeSeconds),
     contentRating: "PG-13",

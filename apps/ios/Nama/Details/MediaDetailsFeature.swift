@@ -2,7 +2,45 @@ import Observation
 
 private struct MediaDetailsLoadResult {
   let details: MediaDetails
+  let selection: MediaDetailsSelection
   let children: MediaChildrenPage?
+}
+
+private func mediaKindLoadsChildren(_ kind: MediaKind?) -> Bool {
+  kind == .show || kind == .season
+}
+
+private func loadMediaDetails(
+  using loader: any MediaChildrenLoading & MediaDetailsLoading,
+  selection: MediaDetailsSelection,
+  authorization: HomeAuthorizationIdentity
+) async -> Result<MediaDetailsLoadResult, any Error> {
+  do {
+    let details = try await loader.load(
+      selection,
+      authorization: authorization
+    )
+    let loadedSelection = details.selection
+    let children: MediaChildrenPage?
+    if mediaKindLoadsChildren(loadedSelection.kind) {
+      children = try await loader.loadChildren(
+        for: loadedSelection,
+        pageToken: nil,
+        authorization: authorization
+      )
+    } else {
+      children = nil
+    }
+    return .success(
+      MediaDetailsLoadResult(
+        details: details,
+        selection: loadedSelection,
+        children: children
+      )
+    )
+  } catch {
+    return .failure(error)
+  }
 }
 
 @MainActor
@@ -26,12 +64,11 @@ final class MediaDetailsFeature {
   @ObservationIgnored var creditArtworkStates: [MediaCreditIdentity: HomeArtworkPresentationState] =
     [:]
   @ObservationIgnored var selection: MediaDetailsSelection?
+  @ObservationIgnored var canonicalSelection: MediaDetailsSelection?
   @ObservationIgnored var authorization: HomeAuthorizationIdentity?
   @ObservationIgnored private var attempt: UInt64 = .zero
   @ObservationIgnored var childPageAttempt: UInt64 = .zero
-  @ObservationIgnored var childPageRecoveryIsActive = false
-  @ObservationIgnored var childPageRecoveryTokens = Set<String>()
-  @ObservationIgnored var childPageRecoveryRemainingContinuations = 0
+  @ObservationIgnored var childPageContinuation = MediaContinuationTracker()
 
   init(
     loader: any MediaChildrenLoading & MediaDetailsLoading,
@@ -65,6 +102,7 @@ final class MediaDetailsFeature {
     cancelArtwork()
     cancelChildArtwork()
     cancelCreditArtwork()
+    canonicalSelection = nil
     selection = newSelection
     authorization = newAuthorization
     startLoad(
@@ -83,6 +121,7 @@ final class MediaDetailsFeature {
     attempt &+= 1
     cancelChildPageRequest()
     selection = nil
+    canonicalSelection = nil
     authorization = nil
     cancelArtwork()
     cancelChildArtwork()
@@ -150,13 +189,11 @@ final class MediaDetailsFeature {
   }
 
   func cancelChildPageRequest() {
-    let shouldPreserveExpiredPageRecovery = childPageRecoveryIsActive
+    let shouldPreserveExpiredPageRecovery = childPageContinuation.isActive
     childPageTask?.cancel()
     childPageTask = nil
     childPageAttempt &+= 1
-    childPageRecoveryIsActive = false
-    childPageRecoveryTokens.removeAll(keepingCapacity: true)
-    childPageRecoveryRemainingContinuations = 0
+    childPageContinuation.reset()
     if case .loadingMore(let items, let pageToken) = childrenState {
       childrenState =
         shouldPreserveExpiredPageRecovery && pageToken == nil
@@ -176,33 +213,19 @@ final class MediaDetailsFeature {
     let expectedAttempt = attempt
     if details == nil {
       childrenState =
-        Self.loadsChildren(for: expectedSelection.kind)
+        expectedSelection.kind == nil
+          || mediaKindLoadsChildren(expectedSelection.kind)
         ? .loading
         : .notApplicable
     }
     state = details.map(MediaDetailsState.refreshing) ?? .loading(expectedSelection)
     let currentLoader = loader
     activeTask = Task { [weak self] in
-      let result: Result<MediaDetailsLoadResult, any Error>
-      do {
-        let replacement = try await currentLoader.load(
-          expectedSelection,
-          authorization: expectedAuthorization
-        )
-        let children: MediaChildrenPage?
-        if Self.loadsChildren(for: expectedSelection.kind) {
-          children = try await currentLoader.loadChildren(
-            for: expectedSelection,
-            pageToken: nil,
-            authorization: expectedAuthorization
-          )
-        } else {
-          children = nil
-        }
-        result = .success(MediaDetailsLoadResult(details: replacement, children: children))
-      } catch {
-        result = .failure(error)
-      }
+      let result = await loadMediaDetails(
+        using: currentLoader,
+        selection: expectedSelection,
+        authorization: expectedAuthorization
+      )
       guard !Task.isCancelled else {
         return
       }
@@ -235,11 +258,12 @@ final class MediaDetailsFeature {
     case .success(let replacement):
       cancelChildPageRequest()
       cancelCreditArtwork()
+      canonicalSelection = replacement.selection
       state = .content(replacement.details)
       childrenState =
         replacement.children.map { page in
           .content(
-            items: Self.appendingUniqueChildren([], page.items),
+            items: appendingUniqueMediaSummaries([], page.items),
             nextPageToken: page.nextPageToken
           )
         } ?? .notApplicable
@@ -255,9 +279,5 @@ final class MediaDetailsFeature {
         details.map { .refreshFailed($0, failure) }
         ?? .failed(expectedSelection, failure)
     }
-  }
-
-  private static func loadsChildren(for kind: MediaKind) -> Bool {
-    kind == .show || kind == .season
   }
 }

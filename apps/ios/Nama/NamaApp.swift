@@ -52,6 +52,7 @@ private struct ConnectionWindow: View {
   @State private var connection: ConnectionFeature
   @State private var authorization: OAuthAuthorizationFeature
   @State private var home: HomeFeature
+  @State private var library: LibraryFeature
   @State private var pendingPlayIntent: MediaPlayIntent?
   private let detailsLoader: NamaLibraryClient
   private let artworkLoader: any HomeArtworkLoading
@@ -83,6 +84,9 @@ private struct ConnectionWindow: View {
     _home = State(
       initialValue: HomeFeature(loader: libraryClient, artworkLoader: artworkLoader)
     )
+    _library = State(
+      initialValue: LibraryFeature(loader: libraryClient, artworkLoader: artworkLoader)
+    )
     detailsLoader = libraryClient
     self.artworkLoader = artworkLoader
   }
@@ -93,12 +97,14 @@ private struct ConnectionWindow: View {
         AuthorizedConsumerRootView(
           authorization: authorization,
           home: home,
+          library: library,
           detailsLoader: detailsLoader,
           artworkLoader: artworkLoader,
           emitPlayIntent: capturePlayIntent,
           endpoint: endpoint
         ) {
           home.deactivate()
+          library.deactivate()
           await connection.changeEndpoint()
         }
       } else {
@@ -126,112 +132,7 @@ private struct ConnectionWindow: View {
   }
 }
 
-private struct AuthorizedConsumerRootView: View {
-  @Environment(\.scenePhase) private var scenePhase
-  @State private var retryGeneration = 0
-
-  let authorization: OAuthAuthorizationFeature
-  let home: HomeFeature
-  let detailsLoader: any MediaChildrenLoading & MediaDetailsLoading & MediaSourceLoading
-  let artworkLoader: any HomeArtworkLoading
-  let emitPlayIntent: @MainActor (MediaPlayIntent) -> Void
-  let endpoint: NamaEndpoint
-  let changeEndpoint: @MainActor () async -> Void
-
-  var body: some View {
-    Group {
-      if let homeAuthorization {
-        authorizedNavigation(homeAuthorization)
-      } else {
-        OAuthAuthorizationView(
-          feature: authorization,
-          endpoint: endpoint,
-          changeEndpoint: changeEndpoint
-        ) {
-          retryGeneration &+= 1
-        }
-      }
-    }
-    .task(
-      id: OAuthAuthorizationTaskID(
-        endpoint: endpoint,
-        retryGeneration: retryGeneration,
-        isActive: scenePhase == .active
-      )
-    ) {
-      guard scenePhase == .active else {
-        return
-      }
-      await authorization.run(endpoint)
-    }
-  }
-
-  private func authorizedNavigation(
-    _ homeAuthorization: HomeAuthorizationIdentity
-  ) -> some View {
-    NavigationStack {
-      HomeView(
-        feature: home,
-        authorization: homeAuthorization,
-        changeEndpoint: changeEndpoint
-      ) {
-        await discardRejectedAuthorization(for: homeAuthorization)
-      }
-      .navigationDestination(for: MediaDetailsSelection.self) { selection in
-        MediaDetailsDestination(
-          selection: selection,
-          authorization: homeAuthorization,
-          loader: detailsLoader,
-          artworkLoader: artworkLoader,
-          emitPlayIntent: emitPlayIntent
-        ) {
-          await discardRejectedAuthorization(for: homeAuthorization)
-        }
-      }
-      .navigationDestination(for: MediaSourcesSelection.self) { selection in
-        MediaSourcesDestination(
-          selection: selection,
-          authorization: homeAuthorization,
-          loader: detailsLoader,
-          emitPlayIntent: emitPlayIntent
-        ) {
-          await discardRejectedAuthorization(for: homeAuthorization)
-        }
-      }
-    }
-  }
-
-  private func discardRejectedAuthorization(
-    for authorizationIdentity: HomeAuthorizationIdentity
-  ) async {
-    guard
-      case .authorized(let rejected) = authorization.state,
-      authorization.session.generation == authorizationIdentity.generation
-    else {
-      return
-    }
-    switch await authorization.discardRejectedAuthorization(
-      rejected,
-      generation: authorizationIdentity.generation
-    ) {
-    case .discarded:
-      retryGeneration &+= 1
-
-    case .storageUnavailable, .stale:
-      return
-    }
-  }
-
-  private var homeAuthorization: HomeAuthorizationIdentity? {
-    HomeAuthorizationIdentity(
-      currentEndpoint: endpoint,
-      authorizationState: authorization.state,
-      generation: authorization.session.generation
-    )
-  }
-}
-
-private struct MediaDetailsDestination: View {
+struct MediaDetailsDestination: View {
   @State private var feature: MediaDetailsFeature
 
   let selection: MediaDetailsSelection
@@ -267,7 +168,7 @@ private struct MediaDetailsDestination: View {
   }
 }
 
-private struct MediaSourcesDestination: View {
+struct MediaSourcesDestination: View {
   @State private var feature: MediaSourcesFeature
 
   let selection: MediaSourcesSelection
@@ -300,7 +201,7 @@ private struct MediaSourcesDestination: View {
   }
 }
 
-private struct OAuthAuthorizationTaskID: Hashable {
+struct OAuthAuthorizationTaskID: Hashable {
   let endpoint: NamaEndpoint
   let retryGeneration: Int
   let isActive: Bool

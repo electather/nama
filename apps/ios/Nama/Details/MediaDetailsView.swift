@@ -164,7 +164,7 @@ struct MediaCreditArtworkAccess {
 
 struct MediaDetailsPresentationView: View {
   let state: MediaDetailsState
-  let idleTitle: String
+  let idleTitle: String?
   let childrenState: MediaChildrenState
   let retry: @MainActor () -> Void
   let refresh: @MainActor () -> Void
@@ -205,7 +205,7 @@ struct MediaDetailsPresentationView: View {
 
 private struct MediaDetailsStateContent: View {
   let state: MediaDetailsState
-  let idleTitle: String
+  let idleTitle: String?
   let childrenState: MediaChildrenState
   let retry: @MainActor () -> Void
   let refresh: @MainActor () -> Void
@@ -286,7 +286,7 @@ private struct MediaDetailsStateContent: View {
 }
 
 private struct MediaDetailsLoadingView: View {
-  let title: String
+  let title: String?
 
   var body: some View {
     ScrollView {
@@ -294,9 +294,15 @@ private struct MediaDetailsLoadingView: View {
         RoundedRectangle(cornerRadius: MediaDetailsLayout.artworkCornerRadius)
           .fill(.quaternary)
           .aspectRatio(MediaDetailsLayout.backdropAspectRatio, contentMode: .fit)
-        Text(title)
-          .font(.largeTitle.bold())
-          .unredacted()
+        Group {
+          if let title {
+            Text(verbatim: title)
+          } else {
+            Text("Details")
+          }
+        }
+        .font(.largeTitle.bold())
+        .unredacted()
         VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
           Text("Details metadata loading")
           Text("Synopsis loading across several readable lines of content.")
@@ -308,11 +314,19 @@ private struct MediaDetailsLoadingView: View {
       .padding(MediaDetailsLayout.contentPadding)
     }
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel("Loading details for \(title)")
+    .accessibilityLabel(accessibilityTitle)
     #if os(tvOS) || os(macOS)
       .focusable()
       .focusEffectDisabled()
     #endif
+  }
+
+  private var accessibilityTitle: Text {
+    if let title {
+      Text("Loading details for \(title)")
+    } else {
+      Text("Loading details")
+    }
   }
 }
 
