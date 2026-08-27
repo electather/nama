@@ -151,6 +151,7 @@ private func projectionDetails(kindDetails: MediaDetailsKind) -> MediaDetails {
     parents: [],
     playability: .noAvailableSource,
     defaultSource: nil,
+    sourceSummaries: [],
     kindDetails: kindDetails
   )
 }

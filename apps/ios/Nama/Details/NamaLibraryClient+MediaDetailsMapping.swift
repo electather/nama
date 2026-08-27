@@ -67,6 +67,7 @@ nonisolated extension NamaLibraryClient {
       parents: parents,
       playability: summary.playability,
       defaultSource: summary.defaultSource,
+      sourceSummaries: sourceSummaries,
       kindDetails: try mapMediaKindDetails(media, summary: summary)
     )
   }

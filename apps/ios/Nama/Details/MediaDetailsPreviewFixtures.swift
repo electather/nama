@@ -81,6 +81,7 @@
         parents: [],
         playability: playability,
         defaultSource: source,
+        sourceSummaries: source.map { [$0] } ?? [],
         kindDetails: .movie(
           releaseDate: MediaCalendarDate(
             year: Int32(releaseYear),

@@ -38,7 +38,7 @@ nonisolated enum MediaPlayability: Equatable, Sendable {
   case unknown
 }
 
-nonisolated enum MediaSourceAvailability: Equatable, Sendable {
+nonisolated enum MediaSourceAvailability: Equatable, Hashable, Sendable {
   case available
   case providerUnavailable
   case unsupported
@@ -127,7 +127,7 @@ nonisolated struct ArtworkSizeBucket: Equatable, Hashable, Sendable {
   }
 }
 
-nonisolated enum MediaDynamicRange: Equatable, Sendable {
+nonisolated enum MediaDynamicRange: Equatable, Hashable, Sendable {
   case sdr
   case hdr10
   case hdr10Plus
@@ -136,7 +136,7 @@ nonisolated enum MediaDynamicRange: Equatable, Sendable {
   case unknown
 }
 
-nonisolated enum MediaSpatialAudioFormat: Equatable, Sendable {
+nonisolated enum MediaSpatialAudioFormat: Equatable, Hashable, Sendable {
   case nonSpatial
   case dolbyAtmos
   case dtsX
@@ -152,20 +152,20 @@ nonisolated struct ArtworkReference: Equatable, Sendable {
   let textPresence: ArtworkTextPresence
 }
 
-nonisolated struct MediaVideoQuality: Equatable, Sendable {
+nonisolated struct MediaVideoQuality: Equatable, Hashable, Sendable {
   let codec: String
   let width: UInt32?
   let height: UInt32?
   let dynamicRange: MediaDynamicRange?
 }
 
-nonisolated struct MediaAudioQuality: Equatable, Sendable {
+nonisolated struct MediaAudioQuality: Equatable, Hashable, Sendable {
   let codec: String
   let channelCount: UInt32?
   let spatialFormat: MediaSpatialAudioFormat?
 }
 
-nonisolated struct MediaSourceSummary: Equatable, Sendable {
+nonisolated struct MediaSourceSummary: Equatable, Hashable, Sendable {
   let identity: MediaSourceIdentity
   let label: String?
   let isDefault: Bool
