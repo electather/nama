@@ -4,18 +4,48 @@
 establishes the shared PostgreSQL and Drizzle persistence boundary. Persistence
 stores Nama-owned users, server and plugin configuration, canonical media
 records, provider-to-canonical identifier mappings, Library entries, playback
-progress, watched state, OAuth authorization state, and per-source synchronization replicas
-and checkpoints.
+progress, watched state, OAuth authorization state, normalized Provider replicas,
+and core-owned synchronization checkpoints.
 
 Canonical media records and their provider-to-canonical mappings are Nama-owned;
 provider payloads may be retained only as bounded diagnostic metadata, never as
 the model clients depend on
 ([ADR-0022](../adr/0022-canonical-provider-neutral-media-model.md)).
-Synchronization replicas and checkpoints are evidence for reconciling
-Nama-owned watch state, not canonical state themselves
-([ADR-0023](../adr/0023-canonical-watch-state-reconciliation.md)).
+Provider replicas are evidence for reconciling Nama-owned Watch state, not
+canonical state themselves
+([ADR-0023](../adr/0023-canonical-watch-state-reconciliation.md),
+[ADR-0034](../adr/0034-versioned-watch-state-snapshots.md)).
 OAuth authorization persistence is Better Auth-owned under
 [ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md).
+
+## Target watch-state persistence
+
+[ADR-0034](../adr/0034-versioned-watch-state-snapshots.md) establishes two
+relational snapshot families:
+
+- sparse canonical Watch state keyed by authenticated user and playable
+  canonical item, with watched status, optional position and duration, the last
+  known playback Source, selected activity evidence, a distinct Activity
+  origin, database commit time, and a core-owned monotonic version; and
+- one normalized Provider replica per authenticated user and exact provider
+  item mapping, with the plugin observation fields, opaque provider revision,
+  and a separate core-owned monotonic record version.
+
+A first default-unwatched provider observation creates only a Provider replica;
+absence of canonical Watch state means that Nama has accepted no state evidence.
+A watched-status action preserves position and duration. A winning complete
+provider snapshot with absent position clears resumable progress, while an
+absent duration or Source preserves the last known value. Exact canonical value
+equality changes neither selected activity evidence, commit time, nor version.
+
+The persistence boundary accepts fully resolved canonical targets and atomically
+compare-and-commits them with Provider replica replacements against expected
+versions. A stale expectation returns the current snapshots for policy-level
+recomputation. Provider-instance deletion removes its replicas and live Source
+and origin references but preserves decoupled canonical values and copied
+activity evidence. Scheduler checkpoints, pending exports, bounded fingerprints,
+retry state, and reconciliation policy remain separate work owned by their
+runtime features.
 
 ## Target OAuth authorization persistence
 
