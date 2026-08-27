@@ -15,8 +15,9 @@ struct MovieDetailsAdapterTests {
     defer { HomeConnectStubURLProtocol.reset() }
     let record = try movieDetailsTokenRecord()
     let client = movieDetailsClient(record: record, platform: "ios")
-    let selection = MovieDetailsSelection(
+    let selection = MediaDetailsSelection(
       identity: MediaIdentity("movie-details"),
+      kind: .movie,
       title: "Home title"
     )
 
@@ -38,6 +39,7 @@ struct MovieDetailsAdapterTests {
     #expect(details.credits.map(\.name) == ["Ada Director", "Wes Writer", "Sam Actor"])
     #expect(details.credits.map(\.role) == [.director, .writer, .actor])
     #expect(details.credits.last?.characterName == "The Traveler")
+    #expect(details.credits.last?.portraitArtwork?.identity == ArtworkIdentity("portrait-sam"))
     #expect(details.preferredBackdropArtwork?.identity == ArtworkIdentity("backdrop-textless"))
     #expect(details.preferredPosterArtwork?.identity == ArtworkIdentity("poster-textless"))
     #expect(details.playability == .playable)
@@ -54,8 +56,9 @@ struct MovieDetailsAdapterTests {
     defer { HomeConnectStubURLProtocol.reset() }
     let record = try movieDetailsTokenRecord()
     let client = movieDetailsClient(record: record, platform: "ios")
-    let selection = MovieDetailsSelection(
+    let selection = MediaDetailsSelection(
       identity: MediaIdentity("movie-details"),
+      kind: .movie,
       title: "Home title"
     )
     let original = try await client.load(
@@ -65,8 +68,7 @@ struct MovieDetailsAdapterTests {
     let responseWithEarlierCredit =
       MovieDetailsAdapterFixture.completeResponse.replacingOccurrences(
         of: #""credits": ["#,
-        with:
-          #""credits": [{"name":"Earlier Actor","role":"MEDIA_CREDIT_ROLE_ACTOR"},"#
+        with: #""credits": [{"name":"Earlier Actor","role":"MEDIA_CREDIT_ROLE_ACTOR"},"#
       )
     HomeConnectStubURLProtocol.configure(
       status: HomeTransportFixture.successfulHTTPStatus,
@@ -100,8 +102,9 @@ struct MovieDetailsAdapterTests {
     defer { HomeConnectStubURLProtocol.reset() }
     let record = try movieDetailsTokenRecord()
     let client = movieDetailsClient(record: record, platform: "macos")
-    let selection = MovieDetailsSelection(
+    let selection = MediaDetailsSelection(
       identity: MediaIdentity("movie-details"),
+      kind: .movie,
       title: "Home title"
     )
 
@@ -122,8 +125,9 @@ struct MovieDetailsAdapterTests {
     defer { HomeConnectStubURLProtocol.reset() }
     let record = try movieDetailsTokenRecord()
     let client = movieDetailsClient(record: record, platform: "tvos")
-    let selection = MovieDetailsSelection(
+    let selection = MediaDetailsSelection(
       identity: MediaIdentity("movie-minimal"),
+      kind: .movie,
       title: "Home title"
     )
 
@@ -151,7 +155,7 @@ struct MovieDetailsAdapterTests {
 
   @Test("GetMedia keeps failure classes distinct")
   func failureMapping() async throws {
-    let cases: [(String, MovieDetailsFailure)] = [
+    let cases: [(String, MediaDetailsFailure)] = [
       (
         MovieDetailsAdapterFixture.failureResponse(code: "not_found"),
         .notFound
@@ -182,31 +186,39 @@ struct MovieDetailsAdapterTests {
         )
       ),
     ]
-    try await assertMovieDetailsFailureMappings(cases)
+    try await assertMediaDetailsFailureMappings(cases)
   }
 
-  @Test("GetMedia preserves retry guidance")
+  @Test("GetMedia preserves server retry guidance")
   func retryGuidanceMapping() async throws {
-    let cases: [(String, MovieDetailsFailure)] = [
-      (
-        MovieDetailsAdapterFixture.failureResponse(
-          code: "unavailable",
-          detail: MovieDetailsAdapterFixture.catalogNotReadyDetail,
-          additionalDetails: [MovieDetailsAdapterFixture.retryFiveSecondsDetail]
-        ),
-        .catalogNotReady(retryAfterSeconds: 5)
-      ),
-      (
-        MovieDetailsAdapterFixture.failureResponse(
-          code: "resource_exhausted",
-          detail: MovieDetailsAdapterFixture.rateLimitedDetail,
-          additionalDetails: [MovieDetailsAdapterFixture.retryFiveSecondsDetail]
-        ),
-        .namaUnavailable(requestID: nil, retryAfterSeconds: 5)
-      ),
-    ]
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.unavailableHTTPStatus,
+      body: MovieDetailsAdapterFixture.failureResponse(
+        code: "resource_exhausted",
+        detail: MovieDetailsAdapterFixture.rateLimitedDetail,
+        additionalDetails: [MovieDetailsAdapterFixture.retryFiveSecondsDetail]
+      )
+    )
+    defer { HomeConnectStubURLProtocol.reset() }
+    let record = try movieDetailsTokenRecord()
+    let client = movieDetailsClient(record: record, platform: "ios")
+    let selection = MediaDetailsSelection(
+      identity: MediaIdentity("movie-details"),
+      kind: .movie,
+      title: "Home title"
+    )
 
-    try await assertMovieDetailsFailureMappings(cases)
+    await #expect(
+      throws: MediaDetailsFailure.namaUnavailable(
+        requestID: nil,
+        retryAfterSeconds: 5
+      )
+    ) {
+      try await client.load(
+        selection,
+        authorization: movieDetailsAuthorization(record: record)
+      )
+    }
   }
 
   @Test("cancelled GetMedia work sends no request")
@@ -220,8 +232,9 @@ struct MovieDetailsAdapterTests {
       sessionConfiguration: homeStubConfiguration(),
       platform: "ios"
     )
-    let selection = MovieDetailsSelection(
+    let selection = MediaDetailsSelection(
       identity: MediaIdentity("movie-details"),
+      kind: .movie,
       title: "Home title"
     )
     let task = Task {
@@ -243,13 +256,14 @@ struct MovieDetailsAdapterTests {
 }
 
 @MainActor
-private func assertMovieDetailsFailureMappings(
-  _ cases: [(String, MovieDetailsFailure)]
+private func assertMediaDetailsFailureMappings(
+  _ cases: [(String, MediaDetailsFailure)]
 ) async throws {
   let record = try movieDetailsTokenRecord()
   let client = movieDetailsClient(record: record, platform: "ios")
-  let selection = MovieDetailsSelection(
+  let selection = MediaDetailsSelection(
     identity: MediaIdentity("movie-details"),
+    kind: .movie,
     title: "Home title"
   )
 
@@ -269,7 +283,7 @@ private func assertMovieDetailsFailureMappings(
 }
 
 @MainActor
-private func movieDetailsClient(
+func movieDetailsClient(
   record: EndpointBoundOAuthTokenRecord,
   platform: String
 ) -> NamaLibraryClient {
@@ -281,7 +295,7 @@ private func movieDetailsClient(
   )
 }
 
-private func movieDetailsAuthorization(
+func movieDetailsAuthorization(
   record: EndpointBoundOAuthTokenRecord
 ) -> HomeAuthorizationIdentity {
   HomeAuthorizationIdentity(
@@ -304,7 +318,7 @@ private func assertMovieDetailsRequest() throws {
   #expect(requestJSON["mediaId"] as? String == "movie-details")
 }
 
-private func movieDetailsTokenRecord() throws -> EndpointBoundOAuthTokenRecord {
+func movieDetailsTokenRecord() throws -> EndpointBoundOAuthTokenRecord {
   EndpointBoundOAuthTokenRecord(
     endpoint: try NamaEndpoint("https://nama.example.test"),
     accessToken: "access-token-secret",

@@ -1,88 +1,132 @@
-import Foundation
 import SwiftUI
 
-struct MovieDetailsContentView: View {
-  let details: MovieDetails
+nonisolated func mediaDetailsFormattedList(_ values: [String], locale: Locale) -> String {
+  values.formatted(.list(type: .and).locale(locale))
+}
+
+struct MediaDetailsContentView: View {
+  let details: MediaDetails
+  let childrenState: MediaChildrenState
   let isRefreshing: Bool
-  let refreshFailure: MovieDetailsFailure?
-  let canRetryUnavailableSource: Bool
+  let refreshFailure: MediaDetailsFailure?
   let refresh: @MainActor () -> Void
   let play: @MainActor () -> Void
+  let loadMoreChildren: @MainActor () -> Void
+  let childDidAppear: @MainActor (MediaIdentity) -> Void
   let reauthorize: @MainActor () async -> Void
-  let artwork: MovieDetailsArtworkPresentationAccess
+  let artwork: MediaDetailsArtworkPresentationAccess
+  let childArtwork: MediaChildArtworkAccess
+  let creditArtwork: MediaCreditArtworkAccess
 
   var body: some View {
     ScrollView {
-      MovieDetailsContentSections(
+      MediaDetailsContentSections(
         details: details,
+        childrenState: childrenState,
         isRefreshing: isRefreshing,
         refreshFailure: refreshFailure,
-        canRetryUnavailableSource: canRetryUnavailableSource,
         refresh: refresh,
         play: play,
+        loadMoreChildren: loadMoreChildren,
+        childDidAppear: childDidAppear,
         reauthorize: reauthorize,
-        artwork: artwork
+        artwork: artwork,
+        childArtwork: childArtwork,
+        creditArtwork: creditArtwork
       )
-      .frame(maxWidth: MovieDetailsLayout.contentMaximumWidth, alignment: .leading)
-      .padding(MovieDetailsLayout.contentPadding)
+      .frame(maxWidth: MediaDetailsLayout.contentMaximumWidth, alignment: .leading)
+      .padding(MediaDetailsLayout.contentPadding)
     }
   }
 }
 
-private struct MovieDetailsContentSections: View {
-  let details: MovieDetails
+private struct MediaDetailsContentSections: View {
+  let details: MediaDetails
+  let childrenState: MediaChildrenState
   let isRefreshing: Bool
-  let refreshFailure: MovieDetailsFailure?
-  let canRetryUnavailableSource: Bool
+  let refreshFailure: MediaDetailsFailure?
   let refresh: @MainActor () -> Void
   let play: @MainActor () -> Void
+  let loadMoreChildren: @MainActor () -> Void
+  let childDidAppear: @MainActor (MediaIdentity) -> Void
   let reauthorize: @MainActor () async -> Void
-  let artwork: MovieDetailsArtworkPresentationAccess
+  let artwork: MediaDetailsArtworkPresentationAccess
+  let childArtwork: MediaChildArtworkAccess
+  let creditArtwork: MediaCreditArtworkAccess
 
   var body: some View {
-    LazyVStack(alignment: .leading, spacing: MovieDetailsLayout.sectionSpacing) {
-      MovieDetailsRefreshStatusView(
+    LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
+      MediaDetailsRefreshStatusView(
         isRefreshing: isRefreshing,
         failure: refreshFailure,
         retry: refresh,
         reauthorize: reauthorize
       )
-      MovieDetailsHeroView(details: details, artwork: artwork)
-      MovieDetailsPlayabilityView(
+      MediaDetailsHeroView(details: details, artwork: artwork)
+      MediaDetailsPrimaryActionView(
+        details: details,
+        childrenState: childrenState,
+        isRefreshing: isRefreshing,
+        refreshFailure: refreshFailure,
+        refresh: refresh,
+        play: play,
+        loadMoreChildren: loadMoreChildren,
+        childDidAppear: childDidAppear,
+        reauthorize: reauthorize,
+        childArtwork: childArtwork
+      )
+      MediaDetailsSupportingContentView(details: details, creditArtwork: creditArtwork)
+    }
+  }
+}
+
+private struct MediaDetailsPrimaryActionView: View {
+  let details: MediaDetails
+  let childrenState: MediaChildrenState
+  let isRefreshing: Bool
+  let refreshFailure: MediaDetailsFailure?
+  let refresh: @MainActor () -> Void
+  let play: @MainActor () -> Void
+  let loadMoreChildren: @MainActor () -> Void
+  let childDidAppear: @MainActor (MediaIdentity) -> Void
+  let reauthorize: @MainActor () async -> Void
+  let childArtwork: MediaChildArtworkAccess
+
+  @ViewBuilder
+  var body: some View {
+    switch details.kindDetails {
+    case .movie, .episode:
+      MediaDetailsPlayabilityView(
         playability: details.playability,
         isRefreshing: isRefreshing,
-        canRetryUnavailableSource: canRetryUnavailableSource,
+        canRetryUnavailableSource: mediaDetailsCanRetryUnavailableSource(after: refreshFailure),
         play: play,
         retry: refresh
       )
-      MovieDetailsDescriptionView(
-        tagline: details.tagline,
-        synopsis: details.synopsis
-      )
-      MovieDetailsSupportingMetadataView(
-        genres: details.genres,
-        studios: details.studios
-      )
-      MovieDetailsCreditsView(
-        directors: details.directors,
-        writers: details.writers,
-        initialCast: details.initialCast,
-        allCredits: details.credits
+
+    case .show, .season:
+      MediaDetailsChildrenView(
+        parentKind: details.kindDetails.mediaKind,
+        state: childrenState,
+        loadMore: loadMoreChildren,
+        childDidAppear: childDidAppear,
+        reauthorize: reauthorize,
+        artwork: childArtwork
       )
     }
   }
 }
 
-private struct MovieDetailsRefreshStatusView: View {
+private struct MediaDetailsRefreshStatusView: View {
   let isRefreshing: Bool
-  let failure: MovieDetailsFailure?
+  let failure: MediaDetailsFailure?
   let retry: @MainActor () -> Void
   let reauthorize: @MainActor () async -> Void
 
   @ViewBuilder
   var body: some View {
     if let failure {
-      MovieDetailsRefreshFailureView(
+      MediaDetailsRefreshFailureView(
         failure: failure,
         retry: retry,
         reauthorize: reauthorize
@@ -94,28 +138,31 @@ private struct MovieDetailsRefreshStatusView: View {
   }
 }
 
-private struct MovieDetailsHeroView: View {
+private struct MediaDetailsHeroView: View {
   @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-  let details: MovieDetails
-  let artwork: MovieDetailsArtworkPresentationAccess
+  let details: MediaDetails
+  let artwork: MediaDetailsArtworkPresentationAccess
 
   var body: some View {
-    VStack(alignment: .leading, spacing: MovieDetailsLayout.heroSpacing) {
-      MovieBackdropView(
+    let systemImage = details.kindDetails.mediaKind.detailsSystemImage
+    VStack(alignment: .leading, spacing: MediaDetailsLayout.heroSpacing) {
+      MediaBackdropView(
         title: details.title,
         reference: details.preferredBackdropArtwork?.identity,
         presentation: artwork.presentation(.backdrop),
+        systemImage: systemImage,
         artwork: artwork
       )
       detailsLayout {
-        MoviePosterView(
+        MediaPosterView(
           title: details.title,
           reference: details.preferredPosterArtwork?.identity,
           presentation: artwork.presentation(.poster),
+          systemImage: systemImage,
           artwork: artwork
         )
-        MovieDetailsIdentityView(details: details)
+        MediaDetailsIdentityView(details: details)
       }
     }
   }
@@ -125,36 +172,37 @@ private struct MovieDetailsHeroView: View {
       AnyLayout(
         VStackLayout(
           alignment: .leading,
-          spacing: MovieDetailsLayout.heroSpacing
+          spacing: MediaDetailsLayout.heroSpacing
         )
       )
     } else {
       AnyLayout(
         HStackLayout(
           alignment: .top,
-          spacing: MovieDetailsLayout.heroSpacing
+          spacing: MediaDetailsLayout.heroSpacing
         )
       )
     }
   }
 }
 
-private struct MovieBackdropView: View {
+private struct MediaBackdropView: View {
   @Environment(\.displayScale) private var displayScale
   @State private var displayWidth = 0.0
 
   let title: String
   let reference: ArtworkIdentity?
   let presentation: HomeArtworkPresentation?
-  let artwork: MovieDetailsArtworkPresentationAccess
+  let systemImage: String
+  let artwork: MediaDetailsArtworkPresentationAccess
 
   var body: some View {
-    MovieArtworkSurface(
+    MediaArtworkSurface(
       title: title,
       presentation: presentation,
-      systemImage: "film"
+      systemImage: systemImage
     )
-    .aspectRatio(MovieDetailsLayout.backdropAspectRatio, contentMode: .fit)
+    .aspectRatio(MediaDetailsLayout.backdropAspectRatio, contentMode: .fit)
     .onGeometryChange(for: CGFloat.self) { proxy in
       proxy.size.width
     } action: { width in
@@ -179,24 +227,25 @@ private struct MovieBackdropView: View {
   }
 }
 
-private struct MoviePosterView: View {
+private struct MediaPosterView: View {
   @Environment(\.displayScale) private var displayScale
-  @ScaledMetric(relativeTo: .title) private var posterWidth = MovieDetailsLayout.posterWidth
+  @ScaledMetric(relativeTo: .title) private var posterWidth = MediaDetailsLayout.posterWidth
 
   let title: String
   let reference: ArtworkIdentity?
   let presentation: HomeArtworkPresentation?
-  let artwork: MovieDetailsArtworkPresentationAccess
+  let systemImage: String
+  let artwork: MediaDetailsArtworkPresentationAccess
 
   var body: some View {
-    MovieArtworkSurface(
+    MediaArtworkSurface(
       title: title,
       presentation: presentation,
-      systemImage: "film"
+      systemImage: systemImage
     )
     .frame(
       width: posterWidth,
-      height: posterWidth / MovieDetailsLayout.posterAspectRatio
+      height: posterWidth / MediaDetailsLayout.posterAspectRatio
     )
     .onAppear(perform: loadArtwork)
     .onChange(of: posterWidth) { _, _ in loadArtwork() }
@@ -215,96 +264,56 @@ private struct MoviePosterView: View {
   }
 }
 
-private struct MovieArtworkSurface: View {
+private struct MediaArtworkSurface: View {
   let title: String
   let presentation: HomeArtworkPresentation?
   let systemImage: String
 
   var body: some View {
     ZStack {
-      RoundedRectangle(cornerRadius: MovieDetailsLayout.artworkCornerRadius)
+      RoundedRectangle(cornerRadius: MediaDetailsLayout.artworkCornerRadius)
         .fill(.quaternary)
       if let presentation {
-        Image(decorative: presentation.image, scale: MovieDetailsLayout.imageScale)
+        Image(decorative: presentation.image, scale: MediaDetailsLayout.imageScale)
           .resizable()
           .scaledToFill()
       } else {
-        VStack(spacing: MovieDetailsLayout.metadataSpacing) {
+        VStack(spacing: MediaDetailsLayout.metadataSpacing) {
           Image(systemName: systemImage)
             .font(.title)
             .accessibilityHidden(true)
           Text(title)
             .font(.headline)
             .multilineTextAlignment(.center)
-            .lineLimit(MovieDetailsLayout.artworkTitleLineLimit)
+            .lineLimit(MediaDetailsLayout.artworkTitleLineLimit)
             .padding(.horizontal)
         }
         .foregroundStyle(.secondary)
       }
     }
     .compositingGroup()
-    .clipShape(.rect(cornerRadius: MovieDetailsLayout.artworkCornerRadius))
+    .clipShape(.rect(cornerRadius: MediaDetailsLayout.artworkCornerRadius))
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("Artwork for \(title)")
   }
 }
 
-private struct MovieDetailsIdentityView: View {
-  let details: MovieDetails
+private struct MediaDetailsIdentityView: View {
+  let details: MediaDetails
 
   var body: some View {
-    VStack(alignment: .leading, spacing: MovieDetailsLayout.metadataSpacing) {
+    VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
+      MediaDetailsParentNavigationView(parents: details.parents)
       Text(details.title)
         .font(.largeTitle.bold())
         .accessibilityAddTraits(.isHeader)
-      MovieDetailsConciseMetadataView(
-        releaseYear: details.releaseYear,
-        runtime: details.runtime,
-        contentRating: details.contentRating,
-        primaryGenre: details.primaryGenre
-      )
+      MediaDetailsMetadataView(metadata: details.presentationMetadata)
     }
-    .frame(maxWidth: MovieDetailsLayout.proseMaximumWidth, alignment: .leading)
+    .frame(maxWidth: MediaDetailsLayout.proseMaximumWidth, alignment: .leading)
   }
 }
 
-private struct MovieDetailsConciseMetadataView: View {
-  let releaseYear: UInt32?
-  let runtime: Duration?
-  let contentRating: String?
-  let primaryGenre: String?
-
-  var body: some View {
-    ViewThatFits(in: .horizontal) {
-      HStack(spacing: MovieDetailsLayout.metadataSpacing) {
-        metadataValues
-      }
-      VStack(alignment: .leading, spacing: MovieDetailsLayout.metadataSpacing) {
-        metadataValues
-      }
-    }
-    .font(.headline)
-    .foregroundStyle(.secondary)
-  }
-
-  @ViewBuilder
-  private var metadataValues: some View {
-    if let releaseYear {
-      Text(releaseYear, format: .number.grouping(.never))
-    }
-    if let runtime {
-      Text(runtime, format: .time(pattern: .hourMinute))
-    }
-    if let contentRating {
-      Text(contentRating)
-    }
-    if let primaryGenre {
-      Text(primaryGenre)
-    }
-  }
-}
-
-private struct MovieDetailsPlayabilityView: View {
+private struct MediaDetailsPlayabilityView: View {
   let playability: MediaPlayability
   let isRefreshing: Bool
   let canRetryUnavailableSource: Bool
@@ -319,7 +328,7 @@ private struct MovieDetailsPlayabilityView: View {
         .controlSize(.extraLarge)
 
     case .temporarilyUnavailable:
-      VStack(alignment: .leading, spacing: MovieDetailsLayout.metadataSpacing) {
+      VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
         Label("Temporarily unavailable", systemImage: "exclamationmark.circle")
           .font(.headline)
         Text("The default source cannot be reached right now.")
@@ -339,13 +348,13 @@ private struct MovieDetailsPlayabilityView: View {
   }
 }
 
-private struct MovieDetailsDescriptionView: View {
+struct MediaDetailsDescriptionView: View {
   let tagline: String?
   let synopsis: String?
 
   var body: some View {
     if tagline != nil || synopsis != nil {
-      VStack(alignment: .leading, spacing: MovieDetailsLayout.metadataSpacing) {
+      VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
         if let tagline {
           Text(tagline)
             .font(.title3)
@@ -359,12 +368,12 @@ private struct MovieDetailsDescriptionView: View {
             .font(.body)
         }
       }
-      .frame(maxWidth: MovieDetailsLayout.proseMaximumWidth, alignment: .leading)
+      .frame(maxWidth: MediaDetailsLayout.proseMaximumWidth, alignment: .leading)
     }
   }
 }
 
-private struct MovieDetailsSupportingMetadataView: View {
+struct MediaDetailsSupportingMetadataView: View {
   @Environment(\.locale) private var locale
 
   let genres: [String]
@@ -372,28 +381,18 @@ private struct MovieDetailsSupportingMetadataView: View {
 
   var body: some View {
     if !genres.isEmpty || !studios.isEmpty {
-      VStack(alignment: .leading, spacing: MovieDetailsLayout.metadataSpacing) {
+      VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
         Text("About")
           .font(.title2.bold())
           .accessibilityAddTraits(.isHeader)
         if !genres.isEmpty {
-          LabeledContent(
-            "Genres",
-            value: movieDetailsFormattedList(genres, locale: locale)
-          )
+          LabeledContent("Genres", value: mediaDetailsFormattedList(genres, locale: locale))
         }
         if !studios.isEmpty {
-          LabeledContent(
-            "Studios",
-            value: movieDetailsFormattedList(studios, locale: locale)
-          )
+          LabeledContent("Studios", value: mediaDetailsFormattedList(studios, locale: locale))
         }
       }
-      .frame(maxWidth: MovieDetailsLayout.proseMaximumWidth, alignment: .leading)
+      .frame(maxWidth: MediaDetailsLayout.proseMaximumWidth, alignment: .leading)
     }
   }
-}
-
-func movieDetailsFormattedList(_ values: [String], locale: Locale) -> String {
-  values.formatted(.list(type: .and).locale(locale))
 }

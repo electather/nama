@@ -11,16 +11,18 @@ enum MovieDetailsFeatureFixture {
   static let initialCastLimit = 8
   static let posterDisplayScale = 2.0
   static let posterDisplayWidth = 148.0
+  static let releaseDay: Int32 = 25
+  static let releaseMonth: Int32 = 8
   static let releaseYear: UInt32 = 2_026
   static let runtimeSeconds: Int64 = 7_200
   static let tokenExpiry: TimeInterval = 4_600
 }
 
-actor ManualMovieDetailsLoader: MovieDetailsLoading {
+actor ManualMovieDetailsLoader: MediaChildrenLoading, MediaDetailsLoading {
   private struct PendingLoad {
-    let selection: MovieDetailsSelection
+    let selection: MediaDetailsSelection
     let authorization: HomeAuthorizationIdentity
-    let continuation: CheckedContinuation<MovieDetails, any Error>
+    let continuation: CheckedContinuation<MediaDetails, any Error>
   }
 
   private var pendingLoads: [PendingLoad] = []
@@ -35,9 +37,9 @@ actor ManualMovieDetailsLoader: MovieDetailsLoading {
   }
 
   func load(
-    _ selection: MovieDetailsSelection,
+    _ selection: MediaDetailsSelection,
     authorization: HomeAuthorizationIdentity
-  ) async throws -> MovieDetails {
+  ) async throws -> MediaDetails {
     try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
         pendingLoads.append(
@@ -55,7 +57,16 @@ actor ManualMovieDetailsLoader: MovieDetailsLoading {
     }
   }
 
-  func resolve(call index: Int, with result: Result<MovieDetails, any Error>) {
+  func loadChildren(
+    for _: MediaDetailsSelection,
+    pageToken _: String?,
+    authorization _: HomeAuthorizationIdentity
+  ) async throws -> MediaChildrenPage {
+    await Task.yield()
+    throw MediaDetailsFailure.incompatible
+  }
+
+  func resolve(call index: Int, with result: Result<MediaDetails, any Error>) {
     pendingLoads[index].continuation.resume(with: result)
   }
 
@@ -107,8 +118,12 @@ actor ManualMovieDetailsArtworkLoader: HomeArtworkLoading {
   }
 }
 
-func movieDetailsSelection(identity: String, title: String) -> MovieDetailsSelection {
-  MovieDetailsSelection(identity: MediaIdentity(identity), title: title)
+func movieDetailsSelection(
+  identity: String,
+  title: String,
+  kind: MediaKind = .movie
+) -> MediaDetailsSelection {
+  MediaDetailsSelection(identity: MediaIdentity(identity), kind: kind, title: title)
 }
 
 func movieDetailsAuthorization(generation: UInt64) throws -> HomeAuthorizationIdentity {
@@ -120,12 +135,12 @@ func movieDetailsAuthorization(generation: UInt64) throws -> HomeAuthorizationId
 }
 
 func movieDetailsFixture(
-  selection: MovieDetailsSelection,
+  selection: MediaDetailsSelection,
   playability: MediaPlayability = .playable,
-  credits: [MovieCredit] = movieDetailsDefaultCredits(),
+  credits: [MediaCredit] = movieDetailsDefaultCredits(),
   artwork: [ArtworkReference] = []
-) -> MovieDetails {
-  MovieDetails(
+) -> MediaDetails {
+  MediaDetails(
     identity: selection.identity,
     title: selection.title,
     releaseYear: MovieDetailsFeatureFixture.releaseYear,
@@ -138,6 +153,7 @@ func movieDetailsFixture(
     studios: ["North Star Pictures"],
     credits: credits,
     artwork: artwork,
+    parents: [],
     playability: playability,
     defaultSource: playability == .playable
       ? MediaSourceSummary(
@@ -149,7 +165,14 @@ func movieDetailsFixture(
         videoQuality: nil,
         audioQuality: nil
       )
-      : nil
+      : nil,
+    kindDetails: .movie(
+      releaseDate: MediaCalendarDate(
+        year: Int32(MovieDetailsFeatureFixture.releaseYear),
+        month: MovieDetailsFeatureFixture.releaseMonth,
+        day: MovieDetailsFeatureFixture.releaseDay
+      )
+    )
   )
 }
 
@@ -168,17 +191,21 @@ func movieArtwork(
   )
 }
 
-private func movieDetailsDefaultCredits() -> [MovieCredit] {
+private func movieDetailsDefaultCredits() -> [MediaCredit] {
   [
-    MovieCredit(
+    MediaCredit(
+      identity: MediaCreditIdentity(0),
       name: "Ada Director",
       role: .director,
       characterName: nil,
+      portraitArtwork: nil
     ),
-    MovieCredit(
+    MediaCredit(
+      identity: MediaCreditIdentity(1),
       name: "Sam Actor",
       role: .actor,
       characterName: "The Traveler",
+      portraitArtwork: nil
     ),
   ]
 }

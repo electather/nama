@@ -11,8 +11,8 @@ ios
 People who operate a private Nama deployment and need to connect an iPhone,
 iPad, Apple TV, or Mac from the device in front of them. Their immediate job is
 to discover, enter, or restore a Nama endpoint, authorize scoped consumer
-access, browse stored canonical Movies and Shows in Home, and open a Movie to
-understand its details or request playback.
+access, browse stored canonical Movies and Shows in Home, and move from a Movie
+or Show through the canonical Details hierarchy toward a typed Play intent.
 
 ## Product Purpose
 
@@ -22,10 +22,11 @@ explicitly discovered, manually entered, or restored transport address into a
 verified Nama endpoint and one endpoint-bound OAuth grant without guessing
 identity or weakening platform security. Home then presents provider-neutral
 stored media through the public `LibraryService` and resolves safe textless
-artwork without exposing locator details to views. Selecting a Movie loads
-stored canonical Details and can emit an app-owned Play intent without invoking
-playback. Library browsing, Search, Watch State, and playback execution remain
-unimplemented.
+artwork without exposing locator details to views. Details loads Movies and
+Shows, pages from Shows to Seasons and Seasons to Episodes, preserves canonical
+parent context, and emits an app-owned Play intent for a playable Movie or
+Episode without invoking playback. Library browsing, Search, Watch State, and
+playback execution remain unimplemented.
 
 ## Positioning
 
@@ -45,11 +46,12 @@ the app then continues automatically.
 
 The current app supports connection, endpoint restoration, foreground LAN
 discovery, eligible local-HTTP acknowledgement, device authorization, refresh
-rotation, endpoint-bound Keychain storage, Home, safe artwork, and Movie Details
-on iOS, iPadOS, tvOS, and macOS. It presents one active endpoint-bound consumer
-authorization. Movie Details emits only a typed canonical Play intent;
-provider management, Library, Search, Watch State, and playback execution are
-not current app behavior.
+rotation, endpoint-bound Keychain storage, Home, safe artwork, and canonical
+Movie, Show, Season, and Episode Details on iOS, iPadOS, tvOS, and macOS. It
+presents one active endpoint-bound consumer authorization. Playable Movie and
+Episode Details emit only a typed canonical Play intent; provider management,
+Library, Search, Watch State, and playback execution are not current app
+behavior.
 
 ## Brand Commitments
 
@@ -64,14 +66,17 @@ where a standard platform control already communicates the action.
 ## Evidence on Hand
 
 The current implementation contains native connection, OAuth authorization,
-Home, and Movie Details views with self-contained previews for their loading,
-content, recovery, long-content, missing-artwork, and unavailable-source states.
-`DESIGN.md` records the native system presentation rules. Movie Details
-loading, content, long-synopsis, missing-artwork, and unavailable-source
-fixtures have run in the Debug application on iPhone 17 Pro, iPad Pro 13-inch,
-and Apple TV 4K simulators and an Apple Development-signed sandboxed Mac build.
-The live stored-catalog transition and successful artwork resolution remain
-unverified actual surfaces.
+Home, and media Details views with self-contained previews for loading,
+content, recovery, long content, missing artwork, unavailable sources,
+canonical children, and later-page failure. `DESIGN.md` records the native
+system presentation rules. Show, Season, and Episode fixtures have run in the
+Debug application on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K
+simulators and an Apple Development-signed sandboxed Mac build. Those runs
+confirmed kind-specific titles and metadata, title-bearing artwork fallbacks,
+canonical parent context, Season and Episode child rows, long child titles, and
+Episode Play. Apple TV Load More focus interaction, focus return after nested
+Details, the live OAuth-authorized stored-catalog hierarchy, successful artwork
+resolution, and physical Apple hardware remain unverified actual surfaces.
 
 ## Product Principles
 

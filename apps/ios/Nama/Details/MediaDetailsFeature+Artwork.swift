@@ -1,14 +1,14 @@
-nonisolated struct MovieDetailsArtworkRequest: Equatable, Sendable {
-  let slot: MovieDetailsArtworkSlot
+nonisolated struct MediaDetailsArtworkRequest: Equatable, Sendable {
+  let slot: MediaDetailsArtworkSlot
   let reference: ArtworkIdentity
   let media: MediaIdentity
   let size: ArtworkSizeBucket
   let authorization: HomeAuthorizationIdentity
 }
 
-extension MovieDetailsFeature {
+extension MediaDetailsFeature {
   func artworkPresentation(
-    for slot: MovieDetailsArtworkSlot
+    for slot: MediaDetailsArtworkSlot
   ) -> HomeArtworkPresentation? {
     switch slot {
     case .poster:
@@ -20,7 +20,7 @@ extension MovieDetailsFeature {
   }
 
   func artworkDidAppear(
-    _ slot: MovieDetailsArtworkSlot,
+    _ slot: MediaDetailsArtworkSlot,
     size: ArtworkSizeBucket
   ) {
     guard
@@ -35,7 +35,7 @@ extension MovieDetailsFeature {
       artworkRequests[slot] = nil
       return
     }
-    let request = MovieDetailsArtworkRequest(
+    let request = MediaDetailsArtworkRequest(
       slot: slot,
       reference: reference.identity,
       media: details.identity,
@@ -66,7 +66,7 @@ extension MovieDetailsFeature {
     }
   }
 
-  func artworkDidDisappear(_ slot: MovieDetailsArtworkSlot) {
+  func artworkDidDisappear(_ slot: MediaDetailsArtworkSlot) {
     artworkRequests[slot] = nil
     artworkTasks.removeValue(forKey: slot)?.cancel()
   }
@@ -82,8 +82,8 @@ extension MovieDetailsFeature {
   }
 
   private func artworkReference(
-    for slot: MovieDetailsArtworkSlot,
-    in details: MovieDetails
+    for slot: MediaDetailsArtworkSlot,
+    in details: MediaDetails
   ) -> ArtworkReference? {
     switch slot {
     case .poster:
@@ -96,7 +96,7 @@ extension MovieDetailsFeature {
 
   private func finishArtwork(
     _ presentation: HomeArtworkPresentation?,
-    request: MovieDetailsArtworkRequest
+    request: MediaDetailsArtworkRequest
   ) {
     guard
       artworkRequests[request.slot] == request,
@@ -113,7 +113,7 @@ extension MovieDetailsFeature {
 
   private func replaceArtworkPresentation(
     _ presentation: HomeArtworkPresentation?,
-    for slot: MovieDetailsArtworkSlot
+    for slot: MediaDetailsArtworkSlot
   ) {
     switch slot {
     case .poster:

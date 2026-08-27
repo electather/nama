@@ -1,6 +1,6 @@
 ---
 name: Nama for Apple
-description: Native connection, authorization, Home, and Movie Details for a self-hosted Nama endpoint.
+description: Native connection, authorization, Home, and canonical media Details for a self-hosted Nama endpoint.
 typography:
   large-title:
     fontFamily: "SF Pro / SF Compact system text"
@@ -209,10 +209,16 @@ blur, floating panels, and shadowed card stacks are prohibited.
 
 ### Media Artwork and Details
 
-- **Canonical identity:** Always render the Movie title independently of
-  artwork. Backdrop and poster failures retain stable title-bearing surfaces.
-- **Task hierarchy:** Put identity and concise metadata first, then the primary
-  Play or availability state, followed by synopsis and supporting metadata.
+- **Canonical identity:** Always render the canonical item title independently
+  of artwork. Backdrop and poster failures retain stable title-bearing surfaces.
+- **Task hierarchy:** Put identity and kind-valid concise metadata first. A
+  Movie or Episode continues to Play or an availability state; a Show continues
+  to Seasons and a Season to Episodes. Synopsis and supporting metadata follow.
+- **Hierarchy:** Parent links come only from canonical Details. Child rows keep
+  server display order and explicit loading or later-page recovery. Season rows
+  prefer safe textless posters; Episode rows prefer safe textless thumbnails;
+  both retain title-bearing fallbacks. Apple TV retains one stable focusable
+  **Load More** item while pages append.
 - **Credits:** Keep Directors and Writers concise. Bound initial Cast and reveal
   complete ordered credits inline through an explicit button, never a modal.
 - **Playback boundary:** A visible Play control emits an app-owned intent only;
@@ -231,8 +237,8 @@ blur, floating panels, and shadowed card stacks are prohibited.
 - **Do** pair warning, failure, and success color with plain-language text and
   a symbol; preserve the meaning for VoiceOver and increased-contrast users.
 - **Do** keep the same state and action vocabulary across connection,
-  authorization, Home, and Movie Details on iPhone, iPad, Apple TV, and Mac
-  while adapting only layout and focus.
+  authorization, Home, and canonical media Details on iPhone, iPad, Apple TV,
+  and Mac while adapting only layout and focus.
 - **Do** let system Dynamic Type, semantic colors, focus effects, and reduced
   motion determine platform adaptation.
 
@@ -249,7 +255,7 @@ blur, floating panels, and shadowed card stacks are prohibited.
   hover-only affordance, color alone, or a platform-specific interaction that
   does not exist on another supported surface.
 - **Don't** show speculative Library, Search, Watch State, playback execution,
-  or unsupported media behavior as a placeholder. Home and Movie Details show
-  only their implemented stored-canonical behavior.
+  or unsupported media behavior as a placeholder. Home and canonical media
+  Details show only their implemented stored-canonical behavior.
 - **Don't** imply that authorization grants Administrator access, or add a
   browser/password step to the Apple-device flow.

@@ -1,5 +1,13 @@
 import SwiftUI
 
+nonisolated func homeDetailsSelection(for item: MediaSummary) -> MediaDetailsSelection {
+  MediaDetailsSelection(
+    identity: item.identity,
+    kind: item.kind,
+    title: item.title
+  )
+}
+
 enum HomeArtworkLayout {
   static let shelfSpacing: CGFloat = 12
   static let itemSpacing: CGFloat = 16
@@ -70,18 +78,11 @@ private struct HomeMediaCard: View {
   let shelf: HomeShelfIdentity
   let artwork: HomeArtworkPresentationAccess
 
-  @ViewBuilder
   var body: some View {
-    if item.kind == .movie {
-      NavigationLink(
-        value: MovieDetailsSelection(identity: item.identity, title: item.title)
-      ) {
-        cardContent
-      }
-      .buttonStyle(.plain)
-    } else {
+    NavigationLink(value: homeDetailsSelection(for: item)) {
       cardContent
     }
+    .buttonStyle(.plain)
   }
 
   private var cardContent: some View {

@@ -24,9 +24,11 @@ nonisolated struct MediaSourceIdentity: Equatable, Hashable, Sendable {
   }
 }
 
-nonisolated enum MediaKind: Equatable, Sendable {
+nonisolated enum MediaKind: Equatable, Hashable, Sendable {
   case movie
   case show
+  case season
+  case episode
 }
 
 nonisolated enum MediaPlayability: Equatable, Sendable {
@@ -74,23 +76,18 @@ nonisolated struct ArtworkSizeBucket: Equatable, Hashable, Sendable {
   let maxHeight: UInt32
 
   static func poster(displayWidth: Double, scale: Double) -> Self {
-    let requestedWidth =
-      displayWidth.isFinite && scale.isFinite
-      ? max(minimumRequestedWidth, displayWidth * scale)
-      : minimumRequestedWidth
-    let bucketWidth =
-      if requestedWidth <= Double(compactWidth) {
-        compactWidth
-      } else if requestedWidth <= Double(standardWidth) {
-        standardWidth
-      } else if requestedWidth <= Double(largeWidth) {
-        largeWidth
-      } else {
-        maximumWidth
-      }
+    let bucketWidth = coverBucketWidth(displayWidth: displayWidth, scale: scale)
     return Self(
       maxWidth: bucketWidth,
       maxHeight: bucketWidth + bucketWidth / posterHeightIncrementDivisor
+    )
+  }
+
+  static func thumbnail(displayWidth: Double, scale: Double) -> Self {
+    let bucketWidth = coverBucketWidth(displayWidth: displayWidth, scale: scale)
+    return Self(
+      maxWidth: bucketWidth,
+      maxHeight: bucketWidth * backdropHeightNumerator / backdropWidthDenominator
     )
   }
 
@@ -111,6 +108,22 @@ nonisolated struct ArtworkSizeBucket: Equatable, Hashable, Sendable {
       maxWidth: bucketWidth,
       maxHeight: bucketWidth * backdropHeightNumerator / backdropWidthDenominator
     )
+  }
+
+  private static func coverBucketWidth(displayWidth: Double, scale: Double) -> UInt32 {
+    let requestedWidth =
+      displayWidth.isFinite && scale.isFinite
+      ? max(minimumRequestedWidth, displayWidth * scale)
+      : minimumRequestedWidth
+    return if requestedWidth <= Double(compactWidth) {
+      compactWidth
+    } else if requestedWidth <= Double(standardWidth) {
+      standardWidth
+    } else if requestedWidth <= Double(largeWidth) {
+      largeWidth
+    } else {
+      maximumWidth
+    }
   }
 }
 
@@ -162,6 +175,11 @@ nonisolated struct MediaSourceSummary: Equatable, Sendable {
   let audioQuality: MediaAudioQuality?
 }
 
+nonisolated struct MediaEpisodePosition: Equatable, Sendable {
+  let seasonNumber: UInt32
+  let episodeNumber: UInt32
+}
+
 nonisolated struct MediaSummary: Equatable, Identifiable, Sendable {
   let identity: MediaIdentity
   let kind: MediaKind
@@ -170,9 +188,36 @@ nonisolated struct MediaSummary: Equatable, Identifiable, Sendable {
   let runtime: Duration?
   let contentRating: String?
   let primaryGenre: String?
+  let episodePosition: MediaEpisodePosition?
   let artwork: [ArtworkReference]
   let playability: MediaPlayability
   let defaultSource: MediaSourceSummary?
+
+  init(
+    identity: MediaIdentity,
+    kind: MediaKind,
+    title: String,
+    releaseYear: UInt32?,
+    runtime: Duration?,
+    contentRating: String?,
+    primaryGenre: String?,
+    artwork: [ArtworkReference],
+    playability: MediaPlayability,
+    defaultSource: MediaSourceSummary?,
+    episodePosition: MediaEpisodePosition? = nil
+  ) {
+    self.identity = identity
+    self.kind = kind
+    self.title = title
+    self.releaseYear = releaseYear
+    self.runtime = runtime
+    self.contentRating = contentRating
+    self.primaryGenre = primaryGenre
+    self.episodePosition = episodePosition
+    self.artwork = artwork
+    self.playability = playability
+    self.defaultSource = defaultSource
+  }
 
   var preferredPosterArtwork: ArtworkReference? {
     artwork.first { reference in

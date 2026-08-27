@@ -9,7 +9,7 @@ struct MovieDetailsArtworkFeatureTests {
   func artworkFailurePreservesDetails() async throws {
     let loader = ManualMovieDetailsLoader()
     let artworkLoader = MissingMovieDetailsArtworkLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: artworkLoader
     )
@@ -38,7 +38,7 @@ struct MovieDetailsArtworkFeatureTests {
   func repeatedSizeBucketStartsOneLoad() async throws {
     let loader = ManualMovieDetailsLoader()
     let artworkLoader = ManualMovieDetailsArtworkLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: artworkLoader
     )
@@ -75,7 +75,7 @@ struct MovieDetailsArtworkFeatureTests {
   func refreshKeepsCurrentArtworkLoad() async throws {
     let loader = ManualMovieDetailsLoader()
     let artworkLoader = ManualMovieDetailsArtworkLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: artworkLoader
     )
@@ -108,7 +108,7 @@ struct MovieDetailsArtworkFeatureTests {
   func refreshToMissingArtworkClearsPresentation() async throws {
     let loader = ManualMovieDetailsLoader()
     let artworkLoader = ManualMovieDetailsArtworkLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: artworkLoader
     )

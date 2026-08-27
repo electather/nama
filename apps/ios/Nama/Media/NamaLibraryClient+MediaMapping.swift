@@ -13,10 +13,11 @@ nonisolated extension NamaLibraryClient {
     else {
       throw MediaResponseMappingError.invalid
     }
-    let kind = try map(summary.kind)
+    let kind = try mapMediaKind(summary.kind)
     guard kind == expectedKind else {
       throw MediaResponseMappingError.invalid
     }
+    let episodePosition = try mapEpisodePosition(summary, kind: kind)
 
     let runtime: Duration?
     if summary.hasRuntime {
@@ -46,11 +47,12 @@ nonisolated extension NamaLibraryClient {
       primaryGenre: try optionalString(summary.hasPrimaryGenre, summary.primaryGenre),
       artwork: try summary.artwork.compactMap(Self.mapArtworkReference),
       playability: try map(summary.playability),
-      defaultSource: summary.hasDefaultSource ? try mapSourceSummary(summary.defaultSource) : nil
+      defaultSource: summary.hasDefaultSource ? try mapSourceSummary(summary.defaultSource) : nil,
+      episodePosition: episodePosition
     )
   }
 
-  private static func map(_ kind: Nama_Api_V1_MediaKind) throws -> MediaKind {
+  static func mapMediaKind(_ kind: Nama_Api_V1_MediaKind) throws -> MediaKind {
     switch kind {
     case .movie:
       .movie
@@ -58,9 +60,38 @@ nonisolated extension NamaLibraryClient {
     case .show:
       .show
 
-    case .unspecified, .season, .episode, .UNRECOGNIZED:
+    case .season:
+      .season
+
+    case .episode:
+      .episode
+
+    case .unspecified, .UNRECOGNIZED:
       throw MediaResponseMappingError.invalid
     }
+  }
+
+  private static func mapEpisodePosition(
+    _ summary: Nama_Api_V1_MediaSummary,
+    kind: MediaKind
+  ) throws -> MediaEpisodePosition? {
+    if kind == .episode {
+      guard
+        summary.hasEpisodePosition,
+        summary.episodePosition.seasonNumber > 0,
+        summary.episodePosition.episodeNumber > 0
+      else {
+        throw MediaResponseMappingError.invalid
+      }
+      return MediaEpisodePosition(
+        seasonNumber: summary.episodePosition.seasonNumber,
+        episodeNumber: summary.episodePosition.episodeNumber
+      )
+    }
+    guard !summary.hasEpisodePosition else {
+      throw MediaResponseMappingError.invalid
+    }
+    return nil
   }
 
   private static func map(

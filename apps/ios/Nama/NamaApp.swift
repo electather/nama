@@ -52,8 +52,9 @@ private struct ConnectionWindow: View {
   @State private var connection: ConnectionFeature
   @State private var authorization: OAuthAuthorizationFeature
   @State private var home: HomeFeature
-  @State private var movieDetails: MovieDetailsFeature
-  @State private var pendingPlayIntent: MoviePlayIntent?
+  @State private var pendingPlayIntent: MediaPlayIntent?
+  private let detailsLoader: NamaLibraryClient
+  private let artworkLoader: any HomeArtworkLoading
 
   init(
     clientVersion: String,
@@ -82,9 +83,8 @@ private struct ConnectionWindow: View {
     _home = State(
       initialValue: HomeFeature(loader: libraryClient, artworkLoader: artworkLoader)
     )
-    _movieDetails = State(
-      initialValue: MovieDetailsFeature(loader: libraryClient, artworkLoader: artworkLoader)
-    )
+    detailsLoader = libraryClient
+    self.artworkLoader = artworkLoader
   }
 
   var body: some View {
@@ -93,7 +93,8 @@ private struct ConnectionWindow: View {
         AuthorizedConsumerRootView(
           authorization: authorization,
           home: home,
-          movieDetails: movieDetails,
+          detailsLoader: detailsLoader,
+          artworkLoader: artworkLoader,
           emitPlayIntent: capturePlayIntent,
           endpoint: endpoint
         ) {
@@ -120,7 +121,7 @@ private struct ConnectionWindow: View {
     }
   }
 
-  private func capturePlayIntent(_ intent: MoviePlayIntent) {
+  private func capturePlayIntent(_ intent: MediaPlayIntent) {
     pendingPlayIntent = intent
   }
 }
@@ -131,8 +132,9 @@ private struct AuthorizedConsumerRootView: View {
 
   let authorization: OAuthAuthorizationFeature
   let home: HomeFeature
-  let movieDetails: MovieDetailsFeature
-  let emitPlayIntent: @MainActor (MoviePlayIntent) -> Void
+  let detailsLoader: any MediaChildrenLoading & MediaDetailsLoading
+  let artworkLoader: any HomeArtworkLoading
+  let emitPlayIntent: @MainActor (MediaPlayIntent) -> Void
   let endpoint: NamaEndpoint
   let changeEndpoint: @MainActor () async -> Void
 
@@ -147,11 +149,12 @@ private struct AuthorizedConsumerRootView: View {
           ) {
             await discardRejectedAuthorization(for: homeAuthorization)
           }
-          .navigationDestination(for: MovieDetailsSelection.self) { selection in
-            MovieDetailsView(
-              feature: movieDetails,
+          .navigationDestination(for: MediaDetailsSelection.self) { selection in
+            MediaDetailsDestination(
               selection: selection,
               authorization: homeAuthorization,
+              loader: detailsLoader,
+              artworkLoader: artworkLoader,
               emitPlayIntent: emitPlayIntent
             ) {
               await discardRejectedAuthorization(for: homeAuthorization)
@@ -208,6 +211,42 @@ private struct AuthorizedConsumerRootView: View {
       currentEndpoint: endpoint,
       authorizationState: authorization.state,
       generation: authorization.session.generation
+    )
+  }
+}
+
+private struct MediaDetailsDestination: View {
+  @State private var feature: MediaDetailsFeature
+
+  let selection: MediaDetailsSelection
+  let authorization: HomeAuthorizationIdentity
+  let emitPlayIntent: @MainActor (MediaPlayIntent) -> Void
+  let reauthorize: @MainActor () async -> Void
+
+  init(
+    selection: MediaDetailsSelection,
+    authorization: HomeAuthorizationIdentity,
+    loader: any MediaChildrenLoading & MediaDetailsLoading,
+    artworkLoader: any HomeArtworkLoading,
+    emitPlayIntent: @escaping @MainActor (MediaPlayIntent) -> Void,
+    reauthorize: @escaping @MainActor () async -> Void
+  ) {
+    _feature = State(
+      initialValue: MediaDetailsFeature(loader: loader, artworkLoader: artworkLoader)
+    )
+    self.selection = selection
+    self.authorization = authorization
+    self.emitPlayIntent = emitPlayIntent
+    self.reauthorize = reauthorize
+  }
+
+  var body: some View {
+    MediaDetailsView(
+      feature: feature,
+      selection: selection,
+      authorization: authorization,
+      emitPlayIntent: emitPlayIntent,
+      reauthorize: reauthorize
     )
   }
 }

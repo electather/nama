@@ -9,7 +9,7 @@ struct MovieDetailsFeatureTests {
   @Test("selecting a Home Movie loads its canonical Details")
   func selectionLoadsCanonicalDetails() async throws {
     let loader = ManualMovieDetailsLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: MissingMovieDetailsArtworkLoader()
     )
@@ -28,7 +28,7 @@ struct MovieDetailsFeatureTests {
   @Test("a failed refresh preserves canonical Details")
   func failedRefreshPreservesDetails() async throws {
     let loader = ManualMovieDetailsLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: MissingMovieDetailsArtworkLoader()
     )
@@ -45,7 +45,7 @@ struct MovieDetailsFeatureTests {
 
     #expect(feature.state == .refreshing(details))
     await eventually { await loader.callCount == 2 }
-    await loader.resolve(call: 1, with: .failure(MovieDetailsFailure.transportUnavailable))
+    await loader.resolve(call: 1, with: .failure(MediaDetailsFailure.transportUnavailable))
     await eventually {
       feature.state == .refreshFailed(details, .transportUnavailable)
     }
@@ -54,7 +54,7 @@ struct MovieDetailsFeatureTests {
   @Test("Retry replaces a failed initial load")
   func retryReplacesInitialFailure() async throws {
     let loader = ManualMovieDetailsLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: MissingMovieDetailsArtworkLoader()
     )
@@ -64,7 +64,7 @@ struct MovieDetailsFeatureTests {
 
     feature.select(selection, authorization: authorization)
     await eventually { await loader.callCount == 1 }
-    await loader.resolve(call: 0, with: .failure(MovieDetailsFailure.notFound))
+    await loader.resolve(call: 0, with: .failure(MediaDetailsFailure.notFound))
     await eventually { feature.state == .failed(selection, .notFound) }
 
     feature.retry()
@@ -78,7 +78,7 @@ struct MovieDetailsFeatureTests {
   @Test("catalog preparation remains a retry-guided state")
   func catalogPreparationRemainsDistinct() async throws {
     let loader = ManualMovieDetailsLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: MissingMovieDetailsArtworkLoader()
     )
@@ -89,27 +89,34 @@ struct MovieDetailsFeatureTests {
     await eventually { await loader.callCount == 1 }
     await loader.resolve(
       call: 0,
-      with: .failure(MovieDetailsFailure.catalogNotReady(retryAfterSeconds: 5))
+      with: .failure(MediaDetailsFailure.catalogNotReady(retryAfterSeconds: 5))
     )
 
     await eventually {
-      feature.state == .catalogNotReady(selection, retryAfterSeconds: 5)
+      feature.state == .failed(selection, .catalogNotReady(retryAfterSeconds: 5))
     }
+  }
+
+  @Test("unavailable sources cannot retry a rejected authorization")
+  func unavailableSourceRetryEligibility() {
+    #expect(mediaDetailsCanRetryUnavailableSource(after: .authorizationUnavailable) == false)
+    #expect(mediaDetailsCanRetryUnavailableSource(after: .transportUnavailable))
+    #expect(mediaDetailsCanRetryUnavailableSource(after: nil))
   }
 
   @Test(
     "initial failures remain distinct",
     arguments: [
-      MovieDetailsFailure.notFound,
+      MediaDetailsFailure.notFound,
       .transportUnavailable,
       .authorizationUnavailable,
       .incompatible,
       .namaUnavailable(requestID: "request-safe-123", retryAfterSeconds: nil),
     ]
   )
-  func initialFailuresRemainDistinct(_ failure: MovieDetailsFailure) async throws {
+  func initialFailuresRemainDistinct(_ failure: MediaDetailsFailure) async throws {
     let loader = ManualMovieDetailsLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: MissingMovieDetailsArtworkLoader()
     )
@@ -126,7 +133,7 @@ struct MovieDetailsFeatureTests {
   @Test("a newer Movie selection cancels and rejects stale completion")
   func newerSelectionRejectsStaleCompletion() async throws {
     let loader = ManualMovieDetailsLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: MissingMovieDetailsArtworkLoader()
     )
@@ -156,7 +163,7 @@ struct MovieDetailsFeatureTests {
   @Test("leaving Movie Details cancels its active selection")
   func deactivationCancelsSelection() async throws {
     let loader = ManualMovieDetailsLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: MissingMovieDetailsArtworkLoader()
     )
@@ -179,7 +186,7 @@ struct MovieDetailsFeatureTests {
   @Test("Play emits only the selected opaque canonical Movie identity")
   func playEmitsCanonicalIdentity() async throws {
     let loader = ManualMovieDetailsLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: MissingMovieDetailsArtworkLoader()
     )
@@ -192,7 +199,7 @@ struct MovieDetailsFeatureTests {
     await loader.resolve(call: 0, with: .success(details))
     await eventually { feature.state == .content(details) }
 
-    #expect(feature.play() == MoviePlayIntent(mediaIdentity: selection.identity))
+    #expect(feature.play() == MediaPlayIntent(mediaIdentity: selection.identity))
   }
 
   @Test(
@@ -204,7 +211,7 @@ struct MovieDetailsFeatureTests {
   )
   func unavailableMovieDoesNotEmitPlay(_ playability: MediaPlayability) async throws {
     let loader = ManualMovieDetailsLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: MissingMovieDetailsArtworkLoader()
     )
