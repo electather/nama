@@ -66,6 +66,9 @@ jobs:
             -derivedDataPath "${RUNNER_TEMP}/codeql-derived-data" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
+            ARCHS="$(uname -m)" \
+            ONLY_ACTIVE_ARCH=YES \
+            EXCLUDED_ARCHS="x86_64" \
             COMPILATION_CACHE_ENABLE_CACHING=NO \
             SWIFT_ENABLE_COMPILE_CACHE=NO \
             SWIFT_USE_INTEGRATED_DRIVER=NO
