@@ -1,5 +1,5 @@
 import { expect, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 
 import type { Database } from "../../src/database/database.ts";
 import type {
@@ -14,6 +14,7 @@ import {
   movieObservation,
   seasonObservation,
   showObservation,
+  videoSource,
 } from "./catalog-persistence.test-support.ts";
 import { insertFixtureUser } from "./database-constraint.test-support.ts";
 import { productionMigrations, useDatabase, withPool } from "./database.test-support.ts";
@@ -98,6 +99,28 @@ const observeMovieWithSource = (database: DatabaseService) =>
       return yield* Effect.die("catalog fixture source is missing");
     }
     return { movie, sourceId };
+  });
+
+const observeMovieWithForeignSource = (database: DatabaseService) =>
+  Effect.gen(function* observeCanonicalMovieWithForeignSource() {
+    const { movie, sourceId } = yield* observeMovieWithSource(database);
+    const otherMovie = yield* database.catalog.observeItem(
+      movieObservation(PROVIDER_INSTANCE_ID, {
+        itemReference: "watch-state-other-movie",
+        sources: [
+          videoSource(
+            "watch-state-other-source",
+            "watch-state-other-part",
+            "watch-state-other-track",
+          ),
+        ],
+      }),
+    );
+    const foreignSourceId = otherMovie.sources[FIRST_SOURCE_INDEX]?.id;
+    if (foreignSourceId === undefined) {
+      return yield* Effect.die("other catalog fixture source is missing");
+    }
+    return { foreignSourceId, movie, sourceId };
   });
 
 const completeTarget = (canonicalItemId: string, sourceId: string): CanonicalWatchStateTarget => ({
@@ -579,4 +602,133 @@ const rejectNonPlayableScenario = (databaseUrl: string) =>
 
 it.live("rejects non-playable canonical items without fabricating Watch state", () =>
   withIsolatedDatabase(rejectNonPlayableScenario),
+);
+
+const rejectForeignSourceFixture = (database: DatabaseService) =>
+  Effect.gen(function* rejectSourceOwnedByAnotherCanonicalItem() {
+    const { foreignSourceId, movie } = yield* observeMovieWithForeignSource(database);
+
+    const result = yield* Effect.exit(
+      database.watchState.compareAndCommit({
+        expectedVersion: undefined,
+        target: completeTarget(movie.id, foreignSourceId),
+      }),
+    );
+    expect(Exit.isFailure(result)).toBe(true);
+    const state = yield* database.watchState.load({
+      canonicalItemId: movie.id,
+      principalId: ADMINISTRATOR_ID,
+    });
+    expect(state).toBeUndefined();
+  });
+
+const rejectForeignSourceScenario = (databaseUrl: string) =>
+  Effect.gen(function* rejectSourceOwnedByAnotherCanonicalItem() {
+    yield* initializeWatchStateDatabase(databaseUrl);
+    yield* useDatabase(databaseUrl, productionMigrations, rejectForeignSourceFixture);
+  });
+
+it.live("rejects a last Source owned by another canonical item", () =>
+  withIsolatedDatabase(rejectForeignSourceScenario),
+);
+
+const staleForeignSourceFixture = (database: DatabaseService) =>
+  Effect.gen(function* returnCurrentStateBeforeValidatingStaleTargetSource() {
+    const { foreignSourceId, movie, sourceId } = yield* observeMovieWithForeignSource(database);
+    const initial = committedState(
+      yield* database.watchState.compareAndCommit({
+        expectedVersion: undefined,
+        target: completeTarget(movie.id, sourceId),
+      }),
+    );
+    const stale = yield* database.watchState.compareAndCommit({
+      expectedVersion: undefined,
+      target: completeTarget(movie.id, foreignSourceId),
+    });
+    expect(stale).toEqual({ state: initial, status: "stale" });
+    expect(yield* loadedWatchState(database, movie.id)).toEqual(initial);
+  });
+
+const staleForeignSourceScenario = (databaseUrl: string) =>
+  Effect.gen(function* returnCurrentStateBeforeValidatingStaleTargetSource() {
+    yield* initializeWatchStateDatabase(databaseUrl);
+    yield* useDatabase(databaseUrl, productionMigrations, staleForeignSourceFixture);
+  });
+
+it.live("returns current Watch state before validating a stale target Source", () =>
+  withIsolatedDatabase(staleForeignSourceScenario),
+);
+
+const retainLastSourceFixture = (database: DatabaseService) =>
+  Effect.gen(function* retainLastSourceAcrossActivityAndCatalogRemoval() {
+    const { movie, sourceId } = yield* observeMovieWithSource(database);
+    const initial = committedState(
+      yield* database.watchState.compareAndCommit({
+        expectedVersion: undefined,
+        target: completeTarget(movie.id, sourceId),
+      }),
+    );
+    const changed = committedState(
+      yield* database.watchState.compareAndCommit({
+        expectedVersion: initial.version,
+        target: {
+          activity: {
+            occurredAt: UPDATED_ACTIVITY_OCCURRED_AT,
+            origin: NAMA_WATCHED_STATUS_ACTION_ORIGIN,
+            reliability: "reliable",
+            semantics: "state_changed",
+          },
+          canonicalItemId: movie.id,
+          duration: initial.duration,
+          position: initial.position,
+          principalId: ADMINISTRATOR_ID,
+          watched: false,
+        },
+      }),
+    );
+    expect(changed).toMatchObject({
+      lastSourceId: sourceId,
+      version: 2n,
+      watched: false,
+    });
+
+    const withoutSources = yield* database.catalog.observeItem(
+      movieObservation(PROVIDER_INSTANCE_ID, { sources: [] }),
+    );
+    expect(withoutSources.sources).toEqual([]);
+    const retained = yield* loadedWatchState(database, movie.id);
+    expect(retained).toEqual(changed);
+    return { movieId: movie.id, sourceId, state: retained };
+  });
+
+const retainedSourceRefreshScenario = (databaseUrl: string) =>
+  Effect.gen(function* retainSourceIdentityAcrossCatalogRefreshAndDatabaseReconstruction() {
+    yield* initializeWatchStateDatabase(databaseUrl);
+    const retainedAfterSourceRemoval = yield* useDatabase(
+      databaseUrl,
+      productionMigrations,
+      retainLastSourceFixture,
+    );
+    const restoredState = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+      Effect.gen(function* restoreRetainedProviderSourceMapping() {
+        const restoredMovie = yield* database.catalog.observeItem(
+          movieObservation(PROVIDER_INSTANCE_ID),
+        );
+        expect(restoredMovie.id).toBe(retainedAfterSourceRemoval.movieId);
+        expect(restoredMovie.sources[FIRST_SOURCE_INDEX]?.id).toBe(
+          retainedAfterSourceRemoval.sourceId,
+        );
+        return yield* loadedWatchState(database, retainedAfterSourceRemoval.movieId);
+      }),
+    );
+    expect(restoredState).toEqual(retainedAfterSourceRemoval.state);
+
+    const reconstructed = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+      loadedWatchState(database, retainedAfterSourceRemoval.movieId),
+    );
+    expect(reconstructed).toEqual(retainedAfterSourceRemoval.state);
+  });
+
+it.live("retains one Source identity across source-less activity and catalog refresh", () =>
+  withIsolatedDatabase(retainedSourceRefreshScenario),
 );

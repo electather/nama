@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
 import { canonicalItem } from "./catalog-item-schema.ts";
+import { providerSourceMapping } from "./catalog-source-schema.ts";
 import { canonicalWatchState, watchStatePersistenceFailure } from "./watch-state-model.ts";
 import type {
   CanonicalWatchState,
@@ -34,11 +35,12 @@ const optionalDurationEquals = (
 const resolvedStateEquals = (
   current: CanonicalWatchState,
   target: CanonicalWatchStateTarget,
+  resolvedLastSourceId: string | undefined,
 ): boolean =>
   current.watched === target.watched &&
   optionalDurationEquals(current.position, target.position) &&
   optionalDurationEquals(current.duration, target.duration) &&
-  current.lastSourceId === target.lastSourceId;
+  current.lastSourceId === resolvedLastSourceId;
 
 const loadWatchStateRow = async (
   database: WatchStateReader,
@@ -85,6 +87,29 @@ const lockPlayableCanonicalItem = async (
   return kind;
 };
 
+const validateTargetSourceOwnership = async (
+  transaction: WatchStateTransaction,
+  target: CanonicalWatchStateTarget,
+): Promise<void> => {
+  if (target.lastSourceId === undefined) {
+    return;
+  }
+  const rows = await transaction
+    .select({ sourceId: providerSourceMapping.sourceId })
+    .from(providerSourceMapping)
+    .where(
+      and(
+        eq(providerSourceMapping.sourceId, target.lastSourceId),
+        eq(providerSourceMapping.canonicalItemId, target.canonicalItemId),
+      ),
+    )
+    .for("key share")
+    .limit(SINGLE_ROW_LIMIT);
+  if (rows[FIRST_ROW] === undefined) {
+    throw new Error("canonical Watch state Source belongs to another item");
+  }
+};
+
 const insertCanonicalWatchState = async (
   transaction: WatchStateTransaction,
   target: CanonicalWatchStateTarget,
@@ -124,21 +149,14 @@ const nullableDurationColumns = (duration: WatchDuration | undefined) => {
   return duration;
 };
 
-const canonicalWatchStateUpdate = (target: CanonicalWatchStateTarget) => {
-  const {
-    activity,
-    duration: targetDuration,
-    lastSourceId: targetLastSourceId,
-    position: targetPosition,
-    watched,
-  } = target;
+const canonicalWatchStateUpdate = (
+  target: CanonicalWatchStateTarget,
+  resolvedLastSourceId: string | undefined,
+) => {
+  const { activity, duration: targetDuration, position: targetPosition, watched } = target;
   const activityOrigin = activityOriginColumns(activity.origin);
   const duration = nullableDurationColumns(targetDuration);
   const position = nullableDurationColumns(targetPosition);
-  let lastSourceId: string | typeof SQL_NULL = SQL_NULL;
-  if (targetLastSourceId !== undefined) {
-    lastSourceId = targetLastSourceId;
-  }
   return {
     ...activityOrigin,
     activityOccurredAt: activity.occurredAt,
@@ -147,7 +165,7 @@ const canonicalWatchStateUpdate = (target: CanonicalWatchStateTarget) => {
     committedAt: sql`transaction_timestamp()`,
     durationNanoseconds: duration.nanoseconds,
     durationSeconds: duration.seconds,
-    lastSourceId,
+    lastSourceId: resolvedLastSourceId ?? SQL_NULL,
     positionNanoseconds: position.nanoseconds,
     positionSeconds: position.seconds,
     version: sql`${canonicalWatchState.version} + 1`,
@@ -155,14 +173,22 @@ const canonicalWatchStateUpdate = (target: CanonicalWatchStateTarget) => {
   };
 };
 
-const updateCanonicalWatchState = async (
-  transaction: WatchStateTransaction,
-  current: CanonicalWatchState,
-  target: CanonicalWatchStateTarget,
-): Promise<CanonicalWatchState> => {
+interface CanonicalWatchStateUpdateInput {
+  readonly current: CanonicalWatchState;
+  readonly resolvedLastSourceId: string | undefined;
+  readonly target: CanonicalWatchStateTarget;
+  readonly transaction: WatchStateTransaction;
+}
+
+const updateCanonicalWatchState = async ({
+  current,
+  resolvedLastSourceId,
+  target,
+  transaction,
+}: CanonicalWatchStateUpdateInput): Promise<CanonicalWatchState> => {
   const rows = await transaction
     .update(canonicalWatchState)
-    .set(canonicalWatchStateUpdate(target))
+    .set(canonicalWatchStateUpdate(target, resolvedLastSourceId))
     .where(
       and(
         eq(canonicalWatchState.principalId, target.principalId),
@@ -186,6 +212,7 @@ const commitAbsentCanonicalWatchState = async (
   if (input.expectedVersion !== undefined) {
     return { state: undefined, status: "stale" };
   }
+  await validateTargetSourceOwnership(transaction, input.target);
   const state = await insertCanonicalWatchState(transaction, input.target, canonicalItemKind);
   return { state, status: "committed" };
 };
@@ -209,10 +236,17 @@ const commitLoadedCanonicalWatchState = async ({
   if (current.version !== input.expectedVersion) {
     return { state: current, status: "stale" };
   }
-  if (resolvedStateEquals(current, input.target)) {
+  await validateTargetSourceOwnership(transaction, input.target);
+  const resolvedLastSourceId = input.target.lastSourceId ?? current.lastSourceId;
+  if (resolvedStateEquals(current, input.target, resolvedLastSourceId)) {
     return { state: current, status: "committed" };
   }
-  const state = await updateCanonicalWatchState(transaction, current, input.target);
+  const state = await updateCanonicalWatchState({
+    current,
+    resolvedLastSourceId,
+    target: input.target,
+    transaction,
+  });
   return { state, status: "committed" };
 };
 

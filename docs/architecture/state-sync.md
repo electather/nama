@@ -29,10 +29,11 @@ current truth.
 
 Sparse canonical Watch state persistence is implemented for one authenticated
 principal and one playable canonical item, including versioned compare-and-
-commit and durable selected activity evidence. Production core synchronization
-remains unimplemented: scheduling, Provider replica and checkpoint persistence,
-reconciliation, bounded fingerprint retention, and retry execution remain
-target work.
+commit, durable selected activity evidence, same-item last-Source validation,
+and last-Source preservation through Source-less targets and temporary catalog
+projection removal. Production core synchronization remains unimplemented:
+scheduling, Provider replica and checkpoint persistence, reconciliation,
+bounded fingerprint retention, and retry execution remain target work.
 The Jellyfin adapter implements resumable best-effort full movie and episode scans, bounded targeted
 reads for repair and confirmation, and explicit watched/unwatched writes with
 bounded ambiguity readback. It advertises `WATCH_STATE_READ` and
