@@ -170,6 +170,10 @@ const makeDatabase = (
     checkReadiness,
     initialization,
     providers: unusedProviderPersistence,
+    watchState: {
+      compareAndCommit: () => Effect.die("unexpected Watch state commit"),
+      load: () => Effect.die("unexpected Watch state load"),
+    },
   });
 
 const makeHttpServerLayer = (emitStopping: (() => Effect.Effect<void>) | undefined) => {

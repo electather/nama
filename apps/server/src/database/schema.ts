@@ -31,6 +31,7 @@ import {
   providerInstanceObservation,
   providerOperationResult,
 } from "./provider-schema.ts";
+import { canonicalWatchState } from "./watch-state-model.ts";
 
 const namaServerState = pgTable(
   "nama_server_state",
@@ -61,6 +62,7 @@ const databaseSchema = {
   canonicalCredit,
   canonicalHierarchy,
   canonicalItem,
+  canonicalWatchState,
   libraryEntry,
   mediaPart,
   mediaSource,
@@ -87,4 +89,5 @@ export * from "./catalog-scan-schema.ts";
 export * from "./catalog-source-schema.ts";
 export * from "./catalog-track-schema.ts";
 export * from "./provider-schema.ts";
+export * from "./watch-state-model.ts";
 export { databaseSchema, generatedAuthenticationSchema, namaServerState };

@@ -132,6 +132,10 @@ const makeCoordinatorFixture = (
     checkReadiness: Effect.succeed(true),
     initialization,
     providers: unusedProviderPersistence,
+    watchState: {
+      compareAndCommit: () => Effect.die("unexpected Watch state commit"),
+      load: () => Effect.die("unexpected Watch state load"),
+    },
   });
   const coordinator = makeSetupCoordinator({
     betterAuthAdapter: options.adapter ?? defaultAdapter,
