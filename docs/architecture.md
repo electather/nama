@@ -101,11 +101,14 @@ legacy forbidden HTTP value remains visible in a blocked HTTPS-required state
 until explicit Change Endpoint. The app implements native Better Auth device
 authorization, returned-interval polling, refresh rotation, a this-device-only
 endpoint-bound Keychain token record, Home over stored canonical
-`LibraryService.GetHome` results, and canonical Details hierarchy reads over
-`GetMedia` and bounded `ListChildren` pages. Home and Details reuse the safe
-artwork loader without exposing locators to views. Details emits only a typed
-opaque canonical Play intent for playable Movies and Episodes and does not
-invoke playback execution. The universal target contains exact-pinned
+`LibraryService.GetHome` results, canonical Details hierarchy reads over
+`GetMedia` and bounded `ListChildren` pages, and on-demand canonical Source
+inspection over `GetMediaSource`. Home and Details reuse the safe artwork
+loader without exposing locators to views. Details emits only typed opaque
+canonical Play intents for playable Movies and Episodes: the primary action
+leaves the default source implicit, while a deliberate Source choice carries
+its opaque canonical source ID. Details does not invoke playback execution.
+The universal target contains exact-pinned
 AetherEngine `6.21.0` behind the complete Nama-owned player boundary. A
 per-load loopback
 broker enforces exact normalized allowed origins for initial, redirect, nested
@@ -122,9 +125,10 @@ Development-signed sandboxed Mac build. The hierarchy inspection confirmed
 adaptive bounds, kind-valid metadata, title-bearing artwork fallbacks,
 canonical parents, Season and Episode rows, long titles, and Episode Play.
 Apple TV Load More focus interaction, focus return after nested Details, the
-live stored-catalog hierarchy, successful artwork resolution, product consumer
-media coordination, physical Apple hardware, expiry-driven actual-surface
-refresh, and the remaining Apple surfaces remain unverified.
+Sources destination on every Apple surface and input mode, the live
+stored-catalog hierarchy, successful artwork resolution, product consumer media
+coordination, physical Apple hardware, expiry-driven actual-surface refresh,
+and the remaining Apple surfaces remain unverified.
 
 ## Architectural decision records
 

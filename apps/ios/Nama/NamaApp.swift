@@ -132,7 +132,7 @@ private struct AuthorizedConsumerRootView: View {
 
   let authorization: OAuthAuthorizationFeature
   let home: HomeFeature
-  let detailsLoader: any MediaChildrenLoading & MediaDetailsLoading
+  let detailsLoader: any MediaChildrenLoading & MediaDetailsLoading & MediaSourceLoading
   let artworkLoader: any HomeArtworkLoading
   let emitPlayIntent: @MainActor (MediaPlayIntent) -> Void
   let endpoint: NamaEndpoint
@@ -141,26 +141,7 @@ private struct AuthorizedConsumerRootView: View {
   var body: some View {
     Group {
       if let homeAuthorization {
-        NavigationStack {
-          HomeView(
-            feature: home,
-            authorization: homeAuthorization,
-            changeEndpoint: changeEndpoint
-          ) {
-            await discardRejectedAuthorization(for: homeAuthorization)
-          }
-          .navigationDestination(for: MediaDetailsSelection.self) { selection in
-            MediaDetailsDestination(
-              selection: selection,
-              authorization: homeAuthorization,
-              loader: detailsLoader,
-              artworkLoader: artworkLoader,
-              emitPlayIntent: emitPlayIntent
-            ) {
-              await discardRejectedAuthorization(for: homeAuthorization)
-            }
-          }
-        }
+        authorizedNavigation(homeAuthorization)
       } else {
         OAuthAuthorizationView(
           feature: authorization,
@@ -182,6 +163,41 @@ private struct AuthorizedConsumerRootView: View {
         return
       }
       await authorization.run(endpoint)
+    }
+  }
+
+  private func authorizedNavigation(
+    _ homeAuthorization: HomeAuthorizationIdentity
+  ) -> some View {
+    NavigationStack {
+      HomeView(
+        feature: home,
+        authorization: homeAuthorization,
+        changeEndpoint: changeEndpoint
+      ) {
+        await discardRejectedAuthorization(for: homeAuthorization)
+      }
+      .navigationDestination(for: MediaDetailsSelection.self) { selection in
+        MediaDetailsDestination(
+          selection: selection,
+          authorization: homeAuthorization,
+          loader: detailsLoader,
+          artworkLoader: artworkLoader,
+          emitPlayIntent: emitPlayIntent
+        ) {
+          await discardRejectedAuthorization(for: homeAuthorization)
+        }
+      }
+      .navigationDestination(for: MediaSourcesSelection.self) { selection in
+        MediaSourcesDestination(
+          selection: selection,
+          authorization: homeAuthorization,
+          loader: detailsLoader,
+          emitPlayIntent: emitPlayIntent
+        ) {
+          await discardRejectedAuthorization(for: homeAuthorization)
+        }
+      }
     }
   }
 
@@ -242,6 +258,39 @@ private struct MediaDetailsDestination: View {
 
   var body: some View {
     MediaDetailsView(
+      feature: feature,
+      selection: selection,
+      authorization: authorization,
+      emitPlayIntent: emitPlayIntent,
+      reauthorize: reauthorize
+    )
+  }
+}
+
+private struct MediaSourcesDestination: View {
+  @State private var feature: MediaSourcesFeature
+
+  let selection: MediaSourcesSelection
+  let authorization: HomeAuthorizationIdentity
+  let emitPlayIntent: @MainActor (MediaPlayIntent) -> Void
+  let reauthorize: @MainActor () async -> Void
+
+  init(
+    selection: MediaSourcesSelection,
+    authorization: HomeAuthorizationIdentity,
+    loader: any MediaSourceLoading,
+    emitPlayIntent: @escaping @MainActor (MediaPlayIntent) -> Void,
+    reauthorize: @escaping @MainActor () async -> Void
+  ) {
+    _feature = State(initialValue: MediaSourcesFeature(loader: loader))
+    self.selection = selection
+    self.authorization = authorization
+    self.emitPlayIntent = emitPlayIntent
+    self.reauthorize = reauthorize
+  }
+
+  var body: some View {
+    MediaSourcesView(
       feature: feature,
       selection: selection,
       authorization: authorization,

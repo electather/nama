@@ -122,6 +122,16 @@
 		100000000000000000000121 /* MediaDetailsFeature+ChildArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000121 /* MediaDetailsFeature+ChildArtwork.swift */; };
 		100000000000000000000122 /* MediaModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000122 /* MediaModels.swift */; };
 		100000000000000000000123 /* MediaChildRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000123 /* MediaChildRow.swift */; };
+		100000000000000000000124 /* MediaSourcesFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000124 /* MediaSourcesFeatureTests.swift */; };
+		100000000000000000000125 /* MediaSourceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000125 /* MediaSourceModels.swift */; };
+		100000000000000000000126 /* MediaSourcesFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000126 /* MediaSourcesFeature.swift */; };
+		100000000000000000000127 /* MediaSourceAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000127 /* MediaSourceAdapterTests.swift */; };
+		100000000000000000000128 /* NamaLibraryClient+MediaSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000128 /* NamaLibraryClient+MediaSource.swift */; };
+		100000000000000000000129 /* MediaSourceTechnicalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000129 /* MediaSourceTechnicalView.swift */; };
+		100000000000000000000130 /* MediaSourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000130 /* MediaSourcesView.swift */; };
+		100000000000000000000131 /* MediaSourcesPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000131 /* MediaSourcesPreviewFixtures.swift */; };
+		100000000000000000000132 /* MediaDetailsPlayabilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000132 /* MediaDetailsPlayabilityView.swift */; };
+		100000000000000000000133 /* MediaTrackTechnicalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000133 /* MediaTrackTechnicalView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -252,6 +262,16 @@
 		200000000000000000000121 /* MediaDetailsFeature+ChildArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MediaDetailsFeature+ChildArtwork.swift"; sourceTree = "<group>"; };
 		200000000000000000000122 /* MediaModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaModels.swift; sourceTree = "<group>"; };
 		200000000000000000000123 /* MediaChildRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaChildRow.swift; sourceTree = "<group>"; };
+		200000000000000000000124 /* MediaSourcesFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourcesFeatureTests.swift; sourceTree = "<group>"; };
+		200000000000000000000125 /* MediaSourceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourceModels.swift; sourceTree = "<group>"; };
+		200000000000000000000126 /* MediaSourcesFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourcesFeature.swift; sourceTree = "<group>"; };
+		200000000000000000000127 /* MediaSourceAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourceAdapterTests.swift; sourceTree = "<group>"; };
+		200000000000000000000128 /* NamaLibraryClient+MediaSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaLibraryClient+MediaSource.swift"; sourceTree = "<group>"; };
+		200000000000000000000129 /* MediaSourceTechnicalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourceTechnicalView.swift; sourceTree = "<group>"; };
+		200000000000000000000130 /* MediaSourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourcesView.swift; sourceTree = "<group>"; };
+		200000000000000000000131 /* MediaSourcesPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSourcesPreviewFixtures.swift; sourceTree = "<group>"; };
+		200000000000000000000132 /* MediaDetailsPlayabilityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaDetailsPlayabilityView.swift; sourceTree = "<group>"; };
+		200000000000000000000133 /* MediaTrackTechnicalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaTrackTechnicalView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -473,6 +493,8 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000106 /* MovieDetailsFeatureTests.swift */,
+				200000000000000000000127 /* MediaSourceAdapterTests.swift */,
+				200000000000000000000124 /* MediaSourcesFeatureTests.swift */,
 				200000000000000000000109 /* MediaDetailsKindAdapterTests.swift */,
 				200000000000000000000110 /* MediaChildrenAdapterTests.swift */,
 				200000000000000000000094 /* MovieDetailsAdapterTests.swift */,
@@ -492,7 +514,15 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000092 /* MediaDetailsModels.swift */,
+				200000000000000000000125 /* MediaSourceModels.swift */,
+				200000000000000000000126 /* MediaSourcesFeature.swift */,
 				200000000000000000000115 /* MediaDetailsProjection.swift */,
+				200000000000000000000128 /* NamaLibraryClient+MediaSource.swift */,
+				200000000000000000000129 /* MediaSourceTechnicalView.swift */,
+				200000000000000000000130 /* MediaSourcesView.swift */,
+				200000000000000000000131 /* MediaSourcesPreviewFixtures.swift */,
+				200000000000000000000132 /* MediaDetailsPlayabilityView.swift */,
+				200000000000000000000133 /* MediaTrackTechnicalView.swift */,
 				200000000000000000000093 /* MediaDetailsFeature.swift */,
 				200000000000000000000103 /* MediaDetailsFeature+Artwork.swift */,
 				200000000000000000000111 /* NamaLibraryClient+MediaChildren.swift */,
@@ -678,11 +708,19 @@
 				100000000000000000000086 /* HomeArtworkView.swift in Sources */,
 				100000000000000000000092 /* MediaDetailsModels.swift in Sources */,
 				100000000000000000000093 /* MediaDetailsFeature.swift in Sources */,
+				100000000000000000000125 /* MediaSourceModels.swift in Sources */,
+				100000000000000000000126 /* MediaSourcesFeature.swift in Sources */,
 				100000000000000000000115 /* MediaDetailsProjection.swift in Sources */,
 				100000000000000000000103 /* MediaDetailsFeature+Artwork.swift in Sources */,
 				100000000000000000000108 /* NamaLibraryClient+MediaDetailsMapping.swift in Sources */,
 				100000000000000000000095 /* NamaLibraryClient+MediaDetails.swift in Sources */,
 				100000000000000000000117 /* MediaDetailsFeature+Children.swift in Sources */,
+				100000000000000000000128 /* NamaLibraryClient+MediaSource.swift in Sources */,
+				100000000000000000000129 /* MediaSourceTechnicalView.swift in Sources */,
+				100000000000000000000130 /* MediaSourcesView.swift in Sources */,
+				100000000000000000000131 /* MediaSourcesPreviewFixtures.swift in Sources */,
+				100000000000000000000132 /* MediaDetailsPlayabilityView.swift in Sources */,
+				100000000000000000000133 /* MediaTrackTechnicalView.swift in Sources */,
 				100000000000000000000096 /* MediaDetailsView.swift in Sources */,
 				100000000000000000000111 /* NamaLibraryClient+MediaChildren.swift in Sources */,
 				100000000000000000000097 /* MediaDetailsContentView.swift in Sources */,
@@ -731,9 +769,11 @@
 				100000000000000000000087 /* HomeArtworkTests.swift in Sources */,
 				100000000000000000000088 /* HomeArtworkLoaderTests.swift in Sources */,
 				100000000000000000000091 /* HomeArtworkLoaderCacheTests.swift in Sources */,
+				100000000000000000000127 /* MediaSourceAdapterTests.swift in Sources */,
 				100000000000000000000089 /* HomeArtworkTestSupport.swift in Sources */,
 				100000000000000000000113 /* HomeDetailsSelectionTests.swift in Sources */,
 				100000000000000000000106 /* MovieDetailsFeatureTests.swift in Sources */,
+				100000000000000000000124 /* MediaSourcesFeatureTests.swift in Sources */,
 				100000000000000000000094 /* MovieDetailsAdapterTests.swift in Sources */,
 				100000000000000000000100 /* MovieDetailsTestSupport.swift in Sources */,
 				100000000000000000000109 /* MediaDetailsKindAdapterTests.swift in Sources */,

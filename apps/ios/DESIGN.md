@@ -186,7 +186,7 @@ blur, floating panels, and shadowed card stacks are prohibited.
 
 - **Affirmative action:** Use the native `.borderedProminent` style for the
   present state’s one affirmative action: **Connect**, **Continue**, **Play**,
-  or **Retry**.
+  **Play This Source**, or **Retry**.
 - **Recovery action:** Use a standard button for **Cancel** and **Change
   Endpoint**. Preserve the `.cancel` role where it communicates cancellation.
 - **Focus:** Apple TV actions belong in one focus section with a state-derived
@@ -219,10 +219,23 @@ blur, floating panels, and shadowed card stacks are prohibited.
   prefer safe textless posters; Episode rows prefer safe textless thumbnails;
   both retain title-bearing fallbacks. Apple TV retains one stable focusable
   **Load More** item while pages append.
+- **Sources:** Keep primary Play direct when one available default is enough.
+  Otherwise use a typed child destination with standard focusable buttons for
+  each neutral source summary. Load technical details only after selection,
+  retain the source list through closed failure states, omit absent optional
+  values, and never render opaque IDs, provider values, filesystem paths, or
+  stream indexes.
+- **Technical hierarchy:** Present Source aggregate metadata before ordered
+  Parts and normalized Tracks. Use `LabeledContent`, system number and duration
+  formatting, plain-language availability, and explicit **Try Again** or
+  **Authorize Again** recovery. Unknown future technical values remain visible
+  as unknown rather than replacing the destination.
 - **Credits:** Keep Directors and Writers concise. Bound initial Cast and reveal
   complete ordered credits inline through an explicit button, never a modal.
-- **Playback boundary:** A visible Play control emits an app-owned intent only;
-  Details never adopts player or playback-engine presentation.
+- **Playback boundary:** A visible Play control emits an app-owned intent only.
+  Primary Details Play leaves the canonical default implicit; **Play This
+  Source** carries the deliberately chosen opaque source ID. Details never
+  adopts player or playback-engine presentation.
 
 ## Do's and Don'ts
 

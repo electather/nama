@@ -183,8 +183,52 @@ struct MovieDetailsFeatureTests {
     #expect(feature.state == .idle)
   }
 
-  @Test("Play emits only the selected opaque canonical Movie identity")
-  func playEmitsCanonicalIdentity() async throws {
+  @Test("Sources appears only for inspectable alternatives or an unavailable default")
+  func sourcesVisibilityFollowsCanonicalDefaults() {
+    let selection = movieDetailsSelection(identity: "movie-sources", title: "Source Movie")
+    let defaultSource = movieSourceSummary(
+      identity: "source-default",
+      isDefault: true,
+      availability: .available
+    )
+    let alternateSource = movieSourceSummary(
+      identity: "source-alternate",
+      isDefault: false,
+      availability: .unsupported
+    )
+
+    let singleSource = movieDetailsFixture(
+      selection: selection,
+      sourceSummaries: [defaultSource]
+    )
+    #expect(singleSource.sourcesSelection == nil)
+
+    let multipleSources = movieDetailsFixture(
+      selection: selection,
+      sourceSummaries: [defaultSource, alternateSource]
+    )
+    #expect(
+      multipleSources.sourcesSelection?.sourceSummaries.map(\.identity)
+        == [defaultSource.identity, alternateSource.identity]
+    )
+
+    let unavailableDefault = movieDetailsFixture(
+      selection: selection,
+      playability: .noAvailableSource,
+      sourceSummaries: [alternateSource]
+    )
+    #expect(unavailableDefault.sourcesSelection != nil)
+
+    let missingSources = movieDetailsFixture(
+      selection: selection,
+      playability: .noAvailableSource,
+      sourceSummaries: []
+    )
+    #expect(missingSources.sourcesSelection == nil)
+  }
+
+  @Test("primary Play bypasses source inspection and leaves the source choice implicit")
+  func primaryPlayUsesCanonicalDefault() async throws {
     let loader = ManualMovieDetailsLoader()
     let feature = MediaDetailsFeature(
       loader: loader,
@@ -200,6 +244,7 @@ struct MovieDetailsFeatureTests {
     await eventually { feature.state == .content(details) }
 
     #expect(feature.play() == MediaPlayIntent(mediaIdentity: selection.identity))
+    #expect(feature.play()?.sourceIdentity == nil)
   }
 
   @Test(
