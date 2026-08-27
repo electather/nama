@@ -4,13 +4,6 @@ private enum HomeLayout {
   static let cardContentSpacing: CGFloat = 8
   static let cardCornerRadius: CGFloat = 12
   static let cardSpacing: CGFloat = 16
-
-  #if os(tvOS)
-    static let cardWidth: CGFloat = 300
-  #else
-    static let cardWidth: CGFloat = 148
-  #endif
-
   static let contentPadding: CGFloat = 24
   static let loadingCardCount = 5
   static let metadataSpacing: CGFloat = 6
@@ -213,7 +206,7 @@ private struct HomeLoadingView: View {
 }
 
 private struct HomeLoadingShelf: View {
-  @ScaledMetric(relativeTo: .body) private var cardWidth = HomeLayout.cardWidth
+  @ScaledMetric(relativeTo: .body) private var cardWidth = HomeArtworkLayout.cardWidth
 
   let title: LocalizedStringKey
 

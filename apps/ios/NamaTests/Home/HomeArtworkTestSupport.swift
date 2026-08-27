@@ -279,6 +279,7 @@ nonisolated final class ArtworkURLProtocol: URLProtocol, @unchecked Sendable {
   enum Outcome: Sendable {
     case redirect(URL)
     case response(Data)
+    case responseAfter(Data, @Sendable () -> Void)
     case hold
   }
 
@@ -334,6 +335,10 @@ nonisolated final class ArtworkURLProtocol: URLProtocol, @unchecked Sendable {
     case .response(let data):
       sendResponse(data, from: url)
 
+    case .responseAfter(let data, let beforeResponse):
+      beforeResponse()
+      sendResponse(data, from: url)
+
     case .hold:
       break
 
@@ -360,9 +365,11 @@ nonisolated final class ArtworkURLProtocol: URLProtocol, @unchecked Sendable {
       client?.urlProtocol(self, didFailWithError: URLError(.badURL))
       return
     }
+    var redirectedRequest = request
+    redirectedRequest.url = destination
     client?.urlProtocol(
       self,
-      wasRedirectedTo: URLRequest(url: destination),
+      wasRedirectedTo: redirectedRequest,
       redirectResponse: response
     )
     client?.urlProtocol(self, didLoad: Data())

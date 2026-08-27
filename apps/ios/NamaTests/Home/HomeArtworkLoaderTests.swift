@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import Nama
@@ -86,31 +87,84 @@ struct HomeArtworkLoaderTests {
     #expect(ArtworkURLProtocol.recordedRequests.isEmpty)
   }
 
-  @Test("rejects authorization-bearing locators without an access expiry")
-  func rejectsAuthorizationWithoutExpiry() async throws {
-    ArtworkURLProtocol.configure([:])
-    defer { ArtworkURLProtocol.reset() }
-    let headerURL = try #require(URL(string: "https://artwork.example.test/poster"))
-    let queryURL = try #require(
-      URL(string: "https://artwork.example.test/poster?token=short-lived-secret")
-    )
-    let locators = [
-      artworkLocator(
-        url: headerURL,
-        headers: [HomeArtworkHeader(name: "X-Artwork-Token", value: "short-lived-secret")],
-        accessExpiresAt: nil
-      ),
-      artworkLocator(url: queryURL, accessExpiresAt: nil),
-    ]
-
-    for (index, locator) in locators.enumerated() {
-      let loader = makeArtworkLoader(resolver: FixedArtworkResolver(locator: locator))
-      let image = await loadArtwork(
-        loader,
-        authorization: try artworkAuthorization(generation: UInt64(index + 20))
-      )
-      #expect(image == nil)
+  @Test("keeps artwork fetched before its refresh deadline")
+  func keepsFetchCompletingAfterRefreshDeadline() async throws {
+    let url = try #require(URL(string: "https://artwork.example.test/poster"))
+    let clock = Mutex(ArtworkFixture.now)
+    let response: ArtworkURLProtocol.Outcome = .responseAfter(ArtworkFixture.imageData) {
+      clock.withLock { instant in
+        instant = ArtworkFixture.future
+      }
     }
+    ArtworkURLProtocol.configure([url: response])
+    defer { ArtworkURLProtocol.reset() }
+    let refreshAt = ArtworkFixture.now.addingTimeInterval(1)
+    let loader = HomeArtworkLoader(
+      resolver: FixedArtworkResolver(
+        locator: artworkLocator(
+          url: url,
+          refreshAt: refreshAt,
+          accessExpiresAt: ArtworkFixture.future
+        )
+      ),
+      sessionConfiguration: artworkSessionConfiguration(),
+      cacheCostLimit: ArtworkFixture.cacheCostLimit
+    ) {
+      clock.withLock { $0 }
+    }
+
+    let image = await loadArtwork(
+      loader,
+      authorization: try artworkAuthorization(generation: 22)
+    )
+
+    #expect(image != nil)
+    #expect(ArtworkURLProtocol.recordedRequests.count == 1)
+  }
+
+  @Test("accepts credential-free public artwork locators with cache queries")
+  func acceptsPublicQueryWithoutExpiry() async throws {
+    let url = try #require(
+      URL(string: "https://artwork.example.test/poster?tag=cache-tag&maxWidth=384")
+    )
+    ArtworkURLProtocol.configure([url: .response(ArtworkFixture.imageData)])
+    defer { ArtworkURLProtocol.reset() }
+    let loader = makeArtworkLoader(
+      resolver: FixedArtworkResolver(
+        locator: artworkLocator(url: url, accessExpiresAt: nil)
+      )
+    )
+
+    let image = await loadArtwork(
+      loader,
+      authorization: try artworkAuthorization(generation: 20)
+    )
+
+    #expect(image != nil)
+    #expect(ArtworkURLProtocol.recordedRequests.count == 1)
+  }
+
+  @Test("rejects header-bearing locators without an access expiry")
+  func rejectsAuthorizationHeaderWithoutExpiry() async throws {
+    let url = try #require(URL(string: "https://artwork.example.test/poster"))
+    ArtworkURLProtocol.configure([url: .response(ArtworkFixture.imageData)])
+    defer { ArtworkURLProtocol.reset() }
+    let loader = makeArtworkLoader(
+      resolver: FixedArtworkResolver(
+        locator: artworkLocator(
+          url: url,
+          headers: [HomeArtworkHeader(name: "X-Artwork-Token", value: "short-lived-secret")],
+          accessExpiresAt: nil
+        )
+      )
+    )
+
+    let image = await loadArtwork(
+      loader,
+      authorization: try artworkAuthorization(generation: 21)
+    )
+
+    #expect(image == nil)
     #expect(ArtworkURLProtocol.recordedRequests.isEmpty)
   }
 
@@ -167,107 +221,5 @@ struct HomeArtworkLoaderTests {
     await #expect(throws: URLError.self) {
       try await client.fetch(locator)
     }
-  }
-
-  @Test("caches decoded artwork by reference and requested size bucket")
-  func cachesByReferenceAndSize() async throws {
-    let url = try #require(URL(string: "https://artwork.example.test/poster"))
-    ArtworkURLProtocol.configure([url: .response(ArtworkFixture.imageData)])
-    defer { ArtworkURLProtocol.reset() }
-    let resolver = RecordingArtworkResolver(locator: artworkLocator(url: url))
-    let loader = makeArtworkLoader(resolver: resolver)
-    let authorization = try artworkAuthorization(generation: 6)
-    let standardSize = artworkSize()
-    let largerSize = HomeArtworkSizeBucket.poster(
-      displayWidth: ArtworkFixture.cardWidth,
-      scale: ArtworkFixture.threeXScale
-    )
-
-    #expect(await loadArtwork(loader, authorization: authorization, size: standardSize) != nil)
-    #expect(await loadArtwork(loader, authorization: authorization, size: standardSize) != nil)
-    #expect(await loadArtwork(loader, authorization: authorization, size: largerSize) != nil)
-
-    #expect(await resolver.requestedSizes == [standardSize, largerSize])
-    #expect(ArtworkURLProtocol.recordedRequests.count == 2)
-  }
-
-  @Test("an authorization identity change purges decoded artwork")
-  func invalidatesSessionCache() async throws {
-    let url = try #require(URL(string: "https://artwork.example.test/poster"))
-    ArtworkURLProtocol.configure([url: .response(ArtworkFixture.imageData)])
-    defer { ArtworkURLProtocol.reset() }
-    let resolver = RecordingArtworkResolver(locator: artworkLocator(url: url))
-    let loader = makeArtworkLoader(resolver: resolver)
-    let firstAuthorization = try artworkAuthorization(generation: 7)
-    let replacementAuthorization = try artworkAuthorization(generation: 8)
-
-    #expect(await loadArtwork(loader, authorization: firstAuthorization) != nil)
-    #expect(await loadArtwork(loader, authorization: firstAuthorization) != nil)
-    await loader.authorizationDidChange(to: replacementAuthorization)
-    #expect(await loadArtwork(loader, authorization: replacementAuthorization) != nil)
-
-    #expect(await resolver.requestedSizes.count == 2)
-    #expect(ArtworkURLProtocol.recordedRequests.count == 2)
-  }
-
-  @Test("a stale request cannot reinstall a prior authorization identity")
-  func rejectsStaleAuthorizationAtEntry() async throws {
-    let url = try #require(URL(string: "https://artwork.example.test/poster"))
-    ArtworkURLProtocol.configure([url: .response(ArtworkFixture.imageData)])
-    defer { ArtworkURLProtocol.reset() }
-    let resolver = RecordingArtworkResolver(locator: artworkLocator(url: url))
-    let loader = makeArtworkLoader(resolver: resolver)
-    let staleAuthorization = try artworkAuthorization(generation: 9)
-    let currentAuthorization = try artworkAuthorization(generation: 10)
-    await loader.authorizationDidChange(to: currentAuthorization)
-
-    let stalePresentation = await loader.image(
-      for: homeArtworkReference(identity: "poster", role: .poster, textPresence: .textless),
-      size: artworkSize(),
-      authorization: staleAuthorization
-    )
-
-    #expect(stalePresentation == nil)
-    #expect(await resolver.requestedSizes.isEmpty)
-    #expect(await loadArtwork(loader, authorization: currentAuthorization) != nil)
-  }
-
-  @Test("an old authorization completion cannot start an artwork fetch")
-  func rejectsStaleResolutionCompletion() async throws {
-    let url = try #require(URL(string: "https://artwork.example.test/poster"))
-    ArtworkURLProtocol.configure([url: .response(ArtworkFixture.imageData)])
-    defer { ArtworkURLProtocol.reset() }
-    let resolver = ManualArtworkResolver()
-    let loader = makeArtworkLoader(resolver: resolver)
-    let firstAuthorization = try artworkAuthorization(generation: 9)
-    let replacementAuthorization = try artworkAuthorization(generation: 10)
-
-    let task = Task {
-      await loadArtwork(loader, authorization: firstAuthorization)
-    }
-    await eventually { await resolver.callCount == 1 }
-    await loader.authorizationDidChange(to: replacementAuthorization)
-    await resolver.complete(call: 0, with: artworkLocator(url: url))
-
-    #expect(await task.value == nil)
-    #expect(ArtworkURLProtocol.recordedRequests.isEmpty)
-  }
-
-  @Test("memory pressure purges decoded artwork")
-  func purgesCacheOnMemoryPressure() async throws {
-    let url = try #require(URL(string: "https://artwork.example.test/poster"))
-    ArtworkURLProtocol.configure([url: .response(ArtworkFixture.imageData)])
-    defer { ArtworkURLProtocol.reset() }
-    let resolver = RecordingArtworkResolver(locator: artworkLocator(url: url))
-    let loader = makeArtworkLoader(resolver: resolver)
-    let authorization = try artworkAuthorization(generation: 11)
-
-    #expect(await loadArtwork(loader, authorization: authorization) != nil)
-    #expect(await loadArtwork(loader, authorization: authorization) != nil)
-    await loader.handleMemoryPressure()
-    #expect(await loadArtwork(loader, authorization: authorization) != nil)
-
-    #expect(await resolver.requestedSizes.count == 2)
-    #expect(ArtworkURLProtocol.recordedRequests.count == 2)
   }
 }

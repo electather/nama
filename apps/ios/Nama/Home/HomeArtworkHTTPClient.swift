@@ -139,17 +139,11 @@ nonisolated struct ValidatedArtworkLocator: Sendable {
     let heightIsValid = locator.height.map { height in height > .zero } ?? true
     guard
       locator.url.utf8.count <= HomeArtworkTransportLimits.maximumURLBytes,
-      let resolvedURL = URL(string: locator.url),
-      let resolvedURLComponents = URLComponents(
-        url: resolvedURL,
-        resolvingAgainstBaseURL: false
-      )
+      let resolvedURL = URL(string: locator.url)
     else {
       return nil
     }
-    let authorizationIsBounded =
-      locator.accessExpiresAt != nil
-      || (locator.headers.isEmpty && resolvedURLComponents.query == nil)
+    let authorizationIsBounded = locator.accessExpiresAt != nil || locator.headers.isEmpty
     guard
       authorizationIsBounded,
       let resolvedRedirectPolicy = HomeArtworkRedirectPolicy(

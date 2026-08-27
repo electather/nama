@@ -1,9 +1,15 @@
 import SwiftUI
 
-private enum HomeArtworkLayout {
+enum HomeArtworkLayout {
   static let shelfSpacing: CGFloat = 12
   static let itemSpacing: CGFloat = 16
-  static let cardWidth: CGFloat = 148
+
+  #if os(tvOS)
+    static let cardWidth: CGFloat = 300
+  #else
+    static let cardWidth: CGFloat = 148
+  #endif
+
   static let cardSpacing: CGFloat = 8
   static let cornerRadius: CGFloat = 12
   static let imageScale: CGFloat = 1

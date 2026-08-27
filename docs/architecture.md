@@ -109,11 +109,14 @@ rendering and controls plus rejection, replacement, expiry signaling, and
 surface shutdown. The connection, authorization, player, and Home baseline's
 Apple-platform builds pass, and a signed Apple TV 4K simulator has completed
 the no-browser authorization, scoped consumer verification, Keychain commit,
-and relaunch restoration flow. Home loading, empty, long-title, and failure
-fixtures have been inspected on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K
-simulators and an Apple Development-signed sandboxed Mac build. Product consumer
-media coordination, physical Apple hardware, expiry-driven actual-surface
-refresh, and the remaining Apple surfaces remain unverified.
+and relaunch restoration flow. Home loading, empty, long-title, failure, poster,
+and title-fallback fixtures have been inspected on iPhone 17 Pro, iPad Pro
+13-inch, and Apple TV 4K simulators. Loading, empty, long-title, and failure
+fixtures have also been inspected in an Apple Development-signed sandboxed Mac
+build; the same signed runtime opened the poster-and-fallback Home window, but
+its visual content remains unverified. Product consumer media coordination,
+physical Apple hardware, expiry-driven actual-surface refresh, and the
+remaining Apple surfaces remain unverified.
 
 ## Architectural decision records
 

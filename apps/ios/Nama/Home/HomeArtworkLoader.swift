@@ -86,7 +86,8 @@ actor HomeArtworkLoader: HomeArtworkLoading {
         authorization: requestedAuthorization,
         generation: generation
       ),
-      let locator = ValidatedArtworkLocator(resolved, now: now())
+      let locator = ValidatedArtworkLocator(resolved, now: now()),
+      locator.canStartFetch(at: now())
     else {
       return nil
     }
@@ -102,7 +103,6 @@ actor HomeArtworkLoader: HomeArtworkLoading {
         authorization: requestedAuthorization,
         generation: generation
       ),
-      locator.canStartFetch(at: now()),
       let decoded = Self.decode(data, size: size)
     else {
       return nil

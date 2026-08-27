@@ -44,6 +44,15 @@ struct HomeArtworkTests {
     #expect(bucket.maxHeight == ArtworkFixture.expectedPixelHeight)
   }
 
+  @Test("uses platform-appropriate artwork card width")
+  func platformCardWidth() {
+    #if os(tvOS)
+      #expect(HomeArtworkLayout.cardWidth == 300)
+    #else
+      #expect(HomeArtworkLayout.cardWidth == 148)
+    #endif
+  }
+
   @Test("loads one visible poster plus a two-item lookahead")
   @MainActor
   func loadsVisibleArtworkWindow() async throws {

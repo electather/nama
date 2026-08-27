@@ -14,10 +14,13 @@ locator, replacement, expiry, and shared lifecycle behavior pass through its
 macOS-hosted real-engine tests. Home loading, empty, long-title, and failure
 fixtures have been inspected on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K
 simulators and an Apple Development-signed sandboxed Mac build. Home poster
-loading and fallback actual surfaces on iPhone, iPad, Apple TV, and Mac remain
-unverified because the persisted endpoint was unavailable. Product consumer
-media coordination, physical Apple hardware, expiry-driven actual-surface
-refresh, and the remaining Apple surfaces remain unverified.
+loading and title fallback fixtures have been inspected on the same iPhone,
+iPad, and Apple TV simulators. The same fixture ran in an Apple
+Development-signed sandboxed Mac build and opened its Home window, but Mac
+visual inspection remains unverified because workstation capture returned
+blank output. Product consumer media coordination, physical Apple hardware,
+expiry-driven actual-surface refresh, and the remaining Apple surfaces remain
+unverified.
 
 ## Authority and fixed decisions
 
@@ -217,9 +220,11 @@ rejected-bundle removal, endpoint and authorization-identity cancellation,
 stale completion, refresh preservation and failure, catalog preparation,
 response bounds and mapping, error precedence, consumer metadata, textless
 poster selection, bounded visible lookahead, locator origin and redirect policy,
-deadline enforcement, cancellation, safe decode failure, size-bucket caching,
-authorization invalidation, stale resolution rejection, and memory-pressure
-purging. Playback tests cover exact normalized origins, rejected initial and
+credential-free public-query locators, deadline start enforcement and
+post-deadline completion retention, cancellation, safe decode failure,
+size-bucket caching, authorization invalidation, stale resolution rejection, and
+memory-pressure purging. Playback tests cover exact normalized origins, rejected
+initial and
 redirect targets, allowed redirect header replay, nested HLS playlists, variants,
 renditions, segments and keys, external subtitles, secret-free failures,
 replacement cancellation and state discard, expiry signaling with a complete
@@ -227,10 +232,14 @@ replacement, surface removal, and foreground loss through the real adapter.
 
 Self-contained previews render discovery outcomes, local-HTTP confirmation with
 a long endpoint, persistent ready and failure warnings, blocked restoration,
-and Home loading, empty, long-title content, refresh, catalog-preparation, and
-failure fixtures. The Home loading, empty, long-title, and failure fixtures have
-also run in the Debug application on iPhone, iPad, and Apple TV simulators and
-an Apple Development-signed sandboxed Mac build. `check:ios` lints Swift
+and Home loading, empty, long-title content, artwork and title fallback,
+refresh, catalog-preparation, and failure fixtures. The Home loading, empty,
+long-title, and failure fixtures have also run in the Debug application on
+iPhone, iPad, and Apple TV simulators and an Apple Development-signed sandboxed
+Mac build. The artwork-and-fallback fixture has been visually inspected in the
+Debug application on iPhone, iPad, and Apple TV; the signed sandboxed Mac
+runtime opened its Home window, but visual content inspection remains
+unverified. `check:ios` lints Swift
 formatting, runs the test target through its macOS host, inspects the built ATS
 shape, and performs signing-disabled iOS, tvOS, and macOS builds. The
 real-player tests prove controlled SDR HLS rendering and control flow plus

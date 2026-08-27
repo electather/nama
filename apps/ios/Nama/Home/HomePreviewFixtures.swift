@@ -3,6 +3,9 @@
 
   private enum HomePreviewFixtures {
     static let catalogRetrySeconds = 9
+    static let artworkSymbolSize: CGFloat = 96
+    static let artworkHeight: CGFloat = 600
+    static let artworkWidth: CGFloat = 400
     static let movieRuntimeSeconds: Int64 = 7_200
     static let movieRuntime: Duration = .seconds(movieRuntimeSeconds)
     static let posterHeight: UInt32 = 1_500
@@ -18,6 +21,51 @@
     static func noAsyncAction() async {
       await Task.yield()
     }
+
+    static let loadedArtworkIdentity = HomeMediaIdentity("movie-loaded-artwork")
+    static let artworkInspection = HomeSnapshot(
+      movies: HomeShelf(
+        identity: HomeShelfIdentity("movies"),
+        title: "Movies",
+        kind: .movies,
+        items: [
+          item(
+            identity: loadedArtworkIdentity.rawValue,
+            kind: .movie,
+            title: "Harbor Lights",
+            textPresence: .textless
+          ),
+          item(
+            identity: "movie-fallback",
+            kind: .movie,
+            title: "Fallback Title",
+            textPresence: .containsText
+          ),
+        ]
+      ),
+      shows: nil
+    )
+
+    @MainActor
+    static let loadedArtworkPresentation: HomeArtworkPresentation = {
+      let renderer = ImageRenderer(
+        content: LinearGradient(
+          colors: [.blue, .indigo],
+          startPoint: .topLeading,
+          endPoint: .bottomTrailing
+        )
+        .overlay {
+          Image(systemName: "sparkles")
+            .font(.system(size: artworkSymbolSize))
+            .foregroundStyle(.white)
+        }
+        .frame(width: artworkWidth, height: artworkHeight)
+      )
+      guard let image = renderer.cgImage else {
+        preconditionFailure("Home artwork preview must render")
+      }
+      return HomeArtworkPresentation(image: image)
+    }()
 
     static let longTitle = HomeSnapshot(
       movies: HomeShelf(
@@ -53,7 +101,8 @@
       identity: String,
       kind: HomeMediaKind,
       title: String,
-      playable: Bool = true
+      playable: Bool = true,
+      textPresence: HomeArtworkTextPresence = .unknown
     ) -> HomeMediaSummary {
       let posterArtwork = HomeArtworkReference(
         identity: HomeArtworkIdentity("artwork-\(identity)"),
@@ -61,7 +110,7 @@
         width: posterWidth,
         height: posterHeight,
         locale: nil,
-        textPresence: .unknown
+        textPresence: textPresence
       )
       return HomeMediaSummary(
         identity: HomeMediaIdentity(identity),
@@ -94,13 +143,37 @@
   }
 
   @MainActor
-  private func homePreview(_ state: HomeState) -> some View {
+  private func homePreview(
+    _ state: HomeState,
+    artwork: HomeArtworkPresentationAccess = .empty
+  ) -> some View {
     HomePresentationView(
       state: state,
       retry: HomePreviewFixtures.noAction,
       refresh: HomePreviewFixtures.noAction,
       changeEndpoint: HomePreviewFixtures.noAsyncAction,
-      reauthorize: HomePreviewFixtures.noAsyncAction
+      reauthorize: HomePreviewFixtures.noAsyncAction,
+      artwork: artwork
+    )
+  }
+
+  @MainActor
+  func homeArtworkInspectionPreview() -> some View {
+    let loadedState = HomeArtworkPresentationState()
+    loadedState.replace(with: HomePreviewFixtures.loadedArtworkPresentation)
+    return homePreview(
+      .content(HomePreviewFixtures.artworkInspection),
+      artwork: HomeArtworkPresentationAccess(
+        presentationState: { media in
+          media == HomePreviewFixtures.loadedArtworkIdentity ? loadedState : nil
+        },
+        didAppear: { _, _, _ in
+          // Static inspection artwork has no loading lifecycle.
+        },
+        didDisappear: { _, _ in
+          // Static inspection artwork has no loading lifecycle.
+        }
+      )
     )
   }
 
@@ -114,6 +187,10 @@
 
   #Preview("Home — Long title and content") {
     homePreview(.content(HomePreviewFixtures.longTitle))
+  }
+
+  #Preview("Home — Artwork and fallback") {
+    homeArtworkInspectionPreview()
   }
 
   #Preview("Home — Refreshing") {
