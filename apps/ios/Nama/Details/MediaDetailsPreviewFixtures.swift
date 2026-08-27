@@ -4,20 +4,28 @@
   private enum MovieDetailsPreviewFixtures {
     static let backdropHeight: UInt32 = 1_080
     static let backdropWidth: UInt32 = 1_920
+    static let castIdentityOffset = 2
     static let castCount = 10
     static let longSynopsisRepetitions = 40
     static let posterHeight: UInt32 = 1_500
     static let posterWidth: UInt32 = 1_000
+    static let releaseDay: Int32 = 25
+    static let releaseMonth: Int32 = 8
     static let releaseYear: UInt32 = 2_026
     static let runtimeSeconds: Int64 = 7_200
 
-    static let selection = MovieDetailsSelection(
+    static let selection = MediaDetailsSelection(
       identity: MediaIdentity("movie-preview"),
+      kind: .movie,
       title: "The Canonical Movie"
     )
 
     static func noAction() {
       // Preview controls intentionally have no side effects.
+    }
+
+    static func noMediaAction(_: MediaIdentity) {
+      // Preview child visibility starts no loading work.
     }
 
     static func noAsyncAction() async {
@@ -29,7 +37,7 @@
       playability: MediaPlayability = .playable,
       includesArtwork: Bool = true,
       synopsis: String? = "A calm provider-neutral synopsis for the selected canonical Movie."
-    ) -> MovieDetails {
+    ) -> MediaDetails {
       let source: MediaSourceSummary?
       switch playability {
       case .playable:
@@ -57,7 +65,7 @@
       case .noAvailableSource, .unknown:
         source = nil
       }
-      return MovieDetails(
+      return MediaDetails(
         identity: selection.identity,
         title: title,
         releaseYear: releaseYear,
@@ -70,8 +78,16 @@
         studios: ["North Star Pictures", "Harbor Films"],
         credits: credits,
         artwork: includesArtwork ? artwork : [],
+        parents: [],
         playability: playability,
-        defaultSource: source
+        defaultSource: source,
+        kindDetails: .movie(
+          releaseDate: MediaCalendarDate(
+            year: Int32(releaseYear),
+            month: releaseMonth,
+            day: releaseDay
+          )
+        )
       )
     }
 
@@ -103,53 +119,68 @@
       ]
     }
 
-    private static var credits: [MovieCredit] {
+    private static var credits: [MediaCredit] {
       let cast = (0..<castCount).map { index in
-        MovieCredit(
+        MediaCredit(
+          identity: MediaCreditIdentity(index + castIdentityOffset),
           name: "Cast Member \(index + 1)",
           role: .actor,
           characterName: "Character \(index + 1)",
+          portraitArtwork: nil
         )
       }
       return [
-        MovieCredit(
+        MediaCredit(
+          identity: MediaCreditIdentity(0),
           name: "Ada Director",
           role: .director,
           characterName: nil,
+          portraitArtwork: nil
         ),
-        MovieCredit(
+        MediaCredit(
+          identity: MediaCreditIdentity(1),
           name: "Wes Writer",
           role: .writer,
           characterName: nil,
+          portraitArtwork: nil
         ),
       ] + cast
     }
   }
 
   @MainActor
-  private func movieDetailsPreview(_ state: MovieDetailsState) -> some View {
+  private func mediaDetailsPreview(
+    _ state: MediaDetailsState,
+    childrenState: MediaChildrenState = .notApplicable
+  ) -> some View {
     NavigationStack {
-      MovieDetailsPresentationView(
+      MediaDetailsPresentationView(
         state: state,
+        idleTitle: MovieDetailsPreviewFixtures.selection.title,
+        childrenState: childrenState,
         retry: MovieDetailsPreviewFixtures.noAction,
         refresh: MovieDetailsPreviewFixtures.noAction,
         play: MovieDetailsPreviewFixtures.noAction,
+        loadMoreChildren: MovieDetailsPreviewFixtures.noAction,
+        childDidAppear: MovieDetailsPreviewFixtures.noMediaAction,
         reauthorize: MovieDetailsPreviewFixtures.noAsyncAction,
-        artwork: .empty
+        artwork: .empty,
+        childArtwork: .empty,
+        creditArtwork: .empty
       )
     }
   }
 
   #Preview("Movie Details — Loading") {
-    movieDetailsPreview(.loading(MovieDetailsPreviewFixtures.selection))
+    mediaDetailsPreview(.loading(MovieDetailsPreviewFixtures.selection))
   }
 
   #Preview("Movie Details — Content") {
-    movieDetailsPreview(.content(MovieDetailsPreviewFixtures.details()))
+    mediaDetailsPreview(.content(MovieDetailsPreviewFixtures.details()))
   }
 
   #Preview("Movie Details — Long synopsis") {
-    movieDetailsPreview(
+    mediaDetailsPreview(
       .content(
         MovieDetailsPreviewFixtures.details(
           synopsis: MovieDetailsPreviewFixtures.longSynopsis
@@ -159,25 +190,25 @@
   }
 
   #Preview("Movie Details — Missing artwork") {
-    movieDetailsPreview(
+    mediaDetailsPreview(
       .content(MovieDetailsPreviewFixtures.details(includesArtwork: false))
     )
   }
 
   #Preview("Movie Details — Temporarily unavailable") {
-    movieDetailsPreview(
+    mediaDetailsPreview(
       .content(MovieDetailsPreviewFixtures.details(playability: .temporarilyUnavailable))
     )
   }
 
   #Preview("Movie Details — No playable source") {
-    movieDetailsPreview(
+    mediaDetailsPreview(
       .content(MovieDetailsPreviewFixtures.details(playability: .noAvailableSource))
     )
   }
 
   #Preview("Movie Details — Not found") {
-    movieDetailsPreview(
+    mediaDetailsPreview(
       .failed(MovieDetailsPreviewFixtures.selection, .notFound)
     )
   }

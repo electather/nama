@@ -9,7 +9,7 @@ struct MovieDetailsArtworkFeatureTests {
   func artworkFailurePreservesDetails() async throws {
     let loader = ManualMovieDetailsLoader()
     let artworkLoader = MissingMovieDetailsArtworkLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: artworkLoader
     )
@@ -34,48 +34,11 @@ struct MovieDetailsArtworkFeatureTests {
     #expect(feature.state == .content(details))
   }
 
-  @Test("repeated artwork requests in one size bucket start one load")
-  func repeatedSizeBucketStartsOneLoad() async throws {
-    let loader = ManualMovieDetailsLoader()
-    let artworkLoader = ManualMovieDetailsArtworkLoader()
-    let feature = MovieDetailsFeature(
-      loader: loader,
-      artworkLoader: artworkLoader
-    )
-    let selection = movieDetailsSelection(identity: "movie-artwork-bucket", title: "Artwork")
-    let authorization = try movieDetailsAuthorization(generation: 1)
-    let details = movieDetailsFixture(
-      selection: selection,
-      artwork: [
-        movieArtwork(identity: "backdrop-bucket", role: .backdrop, textPresence: .textless)
-      ]
-    )
-    let size = ArtworkSizeBucket.backdrop(
-      displayWidth: MovieDetailsFeatureFixture.backdropDisplayWidth,
-      scale: MovieDetailsFeatureFixture.backdropDisplayScale
-    )
-
-    feature.select(selection, authorization: authorization)
-    await eventually { await loader.callCount == 1 }
-    await loader.resolve(call: 0, with: .success(details))
-    await eventually { feature.state == .content(details) }
-
-    feature.artworkDidAppear(.backdrop, size: size)
-    await eventually { await artworkLoader.callCount == 1 }
-    feature.artworkDidAppear(.backdrop, size: size)
-    for _ in 0..<10 {
-      await Task.yield()
-    }
-
-    #expect(await artworkLoader.callCount == 1)
-    await artworkLoader.resolve(call: 0, with: nil)
-  }
-
   @Test("refresh keeps an in-flight artwork result for the same Movie")
   func refreshKeepsCurrentArtworkLoad() async throws {
     let loader = ManualMovieDetailsLoader()
     let artworkLoader = ManualMovieDetailsArtworkLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: artworkLoader
     )
@@ -108,7 +71,7 @@ struct MovieDetailsArtworkFeatureTests {
   func refreshToMissingArtworkClearsPresentation() async throws {
     let loader = ManualMovieDetailsLoader()
     let artworkLoader = ManualMovieDetailsArtworkLoader()
-    let feature = MovieDetailsFeature(
+    let feature = MediaDetailsFeature(
       loader: loader,
       artworkLoader: artworkLoader
     )

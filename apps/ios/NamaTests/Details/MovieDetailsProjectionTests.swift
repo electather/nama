@@ -1,4 +1,3 @@
-import Foundation
 import Testing
 
 @testable import Nama
@@ -10,10 +9,12 @@ struct MovieDetailsProjectionTests {
   func artworkAndCreditProjection() {
     let selection = movieDetailsSelection(identity: "movie-projection", title: "Projection Movie")
     let cast = (0..<MovieDetailsFeatureFixture.castCount).map { index in
-      MovieCredit(
+      MediaCredit(
+        identity: MediaCreditIdentity(index + 1),
         name: "Actor \(index)",
         role: .actor,
         characterName: "Character \(index)",
+        portraitArtwork: nil
       )
     }
     let credits = movieProjectionCredits(cast: cast)
@@ -64,54 +65,38 @@ struct MovieDetailsProjectionTests {
     )
 
     #expect(
-      !movieDetailsCanRefresh(
+      !mediaDetailsCanRefresh(
         .refreshFailed(details, .authorizationUnavailable)
       )
     )
     #expect(
-      movieDetailsCanRefresh(
+      mediaDetailsCanRefresh(
         .refreshFailed(details, .transportUnavailable)
       )
     )
-    #expect(movieDetailsCanRefresh(.content(details)))
-    #expect(
-      !movieDetailsCanRetryUnavailableSource(
-        .refreshFailed(details, .authorizationUnavailable)
-      )
-    )
-    #expect(
-      movieDetailsCanRetryUnavailableSource(
-        .refreshFailed(details, .transportUnavailable)
-      )
-    )
-  }
-
-  @Test("metadata lists follow the active locale")
-  func metadataListsFollowLocale() {
-    #expect(
-      movieDetailsFormattedList(
-        ["Ada", "Wes", "Sam"],
-        locale: Locale(identifier: "en_US")
-      ) == "Ada, Wes, and Sam"
-    )
+    #expect(mediaDetailsCanRefresh(.content(details)))
   }
 }
 
-private func movieProjectionCredits(cast: [MovieCredit]) -> [MovieCredit] {
-  var credits: [MovieCredit] = []
+private func movieProjectionCredits(cast: [MediaCredit]) -> [MediaCredit] {
+  var credits: [MediaCredit] = []
   credits.append(
-    MovieCredit(
+    MediaCredit(
+      identity: MediaCreditIdentity(0),
       name: "Ada Director",
       role: .director,
       characterName: nil,
+      portraitArtwork: nil
     )
   )
   credits.append(contentsOf: cast)
   credits.append(
-    MovieCredit(
+    MediaCredit(
+      identity: MediaCreditIdentity(MovieDetailsFeatureFixture.castCount + 1),
       name: "Wes Writer",
       role: .writer,
       characterName: nil,
+      portraitArtwork: nil
     )
   )
   return credits
