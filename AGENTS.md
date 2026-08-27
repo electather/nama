@@ -59,6 +59,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Pin AetherEngine `6.21.0` and its complete resolved dependency closure. ADR-0032 permits only its local Release locator-URL logging and locator-header replay between core-allowlisted origins for the MVP; never widen that exception.
 - Route every remote media, playlist child, key, and external-subtitle request through Nama's session-scoped loopback bridge; AetherEngine `6.21.0` cannot enforce `allowed_redirect_origins`, so never pass upstream Locator URLs or headers directly.
 - Keep the macOS incoming-network entitlement confined to `NamaPlayer`'s ephemeral broker and keep that listener bound to exact IPv4 loopback; never widen it to an any, link-local, or LAN endpoint.
+- Keep PR CI on a selected Actions allowlist that admits GitHub-owned actions and `jdx/mise-action`, and run `mise run check:swift` on `macos-26`; the check invokes `xcodebuild` and cannot run on Ubuntu.
 - Do not claim generic Apple-platform builds prove runtime behavior; inspect the actual universal application on every affected platform and keep unrun physical-device rows explicit.
 - Use an Apple Development-signed sandboxed macOS build for actual-surface acceptance; an ad hoc-signed sandboxed build can stay alive without creating a window and is not runtime proof.
 - Use a signed simulator build for OAuth Keychain acceptance; `CODE_SIGNING_ALLOWED=NO` makes the Keychain path fail unavailable even when transport and device-code UI run.
