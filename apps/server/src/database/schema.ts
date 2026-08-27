@@ -31,7 +31,7 @@ import {
   providerInstanceObservation,
   providerOperationResult,
 } from "./provider-schema.ts";
-import { canonicalWatchState } from "./watch-state-model.ts";
+import { canonicalWatchState, providerWatchStateReplica } from "./watch-state-model.ts";
 
 const namaServerState = pgTable(
   "nama_server_state",
@@ -80,6 +80,7 @@ const databaseSchema = {
   providerPartMapping,
   providerSourceMapping,
   providerTrackMapping,
+  providerWatchStateReplica,
 };
 
 export * from "./auth-schema.ts";
@@ -89,4 +90,10 @@ export * from "./catalog-scan-schema.ts";
 export * from "./catalog-source-schema.ts";
 export * from "./catalog-track-schema.ts";
 export * from "./provider-schema.ts";
-export { canonicalWatchState, databaseSchema, generatedAuthenticationSchema, namaServerState };
+export {
+  canonicalWatchState,
+  databaseSchema,
+  generatedAuthenticationSchema,
+  namaServerState,
+  providerWatchStateReplica,
+};
