@@ -30,9 +30,12 @@ current truth.
 Sparse canonical Watch state and exact Provider replica persistence are
 implemented for one authenticated principal, including independent versioned
 snapshots and atomic replacement with an optional fully resolved canonical
-target. Production core synchronization remains unimplemented: scheduling,
-checkpoint persistence, reconciliation, bounded fingerprint retention, and
-retry execution remain target work.
+target. Canonical persistence validates same-item Source ownership and accepts
+caller-resolved last-Source identity. Retained provider-source mappings keep
+that identity available through temporary catalog projection removal.
+Production core synchronization remains unimplemented: scheduling, checkpoint
+persistence, reconciliation, bounded fingerprint retention, and retry execution
+remain target work.
 The Jellyfin adapter implements resumable best-effort full movie and episode scans, bounded targeted
 reads for repair and confirmation, and explicit watched/unwatched writes with
 bounded ambiguity readback. It advertises `WATCH_STATE_READ` and

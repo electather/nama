@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 
 import { canonicalItem } from "./catalog-item-schema.ts";
+import { providerSourceMapping } from "./catalog-source-schema.ts";
 import { canonicalWatchState } from "./watch-state-model.ts";
 import { activityOriginColumns, storedWatchState } from "./watch-state-persistence-private.ts";
 import type {
@@ -82,6 +83,28 @@ const lockPlayableCanonicalItem = async (
     throw new Error("canonical Watch state target is not playable");
   }
   return kind;
+};
+const validateTargetSourceOwnership = async (
+  transaction: WatchStateTransaction,
+  target: CanonicalWatchStateTarget,
+): Promise<void> => {
+  if (target.lastSourceId === undefined) {
+    return;
+  }
+  const rows = await transaction
+    .select({ sourceId: providerSourceMapping.sourceId })
+    .from(providerSourceMapping)
+    .where(
+      and(
+        eq(providerSourceMapping.sourceId, target.lastSourceId),
+        eq(providerSourceMapping.canonicalItemId, target.canonicalItemId),
+      ),
+    )
+    .for("key share")
+    .limit(SINGLE_ROW_LIMIT);
+  if (rows[FIRST_ROW] === undefined) {
+    throw new Error("canonical Watch state Source belongs to another item");
+  }
 };
 
 const insertCanonicalWatchState = async (
@@ -185,6 +208,7 @@ const commitAbsentCanonicalWatchState = async (
   if (input.expectedVersion !== undefined) {
     return { state: undefined, status: "stale" };
   }
+  await validateTargetSourceOwnership(transaction, input.target);
   const state = await insertCanonicalWatchState(transaction, input.target, canonicalItemKind);
   return { state, status: "committed" };
 };
@@ -206,6 +230,7 @@ const commitLoadedCanonicalWatchState = async ({
   if (current.version !== input.expectedVersion) {
     return { state: current, status: "stale" };
   }
+  await validateTargetSourceOwnership(transaction, input.target);
   if (resolvedStateEquals(current, input.target)) {
     return { state: current, status: "committed" };
   }
