@@ -49,3 +49,44 @@ struct LibraryRefreshFeatureTests {
     }
   }
 }
+
+@Suite("Library Search refresh")
+@MainActor
+struct LibrarySearchRefreshFeatureTests {
+  @Test("a refresh may return the same opaque continuation as the replaced snapshot")
+  func refreshAcceptsSameContinuation() async throws {
+    let loader = ManualLibrarySearchPageLoader()
+    let feature = LibrarySearchFeature(
+      loader: loader,
+      artworkLoader: IgnoringLibraryArtworkLoader(),
+      sleep: immediateSearchDelay
+    )
+    feature.activate(try libraryAuthorization(generation: 8))
+    feature.text = "signal"
+    await eventually { await loader.calls.count == 1 }
+    let item = librarySearchItem("result", kind: .movie, title: "Result")
+    let snapshot = LibrarySearchSnapshot(
+      query: "signal",
+      items: [item],
+      nextPageToken: "same-next"
+    )
+    await loader.resolve(
+      call: 0,
+      with: .success(LibrarySearchPage(items: [item], nextPageToken: "same-next"))
+    )
+    await eventually { feature.state == .content(snapshot) }
+
+    feature.refresh()
+    await eventually { await loader.calls.count == 2 }
+    await loader.resolve(
+      call: 1,
+      with: .success(LibrarySearchPage(items: [item], nextPageToken: "same-next"))
+    )
+    await eventually { feature.state != .refreshing(snapshot) }
+    #expect(feature.state == .content(snapshot))
+  }
+}
+
+private func immediateSearchDelay(for _: Duration) async {
+  await Task.yield()
+}

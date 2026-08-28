@@ -77,7 +77,7 @@ nonisolated extension NamaLibraryClient: LibraryPageLoading {
     }
   }
 
-  private static func mapLibraryFailure(_ error: ConnectError) -> LibraryLoadingFailure {
+  static func mapLibraryFailure(_ error: ConnectError) -> LibraryLoadingFailure {
     let errorInfo: [Google_Rpc_ErrorInfo] = error.unpackedDetails()
     if isCatalogNotReady(error) {
       return .catalogNotReady(retryAfterSeconds: retryDelaySeconds(error))

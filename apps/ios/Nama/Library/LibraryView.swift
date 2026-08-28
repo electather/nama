@@ -55,25 +55,17 @@ struct LibraryView: View {
   let reauthorize: @MainActor () async -> Void
 
   var body: some View {
-    LibraryPresentationView(
-      state: feature.state,
+    @Bindable var search = feature.search
+    LibrarySearchableContent(
+      feature: feature,
       query: query,
       updateKind: updateKind,
       updateSort: updateSort,
       selectMedia: selectMedia,
-      retry: feature.retry,
-      refresh: feature.refresh,
-      loadMore: feature.loadMore,
-      retryPage: feature.retryPage,
-      itemDidAppear: feature.itemDidAppear,
       changeEndpoint: changeEndpoint,
-      reauthorize: reauthorize,
-      artwork: LibraryArtworkPresentationAccess(
-        presentationState: feature.artworkPresentationState,
-        didAppear: feature.artworkDidAppear,
-        didDisappear: feature.artworkDidDisappear
-      )
+      reauthorize: reauthorize
     )
+    .searchable(text: $search.text, prompt: "Search your library")
     .onAppear {
       feature.updateQuery(query)
       feature.activate(authorization)
@@ -87,6 +79,8 @@ struct LibraryView: View {
 struct LibraryPresentationView: View {
   let state: LibraryState
   let query: LibraryQuery
+  let searchState: LibrarySearchState
+  let searchIsPresented: Bool
   let updateKind: @MainActor (LibraryKind) -> Void
   let updateSort: @MainActor (LibrarySort) -> Void
   let selectMedia: @MainActor (MediaDetailsSelection) -> Void
@@ -95,79 +89,98 @@ struct LibraryPresentationView: View {
   let loadMore: @MainActor () -> Void
   let retryPage: @MainActor () -> Void
   let itemDidAppear: @MainActor (MediaIdentity) -> Void
+  let clearSearch: @MainActor () -> Void
+  let retrySearch: @MainActor () -> Void
+  let refreshSearch: @MainActor () -> Void
+  let loadMoreSearch: @MainActor () -> Void
+  let retrySearchPage: @MainActor () -> Void
+  let searchItemDidAppear: @MainActor (MediaIdentity) -> Void
   let changeEndpoint: @MainActor () async -> Void
   let reauthorize: @MainActor () async -> Void
   let artwork: LibraryArtworkPresentationAccess
-
-  init(
-    state: LibraryState,
-    query: LibraryQuery,
-    updateKind: @escaping @MainActor (LibraryKind) -> Void,
-    updateSort: @escaping @MainActor (LibrarySort) -> Void,
-    selectMedia: @escaping @MainActor (MediaDetailsSelection) -> Void,
-    retry: @escaping @MainActor () -> Void,
-    refresh: @escaping @MainActor () -> Void,
-    loadMore: @escaping @MainActor () -> Void,
-    retryPage: @escaping @MainActor () -> Void,
-    itemDidAppear: @escaping @MainActor (MediaIdentity) -> Void,
-    changeEndpoint: @escaping @MainActor () async -> Void,
-    reauthorize: @escaping @MainActor () async -> Void,
-    artwork: LibraryArtworkPresentationAccess = .empty
-  ) {
-    self.state = state
-    self.query = query
-    self.updateKind = updateKind
-    self.updateSort = updateSort
-    self.selectMedia = selectMedia
-    self.retry = retry
-    self.refresh = refresh
-    self.loadMore = loadMore
-    self.retryPage = retryPage
-    self.itemDidAppear = itemDidAppear
-    self.changeEndpoint = changeEndpoint
-    self.reauthorize = reauthorize
-    self.artwork = artwork
-  }
+  let searchArtwork: LibraryArtworkPresentationAccess
 
   var body: some View {
     VStack(spacing: 0) {
-      LibraryControls(
-        query: query,
-        updateKind: updateKind,
-        updateSort: updateSort
-      )
-      Divider()
-      LibraryStateContent(
-        state: state,
-        query: query,
-        selectMedia: selectMedia,
-        retry: retry,
-        refresh: refresh,
-        loadMore: loadMore,
-        retryPage: retryPage,
-        itemDidAppear: itemDidAppear,
-        reauthorize: reauthorize,
-        artwork: artwork
-      )
+      if searchIsPresented {
+        LibrarySearchPresentationView(
+          state: searchState,
+          selectMedia: selectMedia,
+          clear: clearSearch,
+          retry: retrySearch,
+          refresh: refreshSearch,
+          loadMore: loadMoreSearch,
+          retryPage: retrySearchPage,
+          itemDidAppear: searchItemDidAppear,
+          reauthorize: reauthorize,
+          artwork: searchArtwork
+        )
+      } else {
+        browseContent
+      }
     }
     .navigationTitle("Library")
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
-        if libraryCanRefresh(state) {
-          Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
-            .disabled(libraryIsRefreshing(state))
+        if canRefresh {
+          Button("Refresh", systemImage: "arrow.clockwise", action: refreshActiveContent)
+            .disabled(isRefreshing)
             #if os(macOS)
               .keyboardShortcut("r", modifiers: .command)
             #endif
         }
       }
-      ToolbarItem(placement: changeEndpointPlacement) {
-        Button("Change Endpoint", systemImage: "network") {
-          Task {
-            await changeEndpoint()
+      if !searchIsPresented {
+        ToolbarItem(placement: changeEndpointPlacement) {
+          Button("Change Endpoint", systemImage: "network") {
+            Task {
+              await changeEndpoint()
+            }
           }
         }
       }
+    }
+  }
+
+  @ViewBuilder
+  private var browseContent: some View {
+    LibraryControls(
+      query: query,
+      updateKind: updateKind,
+      updateSort: updateSort
+    )
+    Divider()
+    LibraryStateContent(
+      state: state,
+      query: query,
+      selectMedia: selectMedia,
+      retry: retry,
+      refresh: refresh,
+      loadMore: loadMore,
+      retryPage: retryPage,
+      itemDidAppear: itemDidAppear,
+      reauthorize: reauthorize,
+      artwork: artwork
+    )
+  }
+
+  private var canRefresh: Bool {
+    searchIsPresented
+      ? librarySearchCanRefresh(searchState)
+      : libraryCanRefresh(state)
+  }
+
+  private var isRefreshing: Bool {
+    searchIsPresented
+      ? librarySearchIsRefreshing(searchState)
+      : libraryIsRefreshing(state)
+  }
+
+  private func refreshActiveContent() {
+    if searchIsPresented {
+      refreshSearch()
+    } else {
+      refresh()
     }
   }
 

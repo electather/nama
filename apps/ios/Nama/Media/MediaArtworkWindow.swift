@@ -8,9 +8,38 @@ nonisolated struct MediaArtworkCollectionIdentity: Equatable, Hashable, Sendable
   }
 }
 
+nonisolated enum MediaArtworkPreference: Equatable, Sendable {
+  case poster
+  case search
+
+  func reference(for item: MediaSummary) -> ArtworkReference? {
+    switch self {
+    case .poster:
+      return item.preferredPosterArtwork
+
+    case .search:
+      let role: ArtworkRole = item.kind == .episode ? .thumbnail : .poster
+      return item.artwork.first { reference in
+        reference.role == role && reference.textPresence == .textless
+      } ?? item.artwork.first { $0.role == role }
+    }
+  }
+}
+
 nonisolated struct MediaArtworkCollection: Equatable, Sendable {
   let identity: MediaArtworkCollectionIdentity
   let items: [MediaSummary]
+  let preference: MediaArtworkPreference
+
+  init(
+    identity: MediaArtworkCollectionIdentity,
+    items: [MediaSummary],
+    preference: MediaArtworkPreference = .poster
+  ) {
+    self.identity = identity
+    self.items = items
+    self.preference = preference
+  }
 }
 
 @MainActor
@@ -156,7 +185,7 @@ final class MediaArtworkWindow {
       visibleIndex + Self.usefulItemCount
     )
     for item in collection.items[visibleIndex..<endIndex] {
-      guard let reference = item.preferredPosterArtwork else {
+      guard let reference = collection.preference.reference(for: item) else {
         continue
       }
       let key = MediaArtworkRequestKey(

@@ -1,37 +1,42 @@
+import Foundation
 import Observation
 
 @MainActor
 @Observable
-final class LibraryFeature {
+final class LibrarySearchFeature {
   private static let pageLookahead = 2
+  static let artworkCollection = MediaArtworkCollectionIdentity("library-search")
 
-  var query: LibraryQuery = .initial
-  var state: LibraryState = .loading
+  var text = "" {
+    didSet {
+      guard text != oldValue else {
+        return
+      }
+      searchTextDidChange()
+    }
+  }
+  var state: LibrarySearchState = .idle
 
-  @ObservationIgnored let loader: any LibraryPageLoading
+  @ObservationIgnored let loader: any LibrarySearchPageLoading
   @ObservationIgnored let artworkWindow: MediaArtworkWindow
-  let search: LibrarySearchFeature
+  @ObservationIgnored let sleep: @Sendable (Duration) async throws -> Void
   @ObservationIgnored var activeTask: Task<Void, Never>?
   @ObservationIgnored var authorization: HomeAuthorizationIdentity?
   @ObservationIgnored var attempt: UInt64 = .zero
   @ObservationIgnored var continuationTracker = MediaContinuationTracker()
-  @ObservationIgnored var recoverySnapshot: LibrarySnapshot?
-  @ObservationIgnored var recoveryVisibleSnapshot: LibrarySnapshot?
+  @ObservationIgnored var recoverySnapshot: LibrarySearchSnapshot?
+  @ObservationIgnored var recoveryVisibleSnapshot: LibrarySearchSnapshot?
 
   init(
-    loader: any LibraryPageLoading & LibrarySearchPageLoading,
+    loader: any LibrarySearchPageLoading,
     artworkLoader: any HomeArtworkLoading,
-    searchSleep: @escaping @Sendable (Duration) async throws -> Void = { duration in
+    sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in
       try await Task.sleep(for: duration)
     }
   ) {
     self.loader = loader
     artworkWindow = MediaArtworkWindow(loader: artworkLoader)
-    search = LibrarySearchFeature(
-      loader: loader,
-      artworkLoader: artworkLoader,
-      sleep: searchSleep
-    )
+    self.sleep = sleep
   }
 
   deinit {
@@ -44,37 +49,36 @@ final class LibraryFeature {
     }
     authorization = newAuthorization
     artworkWindow.authorizationDidChange(to: newAuthorization)
-    search.activate(newAuthorization)
-    startFirstPage(preserving: nil)
-  }
-
-  func updateKind(_ kind: LibraryKind) {
-    updateQuery(LibraryQuery(kind: kind, sort: query.sort))
-  }
-
-  func updateSort(_ sort: LibrarySort) {
-    updateQuery(LibraryQuery(kind: query.kind, sort: sort))
-  }
-
-  func refresh() {
-    guard authorization != nil else {
+    guard normalizedQuery != nil else {
+      state = .idle
       return
     }
-    startFirstPage(preserving: confirmedSnapshot)
+    startFirstPage(preserving: nil, debounced: true)
+  }
+
+  func clear() {
+    text = ""
   }
 
   func retry() {
-    guard authorization != nil else {
+    guard authorization != nil, normalizedQuery != nil else {
       return
     }
-    startFirstPage(preserving: nil)
+    startFirstPage(preserving: nil, debounced: false)
+  }
+
+  func refresh() {
+    guard authorization != nil, normalizedQuery != nil else {
+      return
+    }
+    startFirstPage(preserving: confirmedSnapshot, debounced: false)
   }
 
   func loadMore() {
     guard
       activeTask == nil,
       let snapshot = confirmedSnapshot,
-      snapshot.query == query,
+      snapshot.query == normalizedQuery,
       snapshot.nextPageToken != nil
     else {
       return
@@ -103,7 +107,7 @@ final class LibraryFeature {
 
   func itemDidAppear(_ identity: MediaIdentity) {
     guard
-      libraryShouldLoadMore(
+      librarySearchShouldLoadMore(
         state: state,
         visibleIdentity: identity,
         lookahead: Self.pageLookahead
@@ -119,7 +123,25 @@ final class LibraryFeature {
     cancelActiveLoad()
     resetPageRecovery()
     artworkWindow.deactivate()
-    search.deactivate()
-    state = .loading
+    artworkWindow.collectionsDidChange([])
+    if text.isEmpty {
+      state = .idle
+    } else {
+      text = ""
+    }
+  }
+
+  func artworkPresentationState(
+    for identity: MediaIdentity
+  ) -> HomeArtworkPresentationState? {
+    artworkWindow.presentationState(for: identity)
+  }
+
+  func artworkDidAppear(_ identity: MediaIdentity, size: ArtworkSizeBucket) {
+    artworkWindow.artworkDidAppear(identity, in: Self.artworkCollection, size: size)
+  }
+
+  func artworkDidDisappear(_ identity: MediaIdentity) {
+    artworkWindow.artworkDidDisappear(identity, in: Self.artworkCollection)
   }
 }
