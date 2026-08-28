@@ -221,6 +221,21 @@ const reconcileLibraryEntries = async (
   await deleteUnpublishableEntries(transaction, canonicalItemIdsJson);
   await publishEligibleEntries(transaction, canonicalItemIdsJson);
 };
+const lockProviderItemMappings = async (
+  transaction: CatalogTransaction,
+  providerInstanceId: string,
+): Promise<void> => {
+  await transaction.execute(sql`
+    select count(*)
+      from (
+        select ${providerItemMapping.itemReference}
+          from ${providerItemMapping}
+         where ${providerItemMapping.providerInstanceId} = ${providerInstanceId}
+           for update
+      ) as locked_provider_item_mappings
+  `);
+};
+
 const canonicalItemIdsWithProviderMappings = async (
   transaction: CatalogTransaction,
   providerInstanceId: string,
@@ -257,6 +272,7 @@ const removeOrphanedLibraryEntries = async (
 };
 export {
   canonicalItemIdsWithProviderMappings,
+  lockProviderItemMappings,
   removeOrphanedLibraryEntries,
   repairHierarchy,
   reconcileLibraryEntries,

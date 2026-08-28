@@ -1,0 +1,2 @@
+ALTER TABLE "canonical_watch_state" DROP CONSTRAINT "canonical_watch_state_activity_provider_identity_origin_check";--> statement-breakpoint
+ALTER TABLE "canonical_watch_state" ADD CONSTRAINT "canonical_watch_state_activity_provider_identity_origin_check" CHECK ("canonical_watch_state"."activity_origin_kind" = 'provider_replica' or "canonical_watch_state"."activity_provider_instance_id" is null);

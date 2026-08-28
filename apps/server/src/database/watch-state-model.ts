@@ -40,7 +40,7 @@ const activityOriginChecks = (table: WatchActivityOriginColumns) => [
   ),
   check(
     "canonical_watch_state_activity_provider_identity_origin_check",
-    sql`(${table.activityOriginKind} = 'provider_replica') = (${table.activityProviderInstanceId} is not null)`,
+    sql`${table.activityOriginKind} = 'provider_replica' or ${table.activityProviderInstanceId} is null`,
   ),
   check(
     "canonical_watch_state_activity_provider_instance_id_check",
