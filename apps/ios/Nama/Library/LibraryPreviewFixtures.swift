@@ -316,6 +316,14 @@
     )
   }
 
+  #Preview("Library Search — Catalog Preparation") {
+    libraryInspectionPreview(
+      searchState: .catalogNotReady(retryAfterSeconds: 12),
+      searchIsPresented: true,
+      searchText: "star"
+    )
+  }
+
   #Preview("Library Search — Mixed Results") {
     libraryInspectionPreview(
       searchState: .content(LibraryPreviewFixtures.searchContent),

@@ -1,23 +1,12 @@
 import Foundation
 
-nonisolated struct LibrarySearchPage: Equatable, Sendable {
-  let items: [MediaSummary]
-  let nextPageToken: String?
-}
-
-nonisolated struct LibrarySearchSnapshot: Equatable, Sendable {
-  let query: String
-  let items: [MediaSummary]
-  let nextPageToken: String?
-
-  var isTerminal: Bool {
-    nextPageToken == nil
-  }
-}
+typealias LibrarySearchPage = MediaPage
+typealias LibrarySearchSnapshot = MediaPageSnapshot<String>
 
 nonisolated enum LibrarySearchState: Equatable, Sendable {
   case idle
   case loading
+  case catalogNotReady(retryAfterSeconds: Int?)
   case noResults(query: String)
   case content(LibrarySearchSnapshot)
   case refreshing(LibrarySearchSnapshot)
@@ -33,22 +22,6 @@ nonisolated protocol LibrarySearchPageLoading: Sendable {
     pageToken: String?,
     authorization: HomeAuthorizationIdentity
   ) async throws -> LibrarySearchPage
-}
-
-nonisolated struct LibrarySearchNoResultsPresentation: Equatable, Sendable {
-  let title: String
-  let description: String
-  let actionTitle: String
-}
-
-nonisolated func librarySearchNoResultsPresentation(
-  query: String
-) -> LibrarySearchNoResultsPresentation {
-  LibrarySearchNoResultsPresentation(
-    title: "No results",
-    description: "No stored media matches “\(query)”.",
-    actionTitle: "Clear Search"
-  )
 }
 
 nonisolated enum LibrarySearchPolicy {

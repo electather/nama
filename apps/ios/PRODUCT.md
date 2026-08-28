@@ -89,12 +89,13 @@ and Apple TV tabs, the iPad split sidebar, adaptive long-title grids, terminal
 content, and Apple TV’s visible Load More action on iPhone 17 Pro, iPad Pro
 13-inch, and Apple TV 4K simulators. Search fixtures rendered ranked all-kind
 rows with a long Episode title, missing-artwork fallbacks, kind, year, Episode
-position, and playability metadata on iPhone 17 Pro, iPad Pro 13-inch (M5), and
-Apple TV 4K 1080p simulators. The iPad surface showed the native search field,
-no-results, and terminal-failure recovery; the Apple TV surface showed the
-native search keyboard. The Search fixture's
-Apple Development-signed sandboxed Mac build carried the app sandbox and network
-entitlements, but no accessible foreground window appeared in that run.
+position, and playability metadata on iPhone 17 Pro, iPad Pro 13-inch (M5),
+Apple TV 4K 1080p, and Apple Development-signed sandboxed Mac surfaces. Simulated
+touch selected the long Episode on iPhone, cleared no-results on iPad, and
+activated iPad catalog-preparation recovery with its retry guidance intact.
+Apple TV remote focus activated Load More and Retry Page and returned to the
+first result. The static loading surface remained onscreen on Apple TV and Mac,
+and full keyboard access selected the long Episode on Mac.
 An Apple Development-signed sandboxed Mac build created an onscreen Library
 window, but pixel capture and Library keyboard or pointer inspection were
 unavailable. The unlabeled Sources fixture ran on iPhone 17 Pro and iPad Pro
@@ -111,11 +112,10 @@ the correctly sized Track sheet, while full keyboard access reached its action.
 Its safe network failure retained visible return-to-Details recovery. A paired
 physical iPhone 14 Pro Max accepted the signed build but denied launch while
 locked; physical playback input and display were not observed.
-Search result selection through touch, remote, pointer, or keyboard, Apple TV
-Load More focus interaction, compact iPad collapse, focus return after nested
-Details, live OAuth-authorized stored-catalog browsing and Search, successful
-artwork resolution, VoiceOver inspection, and physical Apple hardware remain
-unverified actual surfaces.
+Search-result selection with the Apple TV remote or Mac pointer, compact iPad
+collapse, focus return after nested Details, live OAuth-authorized
+stored-catalog browsing and Search, successful artwork resolution, VoiceOver
+inspection, and physical Apple hardware remain unverified actual surfaces.
 
 ## Product Principles
 

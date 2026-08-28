@@ -78,14 +78,23 @@ struct LibrarySearchPresentationView: View {
     case .loading:
       LibrarySearchLoadingView()
 
-    case .noResults(let query):
-      let presentation = librarySearchNoResultsPresentation(query: query)
+    case .catalogNotReady(let retryAfterSeconds):
       ContentUnavailableView {
-        Label(presentation.title, systemImage: "magnifyingglass")
+        Label("Your library is being prepared", systemImage: "clock.arrow.circlepath")
       } description: {
-        Text(verbatim: presentation.description)
+        HomeRetryGuidance(retryAfterSeconds: retryAfterSeconds)
       } actions: {
-        Button(presentation.actionTitle, action: clear)
+        Button("Retry", action: retry)
+          .buttonStyle(.borderedProminent)
+      }
+
+    case .noResults(let query):
+      ContentUnavailableView {
+        Label("No results", systemImage: "magnifyingglass")
+      } description: {
+        Text("No stored media matches “\(query)”.")
+      } actions: {
+        Button("Clear Search", action: clear)
           .buttonStyle(.borderedProminent)
       }
 
@@ -164,5 +173,33 @@ struct LibrarySearchPresentationView: View {
       reauthorize: reauthorize,
       artwork: artwork
     )
+  }
+}
+
+struct LibrarySearchKindAndYear: View {
+  let item: MediaSummary
+
+  var body: some View {
+    if let releaseYear = item.releaseYear {
+      Text("\(kindLabel) · \(releaseYear, format: .number.grouping(.never))")
+    } else {
+      kindLabel
+    }
+  }
+
+  private var kindLabel: Text {
+    switch item.kind {
+    case .movie:
+      Text("Movie")
+
+    case .show:
+      Text("Show")
+
+    case .season:
+      Text("Season")
+
+    case .episode:
+      Text("Episode")
+    }
   }
 }

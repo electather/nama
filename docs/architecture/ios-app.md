@@ -353,13 +353,18 @@ focus return after nested Details.
 
 Search fixtures rendered ranked Movie, Show, Season, and Episode rows with a
 long Episode title, kind, year, Episode position, playability, and
-missing-artwork fallbacks on iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV
-4K 1080p simulators. The iPad surface showed the native search field and
-no-results and terminal-failure recovery; the Apple TV surface showed the native
-search keyboard. The Apple Development-signed sandboxed Mac Search build carried
-the expected sandbox and network entitlements, but no accessible foreground
-window appeared. These runs did not exercise Search selection or recovery
-through simulated touch, remote, pointer, or keyboard input.
+missing-artwork fallbacks on iPhone 17 Pro, iPad Pro 13-inch (M5), Apple TV 4K
+1080p, and Apple Development-signed sandboxed Mac surfaces. Simulated touch
+selected the long Episode on iPhone, cleared the iPad no-results state, and
+activated catalog-preparation Retry with the server retry guidance intact until
+recovery. The Apple TV surface showed the native search keyboard; remote focus
+moved through results to Load More and Retry Page, activated both actions, and
+returned to the first result after recovery. Static loading surfaces remained
+onscreen on Apple TV and Mac without a visible focus effect. The signed Mac
+build carried the expected sandbox and network entitlements, opened a visible
+foreground window, and selected the long Episode through full
+keyboard access. These runs did not exercise Apple TV result selection or Mac
+pointer selection.
 
 The unlabeled Sources fixture ran in the Debug application on iPhone 17 Pro and
 iPad Pro 13-inch (M5) simulators, an Apple TV 4K (3rd generation) simulator, and

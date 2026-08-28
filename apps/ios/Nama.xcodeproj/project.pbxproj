@@ -147,14 +147,13 @@
 		100000000000000000000146 /* MediaHierarchyTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000146 /* MediaHierarchyTestSupport.swift */; };
 		100000000000000000000147 /* LibraryFeatureTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000147 /* LibraryFeatureTestSupport.swift */; };
 		100000000000000000000148 /* LibraryPageRecoveryFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000148 /* LibraryPageRecoveryFeatureTests.swift */; };
-		100000000000000000000149 /* LibraryFeatureSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000149 /* LibraryFeatureSupport.swift */; };
+		100000000000000000000149 /* MediaPagingFeature+Actions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000149 /* MediaPagingFeature+Actions.swift */; };
 		100000000000000000000150 /* LibraryRefreshFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000150 /* LibraryRefreshFeatureTests.swift */; };
 		100000000000000000000151 /* MediaRestorationPagingFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000151 /* MediaRestorationPagingFeatureTests.swift */; };
 		100000000000000000000152 /* LibraryFeature+Artwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000152 /* LibraryFeature+Artwork.swift */; };
-		100000000000000000000153 /* LibraryFeature+Paging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000153 /* LibraryFeature+Paging.swift */; };
+		100000000000000000000153 /* MediaPagingFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000153 /* MediaPagingFeature.swift */; };
 		100000000000000000000154 /* LibrarySearchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000154 /* LibrarySearchModels.swift */; };
 		100000000000000000000155 /* LibrarySearchFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000155 /* LibrarySearchFeature.swift */; };
-		100000000000000000000156 /* LibrarySearchFeature+Paging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000156 /* LibrarySearchFeature+Paging.swift */; };
 		100000000000000000000157 /* NamaLibraryClient+Search.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000157 /* NamaLibraryClient+Search.swift */; };
 		100000000000000000000158 /* LibrarySearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000158 /* LibrarySearchView.swift */; };
 		100000000000000000000159 /* LibrarySearchResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000159 /* LibrarySearchResultsView.swift */; };
@@ -319,14 +318,13 @@
 		200000000000000000000146 /* MediaHierarchyTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaHierarchyTestSupport.swift; sourceTree = "<group>"; };
 		200000000000000000000147 /* LibraryFeatureTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFeatureTestSupport.swift; sourceTree = "<group>"; };
 		200000000000000000000148 /* LibraryPageRecoveryFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPageRecoveryFeatureTests.swift; sourceTree = "<group>"; };
-		200000000000000000000149 /* LibraryFeatureSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFeatureSupport.swift; sourceTree = "<group>"; };
+		200000000000000000000149 /* MediaPagingFeature+Actions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MediaPagingFeature+Actions.swift"; sourceTree = "<group>"; };
 		200000000000000000000150 /* LibraryRefreshFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryRefreshFeatureTests.swift; sourceTree = "<group>"; };
 		200000000000000000000151 /* MediaRestorationPagingFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaRestorationPagingFeatureTests.swift; sourceTree = "<group>"; };
 		200000000000000000000152 /* LibraryFeature+Artwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryFeature+Artwork.swift"; sourceTree = "<group>"; };
-		200000000000000000000153 /* LibraryFeature+Paging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryFeature+Paging.swift"; sourceTree = "<group>"; };
+		200000000000000000000153 /* MediaPagingFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPagingFeature.swift; sourceTree = "<group>"; };
 		200000000000000000000154 /* LibrarySearchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchModels.swift; sourceTree = "<group>"; };
 		200000000000000000000155 /* LibrarySearchFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchFeature.swift; sourceTree = "<group>"; };
-		200000000000000000000156 /* LibrarySearchFeature+Paging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibrarySearchFeature+Paging.swift"; sourceTree = "<group>"; };
 		200000000000000000000157 /* NamaLibraryClient+Search.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NamaLibraryClient+Search.swift"; sourceTree = "<group>"; };
 		200000000000000000000158 /* LibrarySearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchView.swift; sourceTree = "<group>"; };
 		200000000000000000000159 /* LibrarySearchResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchResultsView.swift; sourceTree = "<group>"; };
@@ -553,10 +551,9 @@
 				200000000000000000000137 /* LibraryModels.swift */,
 				200000000000000000000138 /* LibraryFeature.swift */,
 				200000000000000000000152 /* LibraryFeature+Artwork.swift */,
-				200000000000000000000153 /* LibraryFeature+Paging.swift */,
+				200000000000000000000153 /* MediaPagingFeature.swift */,
 				200000000000000000000154 /* LibrarySearchModels.swift */,
 				200000000000000000000155 /* LibrarySearchFeature.swift */,
-				200000000000000000000156 /* LibrarySearchFeature+Paging.swift */,
 				200000000000000000000157 /* NamaLibraryClient+Search.swift */,
 				200000000000000000000158 /* LibrarySearchView.swift */,
 				200000000000000000000159 /* LibrarySearchResultsView.swift */,
@@ -565,7 +562,7 @@
 				200000000000000000000143 /* LibraryPreviewFixtures.swift */,
 				200000000000000000000144 /* LibraryGridView.swift */,
 				200000000000000000000145 /* LibraryFailureViews.swift */,
-				200000000000000000000149 /* LibraryFeatureSupport.swift */,
+				200000000000000000000149 /* MediaPagingFeature+Actions.swift */,
 			);
 			path = Library;
 			sourceTree = "<group>";
@@ -821,10 +818,9 @@
 				100000000000000000000137 /* LibraryModels.swift in Sources */,
 				100000000000000000000138 /* LibraryFeature.swift in Sources */,
 				100000000000000000000152 /* LibraryFeature+Artwork.swift in Sources */,
-				100000000000000000000153 /* LibraryFeature+Paging.swift in Sources */,
+				100000000000000000000153 /* MediaPagingFeature.swift in Sources */,
 				100000000000000000000154 /* LibrarySearchModels.swift in Sources */,
 				100000000000000000000155 /* LibrarySearchFeature.swift in Sources */,
-				100000000000000000000156 /* LibrarySearchFeature+Paging.swift in Sources */,
 				100000000000000000000157 /* NamaLibraryClient+Search.swift in Sources */,
 				100000000000000000000158 /* LibrarySearchView.swift in Sources */,
 				100000000000000000000159 /* LibrarySearchResultsView.swift in Sources */,
@@ -835,7 +831,7 @@
 				100000000000000000000143 /* LibraryPreviewFixtures.swift in Sources */,
 				100000000000000000000144 /* LibraryGridView.swift in Sources */,
 				100000000000000000000145 /* LibraryFailureViews.swift in Sources */,
-				100000000000000000000149 /* LibraryFeatureSupport.swift in Sources */,
+				100000000000000000000149 /* MediaPagingFeature+Actions.swift in Sources */,
 				100000000000000000000092 /* MediaDetailsModels.swift in Sources */,
 				100000000000000000000093 /* MediaDetailsFeature.swift in Sources */,
 				100000000000000000000125 /* MediaSourceModels.swift in Sources */,
