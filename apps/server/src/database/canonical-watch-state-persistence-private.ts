@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 
 import { canonicalItem } from "./catalog-item-schema.ts";
 import { providerSourceMapping } from "./catalog-source-schema.ts";
@@ -200,6 +200,31 @@ const updateCanonicalWatchState = async (
   return storedWatchState(updated);
 };
 
+const detachProviderWatchState = async (
+  transaction: WatchStateTransaction,
+  providerInstanceId: string,
+): Promise<void> => {
+  const providerSourceIds = transaction
+    .select({ sourceId: providerSourceMapping.sourceId })
+    .from(providerSourceMapping)
+    .where(eq(providerSourceMapping.providerInstanceId, providerInstanceId));
+  const hasProviderActivityOrigin = eq(
+    canonicalWatchState.activityProviderInstanceId,
+    providerInstanceId,
+  );
+  const hasProviderLastSource = inArray(canonicalWatchState.lastSourceId, providerSourceIds);
+  await transaction
+    .update(canonicalWatchState)
+    .set({
+      activityProviderInstanceId: sql`case when ${hasProviderActivityOrigin} then null else ${canonicalWatchState.activityProviderInstanceId} end`,
+      activityProviderItemReference: sql`case when ${hasProviderActivityOrigin} then null else ${canonicalWatchState.activityProviderItemReference} end`,
+      committedAt: sql`transaction_timestamp()`,
+      lastSourceId: sql`case when ${hasProviderLastSource} then null else ${canonicalWatchState.lastSourceId} end`,
+      version: sql`${canonicalWatchState.version} + 1`,
+    })
+    .where(or(hasProviderActivityOrigin, hasProviderLastSource));
+};
+
 const commitAbsentCanonicalWatchState = async (
   transaction: WatchStateTransaction,
   input: CompareAndCommitCanonicalWatchStateInput,
@@ -257,6 +282,7 @@ const compareAndCommitCanonicalWatchState = (
   });
 
 export {
+  detachProviderWatchState,
   commitLoadedCanonicalWatchState,
   compareAndCommitCanonicalWatchState,
   loadCanonicalWatchState,

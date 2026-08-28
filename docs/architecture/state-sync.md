@@ -33,6 +33,9 @@ snapshots and atomic replacement with an optional fully resolved canonical
 target. Canonical persistence validates same-item Source ownership and accepts
 caller-resolved last-Source identity. Retained provider-source mappings keep
 that identity available through temporary catalog projection removal.
+Provider-instance deletion removes the instance's replicas and clears
+last-Source and exact Provider-replica references while preserving decoupled
+canonical values and copied activity evidence.
 Production core synchronization remains unimplemented: scheduling, checkpoint
 persistence, reconciliation, bounded fingerprint retention, and retry execution
 remain target work.

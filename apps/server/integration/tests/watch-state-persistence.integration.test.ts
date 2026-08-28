@@ -41,9 +41,11 @@ const NAMA_WATCHED_STATUS_ACTION_ORIGIN: CanonicalWatchStateTarget["activity"]["
 };
 const PROVIDER_REPLICA_ITEM_REFERENCE = "watch-state-provider-item-reference";
 const PROVIDER_REPLICA_ORIGIN: CanonicalWatchStateTarget["activity"]["origin"] = {
+  exactProviderReplica: {
+    providerInstanceId: PROVIDER_INSTANCE_ID,
+    providerItemReference: PROVIDER_REPLICA_ITEM_REFERENCE,
+  },
   kind: "provider_replica",
-  providerInstanceId: PROVIDER_INSTANCE_ID,
-  providerItemReference: PROVIDER_REPLICA_ITEM_REFERENCE,
 };
 
 interface ActivityOriginCommitInput {

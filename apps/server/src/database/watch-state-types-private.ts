@@ -4,14 +4,21 @@ import { Data } from "effect";
 import type { databaseSchema } from "./schema.ts";
 
 type PlayableCanonicalItemKind = "episode" | "movie";
-type WatchActivityOrigin =
+type WatchActivityOriginTarget =
   | { readonly kind: "nama_playback" }
   | { readonly kind: "nama_watched_status_action" }
-  | {
+  | Readonly<{
+      readonly exactProviderReplica: Readonly<{
+        readonly providerInstanceId: string;
+        readonly providerItemReference: string;
+      }>;
       readonly kind: "provider_replica";
-      readonly providerInstanceId: string;
-      readonly providerItemReference: string;
-    };
+    }>;
+interface DetachedProviderReplicaActivityOrigin {
+  readonly detached: true;
+  readonly kind: "provider_replica";
+}
+type WatchActivityOrigin = WatchActivityOriginTarget | DetachedProviderReplicaActivityOrigin;
 type WatchActivityReliability = "heuristic" | "reliable";
 type WatchActivitySemantics =
   | "playback_completed"
@@ -39,22 +46,34 @@ interface CanonicalWatchActivity {
   readonly semantics: WatchActivitySemantics;
 }
 
+interface CanonicalWatchActivityTarget {
+  readonly occurredAt: Date;
+  readonly origin: WatchActivityOriginTarget;
+  readonly reliability: WatchActivityReliability;
+  readonly semantics: WatchActivitySemantics;
+}
+
 interface CanonicalWatchStateKey {
   readonly canonicalItemId: string;
   readonly principalId: string;
 }
 
 interface CanonicalWatchStateTarget extends CanonicalWatchStateKey {
-  readonly activity: CanonicalWatchActivity;
+  readonly activity: CanonicalWatchActivityTarget;
   readonly duration?: WatchDuration | undefined;
   readonly lastSourceId?: string | undefined;
   readonly position?: WatchDuration | undefined;
   readonly watched: boolean;
 }
 
-interface CanonicalWatchState extends CanonicalWatchStateTarget {
+interface CanonicalWatchState extends CanonicalWatchStateKey {
+  readonly activity: CanonicalWatchActivity;
   readonly committedAt: Date;
+  readonly duration?: WatchDuration | undefined;
+  readonly lastSourceId?: string | undefined;
+  readonly position?: WatchDuration | undefined;
   readonly version: bigint;
+  readonly watched: boolean;
 }
 
 interface CompareAndCommitCanonicalWatchStateInput {
@@ -126,12 +145,14 @@ const watchStatePersistenceFailure = (): WatchStatePersistenceFailure =>
 
 export {
   type CanonicalWatchActivity,
+  type CanonicalWatchActivityTarget,
   type CanonicalWatchState,
   type CanonicalWatchStateCommitResult,
   type CanonicalWatchStateKey,
   type CanonicalWatchStateTarget,
   type CompareAndCommitCanonicalWatchStateInput,
   type CompareAndCommitProviderReplicaInput,
+  type DetachedProviderReplicaActivityOrigin,
   type PlayableCanonicalItemKind,
   type ProviderReplica,
   type ProviderReplicaCommitResult,
@@ -139,6 +160,7 @@ export {
   type ProviderReplicaTarget,
   type ProviderWatchActivity,
   type WatchActivityOrigin,
+  type WatchActivityOriginTarget,
   type WatchActivityReliability,
   type WatchActivitySemantics,
   type WatchDuration,

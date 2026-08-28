@@ -71,8 +71,12 @@ Nama's stored per-person normalized observation of watch state from one exact pr
 _Avoid_: Provider state, source state
 
 **Activity origin**:
-The provenance of a watch-state activity: Nama playback, a Nama watched-status action, or one exact Provider replica. It is not a media Source.
+The provenance of a watch-state activity: Nama playback, a Nama watched-status action, one exact Provider replica, or a detached Provider-replica Activity origin after only copied activity evidence remains. It is not a media Source.
 _Avoid_: Source
+
+**Detached Provider-replica Activity origin**:
+The preserved Provider-replica provenance kind of copied watch-state activity evidence after its exact Provider replica ceases to exist. It identifies no Provider replica and is not an identity tombstone.
+_Avoid_: Provider replica
 
 **Operation ID**:
 A client-created opaque identifier for one logical mutation across transport attempts.

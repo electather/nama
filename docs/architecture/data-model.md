@@ -41,9 +41,11 @@ equality changes neither selected activity evidence, commit time, nor version.
 The persistence boundary accepts fully resolved canonical targets and atomically
 compare-and-commits them with Provider replica replacements against expected
 versions. A stale expectation returns the current snapshots for policy-level
-recomputation. Provider-instance deletion removes its replicas and live Source
-and origin references but preserves decoupled canonical values and copied
-activity evidence. Scheduler checkpoints, pending exports, bounded fingerprints,
+recomputation. Provider-instance deletion removes its replicas and clears live
+Source identity and exact Provider-replica origin identity while preserving
+decoupled canonical values, copied activity evidence, and a detached
+Provider-replica Activity origin.
+Scheduler checkpoints, pending exports, bounded fingerprints,
 retry state, and reconciliation policy remain separate work owned by their
 runtime features.
 
@@ -84,8 +86,10 @@ one playable canonical item and contains watched status, optional position and
 duration, a nullable last-Source identity, copied activity time, semantics,
 reliability, an Activity origin, database transaction time, and a core-owned
 positive version. An Activity origin distinguishes Nama playback, a Nama
-watched-status action, or an exact Provider replica identified by its provider
-instance and provider item reference.
+watched-status action, an exact Provider replica identified by its provider
+instance and provider item reference, or a detached Provider-replica Activity
+origin retained after that exact identity ceases to exist. The detached variant
+identifies no Provider replica and is not an identity tombstone.
 
 Callers resolve precedence before this boundary. A compare-and-commit creates a
 row only for an absent expected version or updates it only when the supplied

@@ -2,8 +2,10 @@
 import { and, eq, inArray, max, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
+import { detachProviderWatchState } from "./canonical-watch-state-persistence-private.ts";
 import {
   canonicalItemIdsWithProviderMappings,
+  lockProviderItemMappings,
   removeOrphanedLibraryEntries,
 } from "./catalog-hierarchy-private.ts";
 import {
@@ -743,6 +745,8 @@ const deleteInstance = (
             transaction,
             input.providerInstanceId,
           );
+          await lockProviderItemMappings(transaction, input.providerInstanceId);
+          await detachProviderWatchState(transaction, input.providerInstanceId);
           await transaction
             .delete(providerInstance)
             .where(eq(providerInstance.id, input.providerInstanceId));

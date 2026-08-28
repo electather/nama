@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import type { canonicalWatchState, providerWatchStateReplica } from "./watch-state-model.ts";
 import type {
   CanonicalWatchState,
+  CanonicalWatchStateTarget,
   ProviderReplica,
   ProviderWatchActivity,
   WatchActivityOrigin,
@@ -11,19 +12,34 @@ import type {
 
 const SQL_NULL = sql`null`;
 
+const storedProviderReplicaActivityOrigin = (
+  providerInstanceId: string | null,
+  providerItemReference: string | null,
+): WatchActivityOrigin => {
+  if (providerInstanceId === null && providerItemReference === null) {
+    return { detached: true, kind: "provider_replica" };
+  }
+  if (providerInstanceId === null || providerItemReference === null) {
+    throw new Error("stored Provider replica Activity origin is incomplete");
+  }
+  return {
+    exactProviderReplica: {
+      providerInstanceId,
+      providerItemReference,
+    },
+    kind: "provider_replica",
+  };
+};
+
 const storedWatchActivityOrigin = (
   row: typeof canonicalWatchState.$inferSelect,
 ): WatchActivityOrigin => {
   const { activityOriginKind, activityProviderInstanceId, activityProviderItemReference } = row;
   if (activityOriginKind === "provider_replica") {
-    if (activityProviderInstanceId === null || activityProviderItemReference === null) {
-      throw new Error("stored Provider replica Activity origin is incomplete");
-    }
-    return {
-      kind: activityOriginKind,
-      providerInstanceId: activityProviderInstanceId,
-      providerItemReference: activityProviderItemReference,
-    };
+    return storedProviderReplicaActivityOrigin(
+      activityProviderInstanceId,
+      activityProviderItemReference,
+    );
   }
   if (activityProviderInstanceId !== null || activityProviderItemReference !== null) {
     throw new Error("stored Nama Activity origin has Provider replica identity");
@@ -37,12 +53,12 @@ const storedWatchActivityOrigin = (
   return { kind: activityOriginKind };
 };
 
-const activityOriginColumns = (origin: WatchActivityOrigin) => {
+const activityOriginColumns = (origin: CanonicalWatchStateTarget["activity"]["origin"]) => {
   if (origin.kind === "provider_replica") {
     return {
       activityOriginKind: origin.kind,
-      activityProviderInstanceId: origin.providerInstanceId,
-      activityProviderItemReference: origin.providerItemReference,
+      activityProviderInstanceId: origin.exactProviderReplica.providerInstanceId,
+      activityProviderItemReference: origin.exactProviderReplica.providerItemReference,
     };
   }
   return {
