@@ -71,9 +71,10 @@ The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect,
 
 The universal SwiftUI application consumes the generated public client for
 connection verification, provider-neutral Home, exhaustive paginated Movie and
-Show Library browsing, and stored canonical Movie, Show, Season, and Episode
-Details on iOS, iPadOS, tvOS, and macOS. Its connection surface keeps manual
-HTTP(S) endpoint entry available beside explicit `_nama._tcp` LAN discovery.
+Show Library browsing, ranked all-kind stored canonical Search, and Movie, Show,
+Season, and Episode Details on iOS, iPadOS, tvOS, and macOS. Its connection
+surface keeps manual HTTP(S) endpoint entry available beside explicit
+`_nama._tcp` LAN discovery.
 `NamaEndpoint` admits HTTPS or lexically approved local HTTP without
 DNS resolution, so manual entry, discovery, retry, and restoration reject every
 other HTTP destination before verification. Before the first request to a
@@ -102,37 +103,43 @@ until explicit Change Endpoint. The app implements native Better Auth device
 authorization, returned-interval polling, refresh rotation, a this-device-only
 endpoint-bound Keychain token record, Home over stored canonical
 `LibraryService.GetHome` results, paginated Movie and Show Library reads over
-`ListLibrary`, canonical Details hierarchy reads over `GetMedia` and bounded
-`ListChildren` pages, and on-demand canonical Source inspection over
-`GetMediaSource`. Home, Library, and Details reuse the safe artwork loader
-without exposing locators to views. Details emits only typed opaque canonical
-Play intents for playable Movies and Episodes: the primary action leaves the
-default source implicit, while a deliberate Source choice carries its opaque
-canonical source ID. Details does not invoke playback execution. The universal
-target contains exact-pinned
-AetherEngine `6.21.0` behind the complete Nama-owned player boundary. A
-per-load loopback
-broker enforces exact normalized allowed origins for initial, redirect, nested
+`ListLibrary`, ranked Movie, Show, Season, and Episode Search over `Search`,
+canonical Details hierarchy reads over `GetMedia` and bounded `ListChildren`
+pages, and on-demand canonical Source inspection over `GetMediaSource`. Home,
+Library, Search, and Details reuse the safe artwork loader without exposing
+locators to views. Search is a transient Library-owned mode that debounces
+trimmed queries, preserves server ranking, owns bounded opaque continuation
+recovery, and opens the existing typed Details destination. Details emits only
+typed opaque canonical Play intents for playable Movies and Episodes: the
+primary action leaves the default source implicit, while a deliberate Source
+choice carries its opaque canonical source ID. Details does not invoke playback
+execution. The universal target contains exact-pinned AetherEngine `6.21.0`
+behind the complete Nama-owned player boundary. A per-load loopback broker
+enforces exact normalized allowed origins for initial, redirect, nested
 HLS, key, segment, and external-subtitle requests without exposing remote
 locators to the engine. Mac-hosted automation proves controlled rendering and
 controls plus rejection, replacement, expiry signaling, and surface shutdown.
-The connection, authorization, player, Home, Library, media Details, and Sources
-baseline's Apple-platform builds pass, and a signed Apple TV 4K simulator has
-completed the no-browser authorization, scoped consumer verification, Keychain
-commit, and relaunch restoration flow. Library fixtures rendered the iPhone and
-Apple TV tabs, iPad split navigation, adaptive long-title grids, terminal
-content, and a visible Apple TV Load More action. Existing Show, Season, and
-Episode fixture evidence confirms adaptive bounds, kind-valid metadata,
-title-bearing artwork fallbacks, canonical parents and children, long titles,
-and Episode Play across the recorded Apple surfaces. Source inspection has
-self-contained choosing, technical, unavailable, distinct-unlabeled-choice, and
-stale-response previews. An Apple Development-signed sandboxed Mac build created
-an onscreen Library window, while pixel capture and Library keyboard or pointer
-inspection were unavailable. Apple TV Load More focus interaction, compact iPad
-collapse, focus return after nested Details, live OAuth-authorized catalog
-browsing, successful artwork resolution, product consumer media coordination,
-VoiceOver inspection, physical Apple hardware, expiry-driven actual-surface
-refresh, and the remaining Apple surfaces remain unverified.
+The connection, authorization, player, Home, Library, Search, media Details, and
+Sources baseline's Apple-platform builds pass, and a signed Apple TV 4K
+simulator has completed the no-browser authorization, scoped consumer
+verification, Keychain commit, and relaunch restoration flow. Library fixtures
+rendered the iPhone and Apple TV tabs, iPad split navigation, adaptive
+long-title grids, terminal content, and a visible Apple TV Load More action.
+Existing Show, Season, and Episode fixture evidence confirms adaptive bounds,
+kind-valid metadata, title-bearing artwork fallbacks, canonical parents and
+children, long titles, and Episode Play across the recorded Apple surfaces.
+Search fixtures rendered ranked all-kind rows, long Episode text,
+missing-artwork fallbacks, the iPad search field and recovery states, and the
+Apple TV search keyboard on iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV
+4K 1080p simulators. The signed sandboxed Mac Search build carried the expected
+entitlements, but no accessible foreground window appeared in that run. Source
+inspection has self-contained choosing, technical, unavailable,
+distinct-unlabeled-choice, and stale-response previews. Search input and result
+selection, Apple TV Load More focus interaction, compact iPad collapse, focus
+return after nested Details, live OAuth-authorized catalog browsing and Search,
+successful artwork resolution, product consumer media coordination, VoiceOver
+inspection, physical Apple hardware, expiry-driven actual-surface refresh, and
+the remaining Apple surfaces remain unverified.
 
 ## Architectural decision records
 

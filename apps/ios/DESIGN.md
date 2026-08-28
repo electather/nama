@@ -254,8 +254,8 @@ blur, floating panels, and shadowed card stacks are prohibited.
 - **Do** pair warning, failure, and success color with plain-language text and
   a symbol; preserve the meaning for VoiceOver and increased-contrast users.
 - **Do** keep the same state and action vocabulary across connection,
-  authorization, Home, Library, and canonical media Details on iPhone, iPad,
-  Apple TV, and Mac while adapting only layout and focus.
+  authorization, Home, Library, Search, and canonical media Details on iPhone,
+  iPad, Apple TV, and Mac while adapting only layout and focus.
 - **Do** let system Dynamic Type, semantic colors, focus effects, and reduced
   motion determine platform adaptation.
 
@@ -271,8 +271,8 @@ blur, floating panels, and shadowed card stacks are prohibited.
 - **Don't** make a critical action depend on an undiscoverable gesture,
   hover-only affordance, color alone, or a platform-specific interaction that
   does not exist on another supported surface.
-- **Don't** show speculative Search, Watch State, playback execution, or
-  unsupported media behavior as a placeholder. Home, Library, and canonical
-  media Details show only their implemented stored-canonical behavior.
+- **Don't** show speculative Watch State, playback execution, or unsupported
+  media behavior as a placeholder. Home, Library, Search, and canonical media
+  Details show only their implemented stored-canonical behavior.
 - **Don't** imply that authorization grants Administrator access, or add a
   browser/password step to the Apple-device flow.

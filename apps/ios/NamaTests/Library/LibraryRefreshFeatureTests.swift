@@ -49,3 +49,86 @@ struct LibraryRefreshFeatureTests {
     }
   }
 }
+
+@Suite("Library Search refresh")
+@MainActor
+struct LibrarySearchRefreshFeatureTests {
+  @Test("a refresh may return the same opaque continuation as the replaced snapshot")
+  func refreshAcceptsSameContinuation() async throws {
+    let loader = ManualLibrarySearchPageLoader()
+    let feature = LibrarySearchFeature(
+      loader: loader,
+      artworkLoader: IgnoringLibraryArtworkLoader(),
+      sleep: immediateSearchDelay
+    )
+    feature.activate(try libraryAuthorization(generation: 8))
+    feature.text = "signal"
+    await eventually { await loader.calls.count == 1 }
+    let item = librarySearchItem("result", kind: .movie, title: "Result")
+    let snapshot = LibrarySearchSnapshot(
+      query: "signal",
+      items: [item],
+      nextPageToken: "same-next"
+    )
+    await loader.resolve(
+      call: 0,
+      with: .success(LibrarySearchPage(items: [item], nextPageToken: "same-next"))
+    )
+    await eventually { feature.state == .content(snapshot) }
+
+    feature.refresh()
+    await eventually { await loader.calls.count == 2 }
+    await loader.resolve(
+      call: 1,
+      with: .success(LibrarySearchPage(items: [item], nextPageToken: "same-next"))
+    )
+    await eventually { feature.state != .refreshing(snapshot) }
+    #expect(feature.state == .content(snapshot))
+  }
+}
+
+@Suite("Library Search debounce lifecycle")
+@MainActor
+struct LibrarySearchDebounceFeatureTests {
+  @Test("replacement during debounce cancels the old delay and sends only the latest query")
+  func queryReplacementDuringDebounce() async throws {
+    let loader = ManualLibrarySearchPageLoader()
+    let sleeper = ManualLibrarySearchSleeper()
+    let feature = LibrarySearchFeature(
+      loader: loader,
+      artworkLoader: IgnoringLibraryArtworkLoader(),
+      sleep: sleeper.sleep
+    )
+    feature.activate(try libraryAuthorization(generation: 28))
+
+    feature.text = " first "
+    await eventually { await sleeper.requestedDurations.count == 1 }
+    #expect(await loader.calls.isEmpty)
+
+    feature.text = "\n second \t"
+    await eventually { await sleeper.requestedDurations.count == 2 }
+    await eventually { await sleeper.cancellationCount == 1 }
+    #expect(
+      await sleeper.requestedDurations == [
+        LibraryFeatureFixture.searchDebounceDuration,
+        LibraryFeatureFixture.searchDebounceDuration,
+      ]
+    )
+    #expect(await loader.calls.isEmpty)
+
+    await sleeper.releaseLatest()
+    await eventually { await loader.calls.count == 1 }
+    #expect(await loader.calls.first?.query == "second")
+    await loader.resolve(
+      call: 0,
+      with: .success(LibrarySearchPage(items: [], nextPageToken: nil))
+    )
+    await eventually {
+      feature.state == .noResults(query: "second")
+    }
+  }
+}
+
+private func immediateSearchDelay(for _: Duration) async {
+  await Task.yield()
+}

@@ -328,6 +328,16 @@ canonical parent context, Season and Episode child rows, and Episode Play. The
 Apple TV runs did not exercise Load More focus movement, and no run exercised
 focus return after nested Details.
 
+Search fixtures rendered ranked Movie, Show, Season, and Episode rows with a
+long Episode title, kind, year, Episode position, playability, and
+missing-artwork fallbacks on iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV
+4K 1080p simulators. The iPad surface showed the native search field and
+no-results and terminal-failure recovery; the Apple TV surface showed the native
+search keyboard. The Apple Development-signed sandboxed Mac Search build carried
+the expected sandbox and network entitlements, but no accessible foreground
+window appeared. These runs did not exercise Search selection or recovery
+through simulated touch, remote, pointer, or keyboard input.
+
 The unlabeled Sources fixture ran in the Debug application on iPhone 17 Pro and
 iPad Pro 13-inch (M5) simulators, an Apple TV 4K (3rd generation) simulator, and
 an Apple Development-signed sandboxed Mac build. Simulated touch selected Source
@@ -350,12 +360,16 @@ recovery, endpoint-scoped local-HTTP proxy bypass, the narrow ATS
 local-networking allowance, Better Auth device authorization and refresh,
 endpoint-bound Keychain tokens, provider-neutral Home over stored `GetHome`
 results, exhaustive paginated Movie and Show Library browsing over
-`ListLibrary`, safe artwork resolution and fallback, stored canonical Movie,
-Show, Season, and Episode Details over `GetMedia` and `ListChildren`, and
-deliberate canonical Source inspection over `GetMediaSource`. Details owns
-hierarchy and Sources presentation and emits only typed opaque canonical Play
-intents; it does not invoke playback planning, opening, or engine code. Search,
-Watch State, and playback product behavior remain unimplemented.
+`ListLibrary`, all-kind stored canonical Search over `Search`, safe artwork
+resolution and fallback, stored canonical Movie, Show, Season, and Episode
+Details over `GetMedia` and `ListChildren`, and deliberate canonical Source
+inspection over `GetMediaSource`. Search is scene-owned, appears only under
+Library, debounces trimmed queries, rejects obsolete work, preserves server
+ranking, recovers bounded opaque continuations, and opens the existing typed
+Details destination without parent enrichment. Details owns hierarchy and
+Sources presentation and emits only typed opaque canonical Play intents; it
+does not invoke playback planning, opening, or engine code. Watch State and
+playback product behavior remain unimplemented.
 
 ## Target runtime topology
 
@@ -456,11 +470,11 @@ generated messages and Connect failures do not cross it. The core is the only
 media data source in the MVP, so the application adds no generic repository
 layer.
 
-Milestone 4 browse delivery continues from the implemented Home, artwork,
-Details hierarchy, and Source-choice boundaries into Library and Search behind
-their feature interfaces. Universal actual-surface and stored-catalog
-acceptance closes the slice. This sequence creates no platform-specific feature
-fork or empty package.
+Milestone 4 browse delivery now includes Home, artwork, exhaustive Library,
+all-kind Search, Details hierarchy, and Source-choice boundaries behind narrow
+feature interfaces. Live OAuth-authorized stored-catalog and universal input
+acceptance remain the gates that close the slice; neither requires a
+platform-specific feature fork or empty package.
 
 ## Session, windows, and navigation
 
@@ -876,10 +890,11 @@ information rather than a global blocker. Missing or unsafe artwork falls back
 to the mandatory title without failing the containing item.
 
 Search idle presents “Search your library” and names movies, shows, seasons,
-and episodes. An empty result presents “No results for ‘…’” with Clear Search;
-a Search failure presents “Search is unavailable” with Try Again while
-preserving the query. Initial catalog import presents “Your library is being
-prepared,” while a legitimate empty catalog presents “Your library is empty”
+and episodes. An empty result presents “No results” with a query-specific
+“No stored media matches ‘…’.” description and Clear Search; a Search failure
+presents “Search is unavailable” with Try Again while preserving the query.
+Initial catalog import presents “Your library is being prepared,” while a
+legitimate empty catalog presents “Your library is empty”
 with Refresh and no unauthorized provider-management action.
 
 Ordinary initial loads use static redacted placeholders shaped like the final

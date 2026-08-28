@@ -64,6 +64,42 @@ private enum LibraryAdapterFixture {
       }
       """
   }()
+  static let searchResponse = #"""
+    {
+      "items": [
+        {
+          "id": "episode-ranked-first",
+          "kind": "MEDIA_KIND_EPISODE",
+          "title": "Episode ranked first",
+          "releaseYear": 2025,
+          "episodePosition": {
+            "seasonNumber": 2,
+            "episodeNumber": 4
+          },
+          "playability": "PLAYABILITY_PLAYABLE"
+        },
+        {
+          "id": "movie-ranked-second",
+          "kind": "MEDIA_KIND_MOVIE",
+          "title": "Movie ranked second",
+          "playability": "PLAYABILITY_NO_AVAILABLE_SOURCE"
+        },
+        {
+          "id": "season-ranked-third",
+          "kind": "MEDIA_KIND_SEASON",
+          "title": "Season ranked third",
+          "playability": "PLAYABILITY_NO_AVAILABLE_SOURCE"
+        },
+        {
+          "id": "show-ranked-fourth",
+          "kind": "MEDIA_KIND_SHOW",
+          "title": "Show ranked fourth",
+          "playability": "PLAYABILITY_NO_AVAILABLE_SOURCE"
+        }
+      ],
+      "nextPageToken": "opaque-search-page-two"
+    }
+    """#
 }
 
 @Suite("Library browse adapter", .serialized)
@@ -166,6 +202,98 @@ struct LibraryAdapterTests {
     await #expect(throws: LibraryLoadingFailure.authorizationUnavailable) {
       try await client.loadPage(
         query: .initial,
+        pageToken: nil,
+        authorization: staleAuthorization
+      )
+    }
+    #expect(HomeConnectStubURLProtocol.recordedRequests.isEmpty)
+  }
+
+  @Test("Search sends every canonical kind and preserves server rank without parent reads")
+  func searchRequestAndResponseMapping() async throws {
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.successfulHTTPStatus,
+      body: LibraryAdapterFixture.searchResponse
+    )
+    defer { HomeConnectStubURLProtocol.reset() }
+    let record = try libraryTokenRecord()
+    let client = libraryClient(record: record, platform: "tvos")
+
+    let page = try await client.loadSearchPage(
+      query: "north star",
+      pageToken: "opaque-search-page-one",
+      authorization: libraryAuthorization(record: record)
+    )
+
+    #expect(
+      page.items.map(\.identity) == [
+        MediaIdentity("episode-ranked-first"),
+        MediaIdentity("movie-ranked-second"),
+        MediaIdentity("season-ranked-third"),
+        MediaIdentity("show-ranked-fourth"),
+      ]
+    )
+    #expect(page.items.map(\.kind) == [.episode, .movie, .season, .show])
+    #expect(
+      page.items.first?.episodePosition == MediaEpisodePosition(seasonNumber: 2, episodeNumber: 4))
+    #expect(page.nextPageToken == "opaque-search-page-two")
+
+    #expect(HomeConnectStubURLProtocol.recordedRequests.count == 1)
+    let request = try #require(HomeConnectStubURLProtocol.recordedRequests.first)
+    #expect(request.url?.path == "/nama.api.v1.LibraryService/Search")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access-token-secret")
+    #expect(request.value(forHTTPHeaderField: "nama-client-platform") == "tvos")
+    let body = try #require(HomeConnectStubURLProtocol.recordedRequestBodies.first)
+    let requestJSON = try #require(
+      JSONSerialization.jsonObject(with: body) as? [String: Any]
+    )
+    #expect(requestJSON["query"] as? String == "north star")
+    #expect(
+      requestJSON["kinds"] as? [String]
+        == [
+          "MEDIA_KIND_MOVIE",
+          "MEDIA_KIND_SHOW",
+          "MEDIA_KIND_SEASON",
+          "MEDIA_KIND_EPISODE",
+        ]
+    )
+    #expect(requestJSON["pageSize"] as? Int == 50)
+    #expect(requestJSON["pageToken"] as? String == "opaque-search-page-one")
+  }
+
+  @Test("Search maps invalid continuation tokens without losing the query")
+  func searchInvalidPageTokenMapping() async throws {
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.unavailableHTTPStatus,
+      body: LibraryAdapterFixture.invalidPageTokenResponse
+    )
+    defer { HomeConnectStubURLProtocol.reset() }
+    let record = try libraryTokenRecord()
+    let client = libraryClient(record: record, platform: "ios")
+
+    await #expect(throws: LibraryLoadingFailure.pageTokenInvalid) {
+      try await client.loadSearchPage(
+        query: "preserved",
+        pageToken: "expired",
+        authorization: libraryAuthorization(record: record)
+      )
+    }
+  }
+
+  @Test("Search authorization replacement prevents a stale token request")
+  func searchAuthorizationInvalidation() async throws {
+    HomeConnectStubURLProtocol.reset()
+    let record = try libraryTokenRecord()
+    let client = libraryClient(record: record, platform: "ios")
+    let staleAuthorization = HomeAuthorizationIdentity(
+      endpoint: record.endpoint,
+      accessTokenExpiresAt: record.accessTokenExpiresAt.addingTimeInterval(1),
+      generation: 2
+    )
+
+    await #expect(throws: LibraryLoadingFailure.authorizationUnavailable) {
+      try await client.loadSearchPage(
+        query: "identity",
         pageToken: nil,
         authorization: staleAuthorization
       )

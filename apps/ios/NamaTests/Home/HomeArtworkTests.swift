@@ -172,6 +172,48 @@ struct HomeArtworkTests {
 
     #expect(window.presentationState(for: initialItem.identity)?.presentation == nil)
   }
+
+  @Test("Search artwork uses an Episode thumbnail without requesting parent media")
+  @MainActor
+  func searchUsesEpisodeThumbnail() async throws {
+    let episode = librarySearchItem(
+      "episode",
+      kind: .episode,
+      title: "Episode",
+      episodePosition: MediaEpisodePosition(seasonNumber: 1, episodeNumber: 2),
+      artwork: [
+        homeArtworkReference(
+          identity: "episode-poster",
+          role: .poster,
+          textPresence: .textless
+        ),
+        homeArtworkReference(
+          identity: "episode-thumbnail",
+          role: .thumbnail,
+          textPresence: .textless
+        ),
+      ]
+    )
+    let collection = MediaArtworkCollectionIdentity("search")
+    let loader = RecordingArtworkLoader()
+    let window = MediaArtworkWindow(loader: loader)
+    window.authorizationDidChange(to: try artworkAuthorization(generation: 5))
+    let artworkCollection = MediaArtworkCollection(
+      identity: collection,
+      items: [episode],
+      preference: .search
+    )
+    window.collectionsDidChange([artworkCollection])
+
+    window.artworkDidAppear(
+      episode.identity,
+      in: collection,
+      size: .thumbnail(displayWidth: 120, scale: 2)
+    )
+    await eventually { await loader.requestedIdentities.count == 1 }
+
+    #expect(await loader.requestedIdentities == [ArtworkIdentity("episode-thumbnail")])
+  }
 }
 
 private actor ImmediateArtworkPresentationLoader: HomeArtworkLoading {
