@@ -59,11 +59,13 @@ struct LibraryFeatureTests {
     feature.updateSort(.releaseDate)
     await eventually { await loader.calls.count == 3 }
 
-    let currentCall = try #require(await loader.calls.last)
-    #expect(currentCall.query == LibraryQuery(kind: .shows, sort: .releaseDate))
+    let calls = await loader.calls
+    let initialCallIndex = try #require(calls.firstIndex { $0.query == .initial })
+    let kindOnlyCallIndex = try #require(calls.firstIndex { $0.query == .showsByTitle })
+    let currentCallIndex = try #require(calls.firstIndex { $0.query == .showsByReleaseDate })
 
     await loader.resolve(
-      call: 0,
+      call: initialCallIndex,
       with: .success(
         LibraryPage(
           items: [libraryItem("stale", kind: .movie, title: "Stale")],
@@ -72,7 +74,16 @@ struct LibraryFeatureTests {
       )
     )
     await loader.resolve(
-      call: 2,
+      call: kindOnlyCallIndex,
+      with: .success(
+        LibraryPage(
+          items: [libraryItem("also-stale", kind: .show, title: "Also Stale")],
+          nextPageToken: nil
+        )
+      )
+    )
+    await loader.resolve(
+      call: currentCallIndex,
       with: .success(
         LibraryPage(
           items: [libraryItem("current", kind: .show, title: "Current")],
@@ -85,7 +96,7 @@ struct LibraryFeatureTests {
       guard case .content(let snapshot) = feature.state else {
         return false
       }
-      return snapshot.query == LibraryQuery(kind: .shows, sort: .releaseDate)
+      return snapshot.query == .showsByReleaseDate
         && snapshot.items.map(\.title) == ["Current"]
         && snapshot.isTerminal
     }
@@ -302,4 +313,9 @@ struct LibraryNonterminalFirstPageTests {
         && snapshot.isTerminal
     }
   }
+}
+
+extension LibraryQuery {
+  static let showsByTitle = Self(kind: .shows, sort: .title)
+  static let showsByReleaseDate = Self(kind: .shows, sort: .releaseDate)
 }

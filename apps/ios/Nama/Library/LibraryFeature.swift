@@ -6,27 +6,36 @@ final class LibraryFeature {
   private static let pageLookahead = 2
 
   var query: LibraryQuery = .initial
-  var state: LibraryState = .loading
+  var state: LibraryState {
+    libraryState(from: paging.state)
+  }
 
-  @ObservationIgnored let loader: any LibraryPageLoading
   @ObservationIgnored let artworkWindow: MediaArtworkWindow
-  @ObservationIgnored var activeTask: Task<Void, Never>?
-  @ObservationIgnored var authorization: HomeAuthorizationIdentity?
-  @ObservationIgnored var attempt: UInt64 = .zero
-  @ObservationIgnored var continuationTracker = MediaContinuationTracker()
-  @ObservationIgnored var recoverySnapshot: LibrarySnapshot?
-  @ObservationIgnored var recoveryVisibleSnapshot: LibrarySnapshot?
+  @ObservationIgnored private let paging: MediaPagingFeature<LibraryQuery>
+  @ObservationIgnored private var authorization: HomeAuthorizationIdentity?
 
   init(
     loader: any LibraryPageLoading,
     artworkLoader: any HomeArtworkLoading
   ) {
-    self.loader = loader
-    artworkWindow = MediaArtworkWindow(loader: artworkLoader)
-  }
-
-  deinit {
-    activeTask?.cancel()
+    let newArtworkWindow = MediaArtworkWindow(loader: artworkLoader)
+    artworkWindow = newArtworkWindow
+    paging = MediaPagingFeature(
+      initialState: .loading,
+      load: { query, pageToken, authorization in
+        try await loader.loadPage(
+          query: query,
+          pageToken: pageToken,
+          authorization: authorization
+        )
+      },
+      publishItems: { items in
+        newArtworkWindow.collectionsDidChange(
+          LibraryArtworkProjection.collections(items: items)
+        )
+      },
+      checksCancellationBeforeLoad: false
+    )
   }
 
   func activate(_ newAuthorization: HomeAuthorizationIdentity) {
@@ -47,68 +56,95 @@ final class LibraryFeature {
   }
 
   func refresh() {
-    guard authorization != nil else {
-      return
-    }
-    startFirstPage(preserving: confirmedSnapshot)
+    startFirstPage(preserving: paging.confirmedSnapshot)
   }
 
   func retry() {
-    guard authorization != nil else {
-      return
-    }
     startFirstPage(preserving: nil)
   }
 
   func loadMore() {
-    guard
-      activeTask == nil,
-      let snapshot = confirmedSnapshot,
-      snapshot.query == query,
-      snapshot.nextPageToken != nil
-    else {
+    guard let authorization else {
       return
     }
-    startPage(from: snapshot)
+    paging.loadMore(authorization: authorization)
   }
 
   func retryPage() {
-    guard case .pageFailed(let snapshot, let failure) = state else {
+    guard let authorization else {
       return
     }
-    if failure == .pageTokenInvalid {
-      startExpiredPageRecovery(from: snapshot)
-    } else if let recoverySnapshot, let recoveryVisibleSnapshot {
-      if !continuationTracker.isActive {
-        continuationTracker.begin(
-          currentPageToken: recoverySnapshot.nextPageToken,
-          continuationAllowance: recoveryVisibleSnapshot.items.count
-        )
-      }
-      startRecoveryPage()
-    } else {
-      startPage(from: snapshot)
-    }
+    paging.retryPage(authorization: authorization)
   }
 
   func itemDidAppear(_ identity: MediaIdentity) {
-    guard
-      libraryShouldLoadMore(
-        state: state,
-        visibleIdentity: identity,
-        lookahead: Self.pageLookahead
-      )
-    else {
+    guard let authorization else {
       return
     }
-    loadMore()
+    paging.itemDidAppear(
+      identity,
+      lookahead: Self.pageLookahead,
+      authorization: authorization
+    )
   }
 
   func deactivate() {
     authorization = nil
-    cancelActiveLoad()
-    resetPageRecovery()
+    paging.reset(to: .loading)
     artworkWindow.deactivate()
-    state = .loading
+  }
+
+  func updateQuery(_ newQuery: LibraryQuery) {
+    guard query != newQuery else {
+      return
+    }
+    query = newQuery
+    artworkWindow.collectionsDidChange(LibraryArtworkProjection.collections(items: []))
+    startFirstPage(preserving: nil)
+  }
+
+  private func startFirstPage(preserving snapshot: LibrarySnapshot?) {
+    guard let authorization else {
+      paging.reset(to: .loading)
+      return
+    }
+    paging.startFirstPage(
+      query: query,
+      authorization: authorization,
+      preserving: snapshot
+    )
+  }
+}
+
+private func libraryState(
+  from state: MediaPagingState<LibraryQuery>
+) -> LibraryState {
+  switch state {
+  case .idle, .loading:
+    .loading
+
+  case .catalogNotReady(let retryAfterSeconds):
+    .catalogNotReady(retryAfterSeconds: retryAfterSeconds)
+
+  case .empty:
+    .empty
+
+  case .content(let snapshot):
+    .content(snapshot)
+
+  case .refreshing(let snapshot):
+    .refreshing(snapshot)
+
+  case .refreshFailed(let snapshot, let failure):
+    .refreshFailed(snapshot, failure)
+
+  case .loadingMore(let snapshot):
+    .loadingMore(snapshot)
+
+  case .pageFailed(let snapshot, let failure):
+    .pageFailed(snapshot, failure)
+
+  case .failed(let failure):
+    .failed(failure)
   }
 }

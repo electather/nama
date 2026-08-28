@@ -28,20 +28,8 @@ nonisolated struct LibraryQuery: Equatable, Hashable, Sendable {
   static let initial = Self(kind: .movies, sort: .title)
 }
 
-nonisolated struct LibraryPage: Equatable, Sendable {
-  let items: [MediaSummary]
-  let nextPageToken: String?
-}
-
-nonisolated struct LibrarySnapshot: Equatable, Sendable {
-  let query: LibraryQuery
-  let items: [MediaSummary]
-  let nextPageToken: String?
-
-  var isTerminal: Bool {
-    nextPageToken == nil
-  }
-}
+typealias LibraryPage = MediaPage
+typealias LibrarySnapshot = MediaPageSnapshot<LibraryQuery>
 
 nonisolated enum LibraryLoadingFailure: Error, Equatable, Sendable {
   case catalogNotReady(retryAfterSeconds: Int?)
@@ -50,6 +38,34 @@ nonisolated enum LibraryLoadingFailure: Error, Equatable, Sendable {
   case networkUnavailable
   case namaUnavailable(requestID: String?)
   case incompatible
+}
+
+nonisolated struct MediaPage: Equatable, Sendable {
+  let items: [MediaSummary]
+  let nextPageToken: String?
+}
+
+nonisolated struct MediaPageSnapshot<Query: Equatable & Sendable>: Equatable, Sendable {
+  let query: Query
+  let items: [MediaSummary]
+  let nextPageToken: String?
+
+  var isTerminal: Bool {
+    nextPageToken == nil
+  }
+}
+
+nonisolated enum MediaPagingState<Query: Equatable & Sendable>: Equatable, Sendable {
+  case idle
+  case loading
+  case catalogNotReady(retryAfterSeconds: Int?)
+  case empty(query: Query)
+  case content(MediaPageSnapshot<Query>)
+  case refreshing(MediaPageSnapshot<Query>)
+  case refreshFailed(MediaPageSnapshot<Query>, LibraryLoadingFailure)
+  case loadingMore(MediaPageSnapshot<Query>)
+  case pageFailed(MediaPageSnapshot<Query>, LibraryLoadingFailure)
+  case failed(LibraryLoadingFailure)
 }
 
 nonisolated enum LibraryState: Equatable, Sendable {
@@ -75,4 +91,16 @@ nonisolated protocol LibraryPageLoading: Sendable {
 nonisolated enum LibraryPagePolicy {
   static let size: UInt32 = 50
   static let maximumPageTokenBytes = 4_096
+}
+
+enum LibraryArtworkProjection {
+  static let collection = MediaArtworkCollectionIdentity("library")
+
+  static func collections(items: [MediaSummary]) -> [MediaArtworkCollection] {
+    let projectedCollection = MediaArtworkCollection(
+      identity: Self.collection,
+      items: items
+    )
+    return [projectedCollection]
+  }
 }

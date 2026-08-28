@@ -133,16 +133,19 @@ kind-valid metadata, title-bearing artwork fallbacks, canonical parents and
 children, long titles, and Episode Play across the recorded Apple surfaces.
 Search fixtures rendered ranked all-kind rows, long Episode text,
 missing-artwork fallbacks, the iPad search field and recovery states, and the
-Apple TV search keyboard on iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV
-4K 1080p simulators. The signed sandboxed Mac Search build carried the expected
-entitlements, but no accessible foreground window appeared in that run. Source
-inspection has self-contained choosing, technical, unavailable,
-distinct-unlabeled-choice, and stale-response previews. Search input and result
-selection, Apple TV Load More focus interaction, compact iPad collapse, focus
-return after nested Details, live OAuth-authorized catalog browsing and Search,
-successful artwork resolution, product consumer media coordination, VoiceOver
-inspection, physical Apple hardware, expiry-driven actual-surface refresh, and
-the remaining Apple surfaces remain unverified.
+Apple TV search keyboard on iPhone 17 Pro, iPad Pro 13-inch (M5), Apple TV 4K
+1080p, and Apple Development-signed sandboxed Mac surfaces. Simulated touch
+selected the long Episode on iPhone, cleared no-results on iPad, and activated
+iPad catalog-preparation recovery with retry guidance intact. Apple TV remote
+focus activated Load More and Retry Page and returned to the first result. The
+static loading surface remained onscreen on Apple TV and Mac, and full keyboard
+access selected the long Episode on Mac. Source inspection has self-contained
+choosing, technical, unavailable, distinct-unlabeled-choice, and stale-response
+previews. Apple TV result selection, Mac pointer selection, compact iPad
+collapse, focus return after nested Details, live OAuth-authorized catalog
+browsing and Search, successful artwork resolution, product consumer media
+coordination, VoiceOver inspection, physical Apple hardware, expiry-driven
+actual-surface refresh, and the remaining Apple surfaces remain unverified.
 
 ## Architectural decision records
 
