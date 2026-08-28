@@ -445,3 +445,9 @@ process.on("SIGTERM", () => void stop());
 await appendFile(join(controlDirectory, "termination-ready.ndjson"), `${launchNumber}\n`, {
   mode: 0o600,
 });
+
+if (mode === "unexpected-exit-cleanup-failure") {
+  await waitForControlFile("unexpected-exit");
+  await chmod(dirname(dirname(launchDocument.socket_path)), 0o500);
+  process.exit(17);
+}
