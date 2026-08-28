@@ -39,6 +39,21 @@ of the concrete adapter, not a second playback engine or public media relay.
 plan, open, report, and close lifecycle for the target public and plugin
 contracts.
 
+The target local reporting path makes the core authoritative before provider
+telemetry. The Apple client sends ordered, idempotent Playback checkpoints at
+the session's 15-second interval while playing and immediately for meaningful
+state, settled-seek, and Track-selection changes. Pause reports without closing;
+stop, completion, failure, cancellation, surface closure, and eligible
+foreground loss close with one frozen final snapshot.
+
+Canonical Watch state preserves a legitimate newer lower position. Completion
+marks watched and clears resumable position; other Playback activity preserves
+watched status. Event acceptance, optional Watch-state change, session ordering,
+and the original result commit atomically, while provider work remains outside
+that transaction. The public contract owns exact replay, retention, transaction,
+and terminal-race behavior; the Apple note owns coalescing, bounded retry,
+replacement ordering, lifecycle, and safe failure presentation.
+
 The integration pins AetherEngine's exact source revision and complete resolved
 dependency closure and confines its rendering and control types to
 `NamaPlayer`. The [distribution record](aetherengine-distribution.md) owns the

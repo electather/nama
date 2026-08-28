@@ -629,6 +629,34 @@ only within owned deadlines and `RetryInfo`. Better Auth device-code polling
 and refresh follow its returned interval and OAuth errors; unsafe operations
 never gain automatic retries merely because a generic client supports them.
 
+The Playback reporting coordinator assigns a sequence only when an observation
+becomes a wire event. It owns at most one in-flight report and one coalesced
+latest pending snapshot. It follows the session's 15-second interval while
+`PLAYING`, reports immediately on player state changes, settled seeks, and
+confirmed Track selection, and sends no periodic traffic while paused or
+buffering. A newer snapshot supersedes an obsolete failed report; close is
+never coalesced away.
+
+Each reporting attempt has a five-second deadline and each logical report or
+close has a ten-second wall-clock lifetime. Retryable transport,
+`UNAVAILABLE`, `DEADLINE_EXCEEDED`, and `RESOURCE_EXHAUSTED` outcomes use
+jittered backoff from 250 milliseconds to a two-second cap and honor
+`RetryInfo` only when it fits the remaining lifetime. Successful OAuth refresh
+may repeat the identical logical call. Validation, authorization, terminal
+session, and idempotency-key-reuse failures do not retry.
+
+Terminal handling first freezes the clamped final clock and Track snapshot,
+then stops the engine and releases Locator material, and only then awaits
+`ClosePlayback`. Explicit viewer stop or owning-surface closure uses `STOPPED`,
+natural end uses `COMPLETED`, player or media failure uses `FAILED`, and
+replacement, supersession, eligible foreground loss, or expiry replacement
+uses `CANCELLED`. Pause remains a nonterminal `PAUSED` report.
+
+Replacement planning, opening, and media loading may proceed while the old
+close is pending, but the replacement's first report waits for that close to
+succeed or exhaust its ten-second lifetime. This preserves per-process
+Watch-state order without delaying playback startup.
+
 ## Connection target
 
 Connection treats a Nama endpoint as a transport address, not deployment
@@ -909,6 +937,13 @@ but it does not replace the stable value until Nama confirms the operation. On
 failure, the previous confirmed value remains with a safe retry path. Playback
 clock ticks never enter this shared state.
 
+An exhausted playback report or close publishes a session-scoped latest
+playback activity unconfirmed condition without relabelling the last accepted
+Watch state. Playback continues or finishes normally. A later accepted report
+or close clears the condition; after terminal exhaustion it remains only in
+the current in-memory presentation and creates no durable retry. The safe
+viewer message is “Your latest playback position may not have been saved.”
+
 Observable state remains granular. Views read only values they render, and
 subviews split at invalidation seams. Lists use stable opaque identity rather
 than indices or mutable display values. Playback clock state remains separate
@@ -923,11 +958,17 @@ reserved for APIs or scenes that genuinely do not exist on another supported
 platform. A separate presentation is appropriate when interaction semantics
 materially differ, as with Apple TV focus or Mac commands.
 
-On iPhone, iPad, and Apple TV, entering the background records a bounded final
-checkpoint and closes active playback in the MVP. Picture in Picture,
-background audio, and AirPlay-specific behavior remain deferred. On Mac,
-losing focus does not stop playback; closing the playback surface or replacing
-its load does.
+On iPhone, iPad, and Apple TV, entering the background freezes a final
+checkpoint, stops local playback immediately, and closes the active session as
+`CANCELLED` under bounded system execution. Exhausting that execution cannot
+extend the ten-second close lifetime or create durable pending work. Picture in
+Picture, background audio, and AirPlay-specific behavior remain deferred.
+
+On Mac, losing focus does not stop playback. Closing the playback-owning surface
+uses `STOPPED`; closing an unrelated window does nothing. A long-paused session
+sends no heartbeat. Resuming after Locator or session expiry closes the old
+session as `CANCELLED`, replans and opens at the current clamped position, and
+uses the same replacement ordering.
 
 SwiftUI's standard controls, semantic colors, typography, materials,
 containers, and platform-native Liquid Glass are the default UI system.

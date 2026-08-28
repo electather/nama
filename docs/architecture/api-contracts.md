@@ -754,15 +754,74 @@ reusable provider credential or silently become a proxy.
 
 Reported track IDs are observations of player state, not commands to switch a provider stream. They must belong to the active session and may change only to a track marked `switchable_without_reopen`. A candidate requiring another lease follows the close, replan, and reopen flow instead.
 
-Duplicate event IDs return the original logical result. A sequence at or below the highest applied sequence is acknowledged without regressing state. A later genuine seek or rewatch may report a smaller position with a higher sequence and must be preserved. Nama-originated ordering uses server receipt time plus session sequence; bounded client time is diagnostic evidence only and never outranks those values. Telemetry is sent on state change and at the returned report interval; reporting frequency is not encoded as a fixed provider rule.
+Duplicate event IDs return the original logical result. A sequence at or below
+the highest applied sequence is acknowledged without regressing state.
+Sequences are strictly increasing but need not be contiguous. A later genuine
+seek or rewatch may report a smaller position with a higher sequence and must
+be preserved.
+
+Nama-originated ordering uses server receipt time plus session sequence.
+Concurrent sessions remain valid; receipt order selects activity across
+sessions, while sequence orders events only within one session.
+`client_observed_at` is diagnostic evidence only and never outranks those
+values. A value within 24 hours of receipt may be used diagnostically; a more
+distant value is ignored without rejecting the event and remains part of the
+normalized idempotency payload.
+
+The MVP returns a 15-second report interval. The Apple client reports
+immediately when entering `PLAYING`, `PAUSED`, or `BUFFERING`, after a settled
+seek, and after confirmed audio or subtitle Track selection. Periodic reports
+run only while `PLAYING`. One report may be in flight and one latest pending
+snapshot may be retained; a newer observation replaces the pending snapshot
+rather than creating an unbounded queue.
 
 Canonical state commits before provider telemetry is considered delivered. A provider report failure cannot roll back accepted Nama progress or trick the client into replaying an ambiguous provider timeline event. The core records the provider-side outcome for session diagnostics and synchronization; it retries only when the adapter can prove that no provider mutation occurred.
+
+Until a session records meaningful playback activity, buffering, pausing,
+stopping, failing, or cancellation at its unchanged opening position is a
+canonical no-op. Meaningful activity is the first accepted `PLAYING` event, a
+settled seek away from the opening position, a terminal position that differs
+from it, or completion. Once meaningful activity exists, later reports and
+non-completed close events preserve the existing watched status.
+
+Clients clamp position to a finite positive duration when known. The core
+independently clamps against the reported duration or the session's reliable
+known duration. Without a reliable duration, any nonnegative position remains
+otherwise unclamped.
+
+Public report acceptance, session sequence advancement, the optional canonical
+Watch-state compare-and-commit, and the original serialized result commit in
+one transaction. Exact canonical equality accepts the event without replacing
+selected activity evidence, commit time, or canonical version. The first
+accepted `PLAYING` event uses reliable Nama-playback
+`PLAYBACK_STARTED` activity evidence; other canonical report changes use
+`STATE_CHANGED`. No provider call occurs inside this transaction.
 
 ### ClosePlayback
 
 `ClosePlaybackRequest` contains `operation_id`, `playback_session_id`, `final_position`, optional `duration`, `reason`, and optional `client_observed_at`. Initial reasons are `STOPPED`, `COMPLETED`, `FAILED`, and `CANCELLED`. The terminal canonical activity time is assigned by the server.
 
-`ClosePlaybackResponse` contains final canonical `user_state`. Close is idempotent and persists the final state first. Provider close telemetry is the export when the plugin declares that side effect; otherwise the core schedules an explicit supported watch-state export. It attempts provider cleanup immediately; an unreachable provider leaves bounded cleanup pending until a later safe retry or lease expiry rather than falsely reporting that the remote resource was released. Failure or cancellation follows the same cleanup rule. Reporting or closing an already-closed session returns its terminal result when the logical operation is known.
+`ClosePlaybackResponse` contains final canonical `user_state`. Close is
+idempotent and transactionally persists terminal session state, the optional
+canonical Watch-state change, and the original serialized result before
+provider work. `COMPLETED` uses reliable Nama-playback `PLAYBACK_COMPLETED`
+activity evidence, sets watched, clears resumable position, and retains duration
+and last Source. Other reasons preserve watched status and use
+`STATE_CHANGED` when their meaningful final position changes canonical state.
+
+A report that commits before close may update canonical state; the serialized
+close then supplies the final value. Once close commits, an unseen report or a
+different close operation fails `FAILED_PRECONDITION/PLAYBACK_SESSION_CLOSED`.
+A retry of a recorded report or the successful identical close returns its
+original result. Reusing the logical ID with another normalized payload remains
+`ALREADY_EXISTS/IDEMPOTENCY_KEY_REUSED`.
+
+Provider close telemetry is the export when the plugin declares that side
+effect; otherwise the core schedules an explicit supported watch-state export.
+It attempts provider cleanup immediately; an unreachable provider leaves
+bounded cleanup pending until a later safe retry or lease expiry rather than
+falsely reporting that the remote resource was released. Failure or
+cancellation follows the same cleanup rule.
 
 ## UserStateService
 
@@ -1210,6 +1269,11 @@ original safe serialized result. Reusing it with a different normalized payload
 returns `ALREADY_EXISTS` and `IDEMPOTENCY_KEY_REUSED`. The core stores a
 domain-separated keyed HMAC of the canonical request, including secret values,
 never the plaintext request or credentials.
+
+Playback report results are retained through the later of session expiry or 24
+hours after terminal close or expiry. The terminal Playback session and
+`ClosePlayback` result are retained for 24 hours after termination. Bounded
+startup and opportunistic batches expire those records.
 
 Completed provider mutation results are retained for seven days and expired in
 bounded startup and opportunistic mutation batches. Database uniqueness

@@ -195,7 +195,10 @@ Make Nama, rather than Jellyfin, own reliable resume and watched state while rem
 ### Included
 
 - Durable per-person playback position, duration, watched status, selected activity timestamp, last playback Source, distinct Activity origin, and reconciliation metadata in Nama.
-- Periodic progress checkpoints during playback plus final updates on pause, stop, completion, and app backgrounding. Writes are idempotent and tolerate retries/out-of-order delivery.
+- Periodic playback checkpoints while playing, immediate checkpoints on pause
+  and other state changes, and terminal updates on stop, completion, failure,
+  cancellation, or app backgrounding. Writes are idempotent and tolerate
+  retries and out-of-order delivery.
 - Continue Watching, resume playback, and watched/unwatched controls sourced from Nama.
 - Core-scheduled Jellyfin pull and push operations. Core stores cursors/checkpoints, backoff, pending work, and reconciliation decisions; the plugin only translates provider operations.
 - Latest reliable user activity wins, including legitimate rewind/rewatch movement. Configured provider priority handles missing timestamps and exact ties. A local Nama action wins immediately and is exported.
