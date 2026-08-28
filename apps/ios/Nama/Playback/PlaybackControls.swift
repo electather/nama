@@ -205,11 +205,41 @@ private struct PlaybackTimelineControls: View {
   }
 }
 
+enum PlaybackTimeReadoutAccessibility: Equatable {
+  case hidden
+  case elapsed(Duration)
+
+  init(position: TimeInterval, duration: TimeInterval?) {
+    if duration == nil {
+      self = .elapsed(.seconds(position))
+    } else {
+      self = .hidden
+    }
+  }
+}
+
 private struct PlaybackTimeReadout: View {
   let position: TimeInterval
   let duration: TimeInterval?
 
+  @ViewBuilder
   var body: some View {
+    switch PlaybackTimeReadoutAccessibility(position: position, duration: duration) {
+    case .hidden:
+      content
+        .accessibilityHidden(true)
+
+    case .elapsed(let elapsed):
+      content
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playback position")
+        .accessibilityValue(
+          Text(elapsed, format: .time(pattern: .hourMinuteSecond))
+        )
+    }
+  }
+
+  private var content: some View {
     HStack {
       Text(Duration.seconds(position), format: .time(pattern: .hourMinuteSecond))
       Spacer()
@@ -218,7 +248,6 @@ private struct PlaybackTimeReadout: View {
       }
     }
     .font(.callout.monospacedDigit())
-    .accessibilityHidden(true)
   }
 }
 

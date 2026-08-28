@@ -1,5 +1,6 @@
 #if os(macOS)
   import AppKit
+  import AVFoundation
   import Observation
   import SwiftUI
   import Testing
@@ -277,27 +278,46 @@
     server: PlaybackFixtureServer,
     subtitleID: String
   ) async {
-    let positionBeforeSelection = player.clock.state.position
+    player.pause()
+    #expect(await securityPlaybackEventually { player.state == .paused })
+
     player.selectSubtitleTrack(id: subtitleID)
     #expect(
       await securityPlaybackEventually {
-        player.selectedSubtitleTrackID == subtitleID
-          && player.clock.state.position > positionBeforeSelection
+        player.selectedSubtitleTrackID == subtitleID && player.state == .paused
       }
     )
+    #expect(await hasConfirmedSubtitleSelection(player, isSelected: true))
     #expect(
       await securityPlaybackEventually {
         server.received(path: "/subtitle.srt", marker: "subtitle")
       }
     )
-    let positionBeforeDisabling = player.clock.state.position
+
     player.disableSubtitles()
     #expect(
       await securityPlaybackEventually {
-        player.selectedSubtitleTrackID == nil
-          && player.clock.state.position > positionBeforeDisabling
+        player.selectedSubtitleTrackID == nil && player.state == .paused
       }
     )
+    #expect(await hasConfirmedSubtitleSelection(player, isSelected: false))
+  }
+
+  @MainActor
+  private func hasConfirmedSubtitleSelection(
+    _ player: NamaPlayer,
+    isSelected: Bool
+  ) async -> Bool {
+    guard
+      let item = player.engine.currentAVPlayerItem,
+      let group = try? await item.asset.loadMediaSelectionGroup(for: .legible)
+    else {
+      return false
+    }
+
+    return await securityPlaybackEventually {
+      (item.currentMediaSelection.selectedMediaOption(in: group) != nil) == isSelected
+    }
   }
 
   @MainActor

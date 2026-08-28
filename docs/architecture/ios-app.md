@@ -43,9 +43,13 @@ Apple Development-signed sandboxed Mac build. Simulated touch paused, sought,
 and selected audio and subtitles; Apple TV remote input moved focus from Back
 to transport, paused, opened the explicit subtitle surface, and confirmed a
 selection; Mac pointer input paused and opened a non-collapsed Track sheet, and
-full keyboard access reached its Track action. A paired physical iPhone 14 Pro
-Max accepted the signed build, but its locked state denied launch; no physical
-Apple TV was available. Provider planning/opening, live Details-to-playback,
+full keyboard access reached its Track action.
+A later signed sandboxed Mac run rendered unknown-duration chrome with an
+accessibility-tree elapsed value of `0:00:00` and the explicit
+player-initialization-unavailable preview state.
+A paired physical iPhone 14 Pro Max accepted the signed build, but its locked
+state denied launch; no physical Apple TV was available. Provider
+planning/opening, live Details-to-playback,
 VoiceOver, physical display/input, and the full media matrix remain unverified.
 
 ## Authority and fixed decisions
