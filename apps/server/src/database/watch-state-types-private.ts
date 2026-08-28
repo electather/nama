@@ -14,11 +14,11 @@ type WatchActivityOriginTarget =
       }>;
       readonly kind: "provider_replica";
     }>;
-type WatchActivityOrigin =
-  | WatchActivityOriginTarget
-  | {
-      readonly kind: "provider_replica";
-    };
+interface DetachedProviderReplicaActivityOrigin {
+  readonly detached: true;
+  readonly kind: "provider_replica";
+}
+type WatchActivityOrigin = WatchActivityOriginTarget | DetachedProviderReplicaActivityOrigin;
 type WatchActivityReliability = "heuristic" | "reliable";
 type WatchActivitySemantics =
   | "playback_completed"
@@ -152,6 +152,7 @@ export {
   type CanonicalWatchStateTarget,
   type CompareAndCommitCanonicalWatchStateInput,
   type CompareAndCommitProviderReplicaInput,
+  type DetachedProviderReplicaActivityOrigin,
   type PlayableCanonicalItemKind,
   type ProviderReplica,
   type ProviderReplicaCommitResult,

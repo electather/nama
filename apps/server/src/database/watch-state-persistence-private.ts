@@ -17,7 +17,7 @@ const storedProviderReplicaActivityOrigin = (
   providerItemReference: string | null,
 ): WatchActivityOrigin => {
   if (providerInstanceId === null && providerItemReference === null) {
-    return { kind: "provider_replica" };
+    return { detached: true, kind: "provider_replica" };
   }
   if (providerInstanceId === null || providerItemReference === null) {
     throw new Error("stored Provider replica Activity origin is incomplete");

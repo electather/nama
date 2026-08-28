@@ -1,13 +1,13 @@
 // oxlint-disable eslint/max-lines, eslint/max-lines-per-function, eslint/max-statements, eslint/prefer-destructuring -- Provider writes keep transaction ordering, protected-material lifetime, and rollback boundaries explicit.
-import { and, eq, inArray, max, or, sql } from "drizzle-orm";
+import { and, eq, inArray, max, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
+import { detachProviderWatchState } from "./canonical-watch-state-persistence-private.ts";
 import {
   canonicalItemIdsWithProviderMappings,
   lockProviderItemMappings,
   removeOrphanedLibraryEntries,
 } from "./catalog-hierarchy-private.ts";
-import { providerSourceMapping } from "./catalog-source-schema.ts";
 import {
   assertCredentialCompleteness,
   installationConfigurationSchema,
@@ -49,7 +49,6 @@ import {
   providerOperationResult,
 } from "./provider-schema.ts";
 import type { JsonObject } from "./provider-schema.ts";
-import { canonicalWatchState } from "./watch-state-model.ts";
 
 const FIRST_INDEX = 0;
 const NO_ROWS = 0;
@@ -707,31 +706,6 @@ const recordObservation = (
         return true;
       }),
   });
-
-const detachProviderWatchState = async (
-  transaction: ProviderTransaction,
-  providerInstanceId: string,
-): Promise<void> => {
-  const providerSourceIds = transaction
-    .select({ sourceId: providerSourceMapping.sourceId })
-    .from(providerSourceMapping)
-    .where(eq(providerSourceMapping.providerInstanceId, providerInstanceId));
-  const hasProviderActivityOrigin = eq(
-    canonicalWatchState.activityProviderInstanceId,
-    providerInstanceId,
-  );
-  const hasProviderLastSource = inArray(canonicalWatchState.lastSourceId, providerSourceIds);
-  await transaction
-    .update(canonicalWatchState)
-    .set({
-      activityProviderInstanceId: sql`case when ${hasProviderActivityOrigin} then null else ${canonicalWatchState.activityProviderInstanceId} end`,
-      activityProviderItemReference: sql`case when ${hasProviderActivityOrigin} then null else ${canonicalWatchState.activityProviderItemReference} end`,
-      committedAt: sql`transaction_timestamp()`,
-      lastSourceId: sql`case when ${hasProviderLastSource} then null else ${canonicalWatchState.lastSourceId} end`,
-      version: sql`${canonicalWatchState.version} + 1`,
-    })
-    .where(or(hasProviderActivityOrigin, hasProviderLastSource));
-};
 
 const deleteInstance = (
   context: ProviderPersistenceContext,

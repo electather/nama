@@ -368,7 +368,7 @@ const providerDeletionScenario = (databaseUrl: string) =>
     expect(reconstructed.canonicalState).toMatchObject({
       activity: {
         occurredAt: CANONICAL_ACTIVITY_OCCURRED_AT,
-        origin: { kind: "provider_replica" },
+        origin: { detached: true, kind: "provider_replica" },
         reliability: "heuristic",
         semantics: "playback_started",
       },
@@ -380,7 +380,10 @@ const providerDeletionScenario = (databaseUrl: string) =>
       version: 2n,
       watched: true,
     });
-    expect(reconstructed.canonicalState?.activity.origin).toEqual({ kind: "provider_replica" });
+    expect(reconstructed.canonicalState?.activity.origin).toEqual({
+      detached: true,
+      kind: "provider_replica",
+    });
   });
 
 it.live("preserves decoupled canonical Watch state across provider deletion", () =>
