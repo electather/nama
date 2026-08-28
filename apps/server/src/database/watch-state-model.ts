@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
 import type { SQLWrapper } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   bigint,
   boolean,
   check,
   foreignKey,
+  index,
   integer,
   pgTable,
   primaryKey,
@@ -13,27 +13,15 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { Data } from "effect";
 
 import { user } from "./auth-schema.ts";
-import { canonicalItem } from "./catalog-item-schema.ts";
-import type { databaseSchema } from "./schema.ts";
-
-type PlayableCanonicalItemKind = "episode" | "movie";
-type WatchActivityOrigin =
-  | { readonly kind: "nama_playback" }
-  | { readonly kind: "nama_watched_status_action" }
-  | {
-      readonly kind: "provider_replica";
-      readonly providerInstanceId: string;
-      readonly providerItemReference: string;
-    };
-type WatchActivityReliability = "heuristic" | "reliable";
-type WatchActivitySemantics =
-  | "playback_completed"
-  | "playback_started"
-  | "state_changed"
-  | "unknown";
+import { canonicalItem, providerItemMapping } from "./catalog-item-schema.ts";
+import type {
+  PlayableCanonicalItemKind,
+  WatchActivityOrigin,
+  WatchActivityReliability,
+  WatchActivitySemantics,
+} from "./watch-state-types-private.ts";
 
 type WatchActivityOriginColumns = Readonly<{
   activityOriginKind: SQLWrapper;
@@ -127,82 +115,116 @@ const canonicalWatchState = pgTable(
   ],
 );
 
-const FIRST_ARGUMENT = 0;
+type ProviderReplicaDurationColumns = Readonly<{
+  durationNanoseconds: SQLWrapper;
+  durationSeconds: SQLWrapper;
+  positionNanoseconds: SQLWrapper;
+  positionSeconds: SQLWrapper;
+}>;
 
-type WatchStateDatabase = NodePgDatabase<typeof databaseSchema>;
-type WatchStateTransaction = Parameters<
-  Parameters<WatchStateDatabase["transaction"]>[typeof FIRST_ARGUMENT]
->[typeof FIRST_ARGUMENT];
-type WatchStateReader = Pick<WatchStateDatabase, "select">;
+const providerReplicaDurationChecks = (table: ProviderReplicaDurationColumns) => [
+  check(
+    "provider_watch_state_replica_position_pair_check",
+    sql`(${table.positionSeconds} is null) = (${table.positionNanoseconds} is null)`,
+  ),
+  check(
+    "provider_watch_state_replica_position_check",
+    sql`${table.positionSeconds} is null or (${table.positionSeconds} >= 0 and ${table.positionNanoseconds} between 0 and 999999999)`,
+  ),
+  check(
+    "provider_watch_state_replica_duration_pair_check",
+    sql`(${table.durationSeconds} is null) = (${table.durationNanoseconds} is null)`,
+  ),
+  check(
+    "provider_watch_state_replica_duration_check",
+    sql`${table.durationSeconds} is null or (${table.durationSeconds} >= 0 and ${table.durationNanoseconds} between 0 and 999999999)`,
+  ),
+];
 
-interface WatchDuration {
-  readonly nanoseconds: number;
-  readonly seconds: bigint;
-}
+type ProviderReplicaActivityColumns = Readonly<{
+  providerActivityOccurredAt: SQLWrapper;
+  providerActivityReliability: SQLWrapper;
+  providerActivitySemantics: SQLWrapper;
+  providerRevision: SQLWrapper;
+}>;
 
-interface CanonicalWatchActivity {
-  readonly occurredAt: Date;
-  readonly origin: WatchActivityOrigin;
-  readonly reliability: WatchActivityReliability;
-  readonly semantics: WatchActivitySemantics;
-}
+const providerReplicaActivityChecks = (table: ProviderReplicaActivityColumns) => [
+  check(
+    "provider_watch_state_replica_activity_presence_check",
+    sql`(${table.providerActivityOccurredAt} is null) = (${table.providerActivityReliability} is null)
+          and (${table.providerActivityOccurredAt} is null) = (${table.providerActivitySemantics} is null)`,
+  ),
+  check(
+    "provider_watch_state_replica_activity_reliability_check",
+    sql`${table.providerActivityReliability} is null or ${table.providerActivityReliability} in ('reliable', 'heuristic')`,
+  ),
+  check(
+    "provider_watch_state_replica_activity_semantics_check",
+    sql`${table.providerActivitySemantics} is null or ${table.providerActivitySemantics} in ('unknown', 'playback_started', 'playback_completed', 'state_changed')`,
+  ),
+  check(
+    "provider_watch_state_replica_revision_check",
+    sql`${table.providerRevision} is null or char_length(${table.providerRevision}) between 1 and 256`,
+  ),
+];
 
-interface CanonicalWatchStateKey {
-  readonly canonicalItemId: string;
-  readonly principalId: string;
-}
+const providerWatchStateReplica = pgTable(
+  "provider_watch_state_replica",
+  {
+    canonicalItemId: uuid("canonical_item_id").notNull(),
+    canonicalItemKind: text("canonical_item_kind").$type<PlayableCanonicalItemKind>().notNull(),
+    durationNanoseconds: integer("duration_nanoseconds"),
+    durationSeconds: bigint("duration_seconds", { mode: "bigint" }),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    positionNanoseconds: integer("position_nanoseconds"),
+    positionSeconds: bigint("position_seconds", { mode: "bigint" }),
+    principalId: text("principal_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    providerActivityOccurredAt: timestamp("provider_activity_occurred_at", {
+      withTimezone: true,
+    }),
+    providerActivityReliability: text(
+      "provider_activity_reliability",
+    ).$type<WatchActivityReliability>(),
+    providerActivitySemantics: text("provider_activity_semantics").$type<WatchActivitySemantics>(),
+    providerInstanceId: text("provider_instance_id").notNull(),
+    providerItemReference: text("provider_item_reference").notNull(),
+    providerRevision: text("provider_revision"),
+    version: bigint("version", { mode: "bigint" }).notNull(),
+    watched: boolean("watched").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.principalId, table.providerInstanceId, table.providerItemReference],
+    }),
+    foreignKey({
+      columns: [table.providerInstanceId, table.providerItemReference, table.canonicalItemId],
+      foreignColumns: [
+        providerItemMapping.providerInstanceId,
+        providerItemMapping.itemReference,
+        providerItemMapping.canonicalItemId,
+      ],
+      name: "provider_watch_state_replica_item_mapping_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.canonicalItemId, table.canonicalItemKind],
+      foreignColumns: [canonicalItem.id, canonicalItem.kind],
+      name: "provider_watch_state_replica_playable_item_fk",
+    }).onDelete("cascade"),
+    check(
+      "provider_watch_state_replica_playable_kind_check",
+      sql`${table.canonicalItemKind} in ('movie', 'episode')`,
+    ),
+    ...providerReplicaDurationChecks(table),
+    ...providerReplicaActivityChecks(table),
+    check("provider_watch_state_replica_version_check", sql`${table.version} > 0`),
+    index("provider_watch_state_replica_mapping_index").on(
+      table.providerInstanceId,
+      table.providerItemReference,
+      table.canonicalItemId,
+    ),
+  ],
+);
 
-interface CanonicalWatchStateTarget extends CanonicalWatchStateKey {
-  readonly activity: CanonicalWatchActivity;
-  readonly duration?: WatchDuration | undefined;
-  readonly lastSourceId?: string | undefined;
-  readonly position?: WatchDuration | undefined;
-  readonly watched: boolean;
-}
-
-interface CanonicalWatchState extends CanonicalWatchStateTarget {
-  readonly committedAt: Date;
-  readonly version: bigint;
-}
-
-interface CompareAndCommitCanonicalWatchStateInput {
-  readonly expectedVersion?: bigint | undefined;
-  readonly target: CanonicalWatchStateTarget;
-}
-
-type CanonicalWatchStateCommitResult =
-  | {
-      readonly state: CanonicalWatchState;
-      readonly status: "committed";
-    }
-  | {
-      readonly state: CanonicalWatchState | undefined;
-      readonly status: "stale";
-    };
-
-const taggedError = Data.TaggedError;
-const WatchStatePersistenceError = taggedError("WatchStatePersistenceError")<Record<string, never>>;
-type WatchStatePersistenceFailure = InstanceType<typeof WatchStatePersistenceError>;
-
-const watchStatePersistenceFailure = (): WatchStatePersistenceFailure =>
-  new WatchStatePersistenceError({});
-
-export {
-  type CanonicalWatchActivity,
-  type CanonicalWatchState,
-  type CanonicalWatchStateCommitResult,
-  type CanonicalWatchStateKey,
-  type CanonicalWatchStateTarget,
-  type CompareAndCommitCanonicalWatchStateInput,
-  type PlayableCanonicalItemKind,
-  type WatchActivityOrigin,
-  type WatchActivityReliability,
-  type WatchActivitySemantics,
-  type WatchDuration,
-  type WatchStateDatabase,
-  type WatchStatePersistenceFailure,
-  type WatchStateReader,
-  type WatchStateTransaction,
-  canonicalWatchState,
-  watchStatePersistenceFailure,
-};
+export { canonicalWatchState, providerWatchStateReplica };

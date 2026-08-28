@@ -27,12 +27,12 @@ one non-overlapping run per provider instance. Provider events remain future
 invalidation hints; the unary MVP does not subscribe to them or treat them as
 current truth.
 
-Sparse canonical Watch state persistence is implemented for one authenticated
-principal and one playable canonical item, including versioned compare-and-
-commit and durable selected activity evidence. Production core synchronization
-remains unimplemented: scheduling, Provider replica and checkpoint persistence,
-reconciliation, bounded fingerprint retention, and retry execution remain
-target work.
+Sparse canonical Watch state and exact Provider replica persistence are
+implemented for one authenticated principal, including independent versioned
+snapshots and atomic replacement with an optional fully resolved canonical
+target. Production core synchronization remains unimplemented: scheduling,
+checkpoint persistence, reconciliation, bounded fingerprint retention, and
+retry execution remain target work.
 The Jellyfin adapter implements resumable best-effort full movie and episode scans, bounded targeted
 reads for repair and confirmation, and explicit watched/unwatched writes with
 bounded ambiguity readback. It advertises `WATCH_STATE_READ` and
