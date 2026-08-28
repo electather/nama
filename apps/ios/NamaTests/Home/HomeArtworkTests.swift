@@ -151,21 +151,24 @@ struct HomeArtworkTests {
       identity: "movie-1",
       artwork: [fallbackPoster]
     )
-    let initialSnapshot = homeArtworkSnapshot(items: [initialItem])
-    let fallbackSnapshot = homeArtworkSnapshot(items: [fallbackItem])
-    let window = HomeArtworkWindow(loader: ImmediateArtworkPresentationLoader())
+    let collection = MediaArtworkCollectionIdentity("movies")
+    let window = MediaArtworkWindow(loader: ImmediateArtworkPresentationLoader())
     window.authorizationDidChange(to: try artworkAuthorization(generation: 4))
-    window.snapshotDidChange(initialSnapshot)
+    window.collectionsDidChange([
+      MediaArtworkCollection(identity: collection, items: [initialItem])
+    ])
     window.artworkDidAppear(
       initialItem.identity,
-      in: HomeShelfIdentity("movies"),
+      in: collection,
       size: artworkSize()
     )
     await eventually {
       window.presentationState(for: initialItem.identity)?.presentation != nil
     }
 
-    window.snapshotDidChange(fallbackSnapshot)
+    window.collectionsDidChange([
+      MediaArtworkCollection(identity: collection, items: [fallbackItem])
+    ])
 
     #expect(window.presentationState(for: initialItem.identity)?.presentation == nil)
   }

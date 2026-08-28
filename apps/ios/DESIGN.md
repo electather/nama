@@ -1,6 +1,6 @@
 ---
 name: Nama for Apple
-description: Native connection, authorization, Home, and canonical media Details for a self-hosted Nama endpoint.
+description: Native connection, authorization, Home, paginated Library, and canonical media Details for a self-hosted Nama endpoint.
 typography:
   large-title:
     fontFamily: "SF Pro / SF Compact system text"
@@ -45,12 +45,12 @@ it now, and which safe action can move forward. The visual system earns trust
 through system controls, exact identity, and explicit terminal states—not visual
 ceremony.
 
-The system is deliberately restrained. iPhone, iPad, and Mac use a
-`NavigationStack` with grouped forms; Apple TV uses a focus-aware scrolling
-column with the same state and action vocabulary. The current design has no
-custom brand palette, font, radius, or shadow scale. System appearance,
-Dynamic Type, contrast settings, and platform focus behavior are the visual
-system’s foundation.
+Connection keeps native grouped forms on iPhone, iPad, and Mac and a
+focus-aware scrolling column on Apple TV. Authorized content uses familiar
+two-item tabs on iPhone and Apple TV and split navigation on iPad and Mac.
+The current design has no custom brand palette, font, radius, or shadow scale.
+System appearance, Dynamic Type, contrast settings, and platform focus behavior
+are the system’s foundation.
 
 **Key Characteristics:**
 
@@ -207,10 +207,14 @@ blur, floating panels, and shadowed card stacks are prohibited.
   language, retain the known endpoint, and expose only the recovery action the
   current state safely permits.
 
-### Media Artwork and Details
+### Media Artwork, Library, and Details
 
 - **Canonical identity:** Always render the canonical item title independently
   of artwork. Backdrop and poster failures retain stable title-bearing surfaces.
+- **Library:** Keep Movies and Shows plus the three server sorts in familiar
+  native controls above an adaptive poster grid. Preserve server order and
+  confirmed pages; show later progress, recovery, and terminal state after the
+  grid. Apple TV retains one stable, truthfully labelled **Load More** action.
 - **Task hierarchy:** Put identity and kind-valid concise metadata first. A
   Movie or Episode continues to Play or an availability state; a Show continues
   to Seasons and a Season to Episodes. Synopsis and supporting metadata follow.
@@ -250,8 +254,8 @@ blur, floating panels, and shadowed card stacks are prohibited.
 - **Do** pair warning, failure, and success color with plain-language text and
   a symbol; preserve the meaning for VoiceOver and increased-contrast users.
 - **Do** keep the same state and action vocabulary across connection,
-  authorization, Home, and canonical media Details on iPhone, iPad, Apple TV,
-  and Mac while adapting only layout and focus.
+  authorization, Home, Library, and canonical media Details on iPhone, iPad,
+  Apple TV, and Mac while adapting only layout and focus.
 - **Do** let system Dynamic Type, semantic colors, focus effects, and reduced
   motion determine platform adaptation.
 
@@ -267,8 +271,8 @@ blur, floating panels, and shadowed card stacks are prohibited.
 - **Don't** make a critical action depend on an undiscoverable gesture,
   hover-only affordance, color alone, or a platform-specific interaction that
   does not exist on another supported surface.
-- **Don't** show speculative Library, Search, Watch State, playback execution,
-  or unsupported media behavior as a placeholder. Home and canonical media
-  Details show only their implemented stored-canonical behavior.
+- **Don't** show speculative Search, Watch State, playback execution, or
+  unsupported media behavior as a placeholder. Home, Library, and canonical
+  media Details show only their implemented stored-canonical behavior.
 - **Don't** imply that authorization grants Administrator access, or add a
   browser/password step to the Apple-device flow.

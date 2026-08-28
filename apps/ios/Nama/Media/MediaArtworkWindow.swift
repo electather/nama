@@ -1,8 +1,21 @@
 import Observation
 
+nonisolated struct MediaArtworkCollectionIdentity: Equatable, Hashable, Sendable {
+  let rawValue: String
+
+  init(_ rawValue: String) {
+    self.rawValue = rawValue
+  }
+}
+
+nonisolated struct MediaArtworkCollection: Equatable, Sendable {
+  let identity: MediaArtworkCollectionIdentity
+  let items: [MediaSummary]
+}
+
 @MainActor
 @Observable
-final class HomeArtworkWindow {
+final class MediaArtworkWindow {
   private static let usefulItemCount = 3
 
   @ObservationIgnored private var presentationStates:
@@ -10,15 +23,15 @@ final class HomeArtworkWindow {
 
   @ObservationIgnored private let loader: any HomeArtworkLoading
   @ObservationIgnored private var authorizationTask: Task<Void, Never>?
-  @ObservationIgnored private var tasks: [HomeArtworkRequestKey: Task<Void, Never>] = [:]
+  @ObservationIgnored private var tasks: [MediaArtworkRequestKey: Task<Void, Never>] = [:]
   @ObservationIgnored private var visibleArtwork:
-    [HomeShelfIdentity: [MediaIdentity: ArtworkSizeBucket]] = [:]
-  @ObservationIgnored private var usefulRequests: Set<HomeArtworkRequestKey> = []
-  @ObservationIgnored private var completedRequests: Set<HomeArtworkRequestKey> = []
-  @ObservationIgnored private var presentedRequests: [MediaIdentity: HomeArtworkRequestKey] =
+    [MediaArtworkCollectionIdentity: [MediaIdentity: ArtworkSizeBucket]] = [:]
+  @ObservationIgnored private var usefulRequests: Set<MediaArtworkRequestKey> = []
+  @ObservationIgnored private var completedRequests: Set<MediaArtworkRequestKey> = []
+  @ObservationIgnored private var presentedRequests: [MediaIdentity: MediaArtworkRequestKey] =
     [:]
   @ObservationIgnored private var authorization: HomeAuthorizationIdentity?
-  @ObservationIgnored private var snapshot: HomeSnapshot?
+  @ObservationIgnored private var collections: [MediaArtworkCollection] = []
 
   init(loader: any HomeArtworkLoading) {
     self.loader = loader
@@ -51,11 +64,11 @@ final class HomeArtworkWindow {
     cancelWork(clearPresentations: false)
   }
 
-  func snapshotDidChange(_ newSnapshot: HomeSnapshot) {
-    snapshot = newSnapshot
+  func collectionsDidChange(_ newCollections: [MediaArtworkCollection]) {
+    collections = newCollections
     let mediaIdentities = Set(
-      newSnapshot.shelves.flatMap { shelf in
-        shelf.items.map(\.identity)
+      newCollections.flatMap { collection in
+        collection.items.map(\.identity)
       }
     )
     let removedMedia = presentationStates.keys.filter { !mediaIdentities.contains($0) }
@@ -77,27 +90,30 @@ final class HomeArtworkWindow {
 
   func artworkDidAppear(
     _ media: MediaIdentity,
-    in shelf: HomeShelfIdentity,
+    in collection: MediaArtworkCollectionIdentity,
     size: ArtworkSizeBucket
   ) {
-    visibleArtwork[shelf, default: [:]][media] = size
+    visibleArtwork[collection, default: [:]][media] = size
     reconcile()
   }
 
-  func artworkDidDisappear(_ media: MediaIdentity, in shelf: HomeShelfIdentity) {
-    visibleArtwork[shelf]?.removeValue(forKey: media)
-    if visibleArtwork[shelf]?.isEmpty == true {
-      visibleArtwork.removeValue(forKey: shelf)
+  func artworkDidDisappear(
+    _ media: MediaIdentity,
+    in collection: MediaArtworkCollectionIdentity
+  ) {
+    visibleArtwork[collection]?.removeValue(forKey: media)
+    if visibleArtwork[collection]?.isEmpty == true {
+      visibleArtwork.removeValue(forKey: collection)
     }
     reconcile()
   }
 
   private func reconcile() {
-    guard let snapshot, let currentAuthorization = authorization else {
+    guard let currentAuthorization = authorization else {
       cancelTasks()
       return
     }
-    let requests = requestedArtwork(in: snapshot)
+    let requests = requestedArtwork()
     let nextUsefulRequests = Set(requests.values.map(\.key))
     usefulRequests = nextUsefulRequests
     cancelTasks(outside: nextUsefulRequests)
@@ -106,19 +122,17 @@ final class HomeArtworkWindow {
     start(requests, authorization: currentAuthorization)
   }
 
-  private func requestedArtwork(
-    in snapshot: HomeSnapshot
-  ) -> [MediaIdentity: HomeArtworkWindowRequest] {
-    var requests: [MediaIdentity: HomeArtworkWindowRequest] = [:]
-    for (shelfIdentity, visibleItems) in visibleArtwork {
-      guard let shelf = snapshot.shelves.first(where: { $0.identity == shelfIdentity }) else {
+  private func requestedArtwork() -> [MediaIdentity: MediaArtworkWindowRequest] {
+    var requests: [MediaIdentity: MediaArtworkWindowRequest] = [:]
+    for (collectionIdentity, visibleItems) in visibleArtwork {
+      guard let collection = collections.first(where: { $0.identity == collectionIdentity }) else {
         continue
       }
       for (visibleMedia, size) in visibleItems {
         addUsefulArtwork(
           from: visibleMedia,
           size: size,
-          shelf: shelf,
+          collection: collection,
           to: &requests
         )
       }
@@ -129,21 +143,23 @@ final class HomeArtworkWindow {
   private func addUsefulArtwork(
     from visibleMedia: MediaIdentity,
     size: ArtworkSizeBucket,
-    shelf: HomeShelf,
-    to requests: inout [MediaIdentity: HomeArtworkWindowRequest]
+    collection: MediaArtworkCollection,
+    to requests: inout [MediaIdentity: MediaArtworkWindowRequest]
   ) {
-    guard let visibleIndex = shelf.items.firstIndex(where: { $0.identity == visibleMedia }) else {
+    guard
+      let visibleIndex = collection.items.firstIndex(where: { $0.identity == visibleMedia })
+    else {
       return
     }
     let endIndex = min(
-      shelf.items.endIndex,
+      collection.items.endIndex,
       visibleIndex + Self.usefulItemCount
     )
-    for item in shelf.items[visibleIndex..<endIndex] {
+    for item in collection.items[visibleIndex..<endIndex] {
       guard let reference = item.preferredPosterArtwork else {
         continue
       }
-      let key = HomeArtworkRequestKey(
+      let key = MediaArtworkRequestKey(
         media: item.identity,
         reference: reference.identity,
         size: size
@@ -151,11 +167,11 @@ final class HomeArtworkWindow {
       if let current = requests[item.identity], current.key.size.maxWidth >= size.maxWidth {
         continue
       }
-      requests[item.identity] = HomeArtworkWindowRequest(key: key, reference: reference)
+      requests[item.identity] = MediaArtworkWindowRequest(key: key, reference: reference)
     }
   }
 
-  private func cancelTasks(outside nextUsefulRequests: Set<HomeArtworkRequestKey>) {
+  private func cancelTasks(outside nextUsefulRequests: Set<MediaArtworkRequestKey>) {
     let obsoleteKeys = tasks.keys.filter { !nextUsefulRequests.contains($0) }
     for key in obsoleteKeys {
       tasks.removeValue(forKey: key)?.cancel()
@@ -163,7 +179,7 @@ final class HomeArtworkWindow {
   }
 
   private func prunePresentations(
-    outside nextUsefulRequests: Set<HomeArtworkRequestKey>
+    outside nextUsefulRequests: Set<MediaArtworkRequestKey>
   ) {
     let obsoleteMedia = presentedRequests.compactMap { media, request in
       nextUsefulRequests.contains(request) ? nil : media
@@ -175,7 +191,7 @@ final class HomeArtworkWindow {
   }
 
   private func start(
-    _ requests: [MediaIdentity: HomeArtworkWindowRequest],
+    _ requests: [MediaIdentity: MediaArtworkWindowRequest],
     authorization currentAuthorization: HomeAuthorizationIdentity
   ) {
     for (media, request) in requests {
@@ -195,7 +211,7 @@ final class HomeArtworkWindow {
   }
 
   private func start(
-    _ request: HomeArtworkWindowRequest,
+    _ request: MediaArtworkWindowRequest,
     authorization currentAuthorization: HomeAuthorizationIdentity
   ) {
     let currentLoader = loader
@@ -223,7 +239,7 @@ final class HomeArtworkWindow {
 
   private func finish(
     _ presentation: HomeArtworkPresentation?,
-    request: HomeArtworkRequestKey,
+    request: MediaArtworkRequestKey,
     authorization expectedAuthorization: HomeAuthorizationIdentity
   ) {
     tasks.removeValue(forKey: request)
@@ -262,13 +278,13 @@ final class HomeArtworkWindow {
   }
 }
 
-nonisolated private struct HomeArtworkRequestKey: Hashable {
+nonisolated private struct MediaArtworkRequestKey: Hashable {
   let media: MediaIdentity
   let reference: ArtworkIdentity
   let size: ArtworkSizeBucket
 }
 
-nonisolated private struct HomeArtworkWindowRequest {
-  let key: HomeArtworkRequestKey
+nonisolated private struct MediaArtworkWindowRequest {
+  let key: MediaArtworkRequestKey
   let reference: ArtworkReference
 }

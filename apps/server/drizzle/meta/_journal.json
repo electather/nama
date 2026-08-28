@@ -57,6 +57,13 @@
       "when": 1787849002989,
       "tag": "0007_parallel_pride",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787854290947,
+      "tag": "0008_clean_stepford_cuckoos",
+      "breakpoints": true
     }
   ]
 }

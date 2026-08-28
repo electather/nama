@@ -20,7 +20,7 @@ import { integrationUrl, withIsolatedDatabase } from "./postgres.test-support.ts
 const FIRST_ROW_INDEX = 0;
 const PROBE_BOUND_MILLISECONDS = 3000;
 const SINGLE_ROW_COUNT = 1;
-const PRODUCTION_MIGRATION_COUNT = "8";
+const PRODUCTION_MIGRATION_COUNT = "9";
 const PRODUCTION_TABLE_NAMES = [
   "account",
   "canonical_artwork",
@@ -55,6 +55,7 @@ const PRODUCTION_TABLE_NAMES = [
   "provider_part_mapping",
   "provider_source_mapping",
   "provider_track_mapping",
+  "provider_watch_state_replica",
   "session",
   "user",
   "verification",

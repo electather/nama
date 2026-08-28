@@ -4,7 +4,7 @@ import NamaAPI
 nonisolated extension NamaLibraryClient {
   static func mapMediaSummary(
     _ summary: Nama_Api_V1_MediaSummary,
-    expectedKind: MediaKind
+    expectedKind: MediaKind?
   ) throws -> MediaSummary {
     guard
       mediaStringIsBounded(summary.id),
@@ -14,7 +14,7 @@ nonisolated extension NamaLibraryClient {
       throw MediaResponseMappingError.invalid
     }
     let kind = try mapMediaKind(summary.kind)
-    guard kind == expectedKind else {
+    if let expectedKind, kind != expectedKind {
       throw MediaResponseMappingError.invalid
     }
     let episodePosition = try mapEpisodePosition(summary, kind: kind)

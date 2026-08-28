@@ -229,3 +229,84 @@ nonisolated struct MediaSummary: Equatable, Identifiable, Sendable {
     identity
   }
 }
+
+nonisolated enum MediaContinuationTransition: Equatable, Sendable {
+  case finished
+  case loadNext
+  case incompatible
+}
+
+nonisolated struct MediaContinuationTracker: Sendable {
+  private var isTracking = false
+  private var continuationTokens = Set<String>()
+  private var remainingContinuations = 0
+
+  var isActive: Bool {
+    isTracking
+  }
+
+  mutating func begin(
+    currentPageToken: String?,
+    continuationAllowance: Int
+  ) {
+    isTracking = true
+    continuationTokens.removeAll(keepingCapacity: true)
+    remainingContinuations = max(continuationAllowance, 0)
+    if let currentPageToken {
+      continuationTokens.insert(currentPageToken)
+    }
+  }
+
+  mutating func transition(
+    pageAddedIdentities: Bool,
+    nextPageToken: String?
+  ) -> MediaContinuationTransition {
+    guard isTracking else {
+      return .finished
+    }
+    if let nextPageToken, continuationTokens.contains(nextPageToken) {
+      reset()
+      return .incompatible
+    }
+    guard !pageAddedIdentities else {
+      reset()
+      return .finished
+    }
+    guard let nextPageToken else {
+      reset()
+      return .finished
+    }
+    guard
+      remainingContinuations > 0,
+      continuationTokens.insert(nextPageToken).inserted
+    else {
+      reset()
+      return .incompatible
+    }
+    remainingContinuations -= 1
+    return .loadNext
+  }
+
+  mutating func reset() {
+    isTracking = false
+    continuationTokens.removeAll(keepingCapacity: true)
+    remainingContinuations = 0
+  }
+}
+
+func appendingUniqueMediaSummaries(
+  _ confirmed: [MediaSummary],
+  _ candidates: [MediaSummary]
+) -> [MediaSummary] {
+  var identities = Set<MediaIdentity>()
+  identities.reserveCapacity(confirmed.count + candidates.count)
+  for item in confirmed {
+    identities.insert(item.identity)
+  }
+  var items = confirmed
+  items.reserveCapacity(confirmed.count + candidates.count)
+  for item in candidates where identities.insert(item.identity).inserted {
+    items.append(item)
+  }
+  return items
+}

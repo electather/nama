@@ -2,8 +2,20 @@ import Foundation
 
 nonisolated struct MediaDetailsSelection: Equatable, Hashable, Sendable {
   let identity: MediaIdentity
-  let kind: MediaKind
-  let title: String
+  let kind: MediaKind?
+  let title: String?
+
+  init(identity: MediaIdentity, kind: MediaKind, title: String) {
+    self.identity = identity
+    self.kind = kind
+    self.title = title
+  }
+
+  init(restoredIdentity: MediaIdentity) {
+    identity = restoredIdentity
+    kind = nil
+    title = nil
+  }
 }
 
 nonisolated struct MediaSourcesSelection: Equatable, Hashable, Sendable {
@@ -165,6 +177,14 @@ nonisolated struct MediaDetails: Equatable, Sendable {
 
   var initialCast: [MediaCredit] {
     Array(cast.prefix(Self.initialCastLimit))
+  }
+
+  var selection: MediaDetailsSelection {
+    MediaDetailsSelection(
+      identity: identity,
+      kind: kindDetails.mediaKind,
+      title: title
+    )
   }
 
   var preferredPosterArtwork: ArtworkReference? {

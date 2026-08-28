@@ -140,7 +140,7 @@ const completeTarget = (canonicalItemId: string, sourceId: string): CanonicalWat
 
 const loadedWatchState = (database: DatabaseService, canonicalItemId: string) =>
   Effect.gen(function* loadPersistedCanonicalWatchState() {
-    const state = yield* database.watchState.load({
+    const state = yield* database.watchState.loadCanonicalWatchState({
       canonicalItemId,
       principalId: ADMINISTRATOR_ID,
     });
@@ -160,7 +160,7 @@ const expectActivityOrigin = (
 const commitActivityOrigin = (database: DatabaseService, input: ActivityOriginCommitInput) =>
   Effect.gen(function* commitCanonicalWatchStateWithContractOrigin() {
     const state = committedState(
-      yield* database.watchState.compareAndCommit({
+      yield* database.watchState.compareAndCommitCanonicalWatchState({
         expectedVersion: input.expectedVersion,
         target: {
           ...completeTarget(input.canonicalItemId, input.sourceId),
@@ -223,14 +223,14 @@ const expectDatabaseCommitTime = (
 const commitRoundTripFixture = (database: DatabaseService) =>
   Effect.gen(function* commitDurableCanonicalWatchState() {
     const { movie, sourceId } = yield* observeMovieWithSource(database);
-    const absent = yield* database.watchState.load({
+    const absent = yield* database.watchState.loadCanonicalWatchState({
       canonicalItemId: movie.id,
       principalId: ADMINISTRATOR_ID,
     });
     expect(absent).toBeUndefined();
 
     const beforeCommit = new Date();
-    const result = yield* database.watchState.compareAndCommit({
+    const result = yield* database.watchState.compareAndCommitCanonicalWatchState({
       expectedVersion: undefined,
       target: completeTarget(movie.id, sourceId),
     });
@@ -246,7 +246,7 @@ const roundTripScenario = (databaseUrl: string) =>
     yield* initializeWatchStateDatabase(databaseUrl);
     const committed = yield* useDatabase(databaseUrl, productionMigrations, commitRoundTripFixture);
     const reconstructed = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
-      database.watchState.load({
+      database.watchState.loadCanonicalWatchState({
         canonicalItemId: committed.canonicalItemId,
         principalId: ADMINISTRATOR_ID,
       }),
@@ -333,7 +333,7 @@ const confirmEqualTarget = (
   Effect.gen(function* preserveEqualCanonicalWatchState() {
     yield* Effect.sleep("10 millis");
     const target = completeTarget(initial.canonicalItemId, sourceId);
-    const equal = yield* database.watchState.compareAndCommit({
+    const equal = yield* database.watchState.compareAndCommitCanonicalWatchState({
       expectedVersion: initial.version,
       target: {
         ...target,
@@ -356,7 +356,7 @@ const commitChangedTarget = (
 ) =>
   Effect.gen(function* changeCanonicalWatchState() {
     yield* Effect.sleep("10 millis");
-    const result = yield* database.watchState.compareAndCommit({
+    const result = yield* database.watchState.compareAndCommitCanonicalWatchState({
       expectedVersion: initial.version,
       target: {
         activity: {
@@ -402,7 +402,7 @@ const confirmStaleTarget = (
       throw new Error("changed canonical Watch state source is missing");
     }
     const target = completeTarget(initial.canonicalItemId, sourceId);
-    const stale = yield* database.watchState.compareAndCommit({
+    const stale = yield* database.watchState.compareAndCommitCanonicalWatchState({
       expectedVersion: initial.version,
       target: {
         ...target,
@@ -423,7 +423,7 @@ const compareFixture = (database: DatabaseService) =>
   Effect.gen(function* compareVersionedCanonicalWatchState() {
     const { movie, sourceId } = yield* observeMovieWithSource(database);
     const initial = committedState(
-      yield* database.watchState.compareAndCommit({
+      yield* database.watchState.compareAndCommitCanonicalWatchState({
         expectedVersion: undefined,
         target: completeTarget(movie.id, sourceId),
       }),
@@ -439,7 +439,7 @@ const compareScenario = (databaseUrl: string) =>
     yield* initializeWatchStateDatabase(databaseUrl);
     const changed = yield* useDatabase(databaseUrl, productionMigrations, compareFixture);
     const reconstructed = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
-      database.watchState.load({
+      database.watchState.loadCanonicalWatchState({
         canonicalItemId: changed.canonicalItemId,
         principalId: ADMINISTRATOR_ID,
       }),
@@ -480,19 +480,19 @@ const expectIndependentStates = (
 
 const loadIndependentStates = (database: DatabaseService, movieId: string, episodeId: string) =>
   Effect.all({
-    administratorEpisode: database.watchState.load({
+    administratorEpisode: database.watchState.loadCanonicalWatchState({
       canonicalItemId: episodeId,
       principalId: ADMINISTRATOR_ID,
     }),
-    administratorMovie: database.watchState.load({
+    administratorMovie: database.watchState.loadCanonicalWatchState({
       canonicalItemId: movieId,
       principalId: ADMINISTRATOR_ID,
     }),
-    secondPrincipalEpisode: database.watchState.load({
+    secondPrincipalEpisode: database.watchState.loadCanonicalWatchState({
       canonicalItemId: episodeId,
       principalId: SECOND_PRINCIPAL_ID,
     }),
-    secondPrincipalMovie: database.watchState.load({
+    secondPrincipalMovie: database.watchState.loadCanonicalWatchState({
       canonicalItemId: movieId,
       principalId: SECOND_PRINCIPAL_ID,
     }),
@@ -505,7 +505,7 @@ const independentOwnershipFixture = (databaseUrl: string, database: DatabaseServ
       insertFixtureUser(pool, SECOND_PRINCIPAL_ID, "second-principal@example.test"),
     );
     const commits = yield* Effect.all([
-      database.watchState.compareAndCommit({
+      database.watchState.compareAndCommitCanonicalWatchState({
         expectedVersion: undefined,
         target: {
           activity: LOCAL_STATE_ACTIVITY,
@@ -514,7 +514,7 @@ const independentOwnershipFixture = (databaseUrl: string, database: DatabaseServ
           watched: true,
         },
       }),
-      database.watchState.compareAndCommit({
+      database.watchState.compareAndCommitCanonicalWatchState({
         expectedVersion: undefined,
         target: {
           activity: PROVIDER_HEURISTIC_ACTIVITY,
@@ -523,7 +523,7 @@ const independentOwnershipFixture = (databaseUrl: string, database: DatabaseServ
           watched: false,
         },
       }),
-      database.watchState.compareAndCommit({
+      database.watchState.compareAndCommitCanonicalWatchState({
         expectedVersion: undefined,
         target: {
           activity: PROVIDER_PLAYBACK_ACTIVITY,
@@ -571,10 +571,16 @@ const rejectNonPlayableFixture = (database: DatabaseService) =>
     const season = yield* database.catalog.observeItem(seasonObservation(PROVIDER_INSTANCE_ID));
     const failures = yield* Effect.all([
       database.watchState
-        .compareAndCommit({ expectedVersion: undefined, target: nonPlayableTarget(show.id) })
+        .compareAndCommitCanonicalWatchState({
+          expectedVersion: undefined,
+          target: nonPlayableTarget(show.id),
+        })
         .pipe(Effect.flip),
       database.watchState
-        .compareAndCommit({ expectedVersion: undefined, target: nonPlayableTarget(season.id) })
+        .compareAndCommitCanonicalWatchState({
+          expectedVersion: undefined,
+          target: nonPlayableTarget(season.id),
+        })
         .pipe(Effect.flip),
     ]);
     expect(failures).toMatchObject([
@@ -582,11 +588,11 @@ const rejectNonPlayableFixture = (database: DatabaseService) =>
       { _tag: "WatchStatePersistenceError" },
     ]);
     const states = yield* Effect.all([
-      database.watchState.load({
+      database.watchState.loadCanonicalWatchState({
         canonicalItemId: show.id,
         principalId: ADMINISTRATOR_ID,
       }),
-      database.watchState.load({
+      database.watchState.loadCanonicalWatchState({
         canonicalItemId: season.id,
         principalId: ADMINISTRATOR_ID,
       }),
@@ -609,13 +615,13 @@ const rejectForeignSourceFixture = (database: DatabaseService) =>
     const { foreignSourceId, movie } = yield* observeMovieWithForeignSource(database);
 
     const result = yield* Effect.exit(
-      database.watchState.compareAndCommit({
+      database.watchState.compareAndCommitCanonicalWatchState({
         expectedVersion: undefined,
         target: completeTarget(movie.id, foreignSourceId),
       }),
     );
     expect(Exit.isFailure(result)).toBe(true);
-    const state = yield* database.watchState.load({
+    const state = yield* database.watchState.loadCanonicalWatchState({
       canonicalItemId: movie.id,
       principalId: ADMINISTRATOR_ID,
     });
@@ -636,12 +642,12 @@ const staleForeignSourceFixture = (database: DatabaseService) =>
   Effect.gen(function* returnCurrentStateBeforeValidatingStaleTargetSource() {
     const { foreignSourceId, movie, sourceId } = yield* observeMovieWithForeignSource(database);
     const initial = committedState(
-      yield* database.watchState.compareAndCommit({
+      yield* database.watchState.compareAndCommitCanonicalWatchState({
         expectedVersion: undefined,
         target: completeTarget(movie.id, sourceId),
       }),
     );
-    const stale = yield* database.watchState.compareAndCommit({
+    const stale = yield* database.watchState.compareAndCommitCanonicalWatchState({
       expectedVersion: undefined,
       target: completeTarget(movie.id, foreignSourceId),
     });
@@ -663,13 +669,13 @@ const clearResolvedLastSourceFixture = (database: DatabaseService) =>
   Effect.gen(function* clearCallerResolvedLastSource() {
     const { movie, sourceId } = yield* observeMovieWithSource(database);
     const initial = committedState(
-      yield* database.watchState.compareAndCommit({
+      yield* database.watchState.compareAndCommitCanonicalWatchState({
         expectedVersion: undefined,
         target: completeTarget(movie.id, sourceId),
       }),
     );
     const cleared = committedState(
-      yield* database.watchState.compareAndCommit({
+      yield* database.watchState.compareAndCommitCanonicalWatchState({
         expectedVersion: initial.version,
         target: {
           ...completeTarget(movie.id, sourceId),
@@ -702,13 +708,13 @@ const retainLastSourceFixture = (database: DatabaseService) =>
   Effect.gen(function* retainLastSourceAcrossActivityAndCatalogRemoval() {
     const { movie, sourceId } = yield* observeMovieWithSource(database);
     const initial = committedState(
-      yield* database.watchState.compareAndCommit({
+      yield* database.watchState.compareAndCommitCanonicalWatchState({
         expectedVersion: undefined,
         target: completeTarget(movie.id, sourceId),
       }),
     );
     const changed = committedState(
-      yield* database.watchState.compareAndCommit({
+      yield* database.watchState.compareAndCommitCanonicalWatchState({
         expectedVersion: initial.version,
         target: {
           activity: {

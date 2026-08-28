@@ -101,9 +101,12 @@ requires clearing it; persistence does not interpret an omitted identity.
 Persistence validates any supplied Source against the same canonical item's
 retained provider-source mapping. Removing the Source from the active catalog
 projection keeps that mapping and an already stored identity available, and
-restoring the same mapping reuses the Nama Source ID. Provider-replica
-persistence, reconciliation, export, and public `UserStateService` behavior
-remain separate work.
+restoring the same mapping reuses the Nama Source ID.
+
+Exact Provider replica persistence atomically compares the independent replica
+and canonical versions before replacing evidence and optionally committing that
+target. Reconciliation, export, and public `UserStateService` behavior remain
+separate work.
 
 ## Canonical catalog persistence
 

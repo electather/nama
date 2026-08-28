@@ -30,7 +30,7 @@ The target installation is one private deployment with one administrator, Jellyf
 
 The MVP authorization path is complete without a browser: an already authenticated Go CLI sends the Apple app's displayed user code through role-neutral `AuthService.ApproveDeviceAuthorization`, and the core binds the grant to that session principal before invoking Better Auth's internal verification and approval APIs. The request selects no target user and grants no Administrator authority. Issue #167 may add a narrow browser approval web app over the same internal application service; it does not become a prerequisite for Apple authorization or a general web console.
 
-The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, initial canonical catalog ingestion, stored public Library reads, and sparse versioned canonical Watch state persistence. Playback and public user-state behavior remain unimplemented.
+The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, initial canonical catalog ingestion, stored public Library reads, and versioned persistence for sparse canonical Watch state and exact Provider replicas. Playback and public user-state behavior remain unimplemented.
 
 The same listener now exposes the fixed Apple public client's allowlisted Better Auth metadata, JWKS, device-code, token, refresh, and revocation routes. Generated `AuthService` handlers approve the current session principal's grant and revoke the fixed client's refresh-token families; Connect consumer authority verifies audience-bound, fixed-client, method-scoped JWTs locally without treating them as Administrator sessions.
 
@@ -70,10 +70,10 @@ through real Connect over a supervised production Jellyfin scan.
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.
 
 The universal SwiftUI application consumes the generated public client for
-connection verification, provider-neutral Home, and stored canonical Movie,
-Show, Season, and Episode Details on iOS, iPadOS, tvOS, and macOS. Its
-connection surface keeps manual HTTP(S) endpoint entry available beside
-explicit `_nama._tcp` LAN discovery.
+connection verification, provider-neutral Home, exhaustive paginated Movie and
+Show Library browsing, and stored canonical Movie, Show, Season, and Episode
+Details on iOS, iPadOS, tvOS, and macOS. Its connection surface keeps manual
+HTTP(S) endpoint entry available beside explicit `_nama._tcp` LAN discovery.
 `NamaEndpoint` admits HTTPS or lexically approved local HTTP without
 DNS resolution, so manual entry, discovery, retry, and restoration reject every
 other HTTP destination before verification. Before the first request to a
@@ -101,34 +101,38 @@ legacy forbidden HTTP value remains visible in a blocked HTTPS-required state
 until explicit Change Endpoint. The app implements native Better Auth device
 authorization, returned-interval polling, refresh rotation, a this-device-only
 endpoint-bound Keychain token record, Home over stored canonical
-`LibraryService.GetHome` results, canonical Details hierarchy reads over
-`GetMedia` and bounded `ListChildren` pages, and on-demand canonical Source
-inspection over `GetMediaSource`. Home and Details reuse the safe artwork
-loader without exposing locators to views. Details emits only typed opaque
-canonical Play intents for playable Movies and Episodes: the primary action
-leaves the default source implicit, while a deliberate Source choice carries
-its opaque canonical source ID. Details does not invoke playback execution.
-The universal target contains exact-pinned
+`LibraryService.GetHome` results, paginated Movie and Show Library reads over
+`ListLibrary`, canonical Details hierarchy reads over `GetMedia` and bounded
+`ListChildren` pages, and on-demand canonical Source inspection over
+`GetMediaSource`. Home, Library, and Details reuse the safe artwork loader
+without exposing locators to views. Details emits only typed opaque canonical
+Play intents for playable Movies and Episodes: the primary action leaves the
+default source implicit, while a deliberate Source choice carries its opaque
+canonical source ID. Details does not invoke playback execution. The universal
+target contains exact-pinned
 AetherEngine `6.21.0` behind the complete Nama-owned player boundary. A
 per-load loopback
 broker enforces exact normalized allowed origins for initial, redirect, nested
 HLS, key, segment, and external-subtitle requests without exposing remote
 locators to the engine. Mac-hosted automation proves controlled rendering and
 controls plus rejection, replacement, expiry signaling, and surface shutdown.
-The connection, authorization, player, Home, and media Details baseline's
-Apple-platform builds pass, and a signed Apple TV 4K simulator has completed
-the no-browser authorization, scoped consumer verification, Keychain commit,
-and relaunch restoration flow. Existing Home and Movie Details fixtures retain
-their recorded platform evidence. Show, Season, and Episode fixtures have run
-on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K simulators and an Apple
-Development-signed sandboxed Mac build. The hierarchy inspection confirmed
-adaptive bounds, kind-valid metadata, title-bearing artwork fallbacks,
-canonical parents, Season and Episode rows, long titles, and Episode Play.
-Apple TV Load More focus interaction, focus return after nested Details, the
-Sources destination on every Apple surface and input mode, the live
-stored-catalog hierarchy, successful artwork resolution, product consumer media
-coordination, physical Apple hardware, expiry-driven actual-surface refresh,
-and the remaining Apple surfaces remain unverified.
+The connection, authorization, player, Home, Library, media Details, and Sources
+baseline's Apple-platform builds pass, and a signed Apple TV 4K simulator has
+completed the no-browser authorization, scoped consumer verification, Keychain
+commit, and relaunch restoration flow. Library fixtures rendered the iPhone and
+Apple TV tabs, iPad split navigation, adaptive long-title grids, terminal
+content, and a visible Apple TV Load More action. Existing Show, Season, and
+Episode fixture evidence confirms adaptive bounds, kind-valid metadata,
+title-bearing artwork fallbacks, canonical parents and children, long titles,
+and Episode Play across the recorded Apple surfaces. Source inspection has
+self-contained choosing, technical, unavailable, distinct-unlabeled-choice, and
+stale-response previews. An Apple Development-signed sandboxed Mac build created
+an onscreen Library window, while pixel capture and Library keyboard or pointer
+inspection were unavailable. Apple TV Load More focus interaction, compact iPad
+collapse, focus return after nested Details, live OAuth-authorized catalog
+browsing, successful artwork resolution, product consumer media coordination,
+VoiceOver inspection, physical Apple hardware, expiry-driven actual-surface
+refresh, and the remaining Apple surfaces remain unverified.
 
 ## Architectural decision records
 

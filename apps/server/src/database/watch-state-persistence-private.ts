@@ -1,11 +1,13 @@
 import { sql } from "drizzle-orm";
 
+import type { canonicalWatchState, providerWatchStateReplica } from "./watch-state-model.ts";
 import type {
   CanonicalWatchState,
+  ProviderReplica,
+  ProviderWatchActivity,
   WatchActivityOrigin,
   WatchDuration,
-  canonicalWatchState,
-} from "./watch-state-model.ts";
+} from "./watch-state-types-private.ts";
 
 const SQL_NULL = sql`null`;
 
@@ -66,6 +68,58 @@ const storedDuration = (
   return { nanoseconds, seconds };
 };
 
+const storedProviderActivity = (
+  row: typeof providerWatchStateReplica.$inferSelect,
+): ProviderWatchActivity | undefined => {
+  const { providerActivityOccurredAt, providerActivityReliability, providerActivitySemantics } =
+    row;
+  if (providerActivityOccurredAt === null) {
+    if (providerActivityReliability !== null || providerActivitySemantics !== null) {
+      throw new Error("stored Provider replica Activity is incomplete");
+    }
+    return undefined;
+  }
+  if (providerActivityReliability === null || providerActivitySemantics === null) {
+    throw new Error("stored Provider replica Activity is incomplete");
+  }
+  return {
+    occurredAt: providerActivityOccurredAt,
+    reliability: providerActivityReliability,
+    semantics: providerActivitySemantics,
+  };
+};
+
+const providerActivityColumns = (activity: ProviderWatchActivity | undefined) => {
+  if (activity === undefined) {
+    return {
+      providerActivityOccurredAt: SQL_NULL,
+      providerActivityReliability: SQL_NULL,
+      providerActivitySemantics: SQL_NULL,
+    };
+  }
+  return {
+    providerActivityOccurredAt: activity.occurredAt,
+    providerActivityReliability: activity.reliability,
+    providerActivitySemantics: activity.semantics,
+  };
+};
+
+const storedProviderReplica = (
+  row: typeof providerWatchStateReplica.$inferSelect,
+): ProviderReplica => ({
+  canonicalItemId: row.canonicalItemId,
+  duration: storedDuration(row.durationSeconds, row.durationNanoseconds),
+  observedAt: row.observedAt,
+  position: storedDuration(row.positionSeconds, row.positionNanoseconds),
+  principalId: row.principalId,
+  providerActivity: storedProviderActivity(row),
+  providerInstanceId: row.providerInstanceId,
+  providerItemReference: row.providerItemReference,
+  providerRevision: row.providerRevision ?? undefined,
+  version: row.version,
+  watched: row.watched,
+});
+
 const storedWatchState = (row: typeof canonicalWatchState.$inferSelect): CanonicalWatchState => ({
   activity: {
     occurredAt: row.activityOccurredAt,
@@ -83,4 +137,4 @@ const storedWatchState = (row: typeof canonicalWatchState.$inferSelect): Canonic
   watched: row.watched,
 });
 
-export { activityOriginColumns, storedWatchState };
+export { activityOriginColumns, providerActivityColumns, storedProviderReplica, storedWatchState };

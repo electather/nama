@@ -1,19 +1,28 @@
 import Observation
 
+private func homeArtworkCollections(_ snapshot: HomeSnapshot) -> [MediaArtworkCollection] {
+  snapshot.shelves.map { shelf in
+    MediaArtworkCollection(
+      identity: MediaArtworkCollectionIdentity(shelf.identity.rawValue),
+      items: shelf.items
+    )
+  }
+}
+
 @MainActor
 @Observable
 final class HomeFeature {
   private(set) var state: HomeState = .loading
 
   @ObservationIgnored private let loader: any HomeLoading
-  @ObservationIgnored private let artworkWindow: HomeArtworkWindow
+  @ObservationIgnored private let artworkWindow: MediaArtworkWindow
   @ObservationIgnored private var activeTask: Task<Void, Never>?
   @ObservationIgnored private var authorization: HomeAuthorizationIdentity?
   @ObservationIgnored private var attempt: UInt64 = .zero
 
   init(loader: any HomeLoading, artworkLoader: any HomeArtworkLoading) {
     self.loader = loader
-    artworkWindow = HomeArtworkWindow(loader: artworkLoader)
+    artworkWindow = MediaArtworkWindow(loader: artworkLoader)
   }
 
   deinit {
@@ -61,11 +70,18 @@ final class HomeFeature {
     in shelf: HomeShelfIdentity,
     size: ArtworkSizeBucket
   ) {
-    artworkWindow.artworkDidAppear(media, in: shelf, size: size)
+    artworkWindow.artworkDidAppear(
+      media,
+      in: MediaArtworkCollectionIdentity(shelf.rawValue),
+      size: size
+    )
   }
 
   func artworkDidDisappear(_ media: MediaIdentity, in shelf: HomeShelfIdentity) {
-    artworkWindow.artworkDidDisappear(media, in: shelf)
+    artworkWindow.artworkDidDisappear(
+      media,
+      in: MediaArtworkCollectionIdentity(shelf.rawValue)
+    )
   }
 
   private var confirmedSnapshot: HomeSnapshot? {
@@ -129,7 +145,7 @@ final class HomeFeature {
     switch result {
     case .success(let snapshot):
       state = snapshot.isEmpty ? .empty : .content(snapshot)
-      artworkWindow.snapshotDidChange(snapshot)
+      artworkWindow.collectionsDidChange(homeArtworkCollections(snapshot))
 
     case .failure(is CancellationError):
       return

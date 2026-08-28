@@ -49,18 +49,27 @@ struct HomeArtworkPresentationAccess {
 struct HomeShelfView: View {
   let shelf: HomeShelf
   let artwork: HomeArtworkPresentationAccess
+  let selectMedia: @MainActor (MediaDetailsSelection) -> Void
+  let seeAll: @MainActor (HomeShelfKind) -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: HomeArtworkLayout.shelfSpacing) {
-      Text(verbatim: shelf.title)
-        .font(.title2.bold())
+      HStack {
+        Text(verbatim: shelf.title)
+          .font(.title2.bold())
+        Spacer()
+        Button("See All", systemImage: "chevron.right") {
+          seeAll(shelf.kind)
+        }
+      }
       ScrollView(.horizontal) {
         LazyHStack(alignment: .top, spacing: HomeArtworkLayout.itemSpacing) {
           ForEach(shelf.items) { item in
             HomeMediaCard(
               item: item,
               shelf: shelf.identity,
-              artwork: artwork
+              artwork: artwork,
+              selectMedia: selectMedia,
             )
           }
         }
@@ -77,9 +86,12 @@ private struct HomeMediaCard: View {
   let item: MediaSummary
   let shelf: HomeShelfIdentity
   let artwork: HomeArtworkPresentationAccess
+  let selectMedia: @MainActor (MediaDetailsSelection) -> Void
 
   var body: some View {
-    NavigationLink(value: homeDetailsSelection(for: item)) {
+    Button {
+      selectMedia(homeDetailsSelection(for: item))
+    } label: {
       cardContent
     }
     .buttonStyle(.plain)
