@@ -53,6 +53,7 @@ private struct ConnectionWindow: View {
   @State private var authorization: OAuthAuthorizationFeature
   @State private var home: HomeFeature
   @State private var library: LibraryFeature
+  @State private var search: LibrarySearchFeature
   @State private var pendingPlayIntent: MediaPlayIntent?
   private let detailsLoader: NamaLibraryClient
   private let artworkLoader: any HomeArtworkLoading
@@ -87,6 +88,9 @@ private struct ConnectionWindow: View {
     _library = State(
       initialValue: LibraryFeature(loader: libraryClient, artworkLoader: artworkLoader)
     )
+    _search = State(
+      initialValue: LibrarySearchFeature(loader: libraryClient, artworkLoader: artworkLoader)
+    )
     detailsLoader = libraryClient
     self.artworkLoader = artworkLoader
   }
@@ -98,6 +102,7 @@ private struct ConnectionWindow: View {
           authorization: authorization,
           home: home,
           library: library,
+          search: search,
           detailsLoader: detailsLoader,
           artworkLoader: artworkLoader,
           emitPlayIntent: capturePlayIntent,
@@ -105,6 +110,7 @@ private struct ConnectionWindow: View {
         ) {
           home.deactivate()
           library.deactivate()
+          search.deactivate()
           await connection.changeEndpoint()
         }
       } else {

@@ -20,6 +20,7 @@ struct LibrarySearchResultsView: View {
         if let refreshFailure {
           LibrarySearchInlineFailureView(
             failure: refreshFailure,
+            actionTitle: "Try Again",
             action: refresh,
             reauthorize: reauthorize
           )
@@ -46,6 +47,46 @@ struct LibrarySearchResultsView: View {
       }
       .padding(LibraryLayout.contentPadding)
     }
+  }
+}
+
+struct LibrarySearchLoadingView: View {
+  var body: some View {
+    ScrollView {
+      LazyVStack(alignment: .leading, spacing: LibraryLayout.sectionSpacing) {
+        ForEach(0..<LibraryLayout.loadingItemCount, id: \.self) { _ in
+          LibrarySearchLoadingRow()
+        }
+      }
+      .padding(LibraryLayout.contentPadding)
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("Searching Library")
+  }
+}
+
+private struct LibrarySearchLoadingRow: View {
+  @ScaledMetric(relativeTo: .body) private var artworkWidth = LibrarySearchLayout.artworkWidth
+
+  var body: some View {
+    HStack(alignment: .top, spacing: LibraryLayout.cardSpacing) {
+      RoundedRectangle(cornerRadius: LibrarySearchLayout.cornerRadius)
+        .fill(.quaternary)
+        .frame(
+          width: artworkWidth,
+          height: artworkWidth / LibrarySearchLayout.posterAspectRatio
+        )
+      VStack(alignment: .leading, spacing: LibraryLayout.metadataSpacing) {
+        Text("Loading title")
+          .font(.headline)
+        Text("Movie · 2025")
+          .font(.subheadline)
+        Label("Playable", systemImage: "play.circle.fill")
+          .font(.subheadline)
+      }
+      Spacer(minLength: 0)
+    }
+    .redacted(reason: .placeholder)
   }
 }
 
@@ -184,6 +225,7 @@ private struct LibrarySearchPageStatus: View {
       } else if let failure {
         LibrarySearchInlineFailureView(
           failure: failure,
+          actionTitle: "Retry Page",
           action: retry,
           reauthorize: reauthorize
         )
@@ -198,7 +240,7 @@ private struct LibrarySearchPageStatus: View {
     if failure == .authorizationUnavailable {
       return "Authorize Again"
     }
-    return failure == nil ? "Load More" : "Try Again"
+    return failure == nil ? "Load More" : "Retry Page"
   }
 
   private func performPageAction() {
@@ -219,6 +261,7 @@ private struct LibrarySearchPageStatus: View {
 
 private struct LibrarySearchInlineFailureView: View {
   let failure: LibraryLoadingFailure
+  let actionTitle: LocalizedStringKey
   let action: @MainActor () -> Void
   let reauthorize: @MainActor () async -> Void
 
@@ -232,7 +275,7 @@ private struct LibrarySearchInlineFailureView: View {
           }
         }
       } else {
-        Button("Try Again", action: action)
+        Button(actionTitle, action: action)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)

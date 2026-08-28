@@ -232,6 +232,7 @@
         ),
         home: HomeFeature(loader: loader, artworkLoader: artworkLoader),
         library: LibraryFeature(loader: loader, artworkLoader: artworkLoader),
+        search: LibrarySearchFeature(loader: loader, artworkLoader: artworkLoader),
         authorization: authorization,
         detailsLoader: detailsLoader,
         artworkLoader: artworkLoader,

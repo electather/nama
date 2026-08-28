@@ -20,6 +20,7 @@ struct AuthorizedConsumerRootView: View {
   let authorization: OAuthAuthorizationFeature
   let home: HomeFeature
   let library: LibraryFeature
+  let search: LibrarySearchFeature
   let detailsLoader: any MediaChildrenLoading & MediaDetailsLoading & MediaSourceLoading
   let artworkLoader: any HomeArtworkLoading
   let emitPlayIntent: @MainActor (MediaPlayIntent) -> Void
@@ -33,6 +34,7 @@ struct AuthorizedConsumerRootView: View {
           navigation: navigation,
           home: home,
           library: library,
+          search: search,
           authorization: homeAuthorization,
           detailsLoader: detailsLoader,
           artworkLoader: artworkLoader,
@@ -60,16 +62,18 @@ struct AuthorizedConsumerRootView: View {
     .onChange(of: scenePhase) { _, phase in
       guard phase == .active else {
         library.deactivate()
+        search.deactivate()
         return
       }
-      activateLibraryIfVisible()
+      activateLibraryFeaturesIfVisible()
     }
     .onChange(of: homeAuthorization) { oldAuthorization, newAuthorization in
       guard oldAuthorization != newAuthorization else {
         return
       }
       library.deactivate()
-      activateLibraryIfVisible(identity: newAuthorization)
+      search.deactivate()
+      activateLibraryFeaturesIfVisible(identity: newAuthorization)
     }
     .task(
       id: OAuthAuthorizationTaskID(
@@ -107,7 +111,7 @@ struct AuthorizedConsumerRootView: View {
     storedSelectedMediaID = restoration.selectedMediaID ?? ""
   }
 
-  private func activateLibraryIfVisible(
+  private func activateLibraryFeaturesIfVisible(
     identity: HomeAuthorizationIdentity? = nil
   ) {
     guard
@@ -119,6 +123,7 @@ struct AuthorizedConsumerRootView: View {
     }
     library.updateQuery(navigation.libraryQuery)
     library.activate(activeAuthorization)
+    search.activate(activeAuthorization)
   }
 
   private func discardRejectedAuthorization(
@@ -155,6 +160,7 @@ struct AuthorizedTopLevelView: View {
   let navigation: ConsumerSceneNavigation
   let home: HomeFeature
   let library: LibraryFeature
+  let search: LibrarySearchFeature
   let authorization: HomeAuthorizationIdentity
   let detailsLoader: any MediaChildrenLoading & MediaDetailsLoading & MediaSourceLoading
   let artworkLoader: any HomeArtworkLoading
@@ -238,6 +244,7 @@ struct AuthorizedTopLevelView: View {
     case .library:
       LibraryView(
         feature: library,
+        search: search,
         authorization: authorization,
         query: navigation.libraryQuery,
         updateKind: navigation.updateLibraryKind,

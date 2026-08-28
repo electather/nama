@@ -10,7 +10,6 @@ final class LibraryFeature {
 
   @ObservationIgnored let loader: any LibraryPageLoading
   @ObservationIgnored let artworkWindow: MediaArtworkWindow
-  let search: LibrarySearchFeature
   @ObservationIgnored var activeTask: Task<Void, Never>?
   @ObservationIgnored var authorization: HomeAuthorizationIdentity?
   @ObservationIgnored var attempt: UInt64 = .zero
@@ -19,19 +18,11 @@ final class LibraryFeature {
   @ObservationIgnored var recoveryVisibleSnapshot: LibrarySnapshot?
 
   init(
-    loader: any LibraryPageLoading & LibrarySearchPageLoading,
-    artworkLoader: any HomeArtworkLoading,
-    searchSleep: @escaping @Sendable (Duration) async throws -> Void = { duration in
-      try await Task.sleep(for: duration)
-    }
+    loader: any LibraryPageLoading,
+    artworkLoader: any HomeArtworkLoading
   ) {
     self.loader = loader
     artworkWindow = MediaArtworkWindow(loader: artworkLoader)
-    search = LibrarySearchFeature(
-      loader: loader,
-      artworkLoader: artworkLoader,
-      sleep: searchSleep
-    )
   }
 
   deinit {
@@ -44,7 +35,6 @@ final class LibraryFeature {
     }
     authorization = newAuthorization
     artworkWindow.authorizationDidChange(to: newAuthorization)
-    search.activate(newAuthorization)
     startFirstPage(preserving: nil)
   }
 
@@ -119,7 +109,6 @@ final class LibraryFeature {
     cancelActiveLoad()
     resetPageRecovery()
     artworkWindow.deactivate()
-    search.deactivate()
     state = .loading
   }
 }

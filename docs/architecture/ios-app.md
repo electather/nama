@@ -363,13 +363,13 @@ results, exhaustive paginated Movie and Show Library browsing over
 `ListLibrary`, all-kind stored canonical Search over `Search`, safe artwork
 resolution and fallback, stored canonical Movie, Show, Season, and Episode
 Details over `GetMedia` and `ListChildren`, and deliberate canonical Source
-inspection over `GetMediaSource`. Search is Library-owned, debounces trimmed
-queries, rejects obsolete work, preserves server ranking, recovers bounded
-opaque continuations, and opens the existing typed Details destination without
-parent enrichment. Details owns hierarchy and Sources presentation and emits
-only typed opaque canonical Play intents; it does not invoke playback planning,
-opening, or engine code. Watch State and playback product behavior remain
-unimplemented.
+inspection over `GetMediaSource`. Search is scene-owned, appears only under
+Library, debounces trimmed queries, rejects obsolete work, preserves server
+ranking, recovers bounded opaque continuations, and opens the existing typed
+Details destination without parent enrichment. Details owns hierarchy and
+Sources presentation and emits only typed opaque canonical Play intents; it
+does not invoke playback planning, opening, or engine code. Watch State and
+playback product behavior remain unimplemented.
 
 ## Target runtime topology
 

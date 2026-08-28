@@ -25,6 +25,9 @@ struct LibrarySearchFeatureTests {
       sleeper: sleeper,
       loader: loader
     )
+    #expect(
+      await sleeper.requestedDurations == [LibraryFeatureFixture.searchDebounceDuration]
+    )
     let call = try #require(await loader.calls.first)
     #expect(call.query == "north star")
     #expect(call.pageToken == nil)
@@ -73,6 +76,7 @@ struct LibrarySearchFeatureTests {
       loader: loader,
       expectedCallCount: 2
     )
+    await eventually { await loader.cancellationCount == 1 }
     await loader.resolve(
       call: 0,
       with: .success(
@@ -108,6 +112,7 @@ struct LibrarySearchFeatureTests {
 
     feature.text = "   "
     #expect(feature.state == .idle)
+    await eventually { await loader.cancellationCount == 1 }
     await loader.resolve(
       call: 0,
       with: .success(
@@ -342,6 +347,8 @@ private func startDebouncedSearch(
   await eventually {
     await sleeper.requestedDurations.count == expectedCallCount
   }
+  #expect(await sleeper.requestedDurations.last == LibraryFeatureFixture.searchDebounceDuration)
+  #expect(await loader.calls.count == expectedCallCount - 1)
   #expect(feature.state == .loading)
   await sleeper.releaseNext()
   await eventually { await loader.calls.count == expectedCallCount }
@@ -356,6 +363,8 @@ private func releaseDebounce(
   await eventually {
     await sleeper.requestedDurations.count == expectedCallCount
   }
+  #expect(await sleeper.requestedDurations.last == LibraryFeatureFixture.searchDebounceDuration)
+  #expect(await loader.calls.count == expectedCallCount - 1)
   await sleeper.releaseNext()
   await eventually { await loader.calls.count == expectedCallCount }
 }

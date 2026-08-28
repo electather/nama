@@ -87,6 +87,48 @@ struct LibrarySearchRefreshFeatureTests {
   }
 }
 
+@Suite("Library Search debounce lifecycle")
+@MainActor
+struct LibrarySearchDebounceFeatureTests {
+  @Test("replacement during debounce cancels the old delay and sends only the latest query")
+  func queryReplacementDuringDebounce() async throws {
+    let loader = ManualLibrarySearchPageLoader()
+    let sleeper = ManualLibrarySearchSleeper()
+    let feature = LibrarySearchFeature(
+      loader: loader,
+      artworkLoader: IgnoringLibraryArtworkLoader(),
+      sleep: sleeper.sleep
+    )
+    feature.activate(try libraryAuthorization(generation: 28))
+
+    feature.text = " first "
+    await eventually { await sleeper.requestedDurations.count == 1 }
+    #expect(await loader.calls.isEmpty)
+
+    feature.text = "\n second \t"
+    await eventually { await sleeper.requestedDurations.count == 2 }
+    await eventually { await sleeper.cancellationCount == 1 }
+    #expect(
+      await sleeper.requestedDurations == [
+        LibraryFeatureFixture.searchDebounceDuration,
+        LibraryFeatureFixture.searchDebounceDuration,
+      ]
+    )
+    #expect(await loader.calls.isEmpty)
+
+    await sleeper.releaseLatest()
+    await eventually { await loader.calls.count == 1 }
+    #expect(await loader.calls.first?.query == "second")
+    await loader.resolve(
+      call: 0,
+      with: .success(LibrarySearchPage(items: [], nextPageToken: nil))
+    )
+    await eventually {
+      feature.state == .noResults(query: "second")
+    }
+  }
+}
+
 private func immediateSearchDelay(for _: Duration) async {
   await Task.yield()
 }

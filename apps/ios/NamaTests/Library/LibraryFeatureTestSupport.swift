@@ -2,8 +2,10 @@ import Foundation
 
 @testable import Nama
 
-private enum LibraryFeatureFixture {
+enum LibraryFeatureFixture {
   static let tokenExpiry: TimeInterval = 4_600
+  private static let searchDebounceMilliseconds = 300
+  static let searchDebounceDuration = Duration.milliseconds(searchDebounceMilliseconds)
 }
 
 struct LibraryPageCall: Equatable, Sendable {
@@ -127,6 +129,7 @@ struct LibrarySearchCall: Equatable, Sendable {
 
 actor ManualLibrarySearchPageLoader: LibrarySearchPageLoading {
   private(set) var calls: [LibrarySearchCall] = []
+  private(set) var cancellationCount = 0
   private var continuations: [CheckedContinuation<LibrarySearchPage, any Error>] = []
 
   func loadSearchPage(
@@ -141,8 +144,14 @@ actor ManualLibrarySearchPageLoader: LibrarySearchPageLoading {
         authorization: authorization
       )
     )
-    return try await withCheckedThrowingContinuation { continuation in
-      continuations.append(continuation)
+    return try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation { continuation in
+        continuations.append(continuation)
+      }
+    } onCancel: {
+      Task {
+        await self.recordCancellation()
+      }
     }
   }
 
@@ -152,20 +161,30 @@ actor ManualLibrarySearchPageLoader: LibrarySearchPageLoading {
   ) {
     continuations[index].resume(with: result.mapError { $0 as any Error })
   }
+  private func recordCancellation() {
+    cancellationCount += 1
+  }
 }
 
 actor ManualLibrarySearchSleeper {
   private(set) var requestedDurations: [Duration] = []
+  private(set) var cancellationCount = 0
   private var continuations: [AsyncStream<Void>.Continuation] = []
 
   func sleep(for duration: Duration) async throws {
     requestedDurations.append(duration)
     let (stream, continuation) = AsyncStream<Void>.makeStream()
     continuations.append(continuation)
-    for await _ in stream {
-      return
+    try await withTaskCancellationHandler {
+      for await _ in stream {
+        return
+      }
+      try Task.checkCancellation()
+    } onCancel: {
+      Task {
+        await self.recordCancellation()
+      }
     }
-    try Task.checkCancellation()
   }
 
   func releaseNext() {
@@ -175,6 +194,19 @@ actor ManualLibrarySearchSleeper {
     continuations.removeFirst()
     continuation.yield()
     continuation.finish()
+  }
+
+  func releaseLatest() {
+    guard let continuation = continuations.last else {
+      return
+    }
+    continuations.removeLast()
+    continuation.yield()
+    continuation.finish()
+  }
+
+  private func recordCancellation() {
+    cancellationCount += 1
   }
 }
 

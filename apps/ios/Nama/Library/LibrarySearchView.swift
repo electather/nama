@@ -4,6 +4,7 @@ struct LibrarySearchableContent: View {
   @Environment(\.isSearching) private var isSearching
 
   let feature: LibraryFeature
+  let search: LibrarySearchFeature
   let query: LibraryQuery
   let updateKind: @MainActor (LibraryKind) -> Void
   let updateSort: @MainActor (LibrarySort) -> Void
@@ -12,7 +13,6 @@ struct LibrarySearchableContent: View {
   let reauthorize: @MainActor () async -> Void
 
   var body: some View {
-    let search = feature.search
     LibraryPresentationView(
       state: feature.state,
       query: query,
@@ -76,8 +76,7 @@ struct LibrarySearchPresentationView: View {
       }
 
     case .loading:
-      ProgressView("Searching…")
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      LibrarySearchLoadingView()
 
     case .noResults(let query):
       let presentation = librarySearchNoResultsPresentation(query: query)

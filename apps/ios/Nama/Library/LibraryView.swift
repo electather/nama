@@ -46,6 +46,7 @@ struct LibraryArtworkPresentationAccess {
 
 struct LibraryView: View {
   let feature: LibraryFeature
+  let search: LibrarySearchFeature
   let authorization: HomeAuthorizationIdentity
   let query: LibraryQuery
   let updateKind: @MainActor (LibraryKind) -> Void
@@ -55,9 +56,10 @@ struct LibraryView: View {
   let reauthorize: @MainActor () async -> Void
 
   var body: some View {
-    @Bindable var search = feature.search
+    @Bindable var searchBinding = search
     LibrarySearchableContent(
       feature: feature,
+      search: search,
       query: query,
       updateKind: updateKind,
       updateSort: updateSort,
@@ -65,10 +67,11 @@ struct LibraryView: View {
       changeEndpoint: changeEndpoint,
       reauthorize: reauthorize
     )
-    .searchable(text: $search.text, prompt: "Search your library")
+    .searchable(text: $searchBinding.text, prompt: "Search your library")
     .onAppear {
       feature.updateQuery(query)
       feature.activate(authorization)
+      search.activate(authorization)
     }
     .onChange(of: query) { _, newQuery in
       feature.updateQuery(newQuery)
