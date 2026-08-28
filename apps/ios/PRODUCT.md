@@ -33,7 +33,10 @@ canonical parent context, and conditionally opens a provider-neutral Sources
 destination. Primary Play leaves the available canonical default implicit; a
 deliberate Source choice loads technical details on demand and emits an
 app-owned Play intent with its opaque canonical source ID. Neither path invokes
-playback. Watch State and playback execution remain unimplemented.
+playback. A complete provider-issued player request can be rendered through the
+native loading, transport, seek, Track-selection, completion, safe-failure, and
+return-to-Details presentation, but the public planning/opening coordinator and
+Watch State remain unimplemented.
 
 ## Positioning
 
@@ -57,10 +60,12 @@ rotation, endpoint-bound Keychain storage, Home, exhaustive paginated Movie and
 Show Library browsing, debounced all-kind Search over stored canonical media,
 safe artwork, canonical Movie, Show, Season, and Episode Details, and on-demand
 canonical Source inspection on iOS, iPadOS, tvOS, and macOS. It presents one
-active endpoint-bound consumer authorization. Playable Movie and Episode Details
-emit only a typed canonical Play intent, optionally carrying a deliberately
-chosen opaque source ID; provider management, Watch State, and playback
-execution are not current app behavior.
+active endpoint-bound consumer authorization. Playable Movie and Episode
+Details emit only a typed canonical Play intent, optionally carrying a
+deliberately chosen opaque source ID. The standalone playback presentation
+accepts one complete request and adapts its controls to touch, pointer, keyboard,
+and remote focus; provider management, public playback execution from Details,
+and Watch State are not current app behavior.
 
 ## Brand Commitments
 
@@ -97,6 +102,15 @@ unavailable. The unlabeled Sources fixture ran on iPhone 17 Pro and iPad Pro
 Development-signed sandboxed Mac build. Those runs confirmed distinct Source 1
 and Source 2 actions and matching technical titles through simulated touch,
 Apple TV remote focus and selection, and Mac pointer and keyboard operation.
+The controlled playback presentation rendered on iPhone 17 Pro and iPad Pro
+13-inch (M5) simulators, an Apple TV 4K 1080p simulator, and an Apple
+Development-signed sandboxed Mac build. Touch paused, sought, and used both
+Track surfaces; Apple TV remote input traversed transport and Track focus,
+paused, and confirmed subtitle selection; Mac pointer input paused and opened
+the correctly sized Track sheet, while full keyboard access reached its action.
+Its safe network failure retained visible return-to-Details recovery. A paired
+physical iPhone 14 Pro Max accepted the signed build but denied launch while
+locked; physical playback input and display were not observed.
 Search result selection through touch, remote, pointer, or keyboard, Apple TV
 Load More focus interaction, compact iPad collapse, focus return after nested
 Details, live OAuth-authorized stored-catalog browsing and Search, successful

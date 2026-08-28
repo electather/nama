@@ -1,11 +1,16 @@
 # Playback
 
 Status: the universal Apple application contains the production `NamaPlayer`
-boundary backed by exact-pinned AetherEngine `6.21.0`. Automated macOS-host
-verification loads, renders, controls, and stops controlled media and drives
-adversarial origin, redirect, nested HLS, external-subtitle, replacement,
-expiry, and surface-lifecycle cases through the real adapter. Public planning,
-opening, reporting, and closing remain target architecture.
+boundary backed by exact-pinned AetherEngine `6.21.0` and a `PlaybackView`
+presentation for one complete provider-issued player request. The presentation
+keeps loading, transport, clamped seek, elapsed time, explicit audio/subtitle
+choice, completion, safe failure, and return-to-Details recovery visible through
+touch, pointer, keyboard, and Apple TV focus. Automated macOS-host verification
+loads, renders, controls, and stops controlled media and drives adversarial
+origin, redirect, nested HLS, external-subtitle, replacement, expiry, and
+surface-lifecycle cases through the real adapter. Public planning, opening,
+reporting, closing, and the Details-to-playback coordinator remain target
+architecture.
 
 The target Apple application reports a Nama-defined capability profile for the
 current device, and the Jellyfin plugin translates it into provider playback

@@ -10,9 +10,12 @@ typed opaque Play intent are implemented. The connection and authorization
 baseline's Apple-platform builds and macOS-host tests pass. A signed Apple TV 4K
 simulator has completed local-HTTP acknowledgement, no-browser authorization
 through the generated CLI, scoped consumer verification, Keychain commit, and
-relaunch restoration. The production `NamaPlayer` boundary is implemented;
-controlled rendering and adversarial locator, replacement, expiry, and shared
-lifecycle behavior pass through its macOS-hosted real-engine tests.
+relaunch restoration. The production `NamaPlayer` boundary and `PlaybackView`
+presentation for a complete player request are implemented; controlled
+rendering, visible loading, transport, seek, explicit Track selection,
+completion, safe failure, return-to-Details recovery, and adversarial locator,
+replacement, expiry, and shared lifecycle behavior pass through focused tests
+or actual surfaces.
 
 Library fixtures rendered the iPhone and Apple TV tabs, iPad split navigation,
 adaptive long-title grids, terminal content, and a visible Apple TV Load More
@@ -33,6 +36,17 @@ compact iPad collapse, focus return after nested Details, the live
 OAuth-authorized stored-catalog hierarchy, successful artwork resolution,
 VoiceOver inspection, physical Apple hardware, expiry-driven actual-surface
 refresh, and the remaining Apple surfaces remain unverified.
+
+The controlled playback presentation rendered on iPhone 17 Pro and iPad Pro
+13-inch (M5) simulators, an Apple TV 4K (3rd generation) 1080p simulator, and an
+Apple Development-signed sandboxed Mac build. Simulated touch paused, sought,
+and selected audio and subtitles; Apple TV remote input moved focus from Back
+to transport, paused, opened the explicit subtitle surface, and confirmed a
+selection; Mac pointer input paused and opened a non-collapsed Track sheet, and
+full keyboard access reached its Track action. A paired physical iPhone 14 Pro
+Max accepted the signed build, but its locked state denied launch; no physical
+Apple TV was available. Provider planning/opening, live Details-to-playback,
+VoiceOver, physical display/input, and the full media matrix remain unverified.
 
 ## Authority and fixed decisions
 
@@ -176,6 +190,15 @@ device authorization:
   that boundary. The complete Swift package closure is locked, notices are
   bundled, and the artifact and relinking review is recorded in
   [aetherengine-distribution.md](aetherengine-distribution.md).
+- `PlaybackView` accepts one complete Nama-owned player request and keeps Back,
+  loading, play/pause, discrete seek, clamped elapsed progress, audio and
+  subtitle choice, completion, and safe failure recovery visible. iPhone, iPad,
+  and Mac use the native seek slider; tvOS uses read-only progress with
+  focusable discrete seek because SwiftUI exposes no `Slider` there. Audio and
+  subtitles use an explicit focus-stable sheet, with a minimum Mac size so its
+  `List` rows cannot collapse. Leaving the presentation or moving its iOS/tvOS
+  scene to the background stops the player before returning to Details; Mac
+  focus loss remains nonterminal.
 - The shared `Media` source module owns app-owned opaque media, artwork, source,
   playability, quality, and lean-summary values plus generated summary mapping.
   Home retains shelves and product entry state; Library retains one browse
@@ -368,8 +391,10 @@ Library, debounces trimmed queries, rejects obsolete work, preserves server
 ranking, recovers bounded opaque continuations, and opens the existing typed
 Details destination without parent enrichment. Details owns hierarchy and
 Sources presentation and emits only typed opaque canonical Play intents; it
-does not invoke playback planning, opening, or engine code. Watch State and
-playback product behavior remain unimplemented.
+does not invoke playback planning, opening, or engine code. A caller with one
+complete player request can present implemented playback controls through
+`PlaybackView`; the Details-to-playback coordinator, public lifecycle client,
+and Watch State remain unimplemented.
 
 ## Target runtime topology
 

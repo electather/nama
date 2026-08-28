@@ -241,6 +241,21 @@ blur, floating panels, and shadowed card stacks are prohibited.
   Source** carries the deliberately chosen opaque source ID. Details never
   adopts player or playback-engine presentation.
 
+### Playback Presentation
+
+- **Video and chrome:** Keep the rendering surface black and let media occupy
+  the available frame. Controls remain visible; Back to Details, transport,
+  seek, elapsed progress, Audio, and Subtitles never depend on a hidden gesture.
+- **Seek:** iPhone, iPad, and Mac use the native slider plus labelled
+  15-second controls. Apple TV uses the same labelled discrete controls with
+  read-only progress because SwiftUI has no tvOS slider.
+- **Tracks:** Audio and Subtitles open explicit native lists with visible
+  selection. Subtitles always include Off. Apple TV focus starts on the
+  confirmed selection; Mac sheets retain enough height to show their rows.
+- **Terminal states:** Loading keeps Back to Details available. Completion and
+  safe failure use one factual title, safe description, and prominent Back to
+  Details recovery without engine or Locator detail.
+
 ## Do's and Don'ts
 
 ### Do:

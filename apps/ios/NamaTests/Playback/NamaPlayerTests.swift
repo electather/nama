@@ -71,75 +71,12 @@
         #expect(player.videoCharacteristics?.width == 160)
         #expect(player.videoCharacteristics?.height == 90)
 
-        player.selectSubtitleTrack(id: subtitle.trackID)
-        #expect(
-          await securityPlaybackEventually {
-            player.selectedSubtitleTrackID == subtitle.trackID
-          }
-        )
-        #expect(
-          await securityPlaybackEventually {
-            server.received(path: "/subtitle.srt", marker: "subtitle")
-          }
-        )
-        player.disableSubtitles()
-        #expect(await securityPlaybackEventually { player.selectedSubtitleTrackID == nil })
-
-        player.stop()
-        assertStopped(player)
-      }
-
-      @Test("maps transport, seek, and track selection to the real engine")
-      func controlsAndTracks() async throws {
-        let server = try await PlaybackFixtureServer.start()
-        defer { server.stop() }
-        let player = try makePlaybackTestPlayer()
-        let window = hostSurface(for: player)
-        defer {
-          player.stop()
-          window.close()
-        }
-        let subtitle = externalSubtitle(from: server)
-        player.load(
-          NamaPlayerRequest(
-            media: mediaLocator(
-              server: server,
-              path: "track-controls.mkv",
-              mimeType: "video/x-matroska"
-            ),
-            resumePosition: 1,
-            externalSubtitles: [subtitle]
-          )
-        )
-
-        await verifyTracksReady(player)
-
-        try await verifySubtitleRendering(
+        await verifyControlledSubtitleSelection(
           player: player,
-          window: window,
+          server: server,
           subtitleID: subtitle.trackID
         )
-        player.play()
-        #expect(await securityPlaybackEventually { player.state == .playing })
 
-        let alternateAudio = try #require(
-          player.audioTracks.first { $0.id != player.selectedAudioTrackID }
-        )
-        player.selectAudioTrack(id: alternateAudio.id)
-        #expect(
-          await securityPlaybackEventually { player.selectedAudioTrackID == alternateAudio.id }
-        )
-
-        let duration = try #require(player.clock.state.duration)
-        let expectedPosition = min(5, duration / 2)
-        #expect(player.seek(to: expectedPosition) == expectedPosition)
-        #expect(
-          await securityPlaybackEventually {
-            abs(player.clock.state.position - expectedPosition) < 0.5
-              && player.state == .playing
-          }
-        )
-        #expect(player.clock.state.position <= duration)
         player.stop()
         assertStopped(player)
       }
@@ -183,6 +120,58 @@
         #expect(!summary.contains("secret-url"))
         #expect(!summary.contains("secret-header"))
         #expect(!summary.contains(server.origin.absoluteString))
+      }
+
+      @Test("maps transport, seek, and subtitle selection to the real engine")
+      func controlsAndTracks() async throws {
+        let server = try await PlaybackFixtureServer.start()
+        defer { server.stop() }
+        let player = try makePlaybackTestPlayer()
+        let window = hostSurface(for: player)
+        defer {
+          player.stop()
+          window.close()
+        }
+        let subtitle = externalSubtitle(from: server)
+        player.load(
+          NamaPlayerRequest(
+            media: mediaLocator(
+              server: server,
+              path: "track-controls.mkv",
+              mimeType: "video/x-matroska"
+            ),
+            resumePosition: 1,
+            externalSubtitles: [subtitle]
+          )
+        )
+
+        await verifyTracksReady(player)
+
+        try await verifySubtitleRendering(
+          player: player,
+          window: window,
+          subtitleID: subtitle.trackID
+        )
+        player.play()
+        #expect(await securityPlaybackEventually { player.state == .playing })
+
+        let duration = try #require(player.clock.state.duration)
+        let expectedPosition = min(5, duration / 2)
+        #expect(player.seek(to: expectedPosition) == expectedPosition)
+        #expect(
+          await securityPlaybackEventually {
+            abs(player.clock.state.position - expectedPosition) < 0.5
+              && player.state == .playing
+          }
+        )
+        #expect(player.clock.state.position <= duration)
+        player.stop()
+        assertStopped(player)
+      }
+
+      @Test("maps audio selection to the real engine")
+      func selectsAudioTrack() async throws {
+        try await verifyAudioTrackSelection()
       }
 
       private func mediaLocator(
@@ -280,6 +269,70 @@
         return window
       }
     }
+  }
+
+  @MainActor
+  private func verifyControlledSubtitleSelection(
+    player: NamaPlayer,
+    server: PlaybackFixtureServer,
+    subtitleID: String
+  ) async {
+    let positionBeforeSelection = player.clock.state.position
+    player.selectSubtitleTrack(id: subtitleID)
+    #expect(
+      await securityPlaybackEventually {
+        player.selectedSubtitleTrackID == subtitleID
+          && player.clock.state.position > positionBeforeSelection
+      }
+    )
+    #expect(
+      await securityPlaybackEventually {
+        server.received(path: "/subtitle.srt", marker: "subtitle")
+      }
+    )
+    let positionBeforeDisabling = player.clock.state.position
+    player.disableSubtitles()
+    #expect(
+      await securityPlaybackEventually {
+        player.selectedSubtitleTrackID == nil
+          && player.clock.state.position > positionBeforeDisabling
+      }
+    )
+  }
+
+  @MainActor
+  private func verifyAudioTrackSelection() async throws {
+    let server = try await PlaybackFixtureServer.start()
+    defer { server.stop() }
+    let player = try makePlaybackTestPlayer()
+    let window = hostPlaybackTestSurface(for: player)
+    defer {
+      player.stop()
+      window.close()
+    }
+    player.load(
+      playbackTestRequest(
+        server: server,
+        path: "track-controls.mkv",
+        mimeType: "video/x-matroska",
+        expiresAt: .distantFuture
+      )
+    )
+    let expectedAudioTrackCount = 2
+
+    #expect(
+      await securityPlaybackEventually {
+        player.state == .playing
+          && player.audioTracks.count == expectedAudioTrackCount
+      }
+    )
+    let alternateAudio = try #require(
+      player.audioTracks.first { $0.id != player.selectedAudioTrackID }
+    )
+    player.selectAudioTrack(id: alternateAudio.id)
+    #expect(
+      await securityPlaybackEventually { player.selectedAudioTrackID == alternateAudio.id }
+    )
   }
 
   @Suite("Nama subtitle layout")
