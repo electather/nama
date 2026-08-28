@@ -95,12 +95,15 @@ last-Source identity returns the existing row without replacing its selected
 activity evidence, database time, or version.
 
 The nullable last-Source identity is part of the caller's fully resolved target.
-Persistence validates supplied Source evidence against the same canonical item's
-retained provider-source mapping. A later target without Source evidence keeps
-the current identity; removing the Source from the active catalog projection
-keeps that mapping and identity available, and restoring the same mapping reuses
-the Nama Source ID. Provider-replica persistence, reconciliation, export, and
-public `UserStateService` behavior remain separate work.
+Caller recomputation keeps the current identity when later activity supplies no
+exact Source evidence and may explicitly resolve no identity when policy
+requires clearing it; persistence does not interpret an omitted identity.
+Persistence validates any supplied Source against the same canonical item's
+retained provider-source mapping. Removing the Source from the active catalog
+projection keeps that mapping and an already stored identity available, and
+restoring the same mapping reuses the Nama Source ID. Provider-replica
+persistence, reconciliation, export, and public `UserStateService` behavior
+remain separate work.
 
 ## Canonical catalog persistence
 

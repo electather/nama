@@ -35,12 +35,11 @@ const optionalDurationEquals = (
 const resolvedStateEquals = (
   current: CanonicalWatchState,
   target: CanonicalWatchStateTarget,
-  resolvedLastSourceId: string | undefined,
 ): boolean =>
   current.watched === target.watched &&
   optionalDurationEquals(current.position, target.position) &&
   optionalDurationEquals(current.duration, target.duration) &&
-  current.lastSourceId === resolvedLastSourceId;
+  current.lastSourceId === target.lastSourceId;
 
 const loadWatchStateRow = async (
   database: WatchStateReader,
@@ -149,10 +148,7 @@ const nullableDurationColumns = (duration: WatchDuration | undefined) => {
   return duration;
 };
 
-const canonicalWatchStateUpdate = (
-  target: CanonicalWatchStateTarget,
-  resolvedLastSourceId: string | undefined,
-) => {
+const canonicalWatchStateUpdate = (target: CanonicalWatchStateTarget) => {
   const { activity, duration: targetDuration, position: targetPosition, watched } = target;
   const activityOrigin = activityOriginColumns(activity.origin);
   const duration = nullableDurationColumns(targetDuration);
@@ -165,7 +161,7 @@ const canonicalWatchStateUpdate = (
     committedAt: sql`transaction_timestamp()`,
     durationNanoseconds: duration.nanoseconds,
     durationSeconds: duration.seconds,
-    lastSourceId: resolvedLastSourceId ?? SQL_NULL,
+    lastSourceId: target.lastSourceId ?? SQL_NULL,
     positionNanoseconds: position.nanoseconds,
     positionSeconds: position.seconds,
     version: sql`${canonicalWatchState.version} + 1`,
@@ -175,20 +171,18 @@ const canonicalWatchStateUpdate = (
 
 interface CanonicalWatchStateUpdateInput {
   readonly current: CanonicalWatchState;
-  readonly resolvedLastSourceId: string | undefined;
   readonly target: CanonicalWatchStateTarget;
   readonly transaction: WatchStateTransaction;
 }
 
 const updateCanonicalWatchState = async ({
   current,
-  resolvedLastSourceId,
   target,
   transaction,
 }: CanonicalWatchStateUpdateInput): Promise<CanonicalWatchState> => {
   const rows = await transaction
     .update(canonicalWatchState)
-    .set(canonicalWatchStateUpdate(target, resolvedLastSourceId))
+    .set(canonicalWatchStateUpdate(target))
     .where(
       and(
         eq(canonicalWatchState.principalId, target.principalId),
@@ -237,13 +231,11 @@ const commitLoadedCanonicalWatchState = async ({
     return { state: current, status: "stale" };
   }
   await validateTargetSourceOwnership(transaction, input.target);
-  const resolvedLastSourceId = input.target.lastSourceId ?? current.lastSourceId;
-  if (resolvedStateEquals(current, input.target, resolvedLastSourceId)) {
+  if (resolvedStateEquals(current, input.target)) {
     return { state: current, status: "committed" };
   }
   const state = await updateCanonicalWatchState({
     current,
-    resolvedLastSourceId,
     target: input.target,
     transaction,
   });

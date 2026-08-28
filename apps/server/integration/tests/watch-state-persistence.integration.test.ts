@@ -659,6 +659,45 @@ it.live("returns current Watch state before validating a stale target Source", (
   withIsolatedDatabase(staleForeignSourceScenario),
 );
 
+const clearResolvedLastSourceFixture = (database: DatabaseService) =>
+  Effect.gen(function* clearCallerResolvedLastSource() {
+    const { movie, sourceId } = yield* observeMovieWithSource(database);
+    const initial = committedState(
+      yield* database.watchState.compareAndCommit({
+        expectedVersion: undefined,
+        target: completeTarget(movie.id, sourceId),
+      }),
+    );
+    const cleared = committedState(
+      yield* database.watchState.compareAndCommit({
+        expectedVersion: initial.version,
+        target: {
+          ...completeTarget(movie.id, sourceId),
+          activity: {
+            occurredAt: UPDATED_ACTIVITY_OCCURRED_AT,
+            origin: NAMA_WATCHED_STATUS_ACTION_ORIGIN,
+            reliability: "reliable",
+            semantics: "state_changed",
+          },
+          lastSourceId: undefined,
+          watched: false,
+        },
+      }),
+    );
+    expect(cleared.lastSourceId).toBeUndefined();
+    expect(yield* loadedWatchState(database, movie.id)).toEqual(cleared);
+  });
+
+const clearResolvedLastSourceScenario = (databaseUrl: string) =>
+  Effect.gen(function* clearCallerResolvedLastSource() {
+    yield* initializeWatchStateDatabase(databaseUrl);
+    yield* useDatabase(databaseUrl, productionMigrations, clearResolvedLastSourceFixture);
+  });
+
+it.live("persists a caller-resolved cleared last Source", () =>
+  withIsolatedDatabase(clearResolvedLastSourceScenario),
+);
+
 const retainLastSourceFixture = (database: DatabaseService) =>
   Effect.gen(function* retainLastSourceAcrossActivityAndCatalogRemoval() {
     const { movie, sourceId } = yield* observeMovieWithSource(database);
@@ -680,6 +719,7 @@ const retainLastSourceFixture = (database: DatabaseService) =>
           },
           canonicalItemId: movie.id,
           duration: initial.duration,
+          lastSourceId: initial.lastSourceId,
           position: initial.position,
           principalId: ADMINISTRATOR_ID,
           watched: false,
