@@ -246,7 +246,7 @@ const closeSelectionForLifecycle = (
   }
 };
 
-type PluginRetirementKind = "close" | "idle";
+type PluginRetirementKind = "close" | "idle" | "unexpected_idle_exit";
 
 interface PluginRetirement {
   readonly completion: RetirementCompletion;
@@ -267,16 +267,18 @@ const completePluginRetirement = (retirement: PluginRetirement): Effect.Effect<v
   if (retirement.kind === "close") {
     retirement.state.lifecycle = { kind: "closed" };
   } else {
-    retirement.state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
-    retirement.state.lifecycle = { kind: "absent" };
-    options.emit(
-      Effect.logDebug(
-        pluginLifecycleMessage(
-          { descriptor: options.descriptor, launch: options.launch },
-          "plugin.process_idle_stopped",
+    if (retirement.kind === "idle") {
+      retirement.state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
+      options.emit(
+        Effect.logDebug(
+          pluginLifecycleMessage(
+            { descriptor: options.descriptor, launch: options.launch },
+            "plugin.process_idle_stopped",
+          ),
         ),
-      ),
-    );
+      );
+    }
+    retirement.state.lifecycle = { kind: "absent" };
   }
   return Deferred.done(retirement.completion, Exit.void).pipe(Effect.asVoid);
 };
@@ -288,7 +290,7 @@ const failPluginRetirement = (retirement: PluginRetirement): Effect.Effect<void>
     kind: "retirement_failed",
     ownership: retirement.ownership,
   };
-  if (retirement.kind === "idle") {
+  if (retirement.kind !== "close") {
     const { options } = retirement.state;
     options.emit(
       Effect.logError(
@@ -773,14 +775,14 @@ const handleUnexpectedPluginExit = (
           state,
         }).pipe(Effect.asVoid);
       }
-      return stopPlugin(plugin).pipe(
-        Effect.andThen(
-          Effect.sync(() => {
-            state.lifecycle = { kind: "absent" };
-          }),
-        ),
-        Effect.orDie,
-      );
+      const ownership = makeCleanupOwnership();
+      ownCleanup(ownership, stopPlugin(plugin));
+      return commitPluginRetirement({
+        cleanup: cleanupOwnedResources(ownership),
+        kind: "unexpected_idle_exit",
+        ownership,
+        state,
+      }).pipe(Effect.asVoid);
     }),
   );
 
