@@ -30,7 +30,7 @@ The target installation is one private deployment with one administrator, Jellyf
 
 The MVP authorization path is complete without a browser: an already authenticated Go CLI sends the Apple app's displayed user code through role-neutral `AuthService.ApproveDeviceAuthorization`, and the core binds the grant to that session principal before invoking Better Auth's internal verification and approval APIs. The request selects no target user and grants no Administrator authority. Issue #167 may add a narrow browser approval web app over the same internal application service; it does not become a prerequisite for Apple authorization or a general web console.
 
-The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, initial canonical catalog ingestion, stored public Library reads, and versioned persistence for sparse canonical Watch state and exact Provider replicas. Playback and public user-state behavior remain unimplemented.
+The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, initial canonical catalog ingestion, stored public Library reads, and versioned persistence for sparse canonical Watch state and exact Provider replicas. Public `PlaybackService` and public user-state behavior remain unimplemented.
 
 The same listener now exposes the fixed Apple public client's allowlisted Better Auth metadata, JWKS, device-code, token, refresh, and revocation routes. Generated `AuthService` handlers approve the current session principal's grant and revoke the fixed client's refresh-token families; Connect consumer authority verifies audience-bound, fixed-client, method-scoped JWTs locally without treating them as Administrator sessions.
 
@@ -113,12 +113,15 @@ recovery, and opens the existing typed Details destination. Details emits only
 typed opaque canonical Play intents for playable Movies and Episodes: the
 primary action leaves the default source implicit, while a deliberate Source
 choice carries its opaque canonical source ID. Details does not invoke playback
-execution. The universal target contains exact-pinned AetherEngine `6.21.0`
-behind the complete Nama-owned player boundary. A per-load loopback broker
-enforces exact normalized allowed origins for initial, redirect, nested
+planning or opening. The universal target contains exact-pinned AetherEngine
+`6.21.0` behind the complete Nama-owned player boundary. A per-load loopback
+broker enforces exact normalized allowed origins for initial, redirect, nested
 HLS, key, segment, and external-subtitle requests without exposing remote
-locators to the engine. Mac-hosted automation proves controlled rendering and
-controls plus rejection, replacement, expiry signaling, and surface shutdown.
+locators to the engine. `PlaybackView` presents one complete player request with
+visible loading, transport, platform-appropriate seek, explicit Track lists,
+completion, safe failure, and return-to-Details recovery. Mac-hosted automation
+proves controlled rendering and controls plus rejection, replacement, expiry
+signaling, and surface shutdown.
 The connection, authorization, player, Home, Library, Search, media Details, and
 Sources baseline's Apple-platform builds pass, and a signed Apple TV 4K
 simulator has completed the no-browser authorization, scoped consumer

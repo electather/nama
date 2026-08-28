@@ -159,6 +159,11 @@
 		100000000000000000000158 /* LibrarySearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000158 /* LibrarySearchView.swift */; };
 		100000000000000000000159 /* LibrarySearchResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000159 /* LibrarySearchResultsView.swift */; };
 		100000000000000000000160 /* LibrarySearchFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000160 /* LibrarySearchFeatureTests.swift */; };
+		100000000000000000000161 /* PlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000161 /* PlaybackView.swift */; };
+		100000000000000000000162 /* PlaybackControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000162 /* PlaybackControls.swift */; };
+		100000000000000000000163 /* PlaybackTrackPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000163 /* PlaybackTrackPickerView.swift */; };
+		100000000000000000000164 /* PlaybackPreviewFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000164 /* PlaybackPreviewFixtures.swift */; };
+		100000000000000000000165 /* PlaybackPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000165 /* PlaybackPresentationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -326,6 +331,11 @@
 		200000000000000000000158 /* LibrarySearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchView.swift; sourceTree = "<group>"; };
 		200000000000000000000159 /* LibrarySearchResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchResultsView.swift; sourceTree = "<group>"; };
 		200000000000000000000160 /* LibrarySearchFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchFeatureTests.swift; sourceTree = "<group>"; };
+		200000000000000000000161 /* PlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackView.swift; sourceTree = "<group>"; };
+		200000000000000000000162 /* PlaybackControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackControls.swift; sourceTree = "<group>"; };
+		200000000000000000000163 /* PlaybackTrackPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackTrackPickerView.swift; sourceTree = "<group>"; };
+		200000000000000000000164 /* PlaybackPreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackPreviewFixtures.swift; sourceTree = "<group>"; };
+		200000000000000000000165 /* PlaybackPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackPresentationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -474,6 +484,10 @@
 				200000000000000000000060 /* NamaPlaybackBridgeRequest+URLSession.swift */,
 				200000000000000000000058 /* NamaPlaybackBridgeRequest+Playlist.swift */,
 				200000000000000000000051 /* NamaPlayerSurface.swift */,
+				200000000000000000000161 /* PlaybackView.swift */,
+				200000000000000000000162 /* PlaybackControls.swift */,
+				200000000000000000000163 /* PlaybackTrackPickerView.swift */,
+				200000000000000000000164 /* PlaybackPreviewFixtures.swift */,
 			);
 			path = Playback;
 			sourceTree = "<group>";
@@ -482,6 +496,7 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000044 /* NamaPlayerTests.swift */,
+				200000000000000000000165 /* PlaybackPresentationTests.swift */,
 				200000000000000000000061 /* NamaPlayerSecurityTests.swift */,
 				200000000000000000000062 /* NamaPlayerHLSRequestSecurityTests.swift */,
 				200000000000000000000063 /* NamaPlayerLifecycleTests.swift */,
@@ -855,6 +870,10 @@
 				100000000000000000000056 /* NamaPlaybackBridgeRequest+Playlist.swift in Sources */,
 				100000000000000000000058 /* NamaPlaybackBridgeRequest+URLSession.swift in Sources */,
 				100000000000000000000049 /* NamaPlayerSurface.swift in Sources */,
+				100000000000000000000161 /* PlaybackView.swift in Sources */,
+				100000000000000000000162 /* PlaybackControls.swift in Sources */,
+				100000000000000000000163 /* PlaybackTrackPickerView.swift in Sources */,
+				100000000000000000000164 /* PlaybackPreviewFixtures.swift in Sources */,
 				100000000000000000000121 /* MediaDetailsFeature+ChildArtwork.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -910,6 +929,7 @@
 				100000000000000000000148 /* LibraryPageRecoveryFeatureTests.swift in Sources */,
 				100000000000000000000150 /* LibraryRefreshFeatureTests.swift in Sources */,
 				100000000000000000000041 /* NamaPlayerTests.swift in Sources */,
+				100000000000000000000165 /* PlaybackPresentationTests.swift in Sources */,
 				100000000000000000000059 /* NamaPlayerSecurityTests.swift in Sources */,
 				100000000000000000000060 /* NamaPlayerHLSRequestSecurityTests.swift in Sources */,
 				100000000000000000000061 /* NamaPlayerLifecycleTests.swift in Sources */,
