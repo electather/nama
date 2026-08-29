@@ -71,7 +71,7 @@ Prove the choices most likely to invalidate the design before building product l
 ### Included
 
 1. **Apple TV playback feasibility — passed and retired:** exercise representative H.264, HEVC, MKV, HDR10, Dolby Vision, multichannel audio, text subtitles, and image subtitles; inspect seeking, track switching, failure signals, adapter isolation, locator security, and distribution obligations. The feasibility pass records architecture knowledge, not physical-device or production-engine acceptance.
-2. **Jellyfin negotiation — risk resolved, implementation pending:** stock Jellyfin cannot supply Nama-scoped authorization or the complete decision evidence safely. ADR-0035 selects a manually installed first-party server extension; exact direct, remux, transcode, and Track behavior remains an exercised Milestone 4 release gate rather than an assumption.
+2. **Jellyfin negotiation — risk resolved, implementation pending:** stock Jellyfin cannot supply Nama-scoped authorization or the complete decision evidence safely. ADR-0036 selects a manually installed first-party server extension; exact direct, remux, transcode, and Track behavior remains an exercised Milestone 4 release gate rather than an assumption.
 3. **Plugin IPC:** launch a disposable subprocess, create a socket inside a core-owned `0700` runtime directory, authenticate with a per-launch secret, call health and one provider operation, enforce a deadline, then terminate and restart cleanly.
 4. **Connect-wrapped Better Auth:** create an administrator, sign in, authenticate a protected RPC with the returned session credential, retrieve the current user, and sign out without exposing Better Auth types or endpoints to clients.
 5. **Sync semantics:** replay timestamped and untimestamped provider events through the reconciliation rules and prove idempotency, backward progress for a genuine rewatch, tie-breaking, and prevention of echo loops.
@@ -127,7 +127,7 @@ Prove that Jellyfin is an implementation of capabilities, not part of the core.
 - One application image that includes the core and bundled Jellyfin executable; PostgreSQL remains the only separate service.
 
 Playback planning, scoped opening and reporting, and coherent exact progress
-export remain MVP release blockers outside this milestone. ADR-0035 assigns
+export remain MVP release blockers outside this milestone. ADR-0036 assigns
 them to a manually installed first-party Jellyfin server extension behind the
 existing provider plugin. The Jellyfin provider type advertises none of those
 capabilities until the extension validates its own host and the adapter

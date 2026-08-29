@@ -71,6 +71,13 @@
       "when": 1787923303955,
       "tag": "0009_rainy_mandrill",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788026255366,
+      "tag": "0010_sloppy_boomer",
+      "breakpoints": true
     }
   ]
 }

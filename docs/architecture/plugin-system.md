@@ -174,7 +174,7 @@ identifiers, or authorization.
 ## Target Jellyfin server extension
 
 The first-party Jellyfin server extension accepted by
-[ADR-0035](../adr/0035-first-party-jellyfin-server-extension.md) is distinct
+[ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md) is distinct
 from the supervised Jellyfin provider plugin. An Administrator installs its
 exact-versioned .NET artifact into Jellyfin and restarts that server. The
 extension validates its own host, owns a purpose-separated protected key ring,

@@ -1,5 +1,8 @@
-import { loadArtworkTarget } from "./catalog-artwork-query-private.ts";
-import type { CatalogArtworkTarget } from "./catalog-artwork-query-private.ts";
+import { loadArtworkLocatorTarget, loadArtworkTarget } from "./catalog-artwork-query-private.ts";
+import type {
+  CatalogArtworkLocatorTarget,
+  CatalogArtworkTarget,
+} from "./catalog-artwork-query-private.ts";
 import { loadChildrenPage, loadVisibleItem } from "./catalog-item-query-private.ts";
 import type {
   CatalogChildrenCursor,
@@ -20,6 +23,9 @@ import type { CatalogReadiness } from "./catalog-readiness-private.ts";
 import type { StoredCatalogSummary } from "./catalog-summary-model-private.ts";
 
 interface CatalogQueryStorage {
+  readonly getArtworkLocatorTarget: (
+    artworkId: string,
+  ) => Promise<CatalogArtworkLocatorTarget | undefined>;
   readonly getArtworkTarget: (artworkId: string) => Promise<CatalogArtworkTarget | undefined>;
   readonly getItem: (canonicalItemId: string) => Promise<StoredCatalogItem | undefined>;
   readonly listChildren: (input: CatalogChildrenQuery) => Promise<CatalogChildrenPage>;
@@ -35,6 +41,7 @@ interface CatalogQueryStorage {
 }
 
 const makeCatalogQueryStorage = (database: CatalogDatabase): CatalogQueryStorage => ({
+  getArtworkLocatorTarget: (artworkId) => loadArtworkLocatorTarget(database, artworkId),
   getArtworkTarget: (artworkId) => loadArtworkTarget(database, artworkId),
   getItem: (canonicalItemId) => loadVisibleItem(database, canonicalItemId),
   listChildren: (input) =>
@@ -65,6 +72,7 @@ const makeCatalogQueryStorage = (database: CatalogDatabase): CatalogQueryStorage
 
 export { makeCatalogQueryStorage };
 export type {
+  CatalogArtworkLocatorTarget,
   CatalogArtworkTarget,
   CatalogChildrenCursor,
   CatalogChildrenPage,

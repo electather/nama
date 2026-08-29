@@ -3,7 +3,8 @@ import { NodeFileSystem } from "@effect/platform-node";
 import { Cause, Clock, Effect, Exit, Layer } from "effect";
 
 import { makeSetupAuthenticationLayer } from "./authentication/setup-coordinator.ts";
-import { CatalogImport } from "./catalog/catalog-import.ts";
+import { ArtworkAccess } from "./catalog/catalog-artwork-access.ts";
+import { CatalogImport } from "./catalog/catalog-import-live.ts";
 import { CatalogQuery } from "./catalog/catalog-query-live.ts";
 import { Config } from "./config/config.ts";
 import { Database } from "./database/database.ts";
@@ -41,14 +42,17 @@ const serverLayer = (
   const providerActivityFoundationLayer = ProviderActivity.layer.pipe(
     Layer.provideMerge(pluginFoundationLayer),
   );
-  const catalogImportFoundationLayer = CatalogImport.layer.pipe(
+  const providerFoundationLayer = ProviderManagement.layer.pipe(
     Layer.provideMerge(providerActivityFoundationLayer),
   );
-  const providerFoundationLayer = ProviderManagement.layer.pipe(
-    Layer.provideMerge(catalogImportFoundationLayer),
+  const artworkFoundationLayer = ArtworkAccess.layer.pipe(
+    Layer.provideMerge(providerFoundationLayer),
+  );
+  const catalogImportFoundationLayer = CatalogImport.layer.pipe(
+    Layer.provideMerge(artworkFoundationLayer),
   );
   const catalogFoundationLayer = CatalogQuery.layer.pipe(
-    Layer.provideMerge(providerFoundationLayer),
+    Layer.provideMerge(catalogImportFoundationLayer),
   );
   return HttpServer.layer({ emitStopping }).pipe(
     Layer.provideMerge(makeSetupAuthenticationLayer(catalogFoundationLayer, RuntimeControl.layer)),

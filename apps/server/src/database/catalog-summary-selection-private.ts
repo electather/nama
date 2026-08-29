@@ -119,7 +119,12 @@ const summarySelection = {
   genres: canonicalItem.genres,
   id: canonicalItem.id,
   kind: canonicalItem.kind,
-  libraryCreatedAt: libraryEntry.createdAt,
+  libraryCreatedAt: sql<string>`
+    to_char(
+      ${libraryEntry.createdAt} at time zone 'UTC',
+      'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+    )
+  `.as("library_created_at"),
   normalizedTitle: sql<string>`lower(${canonicalItem.title})`.as("normalized_title"),
   releaseDateSort: sql<
     string | null

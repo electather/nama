@@ -17,12 +17,9 @@ import type {
   SearchRequest,
   SearchResponse,
 } from "../../../../gen/ts/src/nama/api/v1/library_pb.js";
-import type { ProviderArtworkLease } from "../../../../gen/ts/src/nama/plugin/v1/library_pb.js";
-import type {
-  CatalogArtworkTarget,
-  CatalogQueryStorage,
-} from "../database/catalog-query-storage.ts";
+import type { CatalogQueryStorage } from "../database/catalog-query-storage.ts";
 import type { PageTokenInvalidFailure } from "../provider/page-token.ts";
+import type { ArtworkAccessService } from "./catalog-artwork-access.ts";
 
 const taggedError = Data.TaggedError;
 const CatalogQueryPersistenceError = taggedError("CatalogQueryPersistenceError")<
@@ -97,24 +94,11 @@ interface CatalogQueryService {
   ) => Effect.Effect<SearchResponse, SearchFailure>;
 }
 
-interface CatalogArtworkLeaseRequest extends CatalogArtworkTarget {
-  readonly maxHeight?: number | undefined;
-  readonly maxWidth?: number | undefined;
-}
-
-interface CatalogArtworkLeaseResolution {
-  readonly approvedOrigins: readonly string[];
-  readonly lease: ProviderArtworkLease;
-}
-type CatalogArtworkLeaseResolver = (
-  input: CatalogArtworkLeaseRequest,
-) => Effect.Effect<CatalogArtworkLeaseResolution, unknown>;
-
 interface CatalogQueryDependencies {
+  readonly artworkAccess: ArtworkAccessService;
   readonly catalog: CatalogQueryStorage;
   readonly masterKey: string;
   readonly now: () => number;
-  readonly resolveArtworkLease: CatalogArtworkLeaseResolver;
 }
 
 export {
@@ -127,9 +111,6 @@ export {
   SourceUnavailable,
 };
 export type {
-  CatalogArtworkLeaseRequest,
-  CatalogArtworkLeaseResolution,
-  CatalogArtworkLeaseResolver,
   CatalogNotReadyFailure,
   CatalogQueryDependencies,
   CatalogQueryPersistenceFailure,

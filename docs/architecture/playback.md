@@ -40,7 +40,7 @@ the initial and redirected origin, rewrites HLS child references, and reapplies
 headers only within the request's core-validated allowlist. The bridge is part
 of the concrete adapter, not a second playback engine or public media relay.
 
-[ADR-0035](../adr/0035-first-party-jellyfin-server-extension.md) requires a
+[ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md) requires a
 manually installed first-party Jellyfin server extension for Jellyfin playback
 and coherent progress. The extension validates its own host and exposes one
 versioned private JSON/HTTP protocol to the supervised Jellyfin provider plugin;

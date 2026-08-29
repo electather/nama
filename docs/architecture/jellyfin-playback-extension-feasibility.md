@@ -1,6 +1,6 @@
 # Jellyfin playback server extension feasibility (Jellyfin 10.11.11)
 
-Status: accepted architecture direction under [ADR-0035](../adr/0035-first-party-jellyfin-server-extension.md) and [issue #231](https://github.com/electather/nama/issues/231); implementation and release evidence remain incomplete.
+Status: accepted architecture direction under [ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md) and [issue #231](https://github.com/electather/nama/issues/231); implementation and release evidence remain incomplete.
 
 ## Verdict
 
