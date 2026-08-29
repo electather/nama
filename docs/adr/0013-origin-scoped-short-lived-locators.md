@@ -2,7 +2,7 @@
 
 Status: superseded in part for the Apple MVP by [ADR-0032](0032-aetherengine-mvp-security-exception.md).
 
-Nama does not relay media or expose reusable provider credentials. It gives clients narrowly scoped locators whose headers apply only to the exact origin and whose redirects are allowlisted; a provider that cannot meet those constraints fails playback rather than becoming an implicit proxy. The added client and provider constraints preserve direct playback without turning credentials into portable access.
+Nama does not relay media or expose reusable provider credentials. It gives clients narrowly scoped locators whose headers apply only to the exact origin and whose redirects are allowlisted; a provider that cannot meet those constraints fails playback rather than becoming an implicit proxy. The guarantee covers only access conferred by Nama: Nama never reveals a provider's stock resource paths or identifiers, while independently discovered provider routes retain their existing behavior. The added client and provider constraints preserve direct playback without turning credentials into portable access. [ADR-0035](0035-first-party-jellyfin-server-extension.md) applies this boundary to Jellyfin through a first-party server extension.
 
 ## Considered option
 

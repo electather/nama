@@ -40,6 +40,25 @@ the initial and redirected origin, rewrites HLS child references, and reapplies
 headers only within the request's core-validated allowlist. The bridge is part
 of the concrete adapter, not a second playback engine or public media relay.
 
+[ADR-0035](../adr/0035-first-party-jellyfin-server-extension.md) requires a
+manually installed first-party Jellyfin server extension for Jellyfin playback
+and coherent progress. The extension validates its own host and exposes one
+versioned private JSON/HTTP protocol to the supervised Jellyfin provider plugin;
+Nama does not inspect Jellyfin versions directly. Missing, unhealthy, or
+incompatible extensions advertise none of the extension-backed capabilities.
+
+The extension alone mints and verifies purpose-separated, self-contained
+leases from a protected key ring. A public playback locator contains an opaque
+extension URL plus one scoped request header. The extension keeps every
+playlist, segment, key, and subtitle child in that namespace, rewrites bounded
+control documents, and never returns stock paths, provider identifiers, or the
+configured Jellyfin credential. Stock Jellyfin routes retain their existing
+behavior; Nama's guarantee covers only access conferred through its opaque
+namespace. Plans expire after five minutes. Opened sessions and their children
+expire after the complete expected runtime plus 30 minutes, with a hard
+24-hour maximum; longer media is unsupported rather than receiving broader
+authorization.
+
 [ADR-0014](../adr/0014-four-stage-playback-lifecycle.md) defines the
 plan, open, report, and close lifecycle for the target public and plugin
 contracts.
@@ -59,6 +78,13 @@ that transaction. The public contract owns exact replay, retention, transaction,
 and terminal-race behavior; the Apple note owns coalescing, bounded retry,
 replacement ordering, lifecycle, and safe failure presentation.
 
+For Jellyfin, playback telemetry is the only provider writer for state produced
+by that Nama playback session. Coherent progress export handles other Activity
+origins and never writes the same canonical version. The extension saves
+watched state and position together, validates optional duration against the
+current Jellyfin item runtime, and reads the provider result back; a lost or
+conflicting outcome remains ambiguous and is never blindly replayed.
+
 The integration pins AetherEngine's exact source revision and complete resolved
 dependency closure and confines its rendering and control types to
 `NamaPlayer`. The [distribution record](aetherengine-distribution.md) owns the
@@ -72,3 +98,7 @@ security and lifecycle behavior while recording the accepted allowed-origin
 header replay. Issue #38 still owns representative physical iPhone or iPad,
 Apple TV, and Mac playback evidence; capability negotiation and the full media
 and interaction matrix remain with issues #39 and #40.
+
+Provider-side implementation is tracked by umbrella issue #231: issue #232 owns
+the extension runtime and direct-progressive tracer, issue #233 owns complete
+HLS, fallback, and Track delivery, and issue #234 owns coherent progress.

@@ -171,8 +171,29 @@ forbidden, retryable, permanent, ambiguous, malformed, oversized, and cancelled
 paths retain sanitized generated-RPC outcomes without exposing provider bodies,
 identifiers, or authorization.
 
-Windows transport and persistent or background native-media plugins remain
-deferred until a real plugin requires them. Core-owned synchronization
-execution remains in issue #30. Production playback belongs to issue #96,
-coherent exact progress export belongs to issue #97, and container packaging
-belongs to issue #32.
+## Target Jellyfin server extension
+
+The first-party Jellyfin server extension accepted by
+[ADR-0035](../adr/0035-first-party-jellyfin-server-extension.md) is distinct
+from the supervised Jellyfin provider plugin. An Administrator installs its
+exact-versioned .NET artifact into Jellyfin and restarts that server. The
+extension validates its own host, owns a purpose-separated protected key ring,
+and exposes one bounded private JSON/HTTP protocol authenticated by the
+configured Jellyfin API key. The provider plugin alone translates that
+Jellyfin-specific protocol into `nama.plugin.v1`.
+
+Successful configured connections advertise extension-backed playback or
+coherent-progress capabilities only after a compatible handshake. Playback
+uses an opaque extension namespace and scoped header leases; the extension
+internally dispatches to Jellyfin and rewrites bounded control documents so
+stock paths, provider identifiers, and broad credentials do not escape.
+Coherent progress saves watched state and position together, validates duration
+against item runtime, and returns readback without claiming provider-native
+idempotency. The extension owns neither a media database nor durable user state.
+
+Windows transport and persistent or background native-media provider plugins
+remain deferred until a real plugin requires them. Core-owned synchronization
+execution remains in issue #45. The server-extension umbrella is issue #231:
+issue #232 owns the runtime and direct-progressive tracer, issue #233 owns
+complete HLS, negotiation, and Track delivery, and issue #234 owns coherent
+progress. Container packaging remains in issue #32.

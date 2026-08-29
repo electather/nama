@@ -56,7 +56,7 @@ The MVP remains single-administrator and single-user. User administration, invit
 5. Management RPCs may expose Nama-managed resources for installed provider types and their configuration, such as the neutral type identifier `jellyfin`. Remote provider resource IDs, SDK errors and types, and provider-specific consumer shapes remain private to plugins. Provider types never appear in service or message names.
 6. Canonical Nama item IDs and provider-instance IDs are Nama-owned. A canonical item may have sources from more than one provider instance.
 7. The core maps plugin observations into stored canonical media before serving consumer reads. Public browse and search never proxy a live provider query.
-8. The core is a control plane. Artwork and media bytes travel directly from the provider to the client through short-lived, narrowly scoped locators when the provider can supply them safely.
+8. The core is a control plane. Artwork and media bytes travel directly from the provider to the client through short-lived, narrowly scoped locators when the provider can supply them safely. The guarantee covers access conferred by Nama; public responses never reveal independently addressable stock provider paths, provider identifiers, or reusable credentials.
 9. Nama application RPCs are unary Connect. Better Auth's target OAuth metadata, JWKS, device-code issuance, token, refresh, and revocation endpoints use their standard HTTP contracts; streaming application RPCs, event feeds, unrelated REST, and GraphQL remain deferred.
 10. Better Auth wire formats are public only on those standard OAuth authorization-server endpoints. Nama Connect APIs and provider boundaries continue to expose only Nama-owned messages ([ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md)).
 
@@ -728,17 +728,25 @@ Opening the same operation ID with the same request returns the same logical ses
 
 Under [ADR-0013](../adr/0013-origin-scoped-short-lived-locators.md), the locator authorizes only the planned item/session and expires no earlier than the expected runtime plus a bounded grace period. It never contains an administrator, device, provider API-key, or reusable provider-account credential. Media bytes then flow from the provider to the Apple client without traversing the core.
 
-Milestone 1 must prove that Jellyfin can satisfy this security boundary on real
-hardware. Current documented Jellyfin APIs do not themselves promise an item-
-or session-scoped media credential, so this is a release-blocking proof rather
-than an assumed implementation detail. Jellyfin does not advertise usable
-`PLAYBACK_OPEN` to the core until that proof passes. Milestone 4 repeats the
-transport and redirect proof on iOS, tvOS, and macOS, records ADR-0032's two
-accepted Apple-engine limitations, and verifies that neither limitation widens
-the core's credential scope or redirect allowlist. The same rule applies to
-every later provider, including Plex. If a provider cannot safely constrain
-direct authorization, playback returns to security design; Nama does not ship a
-reusable provider credential or silently become a proxy.
+Stock Jellyfin 10.11.11 cannot satisfy this boundary by itself. Under
+[ADR-0035](../adr/0035-first-party-jellyfin-server-extension.md), Jellyfin
+playback instead requires a manually installed first-party server extension.
+The extension validates its own Jellyfin host and exposes a versioned private
+JSON/HTTP protocol only to Nama's Jellyfin provider plugin. It owns protected,
+self-contained leases and an opaque media namespace; stock Jellyfin routes
+retain their existing behavior and remain outside the access guarantee
+conferred by Nama.
+
+Jellyfin plans expire after five minutes. An opened lease and all main-media,
+playlist, segment, key, and external-subtitle children expire after the complete
+expected runtime plus 30 minutes and never later than 24 hours after open.
+Media requiring a longer lease is unsupported. The extension rewrites bounded
+control documents so stock paths, provider identifiers, and broad credentials
+never reach the client. Jellyfin advertises none of these capabilities while
+the extension is absent, unhealthy, or incompatible. Milestone 4 repeats the
+transport and redirect proof on iOS, tvOS, and macOS and verifies that
+ADR-0032's Apple-engine limitations widen neither credential scope nor the
+redirect allowlist.
 
 ### ReportPlayback
 
@@ -1052,6 +1060,16 @@ clients enforce that allowlist and apply the shared locator-header rules,
 including ADR-0032's bounded Apple MVP exception. A plugin cannot weaken this
 rule by advertising a capability.
 
+For Jellyfin, only the server extension accepted by ADR-0035 may mint the
+`SESSION` lease. The provider plugin authenticates its private plan, open,
+report, and close calls with the configured Jellyfin API key, but returns only
+opaque extension URLs, scoped lease headers, and self-contained private
+context. The extension keeps every exposed media child in its own namespace and
+removes stock paths, provider identifiers, and credential-bearing query values
+from bounded control documents. Provider-plugin replacement does not change
+lease validity; extension or Jellyfin restart may instead produce the ordinary
+safe media or cleanup failure defined by this lifecycle.
+
 Plugin report fields mirror public event ID, sequence, state, position, duration, observed selected tracks, and optional diagnostic client time, plus the private session context. Selected track references must belong to the active lease and are observations rather than switch commands. Plugin close fields mirror final position, duration, reason, operation ID, and optional diagnostic client time, plus the context.
 
 A provider that has no report or cleanup operation may implement the relevant call as a validated no-op. The core attempts to close every materialized lease on stop, cancellation, deadline, abandoned public open, shutdown, or partial failure. When the provider is unreachable, cleanup remains pending for a bounded safe retry and otherwise expires with the lease. If a public open is cancelled after the provider created a lease, the core records and attempts cleanup before discarding its active mapping.
@@ -1097,6 +1115,16 @@ Provider activity semantics are `PLAYBACK_STARTED`, `PLAYBACK_COMPLETED`, `STATE
 - `SetProgress` with desired `watched`, `position`, and optional `duration` as one coherent target.
 
 There is no toggle, play-count setter, played-percentage setter, or last-played setter. `SetProgress` includes watched state because a resumable rewatch such as `watched = false, position > 0` must reach Jellyfin coherently in one per-item write. This claims no cross-item or cross-provider atomicity. Plex supports `SetWatched` but not an exact `SetProgress`; its active progress is reported through `Plugin PlaybackService.ReportPlayback`. Jellyfin may support both targets.
+
+The target Jellyfin server extension implements `SetProgress` without
+extension-owned user-state persistence. A present duration is a precondition
+validated against current Jellyfin item runtime; mismatch causes no mutation.
+The extension saves watched state and playback position together in one
+Jellyfin user-data transaction and then reads back watched state, position, and
+item runtime before reporting success. Jellyfin supplies no revision,
+compare-and-swap, or provider idempotency key, so a lost response receives one
+readback and a differing or unresolved result remains retryable ambiguity
+rather than being replayed.
 
 Each `WatchStateMutationResult` repeats `mutation_id`, returns optional observed state, and has one status:
 
