@@ -309,6 +309,9 @@ async function recoverStaleLock(
     metadata.failureCode = "STALE_LOCK_RECOVERED";
     await atomicWriteJson(metadataPath, metadata);
   }
+  await runCommand("gh", ["issue", "edit", String(issueNumber), "--remove-assignee", "@me"], {
+    cwd: repoRoot,
+  });
   await unlink(lockPath);
   process.stdout.write(
     `Recovered stale lock for ${runId} after confirming process ${parsed.pid} is dead.\n`,
@@ -492,7 +495,8 @@ async function createRetryExecutionContext(
   const resumePublication =
     existingPullRequest !== undefined &&
     metadata.status === "publication_failed" &&
-    metadata.pullRequestUrl === existingPullRequest.url &&
+    (metadata.pullRequestUrl === undefined ||
+      metadata.pullRequestUrl === existingPullRequest.url) &&
     metadata.headSha === remoteSha &&
     metadata.remoteSha === remoteSha &&
     isMatchingDraftPullRequest(existingPullRequest, metadata.branch, snapshot.issue.number);

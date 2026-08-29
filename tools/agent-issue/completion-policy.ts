@@ -9,6 +9,9 @@ interface CompletionPolicySnapshot {
 const DEPENDENCY_PATHS: Record<string, true> = {
   "package.json": true,
   "pnpm-lock.yaml": true,
+  "pnpm-workspace.yaml": true,
+  "buf.yaml": true,
+  "buf.lock": true,
   "apps/server/package.json": true,
   "plugins/jellyfin/package.json": true,
   "gen/ts/package.json": true,
@@ -30,9 +33,9 @@ function issueAuthorizesBoundary(
   ].join("\n");
   const boundaryPattern = new RegExp(`\\b${boundary.replaceAll(" ", "\\s+")}\\b`, "iu");
   const positiveDirective =
-    /\b(?:add|allow|authorize|bump|change|create|delete|downgrade|edit|introduce|migrate|modify|pin|regenerate|remove|replace|update|upgrade|wire)\b/iu;
+    /^\s*(?:[-*+]\s+)?(?:\[[ xX]\]\s+)?(?:add|allow|authorize|bump|change|create|delete|downgrade|edit|introduce|migrate|modify|pin|regenerate|remove|replace|update|upgrade|wire)\b/iu;
   const negativeDirective =
-    /\b(?:cannot|forbid|forbidden|never|no|not|prohibit|prohibited|unauthorized|without)\b|can['’]t|do not|don['’]t|must not|mustn['’]t/iu;
+    /\b(?:cannot|forbid|forbidden|never|no|not|prohibit|prohibited|unauthorized|without)\b|can['’]t|do not|don['’]t|must not|mustn['’]t|out of scope/iu;
   return instructions.split(/\r?\n/u).some((line) => {
     const namesBoundary = line.includes(path) || boundaryPattern.test(line);
     return namesBoundary && positiveDirective.test(line) && !negativeDirective.test(line);
@@ -50,7 +53,9 @@ export function validateChangedPathPolicy(
       path.includes(".xcodeproj/") ||
       path.endsWith(".swift") ||
       path === "scripts/check-ios.sh" ||
-      path === "scripts/check-swift.sh",
+      path === "scripts/check-swift.sh" ||
+      path === ".swiftlint.yml" ||
+      path === ".swiftlint-analyze.yml",
   );
   if (ownsXcodePath && !snapshot.labels.includes("requires:xcode")) {
     throw new CommandError(

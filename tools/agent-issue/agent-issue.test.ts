@@ -160,6 +160,10 @@ if (args[0] === "repo" && args[1] === "view") {
 } else if (args[0] === "api" && /\\/issues\\/\\d+$/.test(args[1])) {
   output(state.issue);
 } else if (args[0] === "pr" && args[1] === "list") {
+  if (process.env.GH_FIXTURE_PR_QUERY_FAIL_AFTER_CREATE === "1" && state.prs.length > 0) {
+    process.stderr.write("fixture PR query failure\\n");
+    process.exit(99);
+  }
   const head = valueAfter("--head");
   output(head ? state.prs.filter(pr => pr.headRefName === head) : state.prs);
 } else if (args[0] === "issue" && args[1] === "edit") {
@@ -518,6 +522,22 @@ test("boundary changes require positive issue authorization", async (context) =>
     assert.equal((await fixture.readState()).prs.length, 0);
   });
 
+  for (const body of [
+    "## Acceptance criteria\n\n- Document the dependency change policy.\n",
+    "## Acceptance criteria\n\n- A dependency change is out of scope.\n",
+  ]) {
+    await context.test(body, async () => {
+      const fixture = await createFixture({ body });
+      const result = await fixture.run(["88", "--execute"], {
+        OMP_FIXTURE_ACTION: "dependency",
+      });
+
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /DEPENDENCY_CHANGE_UNAUTHORIZED/);
+      assert.equal((await fixture.readState()).prs.length, 0);
+    });
+  }
+
   await context.test("positive dependency instruction", async () => {
     const fixture = await createFixture({
       body: "## Acceptance criteria\n\n- Update the root package dependency for this issue.\n",
@@ -533,6 +553,9 @@ test("boundary changes require positive issue authorization", async (context) =>
 
 test("every native dependency manifest requires explicit authorization", async (context) => {
   const dependencyPaths: Array<{ path: string; requiresXcode?: true }> = [
+    { path: "pnpm-workspace.yaml" },
+    { path: "buf.yaml" },
+    { path: "buf.lock" },
     { path: "apps/server/package.json" },
     { path: "plugins/jellyfin/package.json" },
     { path: "gen/ts/package.json" },
@@ -567,8 +590,13 @@ test("every native dependency manifest requires explicit authorization", async (
   }
 });
 
-test("Apple-owned check scripts require the pre-triaged Xcode capability", async (context) => {
-  for (const path of ["scripts/check-ios.sh", "scripts/check-swift.sh"]) {
+test("Apple-owned tooling requires the pre-triaged Xcode capability", async (context) => {
+  for (const path of [
+    "scripts/check-ios.sh",
+    "scripts/check-swift.sh",
+    ".swiftlint.yml",
+    ".swiftlint-analyze.yml",
+  ]) {
     await context.test(path, async () => {
       const fixture = await createFixture();
       const result = await fixture.run(["88", "--execute"], {
@@ -781,9 +809,13 @@ test("stale-lock recovery requires matching dead-process evidence and cleanup ve
       `${JSON.stringify({ version: 1, runId, issueNumber: 88, branch: "agent/issue-88", baseSha: "0".repeat(40), pid: 999_999, startedAt: "2026-08-01T00:00:00Z" })}\n`,
       "utf8",
     );
+    const assignedState = await fixture.readState();
+    assignedState.issue.assignees = [{ login: assignedState.login }];
+    await fixture.writeState(assignedState);
     const recovered = await fixture.run(["88", "--recover-stale-lock", runId]);
     assert.equal(recovered.code, 0, recovered.stderr);
     assert.match(recovered.stdout, /Recovered stale lock/);
+    assert.deepEqual((await fixture.readState()).issue.assignees, []);
     const recoveredMetadata = JSON.parse(
       await readFile(join(runDirectory, "metadata.json"), "utf8"),
     ) as { status: string; failureStage?: string; failureCode?: string };
@@ -968,6 +1000,26 @@ test("publication retry resumes a confirmed matching draft without rerunning OMP
   assert.equal((await readFile(fixture.ompLogPath, "utf8")).trim().split("\n").length, 1);
   const worktrees = await exec("git", ["worktree", "list", "--porcelain"], fixture.repo);
   assert.doesNotMatch(worktrees.stdout, /agent[./-]issue-88/);
+});
+
+test("publication retry recovers a matching draft after ambiguous confirmation", async () => {
+  const fixture = await createFixture();
+  const first = await fixture.run(["88", "--execute"], {
+    GH_FIXTURE_PR_QUERY_FAIL_AFTER_CREATE: "1",
+  });
+  assert.equal(first.code, 1);
+  const failedState = await fixture.readState();
+  assert.equal(failedState.prs.length, 1);
+  const runId = /issue-88-[0-9]+-[0-9a-f]+/u.exec(JSON.stringify(failedState.mutations))?.[0];
+  assert.ok(runId);
+
+  const retry = await fixture.run(["88", "--execute", "--retry", runId]);
+  assert.equal(retry.code, 0, retry.stderr);
+  const recoveredState = await fixture.readState();
+  assert.equal(recoveredState.prs.length, 1);
+  assert.deepEqual(recoveredState.issue.labels, []);
+  assert.deepEqual(recoveredState.issue.assignees, [{ login: "fixture-maintainer" }]);
+  assert.equal((await readFile(fixture.ompLogPath, "utf8")).trim().split("\n").length, 1);
 });
 
 test("explicit publication retry uses recorded force-with-lease when history diverged", async () => {
