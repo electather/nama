@@ -51,21 +51,36 @@ const sendOversizedLength = (response: ServerResponse): void => {
   response.end(ASSET_BYTES);
 };
 
-const responseByPath: Readonly<Record<string, (response: ServerResponse) => void>> = Object.freeze({
-  "/oversized": sendOversizedLength,
-  "/poster": sendArtwork,
-  "/redirect": sendUnsafeRedirect,
-  "/wrong-mime": sendWrongMimeType,
-});
+const handleKnownArtworkRequest = (path: string | undefined, response: ServerResponse): boolean => {
+  switch (path ?? "") {
+    case "/oversized": {
+      sendOversizedLength(response);
+      return true;
+    }
+    case "/poster": {
+      sendArtwork(response);
+      return true;
+    }
+    case "/redirect": {
+      sendUnsafeRedirect(response);
+      return true;
+    }
+    case "/wrong-mime": {
+      sendWrongMimeType(response);
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+};
 
 const handleArtworkRequest = (request: IncomingMessage, response: ServerResponse): void => {
-  const handler = responseByPath[request.url ?? ""];
-  if (handler === undefined) {
-    response.statusCode = HTTP_NOT_FOUND;
-    response.end();
+  if (handleKnownArtworkRequest(request.url, response)) {
     return;
   }
-  handler(response);
+  response.statusCode = HTTP_NOT_FOUND;
+  response.end();
 };
 
 const controlledArtworkServer = Effect.acquireRelease(

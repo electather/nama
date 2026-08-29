@@ -174,6 +174,32 @@ const proxyRequestHeaders = (request: IncomingMessage): Headers => {
   return headers;
 };
 
+const jellyfinRequestUrl = (requestUrl: string, baseUrl: string): URL => {
+  const requestOrigin = "http://request.invalid";
+  const requested = new URL(requestUrl, requestOrigin);
+  if (
+    !requestUrl.startsWith("/") ||
+    requestUrl.startsWith("//") ||
+    requested.origin !== requestOrigin
+  ) {
+    throw new Error("proxy request target is invalid");
+  }
+  const upstream = new URL(baseUrl);
+  upstream.pathname = requested.pathname;
+  upstream.search = requested.search;
+  upstream.hash = "";
+  return upstream;
+};
+
+it("rejects proxy targets that can replace the controlled Jellyfin origin", () => {
+  expect(() =>
+    jellyfinRequestUrl("https://attacker.example/private", "http://127.0.0.1:8096"),
+  ).toThrow("proxy request target is invalid");
+  expect(() => jellyfinRequestUrl("//attacker.example/private", "http://127.0.0.1:8096")).toThrow(
+    "proxy request target is invalid",
+  );
+});
+
 const forwardJellyfinRequest = async ({
   jellyfin,
   providerReferences,
@@ -184,7 +210,7 @@ const forwardJellyfinRequest = async ({
   try {
     const requestUrl = request.url ?? "/";
     const method = request.method ?? "GET";
-    const upstream = await fetch(new URL(requestUrl, jellyfin.baseUrl), {
+    const upstream = await fetch(jellyfinRequestUrl(requestUrl, jellyfin.baseUrl), {
       headers: proxyRequestHeaders(request),
       method,
       redirect: "manual",
