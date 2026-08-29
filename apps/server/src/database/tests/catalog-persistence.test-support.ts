@@ -16,6 +16,9 @@ const unusedCatalogPersistence: CatalogPersistence = Object.freeze({
 });
 
 const unusedCatalogQueries: CatalogQueryStorage = Object.freeze({
+  getArtworkLocatorTarget: () => {
+    throw new Error("unexpected canonical catalog query");
+  },
   getArtworkTarget: () => {
     throw new Error("unexpected canonical catalog query");
   },

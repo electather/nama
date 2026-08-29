@@ -2,7 +2,7 @@ import { expect, it } from "@effect/vitest";
 import { Deferred, Effect, Exit, Fiber, Layer, Redacted } from "effect";
 
 import { runConfigured } from "../app.ts";
-import { CatalogImport } from "../catalog/catalog-import.ts";
+import { CatalogImport } from "../catalog/catalog-import-live.ts";
 import { Config } from "../config/config.ts";
 import { HttpServer } from "../http/http-server.ts";
 import { RuntimeControl } from "../lifecycle/runtime-control.ts";

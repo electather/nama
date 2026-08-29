@@ -12,7 +12,7 @@ This document is Nama's canonical architecture entry point and ADR index. Read [
 
 ## System shape
 
-Nama's target MVP is a self-hosted control plane, not a media relay. A TypeScript core owns identity, configuration, the canonical media model, watch state, reconciliation, and authorization. Provider plugins translate between that model and external services. Application APIs use the versioned Protobuf/ConnectRPC contract; Better Auth's standard OAuth HTTP endpoints authorize the Apple public client. During playback the provider sends media directly to the client; the core only selects and authorizes the source.
+Nama's target MVP is a self-hosted control plane with one bounded catalog-artwork exception, not a playable-media relay. A TypeScript core owns identity, configuration, the canonical media model and artwork assets, watch state, reconciliation, and authorization. Provider plugins translate between that model and external services. Application APIs use the versioned Protobuf/ConnectRPC contract; Better Auth's standard OAuth HTTP endpoints authorize the Apple public client. The core serves signed short-lived access to stored canonical artwork, while during playback the provider sends playable media directly to the client and the core only selects and authorizes the source.
 
 ```text
 Apple app ── OAuth device grant ──┐
@@ -30,7 +30,7 @@ The target installation is one private deployment with one administrator, Jellyf
 
 The MVP authorization path is complete without a browser: an already authenticated Go CLI sends the Apple app's displayed user code through role-neutral `AuthService.ApproveDeviceAuthorization`, and the core binds the grant to that session principal before invoking Better Auth's internal verification and approval APIs. The request selects no target user and grants no Administrator authority. Issue #167 may add a narrow browser approval web app over the same internal application service; it does not become a prerequisite for Apple authorization or a general web console.
 
-The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, initial canonical catalog ingestion, stored public Library reads, and versioned persistence for sparse canonical Watch state and exact Provider replicas. Public `PlaybackService` and public user-state behavior remain unimplemented.
+The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, initial canonical catalog and bounded artwork-asset ingestion, stored public Library and signed artwork reads, and versioned persistence for sparse canonical Watch state and exact Provider replicas. Public `PlaybackService` and public user-state behavior remain unimplemented.
 
 The same listener now exposes the fixed Apple public client's allowlisted Better Auth metadata, JWKS, device-code, token, refresh, and revocation routes. Generated `AuthService` handlers approve the current session principal's grant and revoke the fixed client's refresh-token families; Connect consumer authority verifies audience-bound, fixed-client, method-scoped JWTs locally without treating them as Administrator sessions.
 

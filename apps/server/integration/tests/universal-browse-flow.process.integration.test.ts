@@ -31,6 +31,7 @@ import {
 import type { NamaRunner } from "./compiled-cli.test-support.ts";
 import { withPool } from "./database.test-support.ts";
 import { withIsolatedDatabase } from "./postgres.test-support.ts";
+import { collectPublicReferenceValues } from "./provider-boundary.test-support.ts";
 import { provisionJellyfin, requiredString } from "./provider-durable-loop.test-support.ts";
 import type { JellyfinFixture } from "./provider-durable-loop.test-support.ts";
 
@@ -82,14 +83,20 @@ interface ObservedProviderRequest {
 interface JellyfinProxy {
   readonly baseUrl: string;
   readonly providerReferences: ReadonlySet<string>;
+  readonly providerTrackReferences: ReadonlySet<number>;
   readonly requests: readonly ObservedProviderRequest[];
   readonly server: Server;
 }
 interface JellyfinForwardInput {
   readonly jellyfin: JellyfinFixture;
   readonly providerReferences: Set<string>;
+  readonly providerTrackReferences: Set<number>;
   readonly request: IncomingMessage;
   readonly response: ServerResponse;
+}
+interface ProviderReferenceCollection {
+  readonly trackIndexes: Set<number>;
+  readonly values: Set<string>;
 }
 
 interface BrowseFlowInput {
@@ -108,11 +115,22 @@ const PRIVATE_REFERENCE_KEYS: Readonly<Record<string, true>> = {
 };
 const HTTP_BAD_GATEWAY = 502;
 const EPHEMERAL_PORT = 0;
+const REPRESENTATIVE_TRACK_INDEX = 73;
 
-const collectProviderReferences = (value: unknown, references: Set<string>, key = ""): void => {
+const collectProviderReferences = (
+  value: unknown,
+  references: ProviderReferenceCollection,
+  key = "",
+): void => {
   if (typeof value === "string") {
     if (Object.hasOwn(PRIVATE_REFERENCE_KEYS, key) && value.length > EMPTY_LENGTH) {
-      references.add(value);
+      references.values.add(value);
+    }
+    return;
+  }
+  if (typeof value === "number") {
+    if (key === "Index" && Number.isSafeInteger(value)) {
+      references.trackIndexes.add(value);
     }
     return;
   }
@@ -129,6 +147,17 @@ const collectProviderReferences = (value: unknown, references: Set<string>, key 
     collectProviderReferences(nested, references, property);
   }
 };
+
+it("collects numeric Jellyfin track references", () => {
+  const references: ProviderReferenceCollection = {
+    trackIndexes: new Set<number>(),
+    values: new Set<string>(),
+  };
+
+  collectProviderReferences({ MediaStreams: [{ Index: REPRESENTATIVE_TRACK_INDEX }] }, references);
+
+  expect(references.trackIndexes).toEqual(new Set([REPRESENTATIVE_TRACK_INDEX]));
+});
 
 const proxyRequestHeaders = (request: IncomingMessage): Headers => {
   const headers = new Headers();
@@ -148,6 +177,7 @@ const proxyRequestHeaders = (request: IncomingMessage): Headers => {
 const forwardJellyfinRequest = async ({
   jellyfin,
   providerReferences,
+  providerTrackReferences,
   request,
   response,
 }: JellyfinForwardInput): Promise<void> => {
@@ -175,7 +205,10 @@ const forwardJellyfinRequest = async ({
       requestUrl.startsWith("/Items?") &&
       upstream.headers.get("content-type")?.startsWith("application/json") === true
     ) {
-      collectProviderReferences(JSON.parse(body.toString("utf8")), providerReferences);
+      collectProviderReferences(JSON.parse(body.toString("utf8")), {
+        trackIndexes: providerTrackReferences,
+        values: providerReferences,
+      });
     }
     response.end(body);
   } catch {
@@ -190,13 +223,20 @@ const acquireJellyfinProxy = (jellyfin: JellyfinFixture) =>
       catch: (error) => error,
       try: async (): Promise<JellyfinProxy> => {
         const providerReferences = new Set<string>();
+        const providerTrackReferences = new Set<number>();
         const requests: ObservedProviderRequest[] = [];
         const server = createServer((request, response) => {
           requests.push({
             method: request.method ?? "GET",
             url: request.url ?? "/",
           });
-          void forwardJellyfinRequest({ jellyfin, providerReferences, request, response });
+          void forwardJellyfinRequest({
+            jellyfin,
+            providerReferences,
+            providerTrackReferences,
+            request,
+            response,
+          });
         });
         server.listen(EPHEMERAL_PORT, "127.0.0.1");
         await once(server, "listening");
@@ -207,6 +247,7 @@ const acquireJellyfinProxy = (jellyfin: JellyfinFixture) =>
         return {
           baseUrl: `http://127.0.0.1:${address.port}/`,
           providerReferences,
+          providerTrackReferences,
           requests,
           server,
         };
@@ -580,6 +621,11 @@ const exerciseBrowseFlow = ({
       )).locator,
       "Artwork locator",
     );
+    const locatorUrl = new URL(locator.url);
+    expect(locatorUrl.origin).toBe(flow.runningProcess.origin);
+    expect(locatorUrl.pathname.startsWith("/artwork/")).toBe(true);
+    expect(locator.headers).toEqual([]);
+    expect(locator.accessExpiresAt).toBeDefined();
     const artworkResponse = yield* Effect.promise(() =>
       fetch(locator.url, {
         headers: Object.fromEntries(locator.headers.map(({ name, value }) => [name, value])),
@@ -587,15 +633,15 @@ const exerciseBrowseFlow = ({
       }),
     );
     expect(artworkResponse.status).toBe(HTTP_OK);
+    expect(artworkResponse.headers.get("cache-control")).toBe("private, no-store");
     expect(artworkResponse.headers.get("content-type")).toMatch(/^image\//u);
-    expect((yield* Effect.promise(() => artworkResponse.arrayBuffer())).byteLength).toBeGreaterThan(
-      EMPTY_LENGTH,
-    );
-    const artworkRequests = proxy.requests.slice(providerRequestCount);
-    expect(artworkRequests.map(({ method }) => method)).toEqual(["HEAD", "GET"]);
-    expect(artworkRequests.every(({ url }) => url.includes("/Images/"))).toBe(true);
+    expect(artworkResponse.headers.get("x-content-type-options")).toBe("nosniff");
+    const artworkBytes = yield* Effect.promise(() => artworkResponse.arrayBuffer());
+    expect(artworkResponse.headers.get("content-length")).toBe(String(artworkBytes.byteLength));
+    expect(artworkBytes.byteLength).toBeGreaterThan(EMPTY_LENGTH);
+    expect(proxy.requests).toHaveLength(providerRequestCount);
 
-    const ordinaryPublicValues = publicBoundaryJson({
+    const ordinaryPublicBoundary = {
       episode,
       episodeSource,
       firstPage,
@@ -620,7 +666,8 @@ const exerciseBrowseFlow = ({
       show,
       showChildren,
       sortedLibraryPages,
-    });
+    };
+    const ordinaryPublicValues = publicBoundaryJson(ordinaryPublicBoundary);
     const processOutput = `${flow.runningProcess.stdout()}\n${flow.runningProcess.stderr()}`;
     const privateSentinels = [
       jellyfin.baseUrl,
@@ -633,8 +680,16 @@ const exerciseBrowseFlow = ({
       expect(ordinaryPublicValues).not.toContain(sentinel);
       expect(processOutput).not.toContain(sentinel);
     }
+    const publicReferenceValues = new Set<string>();
+    collectPublicReferenceValues(ordinaryPublicBoundary, publicReferenceValues);
+    expect(proxy.providerTrackReferences.size).toBeGreaterThan(EMPTY_LENGTH);
+    for (const trackReference of proxy.providerTrackReferences) {
+      expect(publicReferenceValues).not.toContain(String(trackReference));
+      expect(processOutput).not.toContain(`"Index":${trackReference}`);
+    }
     const artworkBoundary = publicBoundaryJson(locator);
     for (const sentinel of [
+      jellyfin.baseUrl,
       jellyfin.primaryApiKey,
       jellyfin.primaryUserId,
       jellyfin.serverId,

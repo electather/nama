@@ -32,29 +32,6 @@ const CREDIT_ROLE: Readonly<Record<CatalogCreditRole, MediaCreditRole>> = Object
 // oxlint-disable-next-line unicorn/no-null -- Stored summary cursors preserve PostgreSQL null semantics for absent sortable fields.
 const nullable = <Value>(value: Value | undefined): Value | null => value ?? null;
 
-const summaryFromItem = (item: StoredCatalogItem) => {
-  if (item.libraryCreatedAt === undefined) {
-    throw new Error("visible catalog item has no Library entry");
-  }
-  return summaryMessage({
-    artwork: item.artwork,
-    contentRating: nullable(item.contentRating),
-    episodeNumber: nullable(item.episodeNumber),
-    genres: item.genres,
-    id: item.id,
-    kind: item.kind,
-    libraryCreatedAt: item.libraryCreatedAt.toISOString().replace("Z", "000Z"),
-    normalizedTitle: item.title.toLowerCase(),
-    releaseDateSort: nullable(item.releaseDate ?? item.firstReleaseDate),
-    releaseYear: nullable(item.releaseYear),
-    runtimeNanoseconds: item.runtime.nanoseconds,
-    runtimeSeconds: item.runtime.seconds,
-    seasonNumber: nullable(item.seasonNumber),
-    sources: sourceSummaries(item.sources),
-    title: item.title,
-  });
-};
-
 const dateMessage = (date: string | undefined) => {
   if (date === undefined) {
     return ABSENT_VALUE;
@@ -127,30 +104,46 @@ const portraitArtwork = (artwork: StoredCatalogArtwork | undefined) => {
   return artworkMessage(artwork);
 };
 
-const detailsMessage = (item: StoredCatalogItem): MediaDetails => ({
-  $typeName: "nama.api.v1.MediaDetails",
-  artwork: item.artwork.map((artwork) => artworkMessage(artwork)),
-  credits: item.credits.map((credit) => ({
-    $typeName: "nama.api.v1.MediaCredit",
-    characterName: credit.characterName,
-    name: credit.name,
-    portraitArtwork: portraitArtwork(credit.portraitArtwork),
-    role: CREDIT_ROLE[credit.role],
-  })),
-  genres: [...item.genres],
-  kindDetails: kindDetails(item),
-  originalTitle: item.originalTitle,
-  parents: item.parents.map((parent) => ({
-    $typeName: "nama.api.v1.MediaParent",
-    id: parent.id,
-    kind: MEDIA_KIND[parent.kind],
-    title: parent.title,
-  })),
-  sourceSummaries: sourceSummaries(item.sources).map((source) => sourceMessage(source)),
-  studios: [...item.studios],
-  summary: summaryFromItem(item),
-  synopsis: item.synopsis,
-  tagline: item.tagline,
-});
+const detailsMessage = (item: StoredCatalogItem): MediaDetails => {
+  const sourceSummaryModels = sourceSummaries(item.sources);
+  return {
+    $typeName: "nama.api.v1.MediaDetails",
+    artwork: item.artwork.map((artwork) => artworkMessage(artwork)),
+    credits: item.credits.map((credit) => ({
+      $typeName: "nama.api.v1.MediaCredit",
+      characterName: credit.characterName,
+      name: credit.name,
+      portraitArtwork: portraitArtwork(credit.portraitArtwork),
+      role: CREDIT_ROLE[credit.role],
+    })),
+    genres: [...item.genres],
+    kindDetails: kindDetails(item),
+    originalTitle: item.originalTitle,
+    parents: item.parents.map((parent) => ({
+      $typeName: "nama.api.v1.MediaParent",
+      id: parent.id,
+      kind: MEDIA_KIND[parent.kind],
+      title: parent.title,
+    })),
+    sourceSummaries: sourceSummaryModels.map((source) => sourceMessage(source)),
+    studios: [...item.studios],
+    summary: summaryMessage({
+      artwork: item.artwork,
+      contentRating: nullable(item.contentRating),
+      episodeNumber: nullable(item.episodeNumber),
+      genres: item.genres,
+      id: item.id,
+      kind: item.kind,
+      releaseYear: nullable(item.releaseYear),
+      runtimeNanoseconds: item.runtime.nanoseconds,
+      runtimeSeconds: item.runtime.seconds,
+      seasonNumber: nullable(item.seasonNumber),
+      sources: sourceSummaryModels,
+      title: item.title,
+    }),
+    synopsis: item.synopsis,
+    tagline: item.tagline,
+  };
+};
 
 export { detailsMessage, summaryMessage, technicalSourceMessage };

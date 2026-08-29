@@ -24,11 +24,10 @@ import {
   Playability,
   SourceAvailability,
 } from "../../../../gen/ts/src/nama/api/v1/media_pb.js";
-import { ArtworkAuthorizationScope } from "../../../../gen/ts/src/nama/plugin/v1/library_pb.js";
 import type { AuthenticationService } from "../../src/authentication/authentication-service.ts";
+import type { ArtworkAccessService } from "../../src/catalog/catalog-artwork-access.ts";
 import { CatalogQuery } from "../../src/catalog/catalog-query-live.ts";
 import { makeCatalogQuery } from "../../src/catalog/catalog-query.ts";
-import type { CatalogArtworkLeaseResolver } from "../../src/catalog/catalog-query.ts";
 import type { Database } from "../../src/database/database.ts";
 import { startServer } from "../../src/http/tests/http-server.test-support.ts";
 import {
@@ -136,19 +135,23 @@ const markCatalogComplete = (databaseUrl: string, providerInstanceId: string) =>
     ),
   );
 
-const unexpectedArtworkResolution: CatalogArtworkLeaseResolver = () =>
-  Effect.die("unexpected artwork resolution");
+const unexpectedArtworkAccess: ArtworkAccessService = {
+  locator: () => {
+    throw new Error("unexpected artwork locator");
+  },
+  read: () => Effect.die("unexpected artwork read"),
+};
 
 const makeStoredQuery = (
   database: Database["Service"],
   now: () => number = () => NOW,
-  resolveArtworkLease: CatalogArtworkLeaseResolver = unexpectedArtworkResolution,
+  artworkAccess: ArtworkAccessService = unexpectedArtworkAccess,
 ) =>
   makeCatalogQuery({
+    artworkAccess,
     catalog: database.catalogQueries,
     masterKey: MASTER_KEY,
     now,
-    resolveArtworkLease,
   });
 
 it.live("stores and replaces the weighted simple full-text projection", () =>
@@ -934,7 +937,7 @@ it.live("serves visible hierarchy, canonical details, and technical sources by N
   ),
 );
 
-it.live("resolves only stored artwork mappings into validated short-lived locators", () =>
+it.live("resolves only persisted canonical artwork assets through Nama locators", () =>
   withIsolatedDatabase((databaseUrl) =>
     Effect.gen(function* storedArtworkResolution() {
       yield* initializeCatalogDatabase(databaseUrl, [{ id: PROVIDER_INSTANCE_ID, priority: 1 }]);
@@ -944,14 +947,17 @@ it.live("resolves only stored artwork mappings into validated short-lived locato
         Effect.gen(function* resolveStoredArtwork() {
           const movie = yield* database.catalog.observeItem(
             movieObservation(PROVIDER_INSTANCE_ID, {
-              itemReference: "private-artwork-item",
-              sources: [
-                videoSource(
-                  "private-artwork-source",
-                  "private-artwork-part",
-                  "private-artwork-track",
-                ),
+              artwork: [
+                {
+                  artworkReference: "private-artwork-reference",
+                  asset: { bytes: Buffer.from("canonical-image"), mimeType: "image/jpeg" },
+                  height: 1500,
+                  role: "poster",
+                  textPresence: "contains_text",
+                  width: 1000,
+                },
               ],
+              itemReference: "private-artwork-item",
             }),
           );
           const artworkId = movie.artwork[0]?.id;
@@ -959,25 +965,23 @@ it.live("resolves only stored artwork mappings into validated short-lived locato
             throw new Error("artwork fixture is missing");
           }
           let resolutionCount = 0;
-          const query = yield* makeStoredQuery(
-            database,
-            () => NOW,
-            () => {
+          const artworkAccess: ArtworkAccessService = {
+            locator: ({ height, width }) => {
               resolutionCount += 1;
-              return Effect.succeed({
-                approvedOrigins: ["https://artwork.example"],
-                lease: {
-                  $typeName: "nama.plugin.v1.ProviderArtworkLease",
-                  accessExpiresAt: undefined,
-                  allowedRedirectOrigins: ["https://artwork.example"],
-                  authorizationScope: ArtworkAuthorizationScope.PUBLIC,
-                  headers: [],
-                  mimeType: "image/jpeg",
-                  url: "https://artwork.example/poster.jpg",
-                },
-              });
+              return {
+                $typeName: "nama.api.v1.ArtworkLocator",
+                accessExpiresAt: undefined,
+                allowedRedirectOrigins: ["https://nama.example"],
+                headers: [],
+                height,
+                refreshAt: undefined,
+                url: "https://nama.example/artwork/opaque-token",
+                width,
+              };
             },
-          );
+            read: () => Effect.die("unexpected artwork byte read"),
+          };
+          const query = yield* makeStoredQuery(database, () => NOW, artworkAccess);
           yield* query.getHome(PRINCIPAL_ID, create(GetHomeRequestSchema, {}));
           expect(resolutionCount).toBe(0);
 
@@ -991,14 +995,10 @@ it.live("resolves only stored artwork mappings into validated short-lived locato
           );
           expect(resolutionCount).toBe(1);
           expect(response.locator).toMatchObject({
-            allowedRedirectOrigins: ["https://artwork.example"],
+            allowedRedirectOrigins: ["https://nama.example"],
             headers: [],
             height: 1500,
-            refreshAt: {
-              nanos: 0,
-              seconds: BigInt(Math.floor((NOW + 5 * 60 * 1000) / 1000)),
-            },
-            url: "https://artwork.example/poster.jpg",
+            url: "https://nama.example/artwork/opaque-token",
             width: 1000,
           });
           expect(
@@ -1006,76 +1006,108 @@ it.live("resolves only stored artwork mappings into validated short-lived locato
               typeof value === "bigint" ? value.toString() : value,
             ),
           ).not.toContain("private-artwork");
-          const unapprovedOriginQuery = yield* makeStoredQuery(
-            database,
-            () => NOW,
-            () =>
-              Effect.succeed({
-                approvedOrigins: ["https://artwork.example"],
-                lease: {
-                  $typeName: "nama.plugin.v1.ProviderArtworkLease",
-                  accessExpiresAt: undefined,
-                  allowedRedirectOrigins: ["https://attacker.example"],
-                  authorizationScope: ArtworkAuthorizationScope.PUBLIC,
-                  headers: [],
-                  mimeType: "image/jpeg",
-                  url: "https://attacker.example/poster.jpg",
-                },
-              }),
-          );
-          const unapprovedOrigin = yield* unapprovedOriginQuery
-            .resolveArtwork(PRINCIPAL_ID, create(ResolveArtworkRequestSchema, { artworkId }))
-            .pipe(
-              Effect.map(() => "unapproved artwork origin unexpectedly accepted"),
-              Effect.flip,
-            );
-          expect(unapprovedOrigin).toMatchObject({ _tag: "ResourceNotFound" });
-          const providerReferenceQuery = yield* makeStoredQuery(
-            database,
-            () => NOW,
-            () =>
-              Effect.succeed({
-                approvedOrigins: ["https://artwork.example"],
-                lease: {
-                  $typeName: "nama.plugin.v1.ProviderArtworkLease",
-                  accessExpiresAt: undefined,
-                  allowedRedirectOrigins: ["https://artwork.example"],
-                  authorizationScope: ArtworkAuthorizationScope.PUBLIC,
-                  headers: [],
-                  mimeType: "image/jpeg",
-                  url: "https://artwork.example/private-artwork-item/poster.jpg",
-                },
-              }),
-          );
-          const providerReference = yield* providerReferenceQuery
-            .resolveArtwork(PRINCIPAL_ID, create(ResolveArtworkRequestSchema, { artworkId }))
-            .pipe(
-              Effect.map(() => "provider artwork reference unexpectedly exposed"),
-              Effect.flip,
-            );
-          expect(providerReference).toMatchObject({ _tag: "ResourceNotFound" });
 
-          const unsafeQuery = yield* makeStoredQuery(
-            database,
-            () => NOW,
-            () =>
-              Effect.succeed({
-                approvedOrigins: ["https://artwork.example"],
-                lease: {
-                  $typeName: "nama.plugin.v1.ProviderArtworkLease",
-                  accessExpiresAt: undefined,
-                  allowedRedirectOrigins: ["https://artwork.example"],
-                  authorizationScope: ArtworkAuthorizationScope.PROVIDER_ACCOUNT,
-                  headers: [],
-                  mimeType: "image/jpeg",
-                  url: "https://artwork.example/poster.jpg",
+          const missingAssetMovie = yield* database.catalog.observeItem(
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              artwork: [
+                {
+                  artworkReference: "missing-asset-reference",
+                  role: "poster",
+                  textPresence: "unknown",
                 },
-              }),
+              ],
+              itemReference: "missing-asset-item",
+            }),
           );
-          const unsafe = yield* unsafeQuery
-            .resolveArtwork(PRINCIPAL_ID, create(ResolveArtworkRequestSchema, { artworkId }))
+          const missingAssetId = missingAssetMovie.artwork[0]?.id;
+          if (missingAssetId === undefined) {
+            throw new Error("missing-asset fixture has no artwork");
+          }
+          const missingAsset = yield* query
+            .resolveArtwork(
+              PRINCIPAL_ID,
+              create(ResolveArtworkRequestSchema, { artworkId: missingAssetId }),
+            )
             .pipe(Effect.flip);
-          expect(unsafe).toMatchObject({ _tag: "ResourceNotFound" });
+          expect(missingAsset).toMatchObject({ _tag: "ResourceNotFound" });
+          expect(resolutionCount).toBe(1);
+        }),
+      );
+    }),
+  ),
+);
+
+it.live("replaces and retires persisted artwork with its canonical projection", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* persistedArtworkLifecycle() {
+      yield* initializeCatalogDatabase(databaseUrl, [{ id: PROVIDER_INSTANCE_ID, priority: 1 }]);
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* replacePersistedArtwork() {
+          const first = yield* database.catalog.observeItem(
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              artwork: [
+                {
+                  artworkReference: "first-private-artwork",
+                  asset: { bytes: Buffer.from("first-image"), mimeType: "image/jpeg" },
+                  role: "poster",
+                  textPresence: "unknown",
+                },
+              ],
+              itemReference: "artwork-lifecycle-item",
+            }),
+          );
+          const firstArtworkId = first.artwork[0]?.id;
+          if (firstArtworkId === undefined) {
+            throw new Error("first artwork fixture is missing");
+          }
+          const firstTarget = yield* Effect.promise(() =>
+            database.catalogQueries.getArtworkTarget(firstArtworkId),
+          );
+          expect(firstTarget).toMatchObject({
+            assetBytes: Buffer.from("first-image"),
+            assetMimeType: "image/jpeg",
+          });
+
+          const replacement = yield* database.catalog.observeItem(
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              artwork: [
+                {
+                  artworkReference: "replacement-private-artwork",
+                  asset: { bytes: Buffer.from("replacement-image"), mimeType: "image/png" },
+                  role: "poster",
+                  textPresence: "unknown",
+                },
+              ],
+              itemReference: "artwork-lifecycle-item",
+            }),
+          );
+          const replacementArtworkId = replacement.artwork[0]?.id;
+          if (replacementArtworkId === undefined) {
+            throw new Error("replacement artwork fixture is missing");
+          }
+          expect(replacementArtworkId).not.toBe(firstArtworkId);
+          const retiredFirst = yield* Effect.promise(() =>
+            database.catalogQueries.getArtworkTarget(firstArtworkId),
+          );
+          expect(retiredFirst).toBeUndefined();
+          const replacementTarget = yield* Effect.promise(() =>
+            database.catalogQueries.getArtworkTarget(replacementArtworkId),
+          );
+          expect(replacementTarget).toMatchObject({
+            assetBytes: Buffer.from("replacement-image"),
+            assetMimeType: "image/png",
+          });
+
+          yield* database.catalog.observeItem(
+            movieObservation(PROVIDER_INSTANCE_ID, {
+              artwork: [],
+              itemReference: "artwork-lifecycle-item",
+            }),
+          );
+          const retiredReplacement = yield* Effect.promise(() =>
+            database.catalogQueries.getArtworkTarget(replacementArtworkId),
+          );
+          expect(retiredReplacement).toBeUndefined();
         }),
       );
     }),

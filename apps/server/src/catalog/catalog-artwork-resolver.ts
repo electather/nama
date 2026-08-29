@@ -6,16 +6,21 @@ import type { PluginSupervisorService } from "../plugin/model.ts";
 import { bundledProviders } from "../provider/bundled-provider-registry.ts";
 import type { BundledProvider } from "../provider/bundled-provider-registry.ts";
 import type { ProviderManagement } from "../provider/provider-management.ts";
-import { normalizedLocatorOrigin } from "./catalog-artwork-query.ts";
-import type { CatalogArtworkLeaseRequest } from "./catalog-query-model.ts";
+import { makeArtworkAssetLoader } from "./catalog-artwork-asset-fetch.ts";
+import { normalizedLocatorOrigin } from "./catalog-artwork-origin.ts";
+import type { CatalogArtworkLeaseRequest } from "./catalog-artwork-provider-model.ts";
 
 const ARTWORK_DEADLINE_MILLISECONDS = 5000;
 
-const loadArtworkLaunch = (database: Database["Service"], providerInstanceId: string) =>
+const loadArtworkLaunch = (
+  database: Database["Service"],
+  providerInstanceId: string,
+  revision: string,
+) =>
   Effect.gen(function* loadArtworkProvider() {
     const stored = yield* database.providers.loadInstance(providerInstanceId);
-    if (!stored.enabled) {
-      return yield* Effect.fail(new Error("provider instance is disabled"));
+    if (!stored.enabled || stored.revision !== revision) {
+      return yield* Effect.fail(new Error("provider instance revision is unavailable"));
     }
     const provider = bundledProviders.find(
       (candidate) => candidate.providerTypeId === stored.providerTypeId,
@@ -45,46 +50,53 @@ const approvedArtworkOrigins = (
 };
 
 const makeCatalogArtworkLeaseResolver =
-  (
-    database: Database["Service"],
-    providerManagement: ProviderManagement["Service"],
-    supervisor: PluginSupervisorService,
-  ) =>
+  (database: Database["Service"], supervisor: PluginSupervisorService) =>
   (input: CatalogArtworkLeaseRequest) =>
-    providerManagement.runProviderActivity(
-      input.providerInstanceId,
-      Effect.scoped(
-        Effect.gen(function* resolveProviderArtwork() {
-          const { provider, stored } = yield* loadArtworkLaunch(database, input.providerInstanceId);
-          const plugin = yield* supervisor.supervise(provider.descriptor, {
-            configuration: stored.configuration,
-            credentials: stored.credentials,
-            kind: "instance",
-            providerInstanceId: stored.id,
-            revision: stored.revision,
-          });
-          const response = yield* plugin.call(
-            LibraryService.method.resolveArtwork,
-            {
-              artworkReference: {
-                artworkId: input.artworkReference,
-                itemReference: { itemId: input.itemReference },
-              },
-              maxHeight: input.maxHeight,
-              maxWidth: input.maxWidth,
+    Effect.scoped(
+      Effect.gen(function* resolveProviderArtwork() {
+        const { provider, stored } = yield* loadArtworkLaunch(
+          database,
+          input.providerInstanceId,
+          input.revision,
+        );
+        const plugin = yield* supervisor.supervise(provider.descriptor, {
+          configuration: stored.configuration,
+          credentials: stored.credentials,
+          kind: "instance",
+          providerInstanceId: stored.id,
+          revision: stored.revision,
+        });
+        const response = yield* plugin.call(
+          LibraryService.method.resolveArtwork,
+          {
+            artworkReference: {
+              artworkId: input.artworkReference,
+              itemReference: { itemId: input.itemReference },
             },
-            ARTWORK_DEADLINE_MILLISECONDS,
-          );
-          if (response.lease === undefined) {
-            return yield* Effect.fail(new Error("provider artwork lease is missing"));
-          }
-          const approvedOrigins = approvedArtworkOrigins(provider, stored.configuration);
-          if (approvedOrigins === undefined) {
-            return yield* Effect.fail(new Error("provider artwork origins are unavailable"));
-          }
-          return { approvedOrigins, lease: response.lease };
-        }),
-      ),
+            maxHeight: input.maxHeight,
+            maxWidth: input.maxWidth,
+          },
+          ARTWORK_DEADLINE_MILLISECONDS,
+        );
+        if (response.lease === undefined) {
+          return yield* Effect.fail(new Error("provider artwork lease is missing"));
+        }
+        const approvedOrigins = approvedArtworkOrigins(provider, stored.configuration);
+        if (approvedOrigins === undefined) {
+          return yield* Effect.fail(new Error("provider artwork origins are unavailable"));
+        }
+        return { approvedOrigins, lease: response.lease };
+      }),
     );
 
-export { makeCatalogArtworkLeaseResolver };
+const makeCatalogArtworkAssetLoader = (
+  database: Database["Service"],
+  providerManagement: ProviderManagement["Service"],
+  supervisor: PluginSupervisorService,
+) =>
+  makeArtworkAssetLoader(
+    makeCatalogArtworkLeaseResolver(database, supervisor),
+    providerManagement.runProviderActivity,
+  );
+
+export { makeCatalogArtworkAssetLoader, makeCatalogArtworkLeaseResolver };

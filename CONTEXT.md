@@ -43,12 +43,16 @@ _Avoid_: File
 One normalized video, audio, or subtitle stream belonging to a part. Playback uses separate plan- or session-scoped track identities.
 _Avoid_: Provider stream, stream index
 
+**Canonical artwork asset**:
+Bounded image bytes that Nama stores for one artwork reference during catalog ingestion and serves independently of the Provider.
+_Avoid_: Provider image, artwork cache
+
 **Artwork reference**:
-A safe Nama-owned reference to artwork that can be resolved into a short-lived locator without exposing a provider path or credential.
+A safe Nama-owned identity for one canonical artwork asset.
 _Avoid_: Artwork URL, provider image path
 
 **Locator**:
-A short-lived descriptor for provider-hosted artwork or media with narrowly scoped access and redirect rules.
+A short-lived descriptor for Nama-hosted artwork or provider-hosted media with narrowly scoped access and redirect rules.
 _Avoid_: URL, playback URL, direct URL
 
 **Playback plan**:
