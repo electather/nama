@@ -120,7 +120,7 @@
       }
     },
     {
-      "files": ["tools/agent-issue.ts", "tools/agent-issue/**/*.ts"],
+      "files": ["tools/agent-issue.ts"],
       "rules": {
         "eslint/func-style": "off",
         "eslint/init-declarations": "off",
@@ -128,35 +128,158 @@
         "eslint/max-lines-per-function": "off",
         "eslint/max-params": "off",
         "eslint/max-statements": "off",
-        "eslint/no-await-in-loop": "off",
-        "eslint/no-continue": "off",
         "eslint/no-magic-numbers": "off",
-        "eslint/no-nested-ternary": "off",
         "eslint/no-ternary": "off",
         "eslint/prefer-destructuring": "off",
         "eslint/prefer-named-capture-group": "off",
-        "eslint/prefer-template": "off",
         "eslint/require-unicode-regexp": "off",
         "eslint/sort-keys": "off",
-        "typescript/array-type": "off",
-        "typescript/method-signature-style": "off",
+        "import/max-dependencies": "off",
         "typescript/no-unsafe-type-assertion": "off",
-        "typescript/prefer-regexp-exec": "off",
         "typescript/strict-boolean-expressions": "off",
         "unicorn/no-array-sort": "off",
         "unicorn/no-await-expression-member": "off",
         "unicorn/no-null": "off",
-        "unicorn/numeric-separators-style": "off",
-        "unicorn/prefer-import-meta-properties": "off",
         "unicorn/prefer-number-coercion": "off",
         "unicorn/prefer-ternary": "off"
       }
     },
     {
-      "files": ["tools/agent-issue/**/*.test.ts"],
+      "files": ["tools/agent-issue/cli.ts"],
       "rules": {
+        "eslint/func-style": "off",
+        "eslint/init-declarations": "off",
+        "eslint/max-lines-per-function": "off",
+        "eslint/max-statements": "off",
+        "eslint/no-continue": "off",
+        "eslint/no-magic-numbers": "off",
+        "eslint/no-ternary": "off",
+        "eslint/sort-keys": "off",
+        "typescript/strict-boolean-expressions": "off"
+      }
+    },
+    {
+      "files": ["tools/agent-issue/command.ts"],
+      "rules": {
+        "eslint/func-style": "off",
+        "eslint/init-declarations": "off",
+        "eslint/max-params": "off",
+        "eslint/max-statements": "off",
+        "eslint/no-magic-numbers": "off",
+        "eslint/no-nested-ternary": "off",
+        "eslint/no-ternary": "off",
+        "eslint/sort-keys": "off",
+        "import/exports-last": "off",
+        "import/group-exports": "off",
+        "promise/prefer-await-to-callbacks": "off",
+        "unicorn/no-nested-ternary": "off"
+      }
+    },
+    {
+      "files": ["tools/agent-issue/completion-policy.ts"],
+      "rules": {
+        "eslint/func-style": "off",
+        "eslint/max-lines-per-function": "off",
+        "eslint/max-statements": "off",
+        "eslint/sort-keys": "off",
+        "typescript/array-type": "off",
+        "unicorn/prefer-string-raw": "off"
+      }
+    },
+    {
+      "files": ["tools/agent-issue/github-snapshot.ts"],
+      "rules": {
+        "eslint/func-style": "off",
+        "eslint/max-statements": "off",
+        "eslint/no-magic-numbers": "off",
+        "eslint/prefer-named-capture-group": "off",
+        "eslint/sort-keys": "off",
+        "import/exports-last": "off",
+        "import/group-exports": "off",
+        "typescript/array-type": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "unicorn/no-array-sort": "off"
+      }
+    },
+    {
+      "files": ["tools/agent-issue/omp-provider.ts"],
+      "rules": {
+        "eslint/func-style": "off",
+        "eslint/max-lines-per-function": "off",
+        "eslint/max-statements": "off",
+        "eslint/no-continue": "off",
+        "eslint/no-magic-numbers": "off",
+        "eslint/no-ternary": "off",
+        "eslint/prefer-destructuring": "off",
+        "eslint/sort-keys": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/strict-boolean-expressions": "off"
+      }
+    },
+    {
+      "files": ["tools/agent-issue/omp-runner.ts"],
+      "rules": {
+        "eslint/func-style": "off",
+        "eslint/init-declarations": "off",
+        "eslint/max-lines-per-function": "off",
+        "eslint/max-statements": "off",
+        "eslint/no-continue": "off",
+        "eslint/no-magic-numbers": "off",
+        "eslint/no-ternary": "off",
+        "eslint/sort-keys": "off",
+        "typescript/method-signature-style": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/strict-boolean-expressions": "off"
+      }
+    },
+    {
+      "files": ["tools/agent-issue/run-metadata.ts"],
+      "rules": {
+        "eslint/func-style": "off",
+        "eslint/init-declarations": "off",
+        "eslint/max-lines-per-function": "off",
+        "eslint/max-statements": "off",
+        "eslint/no-magic-numbers": "off",
+        "eslint/no-ternary": "off",
+        "eslint/sort-keys": "off",
+        "import/exports-last": "off",
+        "import/group-exports": "off",
+        "unicorn/no-null": "off"
+      }
+    },
+    {
+      "files": ["tools/agent-issue/terminal-claim.ts"],
+      "rules": {
+        "eslint/func-style": "off",
+        "eslint/init-declarations": "off",
+        "eslint/max-lines-per-function": "off",
+        "eslint/max-statements": "off",
+        "eslint/no-magic-numbers": "off",
+        "eslint/sort-keys": "off",
+        "import/group-exports": "off",
+        "typescript/strict-boolean-expressions": "off"
+      }
+    },
+    {
+      "files": ["tools/agent-issue/agent-issue.test.ts"],
+      "rules": {
+        "eslint/func-style": "off",
+        "eslint/max-lines-per-function": "off",
+        "eslint/max-params": "off",
+        "eslint/max-statements": "off",
+        "eslint/no-await-in-loop": "off",
+        "eslint/no-magic-numbers": "off",
+        "eslint/no-ternary": "off",
+        "eslint/require-unicode-regexp": "off",
+        "eslint/sort-keys": "off",
+        "typescript/array-type": "off",
+        "typescript/method-signature-style": "off",
         "typescript/no-floating-promises": "off",
-        "typescript/return-await": "off"
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/return-await": "off",
+        "typescript/strict-boolean-expressions": "off",
+        "unicorn/no-await-expression-member": "off",
+        "unicorn/no-null": "off"
       }
     },
     {

@@ -115,5 +115,30 @@
     { "type": "session", "id": "00000000-0000-4000-8000-000000000007" },
     { "type": "agent_start" },
     { "type": "agent_end", "messages": [], "isTerminal": true }
+  ],
+  "conflicting_terminal": [
+    { "type": "session", "id": "00000000-0000-4000-8000-000000000008" },
+    {
+      "type": "message_update",
+      "assistantMessageEvent": {
+        "type": "text_delta",
+        "delta": "<nama-agent-result>{\"status\":\"BLOCKED\",\"decision\":\"First claim\",\"summary\":\"Blocked\",\"verification\":[],\"limitations\":[]}</nama-agent-result><nama-agent-result>{\"status\":\"COMPLETE\",\"summary\":\"Contradictory completion\",\"verification\":[],\"limitations\":[]}</nama-agent-result>"
+      }
+    },
+    {
+      "type": "agent_end",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "<nama-agent-result>{\"status\":\"BLOCKED\",\"decision\":\"First claim\",\"summary\":\"Blocked\",\"verification\":[],\"limitations\":[]}</nama-agent-result><nama-agent-result>{\"status\":\"COMPLETE\",\"summary\":\"Contradictory completion\",\"verification\":[],\"limitations\":[]}</nama-agent-result>"
+            }
+          ]
+        }
+      ],
+      "isTerminal": true
+    }
   ]
 }

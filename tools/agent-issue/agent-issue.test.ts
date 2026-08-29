@@ -137,7 +137,7 @@ async function createFixture(overrides: Partial<FixtureIssue> = {}): Promise<Fix
 
   await writeExecutable(
     join(bin, "gh"),
-    `#!/usr/bin/env node
+    `#!${process.execPath}
 import { readFileSync, writeFileSync } from "node:fs";
 const statePath = process.env.GH_FIXTURE_STATE;
 if (!statePath) process.exit(90);
@@ -168,6 +168,10 @@ if (args[0] === "repo" && args[1] === "view") {
   const removeAssignee = valueAfter("--remove-assignee");
   const addLabel = valueAfter("--add-label");
   const removeLabel = valueAfter("--remove-label");
+  if (removeLabel === "ready-for-agent" && process.env.GH_FIXTURE_FINALIZE_FAIL === "1") {
+    process.stderr.write("fixture final publication transition failure\\n");
+    process.exit(98);
+  }
   if (addAssignee) {
     const login = addAssignee === "@me" ? state.login : addAssignee;
     if (!state.issue.assignees.some(assignee => assignee.login === login)) {
@@ -210,7 +214,7 @@ if (args[0] === "repo" && args[1] === "view") {
   );
   await writeExecutable(
     join(bin, "omp"),
-    `#!/usr/bin/env node
+    `#!${process.execPath}
 import { spawnSync } from "node:child_process";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -232,7 +236,7 @@ const git = gitArgs => {
 git(["config", "user.name", "Fixture OMP"]);
 git(["config", "user.email", "fixture-omp@example.test"]);
 const action = process.env.OMP_FIXTURE_ACTION || "commit";
-let changedPath = "issue-owned.txt";
+let changedPath = process.env.OMP_FIXTURE_CHANGED_PATH || "issue-owned.txt";
 if (action === "retry") changedPath = "issue-owned-retry.txt";
 if (action === "apple") changedPath = "apps/ios/Unauthorized.swift";
 if (action === "generated") changedPath = "gen/ts/src/unauthorized.ts";
@@ -248,6 +252,9 @@ if (action !== "no_commit") {
   writeFileSync(changedPath, content);
   git(["add", changedPath]);
   git(["commit", "-m", "Implement fixture issue"]);
+}
+if (process.env.OMP_FIXTURE_REMOVE_COMMAND) {
+  writeFileSync(process.env.OMP_FIXTURE_REMOVE_COMMAND, "#!/definitely/missing\\n");
 }
 if (action === "merge") {
   git(["checkout", "-b", "fixture-side", "HEAD^"]);
@@ -455,6 +462,20 @@ test("malformed, unknown, failed, and unterminated OMP streams fail safely befor
   }
 });
 
+test("conflicting terminal claims fail before host verification or publication", async () => {
+  const fixture = await createFixture();
+  const result = await fixture.run(["88", "--execute"], {
+    OMP_FIXTURE_SCENARIO: "conflicting_terminal",
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /TERMINAL_CLAIM_MULTIPLE/);
+  const state = await fixture.readState();
+  assert.equal(state.prs.length, 0);
+  assert.deepEqual(state.issue.assignees, []);
+  await assert.rejects(readFile(fixture.miseLogPath, "utf8"), { code: "ENOENT" });
+});
+
 test("COMPLETE rejects invalid commit and boundary states before the host check", async (context) => {
   const cases: Array<{ action: string; code: RegExp }> = [
     { action: "no_commit", code: /COMPLETE_WITHOUT_COMMIT/ },
@@ -483,6 +504,85 @@ test("COMPLETE rejects invalid commit and boundary states before the host check"
   }
 });
 
+test("boundary changes require positive issue authorization", async (context) => {
+  await context.test("negative dependency instruction", async () => {
+    const fixture = await createFixture({
+      body: "## Acceptance criteria\n\n- No package or dependency changes are authorized.\n",
+    });
+    const result = await fixture.run(["88", "--execute"], {
+      OMP_FIXTURE_ACTION: "dependency",
+    });
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /DEPENDENCY_CHANGE_UNAUTHORIZED/);
+    assert.equal((await fixture.readState()).prs.length, 0);
+  });
+
+  await context.test("positive dependency instruction", async () => {
+    const fixture = await createFixture({
+      body: "## Acceptance criteria\n\n- Update the root package dependency for this issue.\n",
+    });
+    const result = await fixture.run(["88", "--execute"], {
+      OMP_FIXTURE_ACTION: "dependency",
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal((await fixture.readState()).prs.length, 1);
+  });
+});
+
+test("every native dependency manifest requires explicit authorization", async (context) => {
+  const dependencyPaths: Array<{ path: string; requiresXcode?: true }> = [
+    { path: "apps/server/package.json" },
+    { path: "plugins/jellyfin/package.json" },
+    { path: "gen/ts/package.json" },
+    { path: "gen/swift/Package.swift", requiresXcode: true },
+    { path: "apps/ios/Nama.xcodeproj/project.pbxproj", requiresXcode: true },
+    {
+      path: "apps/ios/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+      requiresXcode: true,
+    },
+  ];
+
+  for (const dependencyPath of dependencyPaths) {
+    await context.test(dependencyPath.path, async () => {
+      const labels = [{ name: "ready-for-agent" }];
+      const args = ["88", "--execute"];
+      if (dependencyPath.requiresXcode) {
+        labels.push({ name: "requires:xcode" });
+        args.push("--capability", "xcode");
+      }
+      const fixture = await createFixture({
+        body: "## Acceptance criteria\n\n- No dependency changes are authorized.\n",
+        labels,
+      });
+      const result = await fixture.run(args, {
+        OMP_FIXTURE_CHANGED_PATH: dependencyPath.path,
+      });
+
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /DEPENDENCY_CHANGE_UNAUTHORIZED/);
+      assert.equal((await fixture.readState()).prs.length, 0);
+    });
+  }
+});
+
+test("Apple-owned check scripts require the pre-triaged Xcode capability", async (context) => {
+  for (const path of ["scripts/check-ios.sh", "scripts/check-swift.sh"]) {
+    await context.test(path, async () => {
+      const fixture = await createFixture();
+      const result = await fixture.run(["88", "--execute"], {
+        OMP_FIXTURE_CHANGED_PATH: path,
+      });
+
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /XCODE_LABEL_MISSING/);
+      assert.deepEqual((await fixture.readState()).issue.labels, [{ name: "ready-for-human" }]);
+      await assert.rejects(readFile(fixture.miseLogPath, "utf8"), { code: "ENOENT" });
+    });
+  }
+});
+
 test("host-check failure and meaningful issue mutation preserve recovery state and publish nothing", async (context) => {
   await context.test("host check", async () => {
     const fixture = await createFixture();
@@ -503,6 +603,23 @@ test("host-check failure and meaningful issue mutation preserve recovery state a
     assert.equal(result.code, 1);
     assert.match(result.stderr, /ISSUE_CHANGED/);
     assert.equal((await fixture.readState()).prs.length, 0);
+  });
+});
+
+test("a missing post-claim command fails safely and releases assignment and lock", async () => {
+  const fixture = await createFixture();
+  const result = await fixture.run(["88", "--execute"], {
+    OMP_FIXTURE_REMOVE_COMMAND: join(fixture.bin, "mise"),
+    PATH: `${fixture.bin}:/usr/bin:/bin`,
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /COMMAND_SPAWN_FAILED/);
+  const state = await fixture.readState();
+  assert.equal(state.prs.length, 0);
+  assert.deepEqual(state.issue.assignees, []);
+  await assert.rejects(readFile(join(fixture.repo, ".git/nama-agent/active-run.json"), "utf8"), {
+    code: "ENOENT",
   });
 });
 
@@ -555,11 +672,6 @@ test("admission rejects unsafe issue state and enforces Xcode capability metadat
       code: /ISSUE_ASSIGNED/,
     },
     {
-      name: "dependency blocked",
-      overrides: { issue_dependencies_summary: { blocked_by: 1 } },
-      code: /ISSUE_BLOCKED/,
-    },
-    {
       name: "capability mismatch",
       overrides: { labels: [{ name: "ready-for-agent" }, { name: "requires:xcode" }] },
       code: /CAPABILITY_MISMATCH/,
@@ -600,6 +712,36 @@ test("admission rejects unsafe issue state and enforces Xcode capability metadat
   });
 });
 
+test("admission blocks only open native dependencies", async (context) => {
+  await context.test("closed historical dependencies", async () => {
+    const fixture = await createFixture({
+      issue_dependencies_summary: { blocked_by: 2 },
+    });
+    const state = await fixture.readState();
+    state.blockers = [
+      { number: 177, title: "Closed dependency", state: "closed" },
+      { number: 179, title: "Another closed dependency", state: "CLOSED" },
+    ];
+    await fixture.writeState(state);
+
+    const result = await fixture.run(["88"]);
+    assert.equal(result.code, 0, result.stderr);
+  });
+
+  await context.test("open dependency", async () => {
+    const fixture = await createFixture({
+      issue_dependencies_summary: { blocked_by: 1 },
+    });
+    const state = await fixture.readState();
+    state.blockers = [{ number: 180, title: "Open dependency", state: "open" }];
+    await fixture.writeState(state);
+
+    const result = await fixture.run(["88"]);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /ISSUE_BLOCKED/);
+  });
+});
+
 test("normal reruns reject retained work while an explicit retry starts a fresh OMP session", async () => {
   const fixture = await createFixture();
   const first = await fixture.run(["88", "--execute"], { MISE_FIXTURE_EXIT: "9" });
@@ -631,7 +773,7 @@ test("stale-lock recovery requires matching dead-process evidence and cleanup ve
     const runDirectory = join(stateDirectory, "runs", runId);
     await writeFile(
       join(runDirectory, "metadata.json"),
-      `${JSON.stringify({ version: 1, runId, issueNumber: 88, repository: "electather/nama", branch: "agent/issue-88", baseSha: "0".repeat(40), startedAt: "2026-08-01T00:00:00Z", pid: 999_999, status: "failed", runDirectory })}\n`,
+      `${JSON.stringify({ version: 1, runId, issueNumber: 88, repository: "electather/nama", branch: "agent/issue-88", baseSha: "0".repeat(40), startedAt: "2026-08-01T00:00:00Z", pid: 999_999, status: "running", runDirectory })}\n`,
       "utf8",
     );
     await writeFile(
@@ -642,6 +784,23 @@ test("stale-lock recovery requires matching dead-process evidence and cleanup ve
     const recovered = await fixture.run(["88", "--recover-stale-lock", runId]);
     assert.equal(recovered.code, 0, recovered.stderr);
     assert.match(recovered.stdout, /Recovered stale lock/);
+    const recoveredMetadata = JSON.parse(
+      await readFile(join(runDirectory, "metadata.json"), "utf8"),
+    ) as { status: string; failureStage?: string; failureCode?: string };
+    assert.deepEqual(recoveredMetadata, {
+      version: 1,
+      runId,
+      issueNumber: 88,
+      repository: "electather/nama",
+      branch: "agent/issue-88",
+      baseSha: "0".repeat(40),
+      startedAt: "2026-08-01T00:00:00Z",
+      pid: 999_999,
+      status: "failed",
+      runDirectory,
+      failureStage: "recovery",
+      failureCode: "STALE_LOCK_RECOVERED",
+    });
     await assert.rejects(readFile(join(stateDirectory, "active-run.json"), "utf8"), {
       code: "ENOENT",
     });
@@ -683,6 +842,77 @@ test("stale-lock recovery requires matching dead-process evidence and cleanup ve
   });
 });
 
+test("cleanup retains local recovery state when the remote probe fails", async () => {
+  const fixture = await createFixture();
+  const failed = await fixture.run(["88", "--execute"], { MISE_FIXTURE_EXIT: "9" });
+  assert.equal(failed.code, 1);
+  const runId = /issue-88-[0-9]+-[0-9a-f]+/u.exec(
+    JSON.stringify((await fixture.readState()).mutations),
+  )?.[0];
+  assert.ok(runId);
+  await writeExecutable(
+    join(fixture.bin, "git"),
+    `#!/bin/sh
+if [ "$1" = "ls-remote" ]; then
+  echo "fixture remote unavailable" >&2
+  exit 73
+fi
+exec /usr/bin/git "$@"
+`,
+  );
+
+  const cleanup = await fixture.run(["88", "--cleanup", runId]);
+  assert.equal(cleanup.code, 1);
+  assert.match(cleanup.stderr, /REMOTE_PROBE_FAILED/);
+  const worktrees = await exec("git", ["worktree", "list", "--porcelain"], fixture.repo);
+  assert.match(worktrees.stdout, /agent[./-]issue-88/);
+});
+
+test("recovery rejects unknown statuses and malformed optional metadata fields", async (context) => {
+  const fixture = await createFixture();
+  const stateDirectory = join(fixture.repo, ".git/nama-agent");
+  const runId = "issue-88-invalid-deadbeef";
+  const runDirectory = join(stateDirectory, "runs", runId);
+  const metadataPath = join(runDirectory, "metadata.json");
+  await mkdir(runDirectory, { recursive: true });
+  const validMetadata: Record<string, unknown> = {
+    version: 1,
+    runId,
+    issueNumber: 88,
+    repository: "electather/nama",
+    branch: "agent/issue-88",
+    baseSha: "0".repeat(40),
+    startedAt: "2026-08-01T00:00:00Z",
+    pid: 999_999,
+    status: "failed",
+    runDirectory,
+  };
+  const invalidCases: Array<{ name: string; field: string; value: unknown }> = [
+    { name: "unknown status", field: "status", value: "mystery" },
+    { name: "worktree path", field: "worktreePath", value: 1 },
+    { name: "head SHA", field: "headSha", value: false },
+    { name: "remote SHA", field: "remoteSha", value: [] },
+    { name: "pull request URL", field: "pullRequestUrl", value: 42 },
+    { name: "failure stage", field: "failureStage", value: {} },
+    { name: "failure code", field: "failureCode", value: null },
+    { name: "attempt", field: "attempt", value: 1.5 },
+    { name: "cleanup instant", field: "cleanedAt", value: true },
+  ];
+
+  for (const invalidCase of invalidCases) {
+    await context.test(invalidCase.name, async () => {
+      await writeFile(
+        metadataPath,
+        `${JSON.stringify({ ...validMetadata, [invalidCase.field]: invalidCase.value })}\n`,
+        "utf8",
+      );
+      const result = await fixture.run(["88", "--cleanup", runId]);
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, /RUN_METADATA_INVALID/);
+    });
+  }
+});
+
 test("advanced main publishes only when the recorded branch remains conflict-free", async (context) => {
   await context.test("conflict-free", async () => {
     const fixture = await createFixture();
@@ -714,6 +944,30 @@ test("ambiguous PR creation recovers idempotently by querying remote state", asy
       .length,
     1,
   );
+});
+
+test("publication retry resumes a confirmed matching draft without rerunning OMP", async () => {
+  const fixture = await createFixture();
+  const first = await fixture.run(["88", "--execute"], {
+    GH_FIXTURE_FINALIZE_FAIL: "1",
+  });
+  assert.equal(first.code, 1);
+  const failedState = await fixture.readState();
+  assert.equal(failedState.prs.length, 1);
+  assert.deepEqual(failedState.issue.labels, [{ name: "ready-for-agent" }]);
+  assert.deepEqual(failedState.issue.assignees, []);
+  const runId = /issue-88-[0-9]+-[0-9a-f]+/u.exec(JSON.stringify(failedState.mutations))?.[0];
+  assert.ok(runId);
+
+  const retry = await fixture.run(["88", "--execute", "--retry", runId]);
+  assert.equal(retry.code, 0, retry.stderr);
+  const recoveredState = await fixture.readState();
+  assert.equal(recoveredState.prs.length, 1);
+  assert.deepEqual(recoveredState.issue.labels, []);
+  assert.deepEqual(recoveredState.issue.assignees, [{ login: "fixture-maintainer" }]);
+  assert.equal((await readFile(fixture.ompLogPath, "utf8")).trim().split("\n").length, 1);
+  const worktrees = await exec("git", ["worktree", "list", "--porcelain"], fixture.repo);
+  assert.doesNotMatch(worktrees.stdout, /agent[./-]issue-88/);
 });
 
 test("explicit publication retry uses recorded force-with-lease when history diverged", async () => {

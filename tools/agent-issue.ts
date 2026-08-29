@@ -1,24 +1,35 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
-import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import { createWorktree, run as runSandcastle } from "@ai-hero/sandcastle";
 import type { Worktree } from "@ai-hero/sandcastle";
 import { noSandbox } from "@ai-hero/sandcastle/sandboxes/no-sandbox";
 
+import { parseCli } from "./agent-issue/cli.ts";
+import { CommandError, runCommand } from "./agent-issue/command.ts";
+import type { CommandResult } from "./agent-issue/command.ts";
+import { validateChangedPathPolicy } from "./agent-issue/completion-policy.ts";
+import { meaningfulSnapshot, readSnapshot } from "./agent-issue/github-snapshot.ts";
+import type { IssueSnapshot } from "./agent-issue/github-snapshot.ts";
 import {
   createOmpProvider,
   OMP_MODEL,
   OMP_THINKING,
   OMP_VERSION,
 } from "./agent-issue/omp-provider.ts";
+import { atomicWriteJson, loadRunMetadata } from "./agent-issue/run-metadata.ts";
+import type { RunMetadata, RunStatus } from "./agent-issue/run-metadata.ts";
+import {
+  parseTerminalClaim,
+  safePublicText,
+  TERMINAL_CLOSE_TAG,
+} from "./agent-issue/terminal-claim.ts";
+import type { TerminalClaim } from "./agent-issue/terminal-claim.ts";
 
 const BRANCH_PREFIX = "agent/issue-";
-const TERMINAL_CLOSE_TAG = "</nama-agent-result>";
 const RUN_IDLE_TIMEOUT_SECONDS = 10 * 60;
 const RUN_DEADLINE_MS = 60 * 60_000;
 const OMP_CONFIG = [
@@ -51,11 +62,6 @@ const SENSITIVE_ENVIRONMENT_NAMES: Record<string, true> = {
   OPENAI_API_KEY: true,
   SSH_AUTH_SOCK: true,
 };
-const TRUSTED_COMMENT_ASSOCIATIONS: Record<string, true> = {
-  COLLABORATOR: true,
-  MEMBER: true,
-  OWNER: true,
-};
 
 function configuredIdleTimeoutSeconds(): number {
   if (process.env["NAMA_AGENT_TEST_MODE"] === "1") {
@@ -67,37 +73,6 @@ function configuredIdleTimeoutSeconds(): number {
   return RUN_IDLE_TIMEOUT_SECONDS;
 }
 
-interface CommandResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-interface GitHubIssue {
-  number: number;
-  title: string;
-  body: string | null;
-  state: string;
-  labels: Array<{ name: string }>;
-  assignees: Array<{ login: string }>;
-  issue_dependencies_summary?: { blocked_by?: number };
-}
-
-interface GitHubComment {
-  id: number;
-  body: string;
-  author_association: string;
-  user: { login: string } | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface GitHubBlocker {
-  number: number;
-  title: string;
-  state: string;
-}
-
 interface GitHubPullRequest {
   number: number;
   url: string;
@@ -105,63 +80,6 @@ interface GitHubPullRequest {
   baseRefName?: string;
   body: string;
   isDraft?: boolean;
-}
-
-interface IssueSnapshot {
-  issue: GitHubIssue;
-  labels: string[];
-  blockers: GitHubBlocker[];
-  acceptanceCriteria: string;
-  trustedComments: GitHubComment[];
-}
-
-interface CliOptions {
-  issueNumber: number;
-  execute: boolean;
-  capabilities: Set<string>;
-  retryRunId?: string;
-  recoverStaleLockRunId?: string;
-  cleanupRunId?: string;
-}
-
-type TerminalStatus = "COMPLETE" | "BLOCKED" | "NO_CHANGE";
-
-interface TerminalClaim {
-  status: TerminalStatus;
-  summary: string;
-  verification: string[];
-  limitations: string[];
-  decision?: string;
-}
-
-type RunStatus =
-  | "running"
-  | "blocked"
-  | "no_change"
-  | "failed"
-  | "check_failed"
-  | "publication_failed"
-  | "published";
-
-interface RunMetadata {
-  version: 1;
-  runId: string;
-  issueNumber: number;
-  repository: string;
-  branch: string;
-  baseSha: string;
-  startedAt: string;
-  pid: number;
-  status: RunStatus;
-  runDirectory: string;
-  worktreePath?: string;
-  headSha?: string;
-  remoteSha?: string;
-  pullRequestUrl?: string;
-  failureStage?: string;
-  failureCode?: string;
-  attempt?: number;
-  cleanedAt?: string;
 }
 
 interface RunLock {
@@ -188,186 +106,7 @@ interface ExecutionContext {
   agentLogPath: string;
   configPath: string;
   metadata: RunMetadata;
-}
-
-class CommandError extends Error {
-  readonly code: string;
-
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = "CommandError";
-    this.code = code;
-  }
-}
-
-async function runCommand(
-  command: string,
-  args: string[],
-  options: { cwd: string; allowFailure?: boolean; timeoutMs?: number },
-): Promise<CommandResult> {
-  const child = spawn(command, args, {
-    cwd: options.cwd,
-    env: process.env,
-    signal: AbortSignal.timeout(options.timeoutMs ?? 30_000),
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let stdout = "";
-  let stderr = "";
-  child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
-    stdout += chunk;
-  });
-  child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
-    stderr += chunk;
-  });
-  const { promise, resolve: resolveExit } = Promise.withResolvers<number | null>();
-  // TypeScript 7 loses ChildProcess's EventEmitter base on this spawn overload.
-  const eventfulChild = child as ChildProcess;
-  eventfulChild.addListener("close", resolveExit);
-  const code = await promise;
-  const result = { code: code ?? 1, stdout, stderr };
-  if (result.code !== 0 && options.allowFailure !== true) {
-    throw new CommandError(
-      "COMMAND_FAILED",
-      `${command} ${args.join(" ")} exited ${result.code}: ${stderr.trim() || stdout.trim()}`,
-    );
-  }
-  return result;
-}
-
-function parseCli(argv: string[]): CliOptions {
-  let issueNumber: number | undefined;
-  let execute = false;
-  let retryRunId: string | undefined;
-  let recoverStaleLockRunId: string | undefined;
-  let cleanupRunId: string | undefined;
-  const capabilities = new Set<string>();
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
-    if (argument === "--") {
-      continue;
-    }
-    if (argument === "--execute") {
-      execute = true;
-      continue;
-    }
-    if (
-      argument === "--capability" ||
-      argument === "--retry" ||
-      argument === "--recover-stale-lock" ||
-      argument === "--cleanup"
-    ) {
-      const value = argv[index + 1];
-      if (!value) {
-        throw new CommandError("USAGE", `${argument} requires a value`);
-      }
-      if (argument === "--capability") {
-        capabilities.add(value);
-      }
-      if (argument === "--retry") {
-        retryRunId = value;
-      }
-      if (argument === "--recover-stale-lock") {
-        recoverStaleLockRunId = value;
-      }
-      if (argument === "--cleanup") {
-        cleanupRunId = value;
-      }
-      index += 1;
-      continue;
-    }
-    if (argument?.startsWith("--capability=")) {
-      capabilities.add(argument.slice("--capability=".length));
-      continue;
-    }
-    if (argument?.startsWith("-")) {
-      throw new CommandError("USAGE", `Unknown option: ${argument}`);
-    }
-    if (issueNumber !== undefined || !argument || !/^\d+$/.test(argument)) {
-      throw new CommandError("USAGE", "Provide exactly one GitHub issue number");
-    }
-    issueNumber = Number(argument);
-  }
-  if (issueNumber === undefined || issueNumber <= 0) {
-    throw new CommandError(
-      "USAGE",
-      "Usage: pnpm agent:issue -- <issue> [--execute] [--capability xcode] [--retry RUN_ID] [--recover-stale-lock RUN_ID] [--cleanup RUN_ID]",
-    );
-  }
-  for (const capability of capabilities) {
-    if (capability !== "xcode") {
-      throw new CommandError("CAPABILITY_UNKNOWN", `Unknown runner capability: ${capability}`);
-    }
-  }
-  const maintenanceActions = [recoverStaleLockRunId, cleanupRunId].filter(
-    (value) => value !== undefined,
-  );
-  if (maintenanceActions.length > 1 || (maintenanceActions.length > 0 && (execute || retryRunId))) {
-    throw new CommandError("USAGE", "Recovery and cleanup actions must run alone");
-  }
-  if (retryRunId && !execute) {
-    throw new CommandError("USAGE", "--retry requires --execute");
-  }
-  return {
-    issueNumber,
-    execute,
-    capabilities,
-    ...(retryRunId ? { retryRunId } : {}),
-    ...(recoverStaleLockRunId ? { recoverStaleLockRunId } : {}),
-    ...(cleanupRunId ? { cleanupRunId } : {}),
-  };
-}
-
-function extractAcceptanceCriteria(body: string): string {
-  const lines = body.split("\n");
-  const start = lines.findIndex((line) => /^#{1,6}\s+acceptance criteria\s*$/i.test(line.trim()));
-  if (start === -1) {
-    return "";
-  }
-  const headingLevel = lines[start]?.match(/^#+/)?.[0].length ?? 2;
-  let end = lines.length;
-  for (let index = start + 1; index < lines.length; index += 1) {
-    const heading = lines[index]?.match(/^(#+)\s+/);
-    if ((heading?.[1]?.length ?? Number.POSITIVE_INFINITY) <= headingLevel) {
-      end = index;
-      break;
-    }
-  }
-  return lines
-    .slice(start + 1, end)
-    .join("\n")
-    .trim();
-}
-
-async function readSnapshot(
-  repoRoot: string,
-  repository: string,
-  issueNumber: number,
-): Promise<IssueSnapshot> {
-  const issueResult = await runCommand("gh", ["api", `repos/${repository}/issues/${issueNumber}`], {
-    cwd: repoRoot,
-  });
-  const commentResult = await runCommand(
-    "gh",
-    ["api", `repos/${repository}/issues/${issueNumber}/comments`, "--paginate"],
-    { cwd: repoRoot },
-  );
-  const blockerResult = await runCommand(
-    "gh",
-    ["api", `repos/${repository}/issues/${issueNumber}/dependencies/blocked_by`, "--paginate"],
-    { cwd: repoRoot },
-  );
-  const issue = JSON.parse(issueResult.stdout) as GitHubIssue;
-  const comments = JSON.parse(commentResult.stdout) as GitHubComment[];
-  const blockers = JSON.parse(blockerResult.stdout) as GitHubBlocker[];
-  return {
-    issue,
-    labels: issue.labels.map((label) => label.name).sort(),
-    blockers,
-    acceptanceCriteria: extractAcceptanceCriteria(issue.body ?? ""),
-    trustedComments: comments.filter(
-      (comment) => TRUSTED_COMMENT_ASSOCIATIONS[comment.author_association] === true,
-    ),
-  };
+  resumePublication?: true;
 }
 
 async function verifyXcode(repoRoot: string): Promise<void> {
@@ -410,10 +149,7 @@ async function admit(
   if (issue.assignees.length > 0) {
     throw new CommandError("ISSUE_ASSIGNED", `Issue #${issue.number} is already assigned`);
   }
-  if (
-    (issue.issue_dependencies_summary?.blocked_by ?? blockers.length) > 0 ||
-    blockers.length > 0
-  ) {
+  if (blockers.some((blocker) => blocker.state.toLowerCase() === "open")) {
     throw new CommandError("ISSUE_BLOCKED", `Issue #${issue.number} has an open native blocker`);
   }
   if (labels.includes("requires:xcode")) {
@@ -430,7 +166,7 @@ async function admit(
     ["ls-remote", "--exit-code", "--heads", "origin", `refs/heads/${branch}`],
     { cwd: repoRoot, allowFailure: true },
   );
-  if (remoteBranch.code === 0 && remoteBranch.stdout.trim().length > 0) {
+  if (checkedRemoteBranchSha(remoteBranch, 2)) {
     throw new CommandError(
       "BRANCH_EXISTS",
       `Implementation branch ${branch} already exists on origin`,
@@ -470,37 +206,6 @@ async function admit(
       `Issue #${issue.number} already has an open implementation pull request`,
     );
   }
-}
-
-function meaningfulSnapshot(snapshot: IssueSnapshot): string {
-  return JSON.stringify({
-    number: snapshot.issue.number,
-    title: snapshot.issue.title,
-    body: snapshot.issue.body,
-    state: snapshot.issue.state,
-    labels: snapshot.labels,
-    blockers: snapshot.blockers.map((blocker) => ({
-      number: blocker.number,
-      title: blocker.title,
-      state: blocker.state,
-    })),
-    trustedComments: snapshot.trustedComments.map((comment) => ({
-      id: comment.id,
-      body: comment.body,
-      login: comment.user?.login,
-      createdAt: comment.created_at,
-      updatedAt: comment.updated_at,
-    })),
-  });
-}
-
-async function atomicWriteJson(path: string, value: unknown): Promise<void> {
-  const temporaryPath = `${path}.${process.pid}.tmp`;
-  await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await rename(temporaryPath, path);
 }
 
 async function recordRun(
@@ -546,60 +251,6 @@ async function resolveCommonStateDirectory(repoRoot: string): Promise<string> {
   return join(resolve(repoRoot, commonResult.stdout.trim()), "nama-agent");
 }
 
-function validateRunMetadata(raw: unknown, runId: string, issueNumber: number): RunMetadata {
-  if (
-    typeof raw !== "object" ||
-    raw === null ||
-    !("version" in raw) ||
-    raw.version !== 1 ||
-    !("runId" in raw) ||
-    raw.runId !== runId ||
-    !("issueNumber" in raw) ||
-    raw.issueNumber !== issueNumber ||
-    !("repository" in raw) ||
-    typeof raw.repository !== "string" ||
-    !("branch" in raw) ||
-    typeof raw.branch !== "string" ||
-    !("baseSha" in raw) ||
-    typeof raw.baseSha !== "string" ||
-    !("status" in raw) ||
-    typeof raw.status !== "string" ||
-    !("runDirectory" in raw) ||
-    typeof raw.runDirectory !== "string" ||
-    !("startedAt" in raw) ||
-    typeof raw.startedAt !== "string" ||
-    !("pid" in raw) ||
-    typeof raw.pid !== "number"
-  ) {
-    throw new CommandError(
-      "RUN_METADATA_INVALID",
-      `Run ${runId} metadata does not match issue #${issueNumber}`,
-    );
-  }
-  return raw as RunMetadata;
-}
-
-async function loadRunMetadata(
-  commonStateDirectory: string,
-  runId: string,
-  issueNumber: number,
-): Promise<{ metadata: RunMetadata; metadataPath: string }> {
-  const metadataPath = join(commonStateDirectory, "runs", runId, "metadata.json");
-  let raw: string;
-  try {
-    raw = await readFile(metadataPath, "utf8");
-  } catch {
-    throw new CommandError(
-      "RUN_NOT_FOUND",
-      `No recorded run ${runId} exists for issue #${issueNumber}`,
-    );
-  }
-  return {
-    metadata: validateRunMetadata(JSON.parse(raw) as unknown, runId, issueNumber),
-    metadataPath,
-  };
-}
-
 function processIsAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -641,12 +292,22 @@ async function recoverStaleLock(
       "Active lock does not match the requested run and issue",
     );
   }
-  await loadRunMetadata(commonStateDirectory, runId, issueNumber);
+  const { metadata, metadataPath } = await loadRunMetadata(
+    commonStateDirectory,
+    runId,
+    issueNumber,
+  );
   if (processIsAlive(parsed.pid)) {
     throw new CommandError(
       "LOCK_PROCESS_ALIVE",
       `Run ${runId} still belongs to live process ${parsed.pid}`,
     );
+  }
+  if (metadata.status === "running") {
+    metadata.status = "failed";
+    metadata.failureStage = "recovery";
+    metadata.failureCode = "STALE_LOCK_RECOVERED";
+    await atomicWriteJson(metadataPath, metadata);
   }
   await unlink(lockPath);
   process.stdout.write(
@@ -720,7 +381,7 @@ async function cleanupRecordedRun(
     ["ls-remote", "--heads", "origin", `refs/heads/${metadata.branch}`],
     { cwd: worktreePath, allowFailure: true },
   );
-  if (remoteBranchSha(remote.stdout)) {
+  if (checkedRemoteBranchSha(remote)) {
     throw new CommandError(
       "CLEANUP_REMOTE_EXISTS",
       "Explicit cleanup refuses a run whose remote branch exists",
@@ -731,6 +392,19 @@ async function cleanupRecordedRun(
   metadata.cleanedAt = new Date().toISOString();
   await atomicWriteJson(metadataPath, metadata);
   process.stdout.write(`Cleaned recorded worktree and branch for ${runId}.\n`);
+}
+
+function isMatchingDraftPullRequest(
+  pullRequest: GitHubPullRequest,
+  branch: string,
+  issueNumber: number,
+): boolean {
+  return (
+    pullRequest.headRefName === branch &&
+    pullRequest.baseRefName === "main" &&
+    pullRequest.isDraft === true &&
+    new RegExp(`\\bCloses\\s+#${issueNumber}\\b`, "iu").test(pullRequest.body)
+  );
 }
 
 async function createRetryExecutionContext(
@@ -797,7 +471,7 @@ async function createRetryExecutionContext(
     ["ls-remote", "--heads", "origin", `refs/heads/${metadata.branch}`],
     { cwd: metadata.worktreePath, allowFailure: true },
   );
-  const remoteSha = remoteBranchSha(remote.stdout);
+  const remoteSha = checkedRemoteBranchSha(remote);
   if (remoteSha && remoteSha !== metadata.remoteSha) {
     throw new CommandError(
       "RETRY_REMOTE_MISMATCH",
@@ -808,10 +482,24 @@ async function createRetryExecutionContext(
     repoRoot,
     branch: metadata.branch,
   });
-  if (existingPullRequests.length > 0) {
+  if (existingPullRequests.length > 1) {
     throw new CommandError(
-      "RETRY_PULL_REQUEST_EXISTS",
-      "A pull request already exists for the recorded branch",
+      "RETRY_PULL_REQUEST_AMBIGUOUS",
+      "Multiple pull requests use the recorded branch",
+    );
+  }
+  const existingPullRequest = existingPullRequests[0];
+  const resumePublication =
+    existingPullRequest !== undefined &&
+    metadata.status === "publication_failed" &&
+    metadata.pullRequestUrl === existingPullRequest.url &&
+    metadata.headSha === remoteSha &&
+    metadata.remoteSha === remoteSha &&
+    isMatchingDraftPullRequest(existingPullRequest, metadata.branch, snapshot.issue.number);
+  if (existingPullRequest && !resumePublication) {
+    throw new CommandError(
+      "RETRY_PULL_REQUEST_MISMATCH",
+      "Existing pull request does not match the recorded publication state",
     );
   }
   const loginResult = await runCommand("gh", ["api", "user"], { cwd: repoRoot });
@@ -869,6 +557,9 @@ async function createRetryExecutionContext(
     configPath,
     metadata,
   };
+  if (resumePublication) {
+    context.resumePublication = true;
+  }
   await saveMetadata(context);
   await recordRun(context, "run.retry_started", { attempt: metadata.attempt });
   return context;
@@ -1013,84 +704,6 @@ function buildAgentPrompt(context: ExecutionContext): string {
   ].join("\n\n");
 }
 
-function parseTerminalClaim(output: string): TerminalClaim {
-  const openTag = "<nama-agent-result>";
-  const start = output.lastIndexOf(openTag);
-  const end = output.indexOf(TERMINAL_CLOSE_TAG, start + openTag.length);
-  if (start === -1 || end === -1) {
-    throw new CommandError(
-      "TERMINAL_CLAIM_MISSING",
-      "OMP exited without one complete terminal claim",
-    );
-  }
-  const trailingClaim = output.indexOf(openTag, start + openTag.length);
-  if (trailingClaim !== -1) {
-    throw new CommandError("TERMINAL_CLAIM_MULTIPLE", "OMP emitted more than one terminal claim");
-  }
-  let raw: unknown;
-  try {
-    raw = JSON.parse(output.slice(start + openTag.length, end));
-  } catch {
-    throw new CommandError("TERMINAL_CLAIM_INVALID", "OMP terminal claim is not valid JSON");
-  }
-  if (typeof raw !== "object" || raw === null) {
-    throw new CommandError("TERMINAL_CLAIM_INVALID", "OMP terminal claim must be an object");
-  }
-  if (
-    !("status" in raw) ||
-    (raw.status !== "COMPLETE" && raw.status !== "BLOCKED" && raw.status !== "NO_CHANGE")
-  ) {
-    throw new CommandError("TERMINAL_CLAIM_INVALID", "OMP terminal claim has an unknown status");
-  }
-  if (!("summary" in raw) || typeof raw.summary !== "string") {
-    throw new CommandError("TERMINAL_CLAIM_INVALID", "OMP terminal claim lacks a summary");
-  }
-  if (
-    !("verification" in raw) ||
-    !Array.isArray(raw.verification) ||
-    !raw.verification.every((entry) => typeof entry === "string") ||
-    !("limitations" in raw) ||
-    !Array.isArray(raw.limitations) ||
-    !raw.limitations.every((entry) => typeof entry === "string")
-  ) {
-    throw new CommandError(
-      "TERMINAL_CLAIM_INVALID",
-      "OMP terminal claim has invalid evidence arrays",
-    );
-  }
-  const claim: TerminalClaim = {
-    status: raw.status,
-    summary: raw.summary,
-    verification: raw.verification,
-    limitations: raw.limitations,
-  };
-  if ("decision" in raw) {
-    if (typeof raw.decision !== "string") {
-      throw new CommandError("TERMINAL_CLAIM_INVALID", "OMP BLOCKED decision must be text");
-    }
-    claim.decision = raw.decision;
-  }
-  if (claim.status === "BLOCKED" && (!claim.decision || claim.decision.trim().length === 0)) {
-    throw new CommandError(
-      "TERMINAL_CLAIM_INVALID",
-      "OMP BLOCKED claim lacks the unresolved decision",
-    );
-  }
-  return claim;
-}
-
-function safePublicText(value: string): string {
-  const compact = value.replaceAll(/\s+/g, " ").trim().slice(0, 500);
-  if (
-    /(?:token|password|credential|environment dump|prompt|transcript|hidden reasoning)/i.test(
-      compact,
-    )
-  ) {
-    return "Withheld by automation publication policy.";
-  }
-  return compact || "None recorded.";
-}
-
 async function failRun(context: ExecutionContext, stage: string, code: string): Promise<void> {
   let status: RunStatus = "failed";
   if (stage === "host-check") {
@@ -1158,11 +771,6 @@ async function transitionToHuman(context: ExecutionContext, claim: TerminalClaim
   await recordRun(context, "run.human_transition", { status: claim.status });
 }
 
-function issueAuthorizesBoundary(snapshot: IssueSnapshot, path: string, boundary: string): boolean {
-  const instructions = `${snapshot.issue.body ?? ""}\n${snapshot.trustedComments.map((comment) => comment.body).join("\n")}`;
-  return instructions.includes(path) || new RegExp(`\\b${boundary}\\b`, "i").test(instructions);
-}
-
 async function validateCompleteResult(context: ExecutionContext): Promise<string[]> {
   const worktreePath = context.metadata.worktreePath;
   if (!worktreePath) {
@@ -1199,76 +807,7 @@ async function validateCompleteResult(context: ExecutionContext): Promise<string
     },
   );
   const changedPaths = changedResult.stdout.split("\n").filter((path) => path.length > 0);
-  const ownsXcodePath = changedPaths.some(
-    (path) =>
-      path.startsWith("apps/ios/") ||
-      path.startsWith("gen/swift/") ||
-      path.includes(".xcodeproj/") ||
-      path.endsWith(".swift"),
-  );
-  if (ownsXcodePath && !context.snapshot.labels.includes("requires:xcode")) {
-    throw new CommandError(
-      "XCODE_LABEL_MISSING",
-      "Apple-owned changes require the pre-triaged requires:xcode label",
-    );
-  }
-  if (
-    changedPaths.some((path) => path.startsWith("gen/")) &&
-    !changedPaths.some((path) => path.startsWith("proto/") || path.startsWith("buf."))
-  ) {
-    throw new CommandError(
-      "GENERATED_OWNER_MISSING",
-      "Generated bindings changed without their owning schema or generator",
-    );
-  }
-  if (
-    changedPaths.includes("apps/server/src/database/auth-schema.ts") &&
-    !changedPaths.includes("apps/server/better-auth.config.ts")
-  ) {
-    throw new CommandError(
-      "AUTH_SCHEMA_OWNER_MISSING",
-      "Generated auth schema changed without its owning configuration",
-    );
-  }
-  const dependencyPaths: Record<string, true> = {
-    "package.json": true,
-    "pnpm-lock.yaml": true,
-    "go.mod": true,
-    "go.sum": true,
-    "gen/swift/Package.resolved": true,
-  };
-  for (const path of changedPaths) {
-    if (
-      dependencyPaths[path] === true &&
-      !issueAuthorizesBoundary(context.snapshot, path, "dependency")
-    ) {
-      throw new CommandError(
-        "DEPENDENCY_CHANGE_UNAUTHORIZED",
-        `Issue instructions do not authorize dependency boundary ${path}`,
-      );
-    }
-    if (path === "mise.toml" && !issueAuthorizesBoundary(context.snapshot, path, "root task")) {
-      throw new CommandError(
-        "ROOT_TASK_CHANGE_UNAUTHORIZED",
-        "Issue instructions do not authorize a root-task change",
-      );
-    }
-    if (path.startsWith("proto/") && !issueAuthorizesBoundary(context.snapshot, path, "Protobuf")) {
-      throw new CommandError(
-        "PROTOBUF_CHANGE_UNAUTHORIZED",
-        `Issue instructions do not authorize ${path}`,
-      );
-    }
-    if (
-      (path.includes("/migrations/") || path.includes("/database/schema")) &&
-      !issueAuthorizesBoundary(context.snapshot, path, "persistence")
-    ) {
-      throw new CommandError(
-        "PERSISTENCE_CHANGE_UNAUTHORIZED",
-        `Issue instructions do not authorize ${path}`,
-      );
-    }
-  }
+  validateChangedPathPolicy(context.snapshot, changedPaths);
   const headResult = await runCommand("git", ["rev-parse", "HEAD"], { cwd: worktreePath });
   context.metadata.headSha = headResult.stdout.trim();
   await saveMetadata(context);
@@ -1351,6 +890,19 @@ function remoteBranchSha(output: string): string | undefined {
   return /^[0-9a-f]{40}$/.test(sha ?? "") ? sha : undefined;
 }
 
+function checkedRemoteBranchSha(
+  result: CommandResult,
+  missingExitCode?: number,
+): string | undefined {
+  if (result.code !== 0 && result.code !== missingExitCode) {
+    throw new CommandError(
+      "REMOTE_PROBE_FAILED",
+      `Remote branch state could not be confirmed (git exit ${result.code})`,
+    );
+  }
+  return remoteBranchSha(result.stdout);
+}
+
 async function queryBranchPullRequests(
   context: Pick<ExecutionContext, "repoRoot" | "branch">,
 ): Promise<GitHubPullRequest[]> {
@@ -1371,7 +923,7 @@ async function queryBranchPullRequests(
   return JSON.parse(result.stdout) as GitHubPullRequest[];
 }
 
-async function publish(context: ExecutionContext, claim: TerminalClaim): Promise<string> {
+async function publish(context: ExecutionContext, claim?: TerminalClaim): Promise<string> {
   const worktreePath = context.metadata.worktreePath;
   const localSha = context.metadata.headSha;
   if (!worktreePath || !localSha) {
@@ -1382,7 +934,7 @@ async function publish(context: ExecutionContext, claim: TerminalClaim): Promise
     ["ls-remote", "--heads", "origin", `refs/heads/${context.branch}`],
     { cwd: worktreePath, allowFailure: true },
   );
-  const existingRemoteSha = remoteBranchSha(remoteBefore.stdout);
+  const existingRemoteSha = checkedRemoteBranchSha(remoteBefore);
   let pushArguments: string[] | undefined;
   if (!existingRemoteSha) {
     pushArguments = ["push", "origin", `HEAD:refs/heads/${context.branch}`];
@@ -1410,7 +962,7 @@ async function publish(context: ExecutionContext, claim: TerminalClaim): Promise
       ["ls-remote", "--heads", "origin", `refs/heads/${context.branch}`],
       { cwd: worktreePath, allowFailure: true },
     );
-    const confirmedSha = remoteBranchSha(remoteAfter.stdout);
+    const confirmedSha = checkedRemoteBranchSha(remoteAfter);
     if (confirmedSha !== localSha) {
       throw new CommandError(
         "PUSH_UNCONFIRMED",
@@ -1430,6 +982,12 @@ async function publish(context: ExecutionContext, claim: TerminalClaim): Promise
     );
   }
   if (pullRequests.length === 0) {
+    if (!claim) {
+      throw new CommandError(
+        "RETRY_PULL_REQUEST_MISSING",
+        "Recorded publication recovery no longer has its matching draft pull request",
+      );
+    }
     const bodyPath = join(context.metadata.runDirectory, "pull-request-body.txt");
     const focusedEvidence = claim.verification
       .map((entry) => `- ${safePublicText(entry)}`)
@@ -1480,10 +1038,7 @@ async function publish(context: ExecutionContext, claim: TerminalClaim): Promise
   const pullRequest = pullRequests[0];
   if (
     !pullRequest ||
-    pullRequest.headRefName !== context.branch ||
-    pullRequest.baseRefName !== "main" ||
-    pullRequest.isDraft !== true ||
-    !new RegExp(`\\bCloses\\s+#${context.snapshot.issue.number}\\b`, "i").test(pullRequest.body)
+    !isMatchingDraftPullRequest(pullRequest, context.branch, context.snapshot.issue.number)
   ) {
     throw new CommandError(
       "PULL_REQUEST_UNCONFIRMED",
@@ -1509,6 +1064,21 @@ async function publish(context: ExecutionContext, claim: TerminalClaim): Promise
   context.metadata.status = "published";
   await saveMetadata(context);
   return pullRequest.url;
+}
+
+async function cleanupSuccessfulWorktree(
+  context: ExecutionContext,
+  worktree: Worktree | undefined,
+): Promise<void> {
+  const successfulWorktreePath = context.metadata.worktreePath;
+  if (worktree) {
+    await worktree.close();
+  } else if (successfulWorktreePath) {
+    await runCommand("git", ["worktree", "remove", successfulWorktreePath], {
+      cwd: context.repoRoot,
+    });
+  }
+  await recordRun(context, "worktree.cleaned", { path: successfulWorktreePath });
 }
 
 async function terminateOmpRunner(context: ExecutionContext): Promise<void> {
@@ -1559,6 +1129,14 @@ async function executeIssue(
       context.metadata.worktreePath = worktree.worktreePath;
       await saveMetadata(context);
       await recordRun(context, "worktree.created", { path: worktree.worktreePath });
+    }
+
+    if (context.resumePublication) {
+      stage = "publication";
+      const pullRequestUrl = await publish(context);
+      await cleanupSuccessfulWorktree(context, worktree);
+      process.stdout.write(`Confirmed recovered draft pull request: ${pullRequestUrl}\n`);
+      return;
     }
 
     stage = "agent";
@@ -1647,13 +1225,7 @@ async function executeIssue(
     await revalidateBeforePublication(context);
     stage = "publication";
     const pullRequestUrl = await publish(context, claim);
-    const successfulWorktreePath = context.metadata.worktreePath;
-    if (worktree) {
-      await worktree.close();
-    } else if (successfulWorktreePath) {
-      await runCommand("git", ["worktree", "remove", successfulWorktreePath], { cwd: repoRoot });
-    }
-    await recordRun(context, "worktree.cleaned", { path: successfulWorktreePath });
+    await cleanupSuccessfulWorktree(context, worktree);
     process.stdout.write(`Confirmed draft pull request: ${pullRequestUrl}\n`);
   } catch (error) {
     const code = error instanceof CommandError ? error.code : "EXECUTION_FAILED";

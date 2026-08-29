@@ -56,21 +56,23 @@ Publication is idempotent. The executor confirms the deterministic remote branch
 
 Run metadata and complete local logs live under the repository's git-common directory at `.git/nama-agent/runs/<run-id>/`. The single active lock is `.git/nama-agent/active-run.json`. Sandcastle worktrees live under ignored `/.sandcastle/` state.
 
-A normal rerun rejects a retained branch. Retry a compatible failed run with a fresh OMP session:
+A normal rerun rejects a retained branch. Retry a compatible failed run explicitly:
 
 ```bash
 pnpm agent:issue -- 88 --execute --retry issue-88-<timestamp>-<suffix>
 ```
 
-Retry verifies the recorded issue, branch, base ancestry, worktree, remote SHA, pull-request absence, current admission state, and active lock before claiming again.
+Implementation and check retries start a fresh OMP session. When a later publication transition failed after the matching draft was already confirmed, retry validates the recorded remote SHA and exact draft, then resumes the remaining issue transition without rerunning OMP.
 
-A crash can leave the active lock behind. Remove it only by naming the matching run after its recorded process is dead and matching run metadata exists:
+Retry verifies the recorded issue, branch, base ancestry, worktree, remote SHA, current admission state, and active lock before claiming again. Any pull request other than the exact recorded draft is rejected.
+
+A crash can leave the active lock behind. Remove it only by naming the matching run after its recorded process is dead and matching run metadata exists. Recovery records a still-`running` dead run as retryable failure before removing the lock:
 
 ```bash
 pnpm agent:issue -- 88 --recover-stale-lock issue-88-<timestamp>-<suffix>
 ```
 
-Failed, blocked, and no-change work remains until explicit cleanup. Cleanup verifies issue/run identity, status, lock ownership, Sandcastle path, branch, recorded HEAD, and remote-branch absence before deleting the worktree and local branch:
+Failed, blocked, and no-change work remains until explicit cleanup. Cleanup verifies issue/run identity, status, lock ownership, Sandcastle path, branch, recorded HEAD, and a successful remote probe confirming branch absence before deleting the worktree and local branch:
 
 ```bash
 pnpm agent:issue -- 88 --cleanup issue-88-<timestamp>-<suffix>
