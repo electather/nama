@@ -1059,6 +1059,58 @@ old playback session, replans and opens at the current clamped position, and
 supplies one complete replacement request; the newer load owns all locator,
 header, redirect, track, and rendering state.
 
+### Planning and launch
+
+Playback owns one deep launch module whose interface accepts a typed
+`MediaPlayIntent` and scene-local playback preferences and yields either one
+complete `NamaPlayerRequest` or one closed safe failure. Generated
+`PlaybackService` messages, Connect metadata and errors, capability wire
+messages, Locator material, provider details, and Track-reference mapping stay
+inside its concrete networking adapter. `PlaybackView` continues to accept only
+a complete player request; no partially planned or opened state enters the
+player interface.
+
+Primary Details Play uses the default Source and `AUTO` quality without an
+extra confirmation. A visible Playback Options action presents Source choice
+plus Auto and explicit 4, 8, 20, and 40 Mbps caps without resolution labels,
+then emits the same typed intent. This choice belongs to the current Details
+destination, resets to Auto for a new destination, and is never persisted or
+derived from network conditions. The Apple app does not expose `ORIGINAL`
+while it has no behavior distinct from uncapped compatibility fallback. It
+sends empty audio/subtitle language lists and `AUTO` subtitle preference.
+
+The concrete `NamaPlayer` adapter owns the capability-profile builder described
+in [playback.md](playback.md). It builds one fresh, synchronous, local, total
+profile for every planning attempt after player initialization. It opens no
+media, contacts no provider, performs no network I/O, and persists nothing.
+Reliable runtime evidence may remove a capability; unavailable or indeterminate
+optional evidence removes only that optional claim. The initial exact profile
+and its lowercase tokens remain centralized in the adapter rather than copied
+through Details or views.
+
+Selecting Play navigates immediately to a launch destination that retains media
+identity, visible planning/opening progress, and Back. Back cancels the attempt
+and rejects stale completion before returning to confirmed Details. A complete
+opened session constructs `NamaPlayer` and enters the existing presentation.
+Retryable failures offer Retry and Back; `SOURCE_UNAVAILABLE` also offers
+Sources; `PLAYBACK_UNSUPPORTED` offers Sources and Back rather than a blind
+retry; authorization rejection returns through the existing Authorize Again
+path. Every message is provider-neutral and secret-free.
+
+One launch attempt owns one cancellable task. `PlanPlayback` follows the
+contract's safe retry rules and may replan once if its plan expires while the
+same attempt remains active. `OpenPlayback` uses one operation ID and an
+identical request across every retry; response loss never mints another
+logical Open. Cancellation that races a materialized lease relies on the
+core's late-lease and bounded abandoned-session cleanup until terminal close is
+implemented by the Watch-state playback sequence.
+
+Open uses the plan's default audio and subtitle selections. Session Tracks
+marked `switchable_without_reopen` remain locally selectable. Other Tracks stay
+visible but disabled with an accessibility-safe Restart Required explanation
+until the ordered replacement lifecycle can close, replan, and open without
+reordering Watch state.
+
 [ADR-0032](../adr/0032-aetherengine-mvp-security-exception.md) selects
 AetherEngine `6.21.0` and requires its exact source revision and complete
 resolved dependency closure to remain pinned. The adapter adds neither a
@@ -1123,9 +1175,9 @@ Before product playback depends on AetherEngine:
    test the complete Nama-owned request, state, clock, lifecycle, track,
    rendering, replacement-load, and failure mapping.
 3. Play one known-good SDR HLS fixture through `NamaPlayer` on representative
-   physical iPhone or iPad, Apple TV, and Mac hardware. Issue #39 owns
-   capability and fallback evidence; issue #40 owns the full media and
-   interaction matrix.
+   physical iPhone or iPad, Apple TV, and Mac hardware. Issue #39 owns the
+   capability and provider-fallback matrix; issue #40 delivered the player
+   interaction baseline.
 4. Inspect Release logs and network captures on every supported platform.
    Record the accepted local locator-URL logging and allowed-origin header
    replay, and verify there is no request to a non-allowlisted destination,

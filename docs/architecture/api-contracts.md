@@ -664,7 +664,14 @@ artwork reference for a validated short-lived locator.
 
 ### Capabilities and preferences
 
-`PlaybackCapabilities` describes what the actual client/player can consume:
+`PlaybackCapabilities` is a conservative pre-plan declaration of what the
+actual client player commits to consuming. It is an input-consumption contract,
+not an inventory of every decoder in a dependency, a claim that the current
+display or audio route preserves source fidelity, or a guarantee that every
+matching Source will load or perform acceptably. Output tone mapping or
+downmixing does not make an input unsupported.
+
+The message contains:
 
 - repeated `direct_play_profiles`;
 - repeated supported delivery `protocols`;
@@ -672,9 +679,15 @@ artwork reference for a validated short-lived locator.
 - optional maximum width, height, video bit depth, and audio channels; and
 - repeated supported dynamic-range values.
 
-A `DirectPlayProfile` is one supported combination of container, optional video codec, and allowed audio codecs. Clients send multiple profiles rather than independent codec lists that would imply unsupported combinations. A video-less profile describes audio-only media.
+A `DirectPlayProfile` is one supported combination of container, optional video
+codec, and allowed audio codecs. Clients send multiple profiles rather than
+independent codec lists that would imply unsupported combinations. A video-less
+profile describes audio-only media. An absent optional limit is unknown, not an
+unbounded capability.
 
-Initial `DeliveryProtocol` values are `HTTP_PROGRESSIVE` and `HLS`. `SubtitleCapability` combines subtitle codec or format with allowed delivery modes `EMBEDDED`, `EXTERNAL`, and `BURNED_IN`.
+Initial `DeliveryProtocol` values are `HTTP_PROGRESSIVE` and `HLS`.
+`SubtitleCapability` combines subtitle codec or format with allowed delivery
+modes `EMBEDDED`, `EXTERNAL`, and `BURNED_IN`.
 
 `PlaybackPreferences` contains:
 
@@ -684,7 +697,14 @@ Initial `DeliveryProtocol` values are `HTTP_PROGRESSIVE` and `HLS`. `SubtitleCap
 - ordered preferred subtitle languages; and
 - subtitle preference (`AUTO`, `OFF`, `FORCED_ONLY`, or `ALWAYS`).
 
-Capabilities are hard limits. Preferences express a choice within those limits. The server never silently treats a quality preference as a capability.
+Capabilities are hard limits. Preferences express a choice within those limits;
+the server never treats a quality preference as a capability. `AUTO` requests
+the least-destructive compatible result with no implicit bit-rate cap.
+`ORIGINAL` preserves the selected Source's resolution and bit-rate target as far
+as compatibility permits but does not prohibit conversion required for
+compatibility. `CAPPED` is the only quality value that deliberately requests a
+positive bit-rate ceiling, which may require conversion of otherwise compatible
+media.
 
 ### PlanPlayback
 
@@ -700,11 +720,35 @@ Capabilities are hard limits. Preferences express a choice within those limits. 
 - default audio track ID and a `SubtitleSelection`; and
 - per-stream `actions`.
 
-`PlaybackStrategy` is `DIRECT`, `REMUX`, `TRANSCODE_AUDIO`, or `TRANSCODE_VIDEO`. `TrackAction` associates an opaque plan-scoped track ID with `COPY`, `TRANSCODE`, `BURN`, `EXTERNAL`, or `OMIT`. A `PlaybackTrack` contains the plan-scoped `id`, type, label, language, default and forced flags, and the relevant normalized audio or subtitle format fields.
+`PlaybackStrategy` describes provider-side delivery transformation rather than
+client demuxing, decoding, audio bridging, tone mapping, or downmixing.
+`DIRECT` leaves provider media unchanged. `REMUX` changes only
+carriage/container while audio and video copy. `TRANSCODE_AUDIO` copies video
+while converting selected audio. `TRANSCODE_VIDEO` converts video and may also
+convert audio or burn subtitles. `TrackAction` retains the finer evidence by
+associating an opaque plan-scoped track ID with `COPY`, `TRANSCODE`, `BURN`,
+`EXTERNAL`, or `OMIT`. A `PlaybackTrack` contains the plan-scoped `id`, type,
+label, language, default and forced flags, and the relevant normalized audio or
+subtitle format fields.
 
 `SubtitleSelection` is a oneof containing either `track_id` or `disabled`; there is no magic empty-string track. The selected IDs must come from the plan.
 
 Planning is side-effect-free from Nama's perspective: it creates only an expiring plan record and no long-lived provider playback session. The server selects the default available source when `source_id` is absent. A requested unavailable source fails visibly instead of silently switching editions. The MVP playback lifecycle supports a source with one part. Multi-part sources remain visible in technical details but planning returns `PLAYBACK_UNSUPPORTED`; segment sequencing is added only with representative multi-part fixtures.
+
+The plugin derives strategy, output, Track actions, and cap attribution from
+provider evidence rather than guesses. The core validates the returned plan
+against the exact mapped Source, submitted capabilities and preferences,
+strategy/action consistency, expected protocol/container/codecs, Track
+membership and defaults, future bounded expiry, and newly allocated public
+Track IDs. For `CAPPED`, the core also validates every locally knowable
+relationship between the positive cap, stored Source bit rate, and returned
+strategy; the provider adapter's own interface and fixtures prove that the
+provider honored the ceiling because the package-local plan does not reproduce
+provider-specific transcode-reason payloads.
+
+The core never repairs or reclassifies an inconsistent plugin plan, silently
+chooses another Source, or tries another provider. Invalid or unsafe plugin
+evidence fails `INTERNAL/PLUGIN_RESPONSE_INVALID`.
 
 ### OpenPlayback
 
