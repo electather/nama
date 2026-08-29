@@ -72,6 +72,8 @@ A crash can leave the active lock behind. Remove it only by naming the matching 
 pnpm agent:issue -- 88 --recover-stale-lock issue-88-<timestamp>-<suffix>
 ```
 
+Publication-only retry intent remains durable across another crash. A dead `published` run preserves assignment and removes the lock only after re-confirming its exact remote branch and draft, then either removing its exact registered worktree or confirming that worktree is already unregistered.
+
 Failed, blocked, and no-change work remains until explicit cleanup. Cleanup verifies issue/run identity, status, lock ownership, Sandcastle path, branch, recorded HEAD, and a successful remote probe confirming branch absence before deleting the worktree and local branch:
 
 ```bash

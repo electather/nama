@@ -533,6 +533,7 @@ test("boundary changes require positive issue authorization", async (context) =>
     "## Acceptance criteria\n\n- Document the dependency change policy.\n",
     "## Acceptance criteria\n\n- A dependency change is out of scope.\n",
     "## Acceptance criteria\n\n- Update documentation; dependency changes are out-of-scope.\n",
+    "## Acceptance criteria\n\n- Update the docs, then explain the dependency policy.\n",
   ]) {
     await context.test(body, async () => {
       const fixture = await createFixture({ body });
@@ -943,6 +944,14 @@ test("stale-lock recovery preserves published ownership and cleans confirmed wor
   await assert.rejects(readFile(join(stateDirectory, "active-run.json"), "utf8"), {
     code: "ENOENT",
   });
+  await writeFile(
+    join(stateDirectory, "active-run.json"),
+    `${JSON.stringify({ version: 1, runId, issueNumber: 88, branch: "agent/issue-88", baseSha, pid: 999_999, startedAt: "2026-08-01T00:00:00Z" })}\n`,
+    "utf8",
+  );
+  const recoveredAgain = await fixture.run(["88", "--recover-stale-lock", runId]);
+  assert.equal(recoveredAgain.code, 0, recoveredAgain.stderr);
+  assert.deepEqual((await fixture.readState()).issue.assignees, [{ login: "fixture-maintainer" }]);
 });
 
 test("cleanup retains local recovery state when the remote probe fails", async () => {
@@ -1000,6 +1009,8 @@ test("recovery rejects unknown statuses and malformed optional metadata fields",
     { name: "failure code", field: "failureCode", value: null },
     { name: "attempt", field: "attempt", value: 1.5 },
     { name: "cleanup instant", field: "cleanedAt", value: true },
+    { name: "issue labels", field: "issueLabels", value: "ready-for-agent" },
+    { name: "retry mode", field: "retryMode", value: "implementation" },
   ];
 
   for (const invalidCase of invalidCases) {
@@ -1091,6 +1102,59 @@ test("publication retry reconciles an already-applied final issue transition", a
   const recoveredState = await fixture.readState();
   assert.deepEqual(recoveredState.issue.labels, []);
   assert.deepEqual(recoveredState.issue.assignees, [{ login: "fixture-maintainer" }]);
+  assert.equal((await readFile(fixture.ompLogPath, "utf8")).trim().split("\n").length, 1);
+});
+
+test("publication recovery rejects a maintainer triage transition", async () => {
+  const fixture = await createFixture();
+  const first = await fixture.run(["88", "--execute"], {
+    GH_FIXTURE_FINALIZE_AMBIGUOUS: "1",
+  });
+  assert.equal(first.code, 1);
+  const state = await fixture.readState();
+  const runId = /issue-88-[0-9]+-[0-9a-f]+/u.exec(JSON.stringify(state.mutations))?.[0];
+  assert.ok(runId);
+  state.issue.labels = [{ name: "ready-for-human" }];
+  await fixture.writeState(state);
+
+  const retry = await fixture.run(["88", "--execute", "--retry", runId]);
+  assert.equal(retry.code, 1);
+  assert.match(retry.stderr, /ISSUE_NOT_READY/);
+  assert.equal((await fixture.readState()).prs.length, 1);
+});
+
+test("stale-lock recovery preserves publication-only retry mode", async () => {
+  const fixture = await createFixture();
+  const first = await fixture.run(["88", "--execute"], {
+    GH_FIXTURE_FINALIZE_FAIL: "1",
+  });
+  assert.equal(first.code, 1);
+  const state = await fixture.readState();
+  const runId = /issue-88-[0-9]+-[0-9a-f]+/u.exec(JSON.stringify(state.mutations))?.[0];
+  assert.ok(runId);
+  const stateDirectory = join(fixture.repo, ".git/nama-agent");
+  const metadataPath = join(stateDirectory, "runs", runId, "metadata.json");
+  const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as Record<string, unknown>;
+  metadata["status"] = "running";
+  metadata["retryMode"] = "publication";
+  metadata["pid"] = 999_999;
+  await writeFile(metadataPath, `${JSON.stringify(metadata)}\n`, "utf8");
+  await writeFile(
+    join(stateDirectory, "active-run.json"),
+    `${JSON.stringify({ version: 1, runId, issueNumber: 88, branch: "agent/issue-88", baseSha: metadata["baseSha"], pid: 999_999, startedAt: "2026-08-01T00:00:00Z" })}\n`,
+    "utf8",
+  );
+
+  const recovered = await fixture.run(["88", "--recover-stale-lock", runId]);
+  assert.equal(recovered.code, 0, recovered.stderr);
+  const recoveredMetadata = JSON.parse(await readFile(metadataPath, "utf8")) as {
+    status: string;
+    retryMode?: string;
+  };
+  assert.equal(recoveredMetadata.status, "publication_failed");
+  assert.equal(recoveredMetadata.retryMode, "publication");
+  const retry = await fixture.run(["88", "--execute", "--retry", runId]);
+  assert.equal(retry.code, 0, retry.stderr);
   assert.equal((await readFile(fixture.ompLogPath, "utf8")).trim().split("\n").length, 1);
 });
 

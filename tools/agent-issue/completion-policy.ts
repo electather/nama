@@ -53,7 +53,7 @@ function issueAuthorizesBoundary(
       return false;
     }
     const targetIndex = Math.min(...targetIndexes);
-    return !/[.;!?]/u.test(line.slice(directiveLength, targetIndex));
+    return !/[,.;!?—]/u.test(line.slice(directiveLength, targetIndex));
   });
 }
 

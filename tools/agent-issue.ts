@@ -315,7 +315,7 @@ async function recoverStaleLock(
     await reconcilePublishedStaleRun(repoRoot, issueNumber, metadata, metadataPath);
   } else {
     if (metadata.status === "running") {
-      metadata.status = "failed";
+      metadata.status = metadata.retryMode === "publication" ? "publication_failed" : "failed";
       metadata.failureStage = "recovery";
       metadata.failureCode = "STALE_LOCK_RECOVERED";
       await atomicWriteJson(metadataPath, metadata);
@@ -474,24 +474,27 @@ async function reconcilePublishedStaleRun(
       "Published stale run draft pull request is not confirmed",
     );
   }
-  const branchResult = await runCommand("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-    cwd: worktreePath,
-    allowFailure: true,
+  const worktreeList = await runCommand("git", ["worktree", "list", "--porcelain", "-z"], {
+    cwd: repoRoot,
   });
-  if (branchResult.code !== 0 || branchResult.stdout.trim() !== metadata.branch) {
-    throw new CommandError(
-      "PUBLISHED_RECOVERY_STATE_INVALID",
-      "Published stale run worktree no longer owns the recorded branch",
-    );
+  const worktreeRecord = worktreeList.stdout
+    .split("\0\0")
+    .find((record) => record.split("\0").includes(`worktree ${worktreePath}`));
+  if (worktreeRecord) {
+    const fields = worktreeRecord.split("\0");
+    if (
+      !fields.includes(`HEAD ${metadata.headSha}`) ||
+      !fields.includes(`branch refs/heads/${metadata.branch}`)
+    ) {
+      throw new CommandError(
+        "PUBLISHED_RECOVERY_STATE_INVALID",
+        "Published stale run worktree differs from recorded confirmation",
+      );
+    }
+    await runCommand("git", ["worktree", "remove", "--force", worktreePath], {
+      cwd: repoRoot,
+    });
   }
-  const headResult = await runCommand("git", ["rev-parse", "HEAD"], { cwd: worktreePath });
-  if (headResult.stdout.trim() !== metadata.headSha) {
-    throw new CommandError(
-      "PUBLISHED_RECOVERY_STATE_INVALID",
-      "Published stale run worktree HEAD differs from recorded confirmation",
-    );
-  }
-  await runCommand("git", ["worktree", "remove", worktreePath], { cwd: repoRoot });
   metadata.cleanedAt = new Date().toISOString();
   await atomicWriteJson(metadataPath, metadata);
 }
@@ -543,6 +546,14 @@ async function recordedPublicationRecoveryLogin(
   if (
     !pullRequest ||
     !isRecordedPublicationMatch(metadata, pullRequest, remoteSha, snapshot.issue.number)
+  ) {
+    return undefined;
+  }
+  const expectedLabels = metadata.issueLabels?.filter((label) => label !== "ready-for-agent");
+  if (
+    !expectedLabels ||
+    expectedLabels.length !== snapshot.labels.length ||
+    !expectedLabels.every((label, index) => label === snapshot.labels[index])
   ) {
     return undefined;
   }
@@ -677,6 +688,11 @@ async function createRetryExecutionContext(
   } finally {
     await lockHandle?.close();
   }
+  if (resumePublication) {
+    metadata.retryMode = "publication";
+  } else {
+    delete metadata.retryMode;
+  }
   metadata.status = "running";
   metadata.pid = process.pid;
   metadata.attempt = (metadata.attempt ?? 1) + 1;
@@ -757,6 +773,7 @@ async function createExecutionContext(
     pid: process.pid,
     status: "running",
     runDirectory,
+    issueLabels: [...snapshot.labels],
   };
   const lock: RunLock = {
     version: 1,
@@ -1205,6 +1222,7 @@ async function publish(context: ExecutionContext, claim?: TerminalClaim): Promis
     { cwd: context.repoRoot },
   );
   context.metadata.status = "published";
+  delete context.metadata.retryMode;
   await saveMetadata(context);
   return pullRequest.url;
 }

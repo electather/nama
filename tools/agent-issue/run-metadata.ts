@@ -41,6 +41,8 @@ export interface RunMetadata {
   failureCode?: string;
   attempt?: number;
   cleanedAt?: string;
+  issueLabels?: string[];
+  retryMode?: "publication";
 }
 
 function isOptionalString(value: unknown): value is string | undefined {
@@ -49,6 +51,13 @@ function isOptionalString(value: unknown): value is string | undefined {
 
 function isOptionalSha(value: unknown): value is string | undefined {
   return value === undefined || (typeof value === "string" && /^[0-9a-f]{40}$/u.test(value));
+}
+
+function isOptionalStringArray(value: unknown): value is string[] | undefined {
+  return (
+    value === undefined ||
+    (Array.isArray(value) && value.every((entry) => typeof entry === "string"))
+  );
 }
 
 function isRunStatus(value: unknown): value is RunStatus {
@@ -95,7 +104,9 @@ export function validateRunMetadata(raw: unknown, runId: string, issueNumber: nu
     !("attempt" in raw
       ? typeof raw.attempt === "number" && Number.isInteger(raw.attempt) && raw.attempt >= 1
       : true) ||
-    !("cleanedAt" in raw ? isOptionalString(raw.cleanedAt) : true)
+    !("cleanedAt" in raw ? isOptionalString(raw.cleanedAt) : true) ||
+    !("issueLabels" in raw ? isOptionalStringArray(raw.issueLabels) : true) ||
+    !("retryMode" in raw ? raw.retryMode === undefined || raw.retryMode === "publication" : true)
   ) {
     throw new CommandError(
       "RUN_METADATA_INVALID",
@@ -137,6 +148,16 @@ export function validateRunMetadata(raw: unknown, runId: string, issueNumber: nu
   }
   if ("cleanedAt" in raw && typeof raw.cleanedAt === "string") {
     metadata.cleanedAt = raw.cleanedAt;
+  }
+  if (
+    "issueLabels" in raw &&
+    isOptionalStringArray(raw.issueLabels) &&
+    raw.issueLabels !== undefined
+  ) {
+    metadata.issueLabels = raw.issueLabels;
+  }
+  if ("retryMode" in raw && raw.retryMode === "publication") {
+    metadata.retryMode = raw.retryMode;
   }
   return metadata;
 }
