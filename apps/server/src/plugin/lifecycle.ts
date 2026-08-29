@@ -80,6 +80,7 @@ interface PluginHandleState {
       }>
     | undefined;
   launchesInEpisode: number;
+  resetRecoveryEpisodeAfterRetirement: boolean;
   lifecycle: PluginLifecycleState;
   readonly lifecycleSemaphore: Semaphore.Semaphore;
   readonly options: RecoveryOptions;
@@ -261,14 +262,21 @@ interface PluginRetirementCommit {
   readonly ownership: PluginCleanupOwnership;
   readonly state: PluginHandleState;
 }
+interface PluginCloseRetirement {
+  readonly completion: RetirementCompletion | typeof COMPLETED_PLUGIN_RETIREMENT;
+  readonly joined: boolean;
+}
 
 const completePluginRetirement = (retirement: PluginRetirement): Effect.Effect<void> => {
   const { options } = retirement.state;
+  if (retirement.kind === "idle" || retirement.state.resetRecoveryEpisodeAfterRetirement) {
+    retirement.state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
+    retirement.state.resetRecoveryEpisodeAfterRetirement = false;
+  }
   if (retirement.kind === "close") {
     retirement.state.lifecycle = { kind: "closed" };
   } else {
     if (retirement.kind === "idle") {
-      retirement.state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
       options.emit(
         Effect.logDebug(
           pluginLifecycleMessage(
@@ -355,23 +363,26 @@ const commitPluginRetirement = ({
 
 const startPluginCloseRetirement = (
   state: PluginHandleState,
-): Effect.Effect<RetirementCompletion | typeof COMPLETED_PLUGIN_RETIREMENT> =>
+): Effect.Effect<PluginCloseRetirement> =>
   state.lifecycleSemaphore.withPermits(SINGLE_LIFECYCLE_PERMIT)(
-    Effect.suspend<RetirementCompletion | typeof COMPLETED_PLUGIN_RETIREMENT, never, never>(() => {
+    Effect.suspend<PluginCloseRetirement, never, never>(() => {
       const selection = closeSelectionForLifecycle(state.lifecycle);
       if (selection.kind === "none") {
         state.lifecycle = { kind: "closed" };
-        return Effect.succeed(COMPLETED_PLUGIN_RETIREMENT);
+        return Effect.succeed({
+          completion: COMPLETED_PLUGIN_RETIREMENT,
+          joined: false,
+        });
       }
       if (selection.kind === "committed") {
-        return Effect.succeed(selection.completion);
+        return Effect.succeed({ completion: selection.completion, joined: true });
       }
       return commitPluginRetirement({
         cleanup: selection.cleanup,
         kind: "close",
         ownership: selection.ownership,
         state,
-      });
+      }).pipe(Effect.map((completion) => ({ completion, joined: false })));
     }),
   );
 
@@ -410,6 +421,8 @@ const retireIdlePlugin = (state: PluginHandleState, owner: symbol): Effect.Effec
         return Effect.void;
       }
       if (retirementAlreadyCommitted(lifecycle)) {
+        state.idleTimer = undefined;
+        state.resetRecoveryEpisodeAfterRetirement = true;
         return Effect.void;
       }
       if (lifecycle.kind === "recovering") {
@@ -424,6 +437,7 @@ const retireIdlePlugin = (state: PluginHandleState, owner: symbol): Effect.Effec
       const resetLifecycle = Effect.sync(() => {
         state.idleTimer = undefined;
         state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
+        state.resetRecoveryEpisodeAfterRetirement = false;
         state.lifecycle = { kind: "absent" };
       });
       if (lifecycle.kind === "absent" || lifecycle.plugin === ABSENT_PLUGIN) {
@@ -468,9 +482,7 @@ const fencePluginAdmission = (state: PluginHandleState): Effect.Effect<PluginAdm
     }),
   );
 
-const startPluginRetirement = (
-  state: PluginHandleState,
-): Effect.Effect<RetirementCompletion | typeof COMPLETED_PLUGIN_RETIREMENT> =>
+const startPluginRetirement = (state: PluginHandleState): Effect.Effect<PluginCloseRetirement> =>
   Effect.uninterruptible(
     fencePluginAdmission(state).pipe(
       Effect.flatMap(({ drained, idleTimer }) => {
@@ -493,7 +505,23 @@ const retirePluginHandle = (
 ): Effect.Effect<void, PluginSupervisorCleanupFailure> =>
   Effect.uninterruptibleMask((restore) =>
     startPluginRetirement(state).pipe(
-      Effect.flatMap((completion) => restore(awaitPluginCloseRetirement(completion))),
+      Effect.flatMap((retirement) =>
+        restore(
+          awaitPluginCloseRetirement(retirement.completion).pipe(
+            Effect.matchEffect({
+              onFailure: (error) => {
+                if (!retirement.joined) {
+                  return Effect.fail(error);
+                }
+                return startPluginCloseRetirement(state).pipe(
+                  Effect.flatMap((retry) => awaitPluginCloseRetirement(retry.completion)),
+                );
+              },
+              onSuccess: () => Effect.void,
+            }),
+          ),
+        ),
+      ),
     ),
   );
 const restorePluginCallExit = <Success, Failure>(
@@ -915,6 +943,7 @@ class PluginLifecycleHandle {
       lifecycle: { kind: "absent" },
       lifecycleSemaphore: Semaphore.makeUnsafe(SINGLE_LIFECYCLE_PERMIT),
       options,
+      resetRecoveryEpisodeAfterRetirement: false,
       scope,
     };
   }
