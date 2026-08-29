@@ -692,6 +692,7 @@ async function createRetryExecutionContext(
     metadata.retryMode = "publication";
   } else {
     delete metadata.retryMode;
+    metadata.issueLabels = [...snapshot.labels];
   }
   metadata.status = "running";
   metadata.pid = process.pid;
@@ -1385,6 +1386,8 @@ async function executeIssue(
     stage = "revalidation";
     await revalidateBeforePublication(context);
     stage = "publication";
+    context.metadata.retryMode = "publication";
+    await saveMetadata(context);
     const pullRequestUrl = await publish(context, claim);
     await cleanupSuccessfulWorktree(context, worktree);
     process.stdout.write(`Confirmed draft pull request: ${pullRequestUrl}\n`);

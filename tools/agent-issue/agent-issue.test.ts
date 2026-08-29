@@ -1136,7 +1136,6 @@ test("stale-lock recovery preserves publication-only retry mode", async () => {
   const metadataPath = join(stateDirectory, "runs", runId, "metadata.json");
   const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as Record<string, unknown>;
   metadata["status"] = "running";
-  metadata["retryMode"] = "publication";
   metadata["pid"] = 999_999;
   await writeFile(metadataPath, `${JSON.stringify(metadata)}\n`, "utf8");
   await writeFile(
@@ -1156,6 +1155,33 @@ test("stale-lock recovery preserves publication-only retry mode", async () => {
   const retry = await fixture.run(["88", "--execute", "--retry", runId]);
   assert.equal(retry.code, 0, retry.stderr);
   assert.equal((await readFile(fixture.ompLogPath, "utf8")).trim().split("\n").length, 1);
+});
+
+test("implementation retry refreshes labels for later publication recovery", async () => {
+  const fixture = await createFixture();
+  const first = await fixture.run(["88", "--execute"], { MISE_FIXTURE_EXIT: "9" });
+  assert.equal(first.code, 1);
+  const firstState = await fixture.readState();
+  const runId = /issue-88-[0-9]+-[0-9a-f]+/u.exec(JSON.stringify(firstState.mutations))?.[0];
+  assert.ok(runId);
+  firstState.issue.labels.push({ name: "scope:changed" });
+  await fixture.writeState(firstState);
+
+  const second = await fixture.run(["88", "--execute", "--retry", runId], {
+    GH_FIXTURE_FINALIZE_AMBIGUOUS: "1",
+    OMP_FIXTURE_ACTION: "retry",
+  });
+  assert.equal(second.code, 1);
+  const secondState = await fixture.readState();
+  assert.deepEqual(secondState.issue.labels, [{ name: "scope:changed" }]);
+  assert.deepEqual(secondState.issue.assignees, []);
+
+  const recovered = await fixture.run(["88", "--execute", "--retry", runId]);
+  assert.equal(recovered.code, 0, recovered.stderr);
+  const recoveredState = await fixture.readState();
+  assert.deepEqual(recoveredState.issue.labels, [{ name: "scope:changed" }]);
+  assert.deepEqual(recoveredState.issue.assignees, [{ login: "fixture-maintainer" }]);
+  assert.equal((await readFile(fixture.ompLogPath, "utf8")).trim().split("\n").length, 2);
 });
 
 test("publication retry recovers a matching draft after ambiguous confirmation", async () => {
