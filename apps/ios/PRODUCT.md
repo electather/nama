@@ -109,8 +109,11 @@ Development-signed sandboxed Mac build. Touch paused, sought, and used both
 Track surfaces; Apple TV remote input traversed transport and Track focus,
 paused, and confirmed subtitle selection; Mac pointer input paused and opened
 the correctly sized Track sheet, while full keyboard access reached its action.
-Its safe network failure retained visible return-to-Details recovery. A paired
-physical iPhone 14 Pro Max accepted the signed build but denied launch while
+Its safe network failure retained visible return-to-Details recovery.
+A later signed sandboxed Mac run rendered unknown-duration chrome with an
+accessibility-tree elapsed value of `0:00:00` and an explicit
+player-initialization-unavailable preview state instead of a blank canvas.
+A paired physical iPhone 14 Pro Max accepted the signed build but denied launch while
 locked; physical playback input and display were not observed.
 Search-result selection with the Apple TV remote or Mac pointer, compact iPad
 collapse, focus return after nested Details, live OAuth-authorized

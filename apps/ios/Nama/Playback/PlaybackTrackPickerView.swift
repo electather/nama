@@ -57,7 +57,7 @@ struct PlaybackTrackPickerView: View {
       dismiss()
     } label: {
       PlaybackTrackLabel(
-        label: track.label,
+        title: .provider(track.label),
         language: track.language,
         isSelected: isSelected
       )
@@ -72,7 +72,7 @@ struct PlaybackTrackPickerView: View {
       player.disableSubtitles()
       dismiss()
     } label: {
-      PlaybackTrackLabel(label: "Off", language: nil, isSelected: isSelected)
+      PlaybackTrackLabel(title: .subtitlesOff, language: nil, isSelected: isSelected)
     }
     .focused($focus, equals: .subtitlesOff)
     .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -85,7 +85,7 @@ struct PlaybackTrackPickerView: View {
       dismiss()
     } label: {
       PlaybackTrackLabel(
-        label: track.label,
+        title: .provider(track.label),
         language: track.language,
         isSelected: isSelected
       )
@@ -106,15 +106,32 @@ struct PlaybackTrackPickerView: View {
   }
 }
 
+enum PlaybackTrackTitle {
+  case localized(LocalizedStringResource)
+  case verbatim(String)
+
+  static let subtitlesOff: Self = .localized("Off")
+
+  static func provider(_ title: String) -> Self {
+    .verbatim(title)
+  }
+}
+
 private struct PlaybackTrackLabel: View {
-  let label: String
+  let title: PlaybackTrackTitle
   let language: String?
   let isSelected: Bool
 
   var body: some View {
     HStack {
       VStack(alignment: .leading) {
-        Text(label)
+        switch title {
+        case .localized(let resource):
+          Text(resource)
+
+        case .verbatim(let value):
+          Text(value)
+        }
         if let language {
           Text(language)
             .font(.subheadline)
