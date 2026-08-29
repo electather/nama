@@ -400,7 +400,11 @@ if (mode === "stdout-secret") {
   process.stdout.write("stdout-secret-must-not-appear\n");
 }
 
-if (mode === "helper") {
+if (
+  mode === "helper" ||
+  mode === "helper-cleanup-failure" ||
+  (mode === "reset-episode" && launchNumber === 1)
+) {
   const helper = spawn(process.execPath, [
     "-e",
     'process.on("SIGTERM",()=>{});process.stdout.write("ready\\n");setInterval(()=>{},1000)',
@@ -428,7 +432,7 @@ const stop = async () => {
     }
     await waitForControlFile("termination-continue");
   }
-  if (mode === "cleanup-failure") {
+  if (mode === "cleanup-failure" || mode === "helper-cleanup-failure") {
     await chmod(dirname(dirname(launchDocument.socket_path)), 0o500);
   }
   const closed = Promise.withResolvers();
