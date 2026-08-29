@@ -112,10 +112,25 @@ the correctly sized Track sheet, while full keyboard access reached its action.
 Its safe network failure retained visible return-to-Details recovery. A paired
 physical iPhone 14 Pro Max accepted the signed build but denied launch while
 locked; physical playback input and display were not observed.
-Search-result selection with the Apple TV remote or Mac pointer, compact iPad
-collapse, focus return after nested Details, live OAuth-authorized
-stored-catalog browsing and Search, successful artwork resolution, VoiceOver
-inspection, and physical Apple hardware remain unverified actual surfaces.
+Issue #180 rendered a fresh OAuth-authorized production catalog on signed
+iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV 4K 1080p simulators. The run
+showed Home, Movie Library, Movie/Show/Season/Episode Details, canonical
+children, and Apple TV focus movement into Library; the iPhone Home content
+also remained usable at the largest accessibility text size with increased
+contrast. Termination and relaunch restored the authorized production Home;
+the temporary DEBUG-only token and navigation harness was then removed.
+The generated production client completed all browse methods, all three
+Library sorts, continuation paging, all-kind Search, Movie and Episode Source
+inspection, artwork resolution, and the anonymous JPEG fetch. Locator material
+remained inside the networking/artwork adapter and actual app surfaces received
+only decoded presentation state or their title-bearing fallback. Live Details
+joined the existing typed Movie/Episode and explicit-Source Play-intent tests;
+the Details composition has no playback-planning or opening dependency. The
+signed sandboxed Mac artifact had the expected network entitlements but did not
+create a window in this run, so live Mac browsing, decoded artwork, VoiceOver
+and reduced-motion inspection, live Search and Play-button input, compact iPad
+collapse, focus return after nested Details, and physical Apple hardware remain
+unverified actual surfaces.
 
 ## Product Principles
 

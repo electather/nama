@@ -43,7 +43,7 @@ const summaryFromItem = (item: StoredCatalogItem) => {
     genres: item.genres,
     id: item.id,
     kind: item.kind,
-    libraryCreatedAt: item.libraryCreatedAt,
+    libraryCreatedAt: item.libraryCreatedAt.toISOString().replace("Z", "000Z"),
     normalizedTitle: item.title.toLowerCase(),
     releaseDateSort: nullable(item.releaseDate ?? item.firstReleaseDate),
     releaseYear: nullable(item.releaseYear),

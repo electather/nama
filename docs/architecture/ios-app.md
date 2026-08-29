@@ -31,11 +31,20 @@ The unlabeled fixture has run on iPhone 17 Pro and iPad Pro 13-inch (M5)
 simulators, an Apple TV 4K (3rd generation) simulator, and an Apple
 Development-signed sandboxed Mac build; simulated touch, Apple TV remote focus,
 Mac pointer, and Mac keyboard operation selected both distinct choices and
-retained their matching technical titles. Apple TV Load More focus interaction,
-compact iPad collapse, focus return after nested Details, the live
-OAuth-authorized stored-catalog hierarchy, successful artwork resolution,
-VoiceOver inspection, physical Apple hardware, expiry-driven actual-surface
-refresh, and the remaining Apple surfaces remain unverified.
+retained their matching technical titles. Issue #180 additionally rendered the
+OAuth-authorized production catalog on signed iPhone 17 Pro, iPad Pro 13-inch
+(M5), and Apple TV 4K 1080p simulators. Home, Library, Movie, Show, Season, and
+Episode Details and canonical children were visible; Apple TV focus entered
+Library, and the iPhone Home surface retained content at the largest
+accessibility text size with increased contrast. The temporary DEBUG-only token
+installation and navigation harness was removed before verification. The
+Apple Development-signed sandboxed Mac artifact had the expected entitlements
+but did not create a window in this run. Successful production artwork
+resolution and fetch passed through the generated client while actual app
+surfaces retained their title-bearing fallback. Live Search input, decoded
+artwork, VoiceOver output, reduced motion, compact iPad collapse, focus return
+after nested Details, physical Apple hardware, and expiry-driven
+actual-surface refresh remain unverified.
 
 The controlled playback presentation rendered on iPhone 17 Pro and iPad Pro
 13-inch (M5) simulators, an Apple TV 4K (3rd generation) 1080p simulator, and an
@@ -373,8 +382,46 @@ an Apple Development-signed sandboxed Mac build. Simulated touch selected Source
 actions and selected each. Mac pointer input selected Source 2, while full
 keyboard access focused Source 1 and activated it with Space. Every selected
 technical section retained the matching positional title. These fixture
-surfaces do not prove the live OAuth-authorized stored-catalog hierarchy,
-successful artwork resolution, VoiceOver output, or physical-device input.
+surfaces do not prove successful decoded artwork, VoiceOver output, or
+physical-device input.
+
+Issue #180's production acceptance provisioned PostgreSQL, the production
+listener, a supervised production Jellyfin plugin, an enabled instance, and a
+disposable Jellyfin 10.11.11 server, then waited for the complete canonical
+import. A fresh fixed-client device grant supplied the endpoint-bound bundle
+installed by a temporary DEBUG-only harness into signed simulator builds;
+termination and relaunch restored the authorized production Home before the
+harness was removed.
+iPhone showed production Home, Movie Library, and Movie Details; iPad showed
+Home plus Show and Season Details with the canonical Season and Episode rows;
+Apple TV showed Home, Library after a remote focus move, and Episode Details.
+The same production proof drove every generated public browse method, all
+Library sorts, a continuation page, all-kind Search, both hierarchy levels,
+Movie and Episode Sources, artwork resolution, and an anonymous artwork fetch.
+The iPhone Home content also survived the largest accessibility text size with
+increased contrast. Existing fixture runs retain the loading, catalog
+preparation, legitimate empty, long content, no-results, later-page failure,
+unavailable-source, missing-artwork, touch, pointer, keyboard, and broader
+Apple TV focus evidence.
+
+The issue #180 Mac artifact was Apple Development-signed and sandboxed with
+client and loopback-server network entitlements, but repeated LaunchServices,
+activation, reopen, and New Window attempts left the process alive without a
+window. That run is not Mac actual-surface proof. The simulator app surfaces
+kept their title-bearing artwork fallback even though the production generated
+client resolved and fetched the anonymous JPEG. Locator URLs and headers remain
+adapter-private; the app-owned presentation boundary receives only decoded
+image state or the title-bearing fallback. The live Details hierarchy joins
+the existing `MediaDetailsFeature.play()` and `MediaSourcesFeature.play()`
+contract tests, which verify opaque Movie and Episode intents with an explicit
+Source only after deliberate inspection; Details owns no playback-planning or
+opening dependency. The local automation surface could not deliver live
+iPhone/iPad touch, live refresh, a live Play-button activation, or a usable Mac
+window, and exposed no VoiceOver reading-order or reduced-motion inspection
+API. Those prerequisites and live decoded artwork, live Search input, and live
+Source selection remain explicitly unverified; existing feature, adapter,
+fixture, and input evidence continues to cover those contracts without being
+described as live input evidence.
 `check:ios` lints Swift formatting, runs the test target through its macOS host,
 inspects the built ATS shape, and performs signing-disabled iOS, tvOS, and macOS
 builds. The real-player tests prove controlled SDR HLS rendering and control

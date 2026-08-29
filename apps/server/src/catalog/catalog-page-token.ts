@@ -16,6 +16,8 @@ import { PageTokenInvalid } from "../provider/page-token.ts";
 import type { PageTokenCodec, PageTokenInvalidFailure } from "../provider/page-token.ts";
 
 const ABSENT_INDEX = -1;
+const DATE_ADDED_CURSOR_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u;
+const MILLISECOND_TIMESTAMP_LENGTH = 23;
 const DEFAULT_PAGE_SIZE = 50;
 const LIST_CHILDREN_METHOD = "nama.api.v1.LibraryService.ListChildren";
 const LIST_LIBRARY_METHOD = "nama.api.v1.LibraryService.ListLibrary";
@@ -174,12 +176,16 @@ const releaseDateCursor = (properties: object, id: string): CatalogLibraryCursor
 };
 
 const dateAddedCursor = (properties: object, id: string): CatalogLibraryCursor => {
-  const createdAtRaw = property(properties, "created_at");
-  if (typeof createdAtRaw !== "string") {
+  const createdAt = property(properties, "created_at");
+  if (typeof createdAt !== "string" || !DATE_ADDED_CURSOR_PATTERN.test(createdAt)) {
     throw new PageTokenInvalid({});
   }
-  const createdAt = new Date(createdAtRaw);
-  if (!Number.isFinite(createdAt.getTime()) || createdAt.toISOString() !== createdAtRaw) {
+  const millisecondTimestamp = `${createdAt.slice(ZERO, MILLISECOND_TIMESTAMP_LENGTH)}Z`;
+  const parsedTimestamp = new Date(millisecondTimestamp);
+  if (
+    !Number.isFinite(parsedTimestamp.getTime()) ||
+    parsedTimestamp.toISOString() !== millisecondTimestamp
+  ) {
     throw new PageTokenInvalid({});
   }
   return { createdAt, id, sort: "date_added" };
@@ -223,7 +229,7 @@ const libraryCursorJson = (
     }
     case "date_added": {
       return JSON.stringify({
-        created_at: item.libraryCreatedAt.toISOString(),
+        created_at: item.libraryCreatedAt,
         id: item.id,
         sort,
       });

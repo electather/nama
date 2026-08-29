@@ -15,10 +15,17 @@ controlled provider fixtures. `LIBRARY_READ`, `ARTWORK_RESOLVE`,
 `WATCH_STATE_READ`, and `WATCHED_WRITE` are advertised.
 
 Initial catalog ingestion and all seven public `LibraryService` methods are
-implemented over stored canonical projections and verified through real Connect,
-PostgreSQL, and a supervised production Jellyfin scan. Ordinary reads remain
-provider-independent; artwork resolution alone exchanges a stored reference for
-a validated short-lived lease.
+implemented over stored canonical projections. The complete production proof
+creates an enabled instance against disposable Jellyfin, waits for its
+supervised catalog pass, authorizes the fixed Apple public client through the
+device grant, and drives Home, every Library sort, continuation paging,
+all-kind Search, all four Details kinds, both hierarchy levels, Movie and
+Episode Sources, artwork resolution, and the anonymous artwork fetch through
+the production listener and generated client. An observing proxy in front of
+the real Jellyfin fixture proves the provider request count stays unchanged
+through every ordinary read and invalid-token failure, then records only the
+artwork probe and fetch. It also captures the real provider item, source, path,
+and artwork-tag references for boundary-absence assertions.
 
 Issue #145's Better Auth authorization-server routes, authenticated CLI
 approval, JWT-protected consumer access, broad client-grant revocation, Apple

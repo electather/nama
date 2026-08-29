@@ -468,10 +468,21 @@ The server test gate must continue to exercise behavior, not only generated cont
   credential/code/token redaction;
 - one supervised production Jellyfin catalog scan through revision-fenced
   incremental commits, restart continuation, duplicate pages, out-of-order
-  hierarchy, provider failure, disable/re-enable, and provider deletion; and
+  hierarchy, provider failure, disable/re-enable, and provider deletion;
+- one production-listener flow that creates an enabled disposable-Jellyfin
+  instance, waits for a complete import, device-authorizes the fixed Apple
+  public client, and drives all seven generated `LibraryService` calls,
+  all three Library sorts, continuation paging, all-kind Search, canonical
+  hierarchy, and Movie and Episode Sources while an observing proxy proves
+  those ordinary calls produce no provider traffic; only the subsequent
+  artwork probe and anonymous fetch reach disposable Jellyfin;
+- focused date-added pagination coverage that preserves PostgreSQL microseconds
+  in authenticated cursors so same-millisecond imports cannot skip a page; and
 - real Connect Library reads over stored canonical state proving stable Nama
-  IDs, search and pagination, unavailable-source projection, and absence of
-  provider references or payload sentinels;
+  IDs, unavailable-source projection, and absence of captured real provider
+  item, source, path, and artwork-tag references, reusable credentials, or
+  payload sentinels from ordinary values, failures, logs, page tokens, and
+  request metadata;
 - root TypeScript checks that execute the complete server suite.
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.

@@ -367,6 +367,20 @@ it.live("filters and keyset-paginates stored Library entries with bound expiring
               title: "Charlie",
             }),
           );
+          yield* withPool(databaseUrl, (pool) =>
+            Effect.promise(() =>
+              pool.query(
+                `UPDATE library_entry
+                 SET created_at = CASE canonical_item.title
+                   WHEN 'alpha' THEN TIMESTAMPTZ '2026-08-25 12:00:00.123789+00'
+                   WHEN 'Bravo' THEN TIMESTAMPTZ '2026-08-25 12:00:00.123456+00'
+                   ELSE TIMESTAMPTZ '2026-08-25 12:00:00.123123+00'
+                 END
+                 FROM canonical_item
+                 WHERE canonical_item.id = library_entry.canonical_item_id`,
+              ),
+            ),
+          );
           const query = yield* makeStoredQuery(database, () => currentTime);
           const client = yield* startCatalogClient(database, query);
           const firstPageRequest = create(ListLibraryRequestSchema, {
@@ -388,6 +402,23 @@ it.live("filters and keyset-paginates stored Library entries with bound expiring
             ),
           );
           expect(secondPage.items.map(({ title }) => title)).toEqual(["Bravo"]);
+          const dateAddedRequest = create(ListLibraryRequestSchema, {
+            filter: { watchFilter: WatchFilter.ANY },
+            pageSize: 1,
+            sort: LibrarySort.DATE_ADDED_DESC,
+          });
+          const firstDateAddedPage = yield* Effect.promise(() =>
+            client.listLibrary(dateAddedRequest, requestOptions),
+          );
+          expect(firstDateAddedPage.items).toHaveLength(1);
+          expect(firstDateAddedPage.nextPageToken).not.toBe("");
+          const secondDateAddedPage = yield* Effect.promise(() =>
+            client.listLibrary(
+              { ...dateAddedRequest, pageToken: firstDateAddedPage.nextPageToken },
+              requestOptions,
+            ),
+          );
+          expect(secondDateAddedPage.items.map(({ title }) => title)).toEqual(["Bravo"]);
 
           const filtered = yield* Effect.promise(() =>
             client.listLibrary(

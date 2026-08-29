@@ -64,8 +64,12 @@ provider connection tests, and the local Linux application image are
 implemented. The Docker gate drives the real image through canonical Compose,
 the compiled Go CLI, the pinned Jellyfin fixture, plugin-child recovery,
 application replacement, and graceful shutdown. Core initial catalog ingestion
-and authenticated stored `LibraryService` reads are implemented and exercised
-through real Connect over a supervised production Jellyfin scan.
+and authenticated stored `LibraryService` reads are implemented. A complete
+production-listener proof creates an enabled instance against disposable
+Jellyfin, waits for its supervised import, device-authorizes the Apple public
+client, and drives every generated browse method, all Library sorts,
+continuation paging, canonical hierarchy and Sources, artwork resolution, and
+the anonymous artwork fetch without an ordinary live provider read.
 
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.
 
@@ -141,11 +145,21 @@ focus activated Load More and Retry Page and returned to the first result. The
 static loading surface remained onscreen on Apple TV and Mac, and full keyboard
 access selected the long Episode on Mac. Source inspection has self-contained
 choosing, technical, unavailable, distinct-unlabeled-choice, and stale-response
-previews. Apple TV result selection, Mac pointer selection, compact iPad
-collapse, focus return after nested Details, live OAuth-authorized catalog
-browsing and Search, successful artwork resolution, product consumer media
-coordination, VoiceOver inspection, physical Apple hardware, expiry-driven
-actual-surface refresh, and the remaining Apple surfaces remain unverified.
+previews. Issue #180 additionally rendered the OAuth-authorized production
+catalog on signed iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV 4K 1080p
+simulators: Home and Library, Movie, Show, Season, and Episode Details, canonical
+children, fallback artwork, and Apple TV focus movement into Library were
+visible. The iPhone Home surface also retained its content at the largest
+accessibility text size with increased contrast. A temporary DEBUG-only token
+installation and navigation harness used for those captures was removed before
+verification. The Apple Development-signed sandboxed Mac artifact carried the
+expected network entitlements but this run could not make it create a window,
+so no live Mac browse result was recorded. Successful production artwork
+resolution and fetch passed at the generated-client boundary; the actual app
+surfaces retained their title-bearing fallback. Live Search input, successful
+decoded artwork, VoiceOver reading order, reduced motion, compact iPad
+collapse, focus return after nested Details, physical Apple hardware, and
+expiry-driven actual-surface refresh remain unverified.
 
 ## Architectural decision records
 
