@@ -67,7 +67,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Do not claim generic Apple-platform builds prove runtime behavior; inspect the actual universal application on every affected platform and keep unrun physical-device rows explicit.
 - Use an Apple Development-signed sandboxed macOS build for actual-surface acceptance; an ad hoc-signed sandboxed build can stay alive without creating a window and is not runtime proof.
 - Use a signed simulator build for OAuth Keychain acceptance; `CODE_SIGNING_ALLOWED=NO` makes the Keychain path fail unavailable even when transport and device-code UI run.
-- Give macOS-hosted real-engine playback assertions twenty seconds under the parallel repository check; aggregate compiler, container, and server-test load can delay track and control publication past ten seconds.
+- Give macOS-hosted real-engine playback assertions thirty seconds under the parallel repository check; aggregate compiler, container, and server-test load can delay track and control publication past twenty seconds.
 - Keep static Apple loading surfaces focusable without a visible focus effect on
   tvOS and macOS; an interaction-free scene can stay alive without presenting a
   usable foreground window.
