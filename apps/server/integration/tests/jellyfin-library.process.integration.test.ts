@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { join } from "node:path";
 
-import { Code, ConnectError, createClient } from "@connectrpc/connect";
+import { Code, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { expect, it } from "@effect/vitest";
 import {
@@ -34,6 +34,8 @@ import { Clock, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
 import type { AuthenticationService } from "../../src/authentication/authentication-service.ts";
+import type { ArtworkAccessService } from "../../src/catalog/catalog-artwork-access.ts";
+import { makeArtworkAssetLoader } from "../../src/catalog/catalog-artwork-asset-fetch.ts";
 import { makeCatalogArtworkLeaseResolver } from "../../src/catalog/catalog-artwork-resolver.ts";
 import { makeCatalogImport } from "../../src/catalog/catalog-import.ts";
 import { listProviderCatalogPage } from "../../src/catalog/catalog-provider-access.ts";
@@ -45,6 +47,7 @@ import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 import { initializeCatalogDatabase } from "./catalog-persistence.test-support.ts";
 import { productionMigrations, useDatabase, withPool } from "./database.test-support.ts";
 import { withIsolatedDatabase } from "./postgres.test-support.ts";
+import { collectPublicReferenceValues } from "./provider-boundary.test-support.ts";
 
 const JELLYFIN_PLUGIN_PATH = join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts");
 const EXPIRED_CLOCK_PRELOAD_URL = `data:text/javascript,${encodeURIComponent(
@@ -76,6 +79,8 @@ const PUBLIC_LIBRARY_PROVIDER_TRACK_STRIDE = 100;
 const CATALOG_PROVIDER_INSTANCE_ID = "provider-instance";
 const CATALOG_PROVIDER_REVISION = `${CATALOG_PROVIDER_INSTANCE_ID}-revision`;
 const API_KEY = "jellyfin-api-key-sentinel";
+const CANONICAL_ARTWORK_BYTES = Buffer.from("canonical-artwork", "utf8");
+const NO_ARTWORK_ASSET = undefined;
 const USER_ID = "user-identity";
 const MOVIE_ID = "movie-identity";
 const SHOW_ID = "show-identity";
@@ -572,14 +577,18 @@ const acquireControlledJellyfin = Effect.acquireRelease(
         requests.push({ authorization: request.headers.authorization, url: request.url ?? "" });
         const endpoint = new URL(request.url ?? "", "http://jellyfin.invalid");
         if (
-          request.method === "HEAD" &&
+          (request.method === "HEAD" || request.method === "GET") &&
           endpoint.pathname.startsWith("/jellyfin/Items/") &&
           endpoint.pathname.includes("/Images/") &&
           request.headers.authorization === undefined
         ) {
           response.statusCode = HTTP_OK;
           response.setHeader("content-type", "image/jpeg");
-          response.end();
+          if (request.method === "GET") {
+            response.end(CANONICAL_ARTWORK_BYTES);
+          } else {
+            response.end();
+          }
           return;
         }
         if (
@@ -1446,6 +1455,8 @@ it.live(
                 catalog: database.catalog,
                 coreRunId,
                 listPage,
+                loadArtworkAsset: () => Effect.succeed(NO_ARTWORK_ASSET),
+                now: Date.now,
                 random: () => NO_PROVIDER_REQUESTS,
                 runProviderActivity: passthroughActivity,
               });
@@ -2260,6 +2271,11 @@ it.live(
                 catalog: database.catalog,
                 coreRunId: "public-library-core-run",
                 listPage: listProviderCatalogPage(providers, supervisor),
+                loadArtworkAsset: makeArtworkAssetLoader(
+                  makeCatalogArtworkLeaseResolver(catalogDatabase, supervisor),
+                  providerManagement.runProviderActivity,
+                ),
+                now: Date.now,
                 random: () => NO_PROVIDER_REQUESTS,
                 runProviderActivity: passthroughActivity,
               });
@@ -2276,16 +2292,26 @@ it.live(
               const catalogRequests = jellyfin.requests
                 .filter(({ url }) => url.startsWith("/jellyfin/Items?"))
                 .map(({ url }) => url);
+              const providerRequestCount = jellyfin.requests.length;
+              const artworkAccess: ArtworkAccessService = {
+                locator: ({ height, width }) => ({
+                  $typeName: "nama.api.v1.ArtworkLocator",
+                  accessExpiresAt: undefined,
+                  allowedRedirectOrigins: ["https://nama.example"],
+                  headers: [],
+                  height,
+                  refreshAt: undefined,
+                  url: "https://nama.example/artwork/opaque-token",
+                  width,
+                }),
+                read: () => Effect.die("unexpected artwork byte read"),
+              };
               const catalogQuery = CatalogQuery.of(
                 yield* makeCatalogQuery({
+                  artworkAccess,
                   catalog: database.catalogQueries,
                   masterKey,
                   now: Date.now,
-                  resolveArtworkLease: makeCatalogArtworkLeaseResolver(
-                    catalogDatabase,
-                    providerManagement,
-                    supervisor,
-                  ),
                 }),
               );
               const server = yield* startServer(catalogDatabase, {
@@ -2361,40 +2387,40 @@ it.live(
                   options,
                 ),
               );
-              const resolvedArtworkFailure = yield* Effect.tryPromise({
-                catch: (error) => error,
-                try: () =>
-                  client.resolveArtwork(
-                    { artworkId: artwork.id, maxHeight: 1080, maxWidth: 1920 },
-                    options,
-                  ),
-              }).pipe(Effect.flip);
-              if (!(resolvedArtworkFailure instanceof ConnectError)) {
-                throw new TypeError("expected an unsafe artwork locator failure");
-              }
+              const resolvedArtwork = yield* Effect.promise(() =>
+                client.resolveArtwork(
+                  { artworkId: artwork.id, maxHeight: 1080, maxWidth: 1920 },
+                  options,
+                ),
+              );
 
               expect(search.items.map(({ title }) => title)).toContain("Arrival");
               expect(children.items.map(({ title }) => title)).toEqual(["Season 2"]);
               expect(source.source?.mediaId).toBe(movieSummary.id);
-              expect(resolvedArtworkFailure.code).toBe(Code.NotFound);
+              expect(resolvedArtwork.locator?.url).toBe(
+                "https://nama.example/artwork/opaque-token",
+              );
               expect(jellyfin.requests.map(({ url }) => url)).toContain(
-                `/jellyfin/Items/${providerItemSentinel}/Images/Primary/0?tag=${providerArtworkSentinel}&maxWidth=1920&maxHeight=1080`,
+                `/jellyfin/Items/${providerItemSentinel}/Images/Primary/0?maxWidth=1920&maxHeight=1920`,
               );
               expect(
                 jellyfin.requests
                   .filter(({ url }) => url.startsWith("/jellyfin/Items?"))
                   .map(({ url }) => url),
               ).toEqual(catalogRequests);
-              const ordinaryPublicContents = publicBoundaryJson({
+              expect(jellyfin.requests).toHaveLength(providerRequestCount);
+              const ordinaryPublicBoundary = {
                 capturedLogRecords,
                 children,
                 home,
                 libraryFirst,
                 librarySecond,
                 media,
+                resolvedArtwork,
                 search,
                 source,
-              });
+              };
+              const ordinaryPublicContents = publicBoundaryJson(ordinaryPublicBoundary);
               for (const sentinel of [
                 API_KEY,
                 PRIVATE_PATH,
@@ -2402,26 +2428,15 @@ it.live(
                 providerArtworkSentinel,
                 providerItemSentinel,
                 providerSourceSentinel,
-                String(providerTrackSentinel),
               ]) {
                 expect(ordinaryPublicContents).not.toContain(sentinel);
               }
-              const artworkFallbackContents = publicBoundaryJson({
-                details: resolvedArtworkFailure.details,
-                metadata: [...resolvedArtworkFailure.metadata.entries()],
-                rawMessage: resolvedArtworkFailure.rawMessage,
-              });
-              for (const sentinel of [
-                API_KEY,
-                PRIVATE_PATH,
-                PROVIDER_ERROR_SENTINEL,
-                providerArtworkSentinel,
-                providerItemSentinel,
-                providerSourceSentinel,
-                String(providerTrackSentinel),
-              ]) {
-                expect(artworkFallbackContents).not.toContain(sentinel);
-              }
+              const publicReferenceValues = new Set<string>();
+              collectPublicReferenceValues(ordinaryPublicBoundary, publicReferenceValues);
+              expect(publicReferenceValues).not.toContain(String(providerTrackSentinel));
+              expect(publicBoundaryJson(capturedLogRecords)).not.toContain(
+                `"Index":${providerTrackSentinel}`,
+              );
             });
           });
         }).pipe(Effect.provide(PluginSupervisor.layer())),

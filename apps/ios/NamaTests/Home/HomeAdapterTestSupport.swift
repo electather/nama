@@ -93,6 +93,17 @@ nonisolated enum HomeTransportFixture {
       }
     }
     """#
+  static let publicArtworkResponse = #"""
+    {
+      "locator": {
+        "url": "https://artwork.example.test/public-poster",
+        "allowedRedirectOrigins": [
+          "https://artwork.example.test"
+        ],
+        "refreshAt": "2030-01-01T00:00:00Z"
+      }
+    }
+    """#
   static let catalogNotReadyResponse = #"""
     {
       "code": "unavailable",

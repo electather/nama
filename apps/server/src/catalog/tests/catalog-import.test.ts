@@ -9,6 +9,7 @@ import { makeCatalogImport } from "../catalog-import.ts";
 import type { CatalogImportDependencies } from "../catalog-import.ts";
 
 const ZERO = 0;
+const NO_ARTWORK_ASSET = undefined;
 const ZERO_RANDOM = ZERO;
 const COUNT_INCREMENT = 1;
 const FIRST_CANDIDATE_PASS = 1;
@@ -16,6 +17,10 @@ const EXPECTED_CANDIDATE_PASSES = 2;
 const EXPECTED_SECOND_PROVIDER_CALLS = 1;
 const FAILURE_OBSERVATION_WAIT_MILLISECONDS = 500;
 const PROVIDER_DISCOVERY_WAIT_MILLISECONDS = 1500;
+const ARTWORK_FREE_IMPORT_DEPENDENCIES = {
+  loadArtworkAsset: () => Effect.succeed(NO_ARTWORK_ASSET),
+  now: Date.now,
+} satisfies Pick<CatalogImportDependencies, "loadArtworkAsset" | "now">;
 
 const unexpected = <Success>(): Effect.Effect<Success> =>
   Effect.die("unexpected catalog persistence call");
@@ -42,6 +47,7 @@ it.effect("reports an unexpected scheduler defect to the runtime owner", () =>
     Effect.gen(function* catalogSchedulerFailureTest() {
       const reported = yield* Deferred.make<unknown>();
       const importer = makeCatalogImport({
+        ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
         catalog: catalogWithSchedulerDefect(),
         coreRunId: "core-run",
         listPage: () => unexpected(),
@@ -76,6 +82,7 @@ it.live("reports an unexpected provider scan defect to the runtime owner", () =>
         restartScan: () => unexpected(),
       };
       const importer = makeCatalogImport({
+        ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
         catalog,
         coreRunId: "core-run",
         listPage: () => unexpected(),
@@ -132,6 +139,7 @@ it.live("keeps polling while an existing provider scan remains active", () =>
         restartScan: () => unexpected(),
       };
       const importer = makeCatalogImport({
+        ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
         catalog,
         coreRunId: "core-run",
         listPage: ({ providerInstanceId }) => {

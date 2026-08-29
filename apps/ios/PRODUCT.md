@@ -26,9 +26,10 @@ stored media through the public `LibraryService`; Library adds exhaustive
 server-ordered Movie and Show pages with native sort, navigation, and recovery.
 Library-owned Search debounces trimmed queries, preserves the server's ranking
 across Movies, Shows, Seasons, and Episodes, and pages mixed-kind summaries
-without provider queries or parent enrichment. Home, Library, and Search resolve
-safe textless artwork without exposing locator details to views. Details loads
-Movies and Shows, pages from Shows to Seasons and Seasons to Episodes, preserves
+without provider queries or parent enrichment. Home, Library, Search, and
+Details resolve safe textless canonical artwork through signed Nama-owned
+locators without exposing locator details to views.
+Details loads Movies and Shows, pages from Shows to Seasons and Seasons to Episodes, preserves
 canonical parent context, and conditionally opens a provider-neutral Sources
 destination. Primary Play leaves the available canonical default implicit; a
 deliberate Source choice loads technical details on demand and emits an
@@ -115,10 +116,32 @@ accessibility-tree elapsed value of `0:00:00` and an explicit
 player-initialization-unavailable preview state instead of a blank canvas.
 A paired physical iPhone 14 Pro Max accepted the signed build but denied launch while
 locked; physical playback input and display were not observed.
-Search-result selection with the Apple TV remote or Mac pointer, compact iPad
-collapse, focus return after nested Details, live OAuth-authorized
-stored-catalog browsing and Search, successful artwork resolution, VoiceOver
-inspection, and physical Apple hardware remain unverified actual surfaces.
+Issue #180 rendered a fresh OAuth-authorized production catalog on signed
+iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV 4K simulators. The original
+run showed Home, Movie Library, Movie/Show/Season/Episode Details, canonical
+children, and Apple TV focus movement into Library. A follow-up run installed a
+fresh endpoint-bound grant through a temporary DEBUG-only harness and drove
+every browse RPC from the app process through `NamaLibraryClient` and the
+generated Swift public client: all three Library sorts, continuation paging,
+all-kind Search, every Details kind, both hierarchy levels, Movie and Episode
+Source inspection and artwork resolution. The app-owned artwork path fetched
+and decoded the representative image. ADR-0035 subsequently moved that image
+behind a signed Nama-owned locator backed by the bounded canonical asset stored
+during catalog ingestion, so no provider locator material reaches the app.
+The same native flow mapped Movie and Episode Details, inspected the Episode
+Source through `MediaSourcesFeature`, resolved and decoded artwork, and emitted
+a source-specific typed Play intent without a playback-planning or opening
+dependency. iPhone production Home was also inspected at the largest
+accessibility text size with increased contrast and reduced motion enabled.
+Termination and relaunch restored the authorized production Home; the temporary
+harness and authorization records were then removed.
+The Apple Development-signed sandboxed Mac artifact retained the expected
+network entitlements, but the app and a minimal SwiftUI `WindowGroup` probe
+created foreground processes without windows. Live Mac browsing, VoiceOver
+reading and focus order, live touch, refresh, Search input, Source selection,
+Play-button activation, Apple TV remote input in the production flow, compact
+iPad collapse, focus return after nested Details, and physical Apple hardware
+remain unverified actual surfaces.
 
 ## Product Principles
 

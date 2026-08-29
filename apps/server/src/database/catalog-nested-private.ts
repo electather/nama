@@ -56,6 +56,8 @@ const insertActiveArtworkAndCredits = async ({
     }
     return {
       artworkReference: entry.artworkReference,
+      assetBytes: entry.asset?.bytes,
+      assetMimeType: entry.asset?.mimeType,
       canonicalItemId,
       displayOrder: entry.displayOrder,
       height: entry.height,
@@ -273,7 +275,7 @@ const resolveNestedIdentityState = async (
   return { artwork, artworkIds, partIds, parts, sourceIds, trackIds, tracks };
 };
 
-const replaceNestedCatalogRecords = async (
+export const replaceNestedCatalogRecords = async (
   transaction: CatalogTransaction,
   input: CatalogItemObservation,
   canonicalItemId: string,
@@ -296,5 +298,3 @@ const replaceNestedCatalogRecords = async (
   await insertActiveParts(transaction, state.parts, state.partIds);
   await insertActiveTracks(transaction, state.tracks, state.trackIds);
 };
-
-export { replaceNestedCatalogRecords };

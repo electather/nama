@@ -201,6 +201,34 @@ struct HomeAdapterTests {
     #expect(requestJSON["maxWidth"] as? Int == 384)
     #expect(requestJSON["maxHeight"] as? Int == 576)
   }
+  @Test("ResolveArtwork accepts a credential-free public locator without access expiry")
+  func publicArtworkResolutionMapping() async throws {
+    HomeConnectStubURLProtocol.configure(
+      status: HomeTransportFixture.successfulHTTPStatus,
+      body: HomeTransportFixture.publicArtworkResponse
+    )
+    defer { HomeConnectStubURLProtocol.reset() }
+    let record = try homeTokenRecord()
+    let client = homeClient(record: record, platform: "ios")
+    let reference = ArtworkReference(
+      identity: ArtworkIdentity("public-artwork"),
+      role: .poster,
+      width: nil,
+      height: nil,
+      locale: nil,
+      textPresence: .textless
+    )
+
+    let locator = try await client.resolve(
+      reference,
+      size: .poster(displayWidth: 148, scale: 2),
+      authorization: homeAuthorization(record: record, generation: 16)
+    )
+
+    #expect(locator.url == "https://artwork.example.test/public-poster")
+    #expect(locator.headers.isEmpty)
+    #expect(locator.accessExpiresAt == nil)
+  }
 
   @Test("a changed authorization record cannot send the previous access token")
   func changedAuthorizationRejectsOldRecord() async throws {

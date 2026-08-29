@@ -138,7 +138,9 @@ const playability = (sources: readonly StoredCatalogSourceSummary[]): Playabilit
   return Playability.NO_AVAILABLE_SOURCE;
 };
 
-const episodePosition = (summary: StoredCatalogSummary): MediaSummary["episodePosition"] => {
+const episodePosition = (
+  summary: Pick<StoredCatalogSummary, "episodeNumber" | "seasonNumber">,
+): MediaSummary["episodePosition"] => {
   if (summary.seasonNumber === null || summary.episodeNumber === null) {
     return ABSENT_VALUE;
   }
@@ -149,7 +151,23 @@ const episodePosition = (summary: StoredCatalogSummary): MediaSummary["episodePo
   };
 };
 
-const summaryMessage = (summary: StoredCatalogSummary): MediaSummary => {
+const summaryMessage = (
+  summary: Pick<
+    StoredCatalogSummary,
+    | "artwork"
+    | "contentRating"
+    | "episodeNumber"
+    | "genres"
+    | "id"
+    | "kind"
+    | "releaseYear"
+    | "runtimeNanoseconds"
+    | "runtimeSeconds"
+    | "seasonNumber"
+    | "sources"
+    | "title"
+  >,
+): MediaSummary => {
   const sources = summary.sources.map((source) => sourceMessage(source));
   const defaultSource = sources.find((source) => source.isDefault);
   const position = episodePosition(summary);
