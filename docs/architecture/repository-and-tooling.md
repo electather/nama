@@ -72,6 +72,22 @@ CI runs the native checks and the contract-compatibility gate appropriate to
 the change. Compile-only boundaries prove compilation, not product or runtime
 behavior.
 
+## Local issue implementation
+
+The root `agent:issue` package command is Nama's single local issue executor,
+not a generic workflow engine or task queue. GitHub Issues remain authoritative;
+git-common metadata exists only for crash recovery. The command creates one
+deterministic Sandcastle worktree from fetched `origin/main`, runs the pinned OMP
+provider once under an explicit capability profile, and delegates all repository
+verification to the existing native checks. The host runs the complete
+`mise run check` aggregate before publication.
+
+The proof of concept deliberately uses Sandcastle `noSandbox()`. It executes OMP
+as the invoking macOS user with that account's filesystem authority; worktree
+separation is not a filesystem or credential sandbox. Operational admission,
+terminal states, publication, and recovery are documented in
+[Local issue implementation](../agents/issue-implementation.md).
+
 ## Agent guardrails
 
 - Do not invent dependencies, lockfiles, tests, or generated output to make a

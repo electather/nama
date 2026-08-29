@@ -11,7 +11,11 @@
     "builtin": true,
     "node": true
   },
-  "ignorePatterns": ["apps/server/src/database/auth-schema.ts", "gen/ts/src/**"],
+  "ignorePatterns": [
+    "apps/server/src/database/auth-schema.ts",
+    "gen/ts/src/**",
+    "tools/agent-issue/standard-schema-spec.d.ts"
+  ],
   "options": {
     "denyWarnings": true,
     "reportUnusedDisableDirectives": "error",
@@ -113,6 +117,46 @@
       ],
       "rules": {
         "unicorn/no-useless-undefined": "off"
+      }
+    },
+    {
+      "files": ["tools/agent-issue.ts", "tools/agent-issue/**/*.ts"],
+      "rules": {
+        "eslint/func-style": "off",
+        "eslint/init-declarations": "off",
+        "eslint/max-lines": "off",
+        "eslint/max-lines-per-function": "off",
+        "eslint/max-params": "off",
+        "eslint/max-statements": "off",
+        "eslint/no-await-in-loop": "off",
+        "eslint/no-continue": "off",
+        "eslint/no-magic-numbers": "off",
+        "eslint/no-nested-ternary": "off",
+        "eslint/no-ternary": "off",
+        "eslint/prefer-destructuring": "off",
+        "eslint/prefer-named-capture-group": "off",
+        "eslint/prefer-template": "off",
+        "eslint/require-unicode-regexp": "off",
+        "eslint/sort-keys": "off",
+        "typescript/array-type": "off",
+        "typescript/method-signature-style": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/prefer-regexp-exec": "off",
+        "typescript/strict-boolean-expressions": "off",
+        "unicorn/no-array-sort": "off",
+        "unicorn/no-await-expression-member": "off",
+        "unicorn/no-null": "off",
+        "unicorn/numeric-separators-style": "off",
+        "unicorn/prefer-import-meta-properties": "off",
+        "unicorn/prefer-number-coercion": "off",
+        "unicorn/prefer-ternary": "off"
+      }
+    },
+    {
+      "files": ["tools/agent-issue/**/*.test.ts"],
+      "rules": {
+        "typescript/no-floating-promises": "off",
+        "typescript/return-await": "off"
       }
     },
     {

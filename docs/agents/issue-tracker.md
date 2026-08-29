@@ -13,6 +13,14 @@ Issues and specs for this repo live as GitHub issues in `electather/nama`. Use t
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
+## Local implementation executor
+
+Use the repository-owned `pnpm agent:issue -- <number>` command to plan one
+`ready-for-agent` issue and add `--execute` only after reviewing the plan.
+Admission, capability routing, trusted-context extraction, recovery, host
+verification, and draft publication are defined in
+[Local issue implementation](issue-implementation.md).
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

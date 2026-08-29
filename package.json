@@ -3,12 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check:format": "oxfmt --check .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server/.fallowrc.json apps/server plugins/jellyfin gen/ts/package.json",
-    "check:lint": "oxlint apps/server plugins/jellyfin",
-    "check:ts": "concurrently --kill-others-on-fail --names format,lint,fallow,auth-schema,types,server-tests \"pnpm run check:format\" \"pnpm run check:lint\" \"pnpm --filter @nama/server --fail-if-no-match run check:fallow\" \"pnpm --filter @nama/server --fail-if-no-match run check:auth-schema\" \"pnpm run check:type\" \"pnpm --filter @nama/server --fail-if-no-match run check:test\"",
-    "check:type": "concurrently --kill-others-on-fail --names server,jellyfin \"pnpm --filter @nama/server --fail-if-no-match run check:type\" \"pnpm --filter @nama/jellyfin --fail-if-no-match run check:type\""
+    "agent:issue": "node tools/agent-issue.ts",
+    "check:agent-issue": "node --test tools/agent-issue/agent-issue.test.ts",
+    "check:format": "oxfmt --check .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json tools/tsconfig.json tools/agent-issue.ts tools/agent-issue apps/server/.fallowrc.json apps/server plugins/jellyfin gen/ts/package.json",
+    "check:lint": "oxlint tools/agent-issue.ts tools/agent-issue apps/server plugins/jellyfin",
+    "check:ts": "concurrently --kill-others-on-fail --names format,lint,fallow,auth-schema,types,agent-tests,server-tests \"pnpm run check:format\" \"pnpm run check:lint\" \"pnpm --filter @nama/server --fail-if-no-match run check:fallow\" \"pnpm --filter @nama/server --fail-if-no-match run check:auth-schema\" \"pnpm run check:type\" \"pnpm run check:agent-issue\" \"pnpm --filter @nama/server --fail-if-no-match run check:test\"",
+    "check:type": "concurrently --kill-others-on-fail --names agent-issue,server,jellyfin \"tsc --project tools/tsconfig.json --noEmit\" \"pnpm --filter @nama/server --fail-if-no-match run check:type\" \"pnpm --filter @nama/jellyfin --fail-if-no-match run check:type\""
   },
   "devDependencies": {
+    "@ai-hero/sandcastle": "0.12.0",
+    "@types/node": "24.13.3",
     "concurrently": "10.0.4",
     "oxfmt": "0.62.0",
     "oxlint": "1.77.0",
