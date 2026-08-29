@@ -6,6 +6,10 @@ interface CompletionPolicySnapshot {
   trustedComments: Array<{ body: string }>;
 }
 
+const FULL_MATCH_INDEX = 0;
+const MISSING_INDEX = -1;
+const NO_TARGET_INDEXES = 0;
+
 const DEPENDENCY_PATHS: Record<string, true> = {
   "package.json": true,
   "pnpm-lock.yaml": true,
@@ -35,10 +39,21 @@ function issueAuthorizesBoundary(
   const positiveDirective =
     /^\s*(?:[-*+]\s+)?(?:\[[ xX]\]\s+)?(?:add|allow|authorize|bump|change|create|delete|downgrade|edit|introduce|migrate|modify|pin|regenerate|remove|replace|update|upgrade|wire)\b/iu;
   const negativeDirective =
-    /\b(?:cannot|forbid|forbidden|never|no|not|prohibit|prohibited|unauthorized|without)\b|can['’]t|do not|don['’]t|must not|mustn['’]t|out of scope/iu;
+    /\b(?:cannot|forbid|forbidden|never|no|not|prohibit|prohibited|unauthorized|without)\b|can['’]t|do not|don['’]t|must not|mustn['’]t|out(?:-|\s+)of(?:-|\s+)scope/iu;
   return instructions.split(/\r?\n/u).some((line) => {
-    const namesBoundary = line.includes(path) || boundaryPattern.test(line);
-    return namesBoundary && positiveDirective.test(line) && !negativeDirective.test(line);
+    const directive = positiveDirective.exec(line);
+    if (!directive || negativeDirective.test(line)) {
+      return false;
+    }
+    const pathIndex = line.indexOf(path);
+    const boundaryIndex = boundaryPattern.exec(line)?.index ?? MISSING_INDEX;
+    const directiveLength = directive[FULL_MATCH_INDEX].length;
+    const targetIndexes = [pathIndex, boundaryIndex].filter((index) => index >= directiveLength);
+    if (targetIndexes.length === NO_TARGET_INDEXES) {
+      return false;
+    }
+    const targetIndex = Math.min(...targetIndexes);
+    return !/[.;!?]/u.test(line.slice(directiveLength, targetIndex));
   });
 }
 

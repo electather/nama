@@ -193,6 +193,13 @@ if (args[0] === "repo" && args[1] === "view") {
     state.issue.labels = state.issue.labels.filter(label => label.name !== removeLabel);
   }
   save();
+  if (
+    removeLabel === "ready-for-agent" &&
+    process.env.GH_FIXTURE_FINALIZE_AMBIGUOUS === "1"
+  ) {
+    process.stderr.write("fixture ambiguous final publication transition\\n");
+    process.exit(97);
+  }
 } else if (args[0] === "issue" && args[1] === "comment") {
   state.mutations.push({ args });
   save();
@@ -525,6 +532,7 @@ test("boundary changes require positive issue authorization", async (context) =>
   for (const body of [
     "## Acceptance criteria\n\n- Document the dependency change policy.\n",
     "## Acceptance criteria\n\n- A dependency change is out of scope.\n",
+    "## Acceptance criteria\n\n- Update documentation; dependency changes are out-of-scope.\n",
   ]) {
     await context.test(body, async () => {
       const fixture = await createFixture({ body });
@@ -874,6 +882,69 @@ test("stale-lock recovery requires matching dead-process evidence and cleanup ve
   });
 });
 
+test("stale-lock recovery preserves published ownership and cleans confirmed work", async () => {
+  const fixture = await createFixture();
+  const stateDirectory = join(fixture.repo, ".git/nama-agent");
+  const runId = "issue-88-published-deadbeef";
+  const runDirectory = join(stateDirectory, "runs", runId);
+  const worktreeInputPath = join(fixture.repo, ".sandcastle/worktrees/published-run");
+  await mkdir(runDirectory, { recursive: true });
+  await mkdir(join(fixture.repo, ".sandcastle/worktrees"), { recursive: true });
+  assert.equal(
+    (
+      await exec(
+        "git",
+        ["worktree", "add", "-b", "agent/issue-88", worktreeInputPath, "origin/main"],
+        fixture.repo,
+      )
+    ).code,
+    0,
+  );
+  const worktreePath = (
+    await exec("git", ["rev-parse", "--show-toplevel"], worktreeInputPath)
+  ).stdout.trim();
+  await writeFile(join(worktreePath, "published.txt"), "published\n", "utf8");
+  assert.equal((await exec("git", ["add", "published.txt"], worktreePath)).code, 0);
+  assert.equal((await exec("git", ["commit", "-m", "Published fixture"], worktreePath)).code, 0);
+  const headSha = (await exec("git", ["rev-parse", "HEAD"], worktreePath)).stdout.trim();
+  const baseSha = (await exec("git", ["rev-parse", "origin/main"], fixture.repo)).stdout.trim();
+  assert.equal(
+    (await exec("git", ["push", "origin", "HEAD:refs/heads/agent/issue-88"], worktreePath)).code,
+    0,
+  );
+  const state = await fixture.readState();
+  state.issue.labels = [];
+  state.issue.assignees = [{ login: state.login }];
+  state.prs.push({
+    number: 701,
+    url: "https://example.test/pr/701",
+    isDraft: true,
+    headRefName: "agent/issue-88",
+    baseRefName: "main",
+    body: "Closes #88",
+  });
+  await fixture.writeState(state);
+  await writeFile(
+    join(runDirectory, "metadata.json"),
+    `${JSON.stringify({ version: 1, runId, issueNumber: 88, repository: "electather/nama", branch: "agent/issue-88", baseSha, startedAt: "2026-08-01T00:00:00Z", pid: 999_999, status: "published", runDirectory, worktreePath, headSha, remoteSha: headSha, pullRequestUrl: "https://example.test/pr/701" })}\n`,
+    "utf8",
+  );
+  await writeFile(
+    join(stateDirectory, "active-run.json"),
+    `${JSON.stringify({ version: 1, runId, issueNumber: 88, branch: "agent/issue-88", baseSha, pid: 999_999, startedAt: "2026-08-01T00:00:00Z" })}\n`,
+    "utf8",
+  );
+
+  const recovered = await fixture.run(["88", "--recover-stale-lock", runId]);
+  assert.equal(recovered.code, 0, recovered.stderr);
+  assert.deepEqual((await fixture.readState()).issue.assignees, [{ login: "fixture-maintainer" }]);
+  const worktrees = await exec("git", ["worktree", "list", "--porcelain"], fixture.repo);
+  assert.doesNotMatch(worktrees.stdout, /agent[./-]issue-88/);
+  await assert.rejects(readFile(join(stateDirectory, "active-run.json"), "utf8"), {
+    code: "ENOENT",
+  });
+});
+
 test("cleanup retains local recovery state when the remote probe fails", async () => {
   const fixture = await createFixture();
   const failed = await fixture.run(["88", "--execute"], { MISE_FIXTURE_EXIT: "9" });
@@ -1000,6 +1071,27 @@ test("publication retry resumes a confirmed matching draft without rerunning OMP
   assert.equal((await readFile(fixture.ompLogPath, "utf8")).trim().split("\n").length, 1);
   const worktrees = await exec("git", ["worktree", "list", "--porcelain"], fixture.repo);
   assert.doesNotMatch(worktrees.stdout, /agent[./-]issue-88/);
+});
+
+test("publication retry reconciles an already-applied final issue transition", async () => {
+  const fixture = await createFixture();
+  const first = await fixture.run(["88", "--execute"], {
+    GH_FIXTURE_FINALIZE_AMBIGUOUS: "1",
+  });
+  assert.equal(first.code, 1);
+  const failedState = await fixture.readState();
+  assert.equal(failedState.prs.length, 1);
+  assert.deepEqual(failedState.issue.labels, []);
+  assert.deepEqual(failedState.issue.assignees, []);
+  const runId = /issue-88-[0-9]+-[0-9a-f]+/u.exec(JSON.stringify(failedState.mutations))?.[0];
+  assert.ok(runId);
+
+  const retry = await fixture.run(["88", "--execute", "--retry", runId]);
+  assert.equal(retry.code, 0, retry.stderr);
+  const recoveredState = await fixture.readState();
+  assert.deepEqual(recoveredState.issue.labels, []);
+  assert.deepEqual(recoveredState.issue.assignees, [{ login: "fixture-maintainer" }]);
+  assert.equal((await readFile(fixture.ompLogPath, "utf8")).trim().split("\n").length, 1);
 });
 
 test("publication retry recovers a matching draft after ambiguous confirmation", async () => {

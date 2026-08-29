@@ -138,15 +138,23 @@ async function admit(
   branch: string,
   capabilities: ReadonlySet<string>,
   allowRecordedRetry = false,
+  publicationRecoveryLogin?: string,
 ): Promise<void> {
   const { issue, labels, blockers } = snapshot;
   if (issue.state.toLowerCase() !== "open") {
     throw new CommandError("ISSUE_CLOSED", `Issue #${issue.number} is not open`);
   }
-  if (!labels.includes("ready-for-agent")) {
+  const hasReadyLabel = labels.includes("ready-for-agent");
+  const hasExpectedPublishedState =
+    allowRecordedRetry && publicationRecoveryLogin !== undefined && !hasReadyLabel;
+  if (!hasReadyLabel && !hasExpectedPublishedState) {
     throw new CommandError("ISSUE_NOT_READY", `Issue #${issue.number} lacks ready-for-agent`);
   }
-  if (issue.assignees.length > 0) {
+  const hasExpectedPublishedAssignee =
+    hasExpectedPublishedState &&
+    issue.assignees.length === 1 &&
+    issue.assignees[0]?.login === publicationRecoveryLogin;
+  if (issue.assignees.length > 0 && !hasExpectedPublishedAssignee) {
     throw new CommandError("ISSUE_ASSIGNED", `Issue #${issue.number} is already assigned`);
   }
   if (blockers.some((blocker) => blocker.state.toLowerCase() === "open")) {
@@ -303,15 +311,19 @@ async function recoverStaleLock(
       `Run ${runId} still belongs to live process ${parsed.pid}`,
     );
   }
-  if (metadata.status === "running") {
-    metadata.status = "failed";
-    metadata.failureStage = "recovery";
-    metadata.failureCode = "STALE_LOCK_RECOVERED";
-    await atomicWriteJson(metadataPath, metadata);
+  if (metadata.status === "published") {
+    await reconcilePublishedStaleRun(repoRoot, issueNumber, metadata, metadataPath);
+  } else {
+    if (metadata.status === "running") {
+      metadata.status = "failed";
+      metadata.failureStage = "recovery";
+      metadata.failureCode = "STALE_LOCK_RECOVERED";
+      await atomicWriteJson(metadataPath, metadata);
+    }
+    await runCommand("gh", ["issue", "edit", String(issueNumber), "--remove-assignee", "@me"], {
+      cwd: repoRoot,
+    });
   }
-  await runCommand("gh", ["issue", "edit", String(issueNumber), "--remove-assignee", "@me"], {
-    cwd: repoRoot,
-  });
   await unlink(lockPath);
   process.stdout.write(
     `Recovered stale lock for ${runId} after confirming process ${parsed.pid} is dead.\n`,
@@ -410,6 +422,138 @@ function isMatchingDraftPullRequest(
   );
 }
 
+async function reconcilePublishedStaleRun(
+  repoRoot: string,
+  issueNumber: number,
+  metadata: RunMetadata,
+  metadataPath: string,
+): Promise<void> {
+  if (
+    !metadata.worktreePath ||
+    !metadata.headSha ||
+    !metadata.remoteSha ||
+    !metadata.pullRequestUrl
+  ) {
+    throw new CommandError(
+      "PUBLISHED_RECOVERY_STATE_INVALID",
+      "Published stale run lacks confirmed worktree, branch, or pull request state",
+    );
+  }
+  const worktreePath = resolve(metadata.worktreePath);
+  const expectedRoot = `${resolve(repoRoot, ".sandcastle/worktrees")}/`;
+  if (!worktreePath.startsWith(expectedRoot)) {
+    throw new CommandError(
+      "PUBLISHED_RECOVERY_STATE_INVALID",
+      "Published stale run worktree is outside Nama's Sandcastle directory",
+    );
+  }
+  const remote = await runCommand(
+    "git",
+    ["ls-remote", "--heads", "origin", `refs/heads/${metadata.branch}`],
+    { cwd: repoRoot, allowFailure: true },
+  );
+  const remoteSha = checkedRemoteBranchSha(remote);
+  if (remoteSha !== metadata.remoteSha || remoteSha !== metadata.headSha) {
+    throw new CommandError(
+      "PUBLISHED_RECOVERY_REMOTE_MISMATCH",
+      "Published stale run remote branch differs from recorded confirmation",
+    );
+  }
+  const pullRequests = await queryBranchPullRequests({
+    repoRoot,
+    branch: metadata.branch,
+  });
+  const pullRequest = pullRequests.length === 1 ? pullRequests[0] : undefined;
+  if (
+    !pullRequest ||
+    pullRequest.url !== metadata.pullRequestUrl ||
+    !isMatchingDraftPullRequest(pullRequest, metadata.branch, issueNumber)
+  ) {
+    throw new CommandError(
+      "PUBLISHED_RECOVERY_PULL_REQUEST_MISMATCH",
+      "Published stale run draft pull request is not confirmed",
+    );
+  }
+  const branchResult = await runCommand("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+    cwd: worktreePath,
+    allowFailure: true,
+  });
+  if (branchResult.code !== 0 || branchResult.stdout.trim() !== metadata.branch) {
+    throw new CommandError(
+      "PUBLISHED_RECOVERY_STATE_INVALID",
+      "Published stale run worktree no longer owns the recorded branch",
+    );
+  }
+  const headResult = await runCommand("git", ["rev-parse", "HEAD"], { cwd: worktreePath });
+  if (headResult.stdout.trim() !== metadata.headSha) {
+    throw new CommandError(
+      "PUBLISHED_RECOVERY_STATE_INVALID",
+      "Published stale run worktree HEAD differs from recorded confirmation",
+    );
+  }
+  await runCommand("git", ["worktree", "remove", worktreePath], { cwd: repoRoot });
+  metadata.cleanedAt = new Date().toISOString();
+  await atomicWriteJson(metadataPath, metadata);
+}
+
+function isRecordedPublicationMatch(
+  metadata: RunMetadata,
+  pullRequest: GitHubPullRequest,
+  remoteSha: string | undefined,
+  issueNumber: number,
+): boolean {
+  return (
+    metadata.status === "publication_failed" &&
+    (metadata.pullRequestUrl === undefined || metadata.pullRequestUrl === pullRequest.url) &&
+    metadata.headSha === remoteSha &&
+    metadata.remoteSha === remoteSha &&
+    isMatchingDraftPullRequest(pullRequest, metadata.branch, issueNumber)
+  );
+}
+
+async function recordedPublicationRecoveryLogin(
+  repoRoot: string,
+  repository: string,
+  snapshot: IssueSnapshot,
+  runId: string,
+): Promise<string | undefined> {
+  const commonStateDirectory = await resolveCommonStateDirectory(repoRoot);
+  const { metadata } = await loadRunMetadata(commonStateDirectory, runId, snapshot.issue.number);
+  if (
+    metadata.repository !== repository ||
+    metadata.branch !== `${BRANCH_PREFIX}${snapshot.issue.number}` ||
+    metadata.status !== "publication_failed"
+  ) {
+    return undefined;
+  }
+  const remote = await runCommand(
+    "git",
+    ["ls-remote", "--heads", "origin", `refs/heads/${metadata.branch}`],
+    { cwd: repoRoot, allowFailure: true },
+  );
+  const remoteSha = checkedRemoteBranchSha(remote);
+  const pullRequests = await queryBranchPullRequests({
+    repoRoot,
+    branch: metadata.branch,
+  });
+  if (pullRequests.length !== 1) {
+    return undefined;
+  }
+  const pullRequest = pullRequests[0];
+  if (
+    !pullRequest ||
+    !isRecordedPublicationMatch(metadata, pullRequest, remoteSha, snapshot.issue.number)
+  ) {
+    return undefined;
+  }
+  const loginResult = await runCommand("gh", ["api", "user"], { cwd: repoRoot });
+  const loginPayload = JSON.parse(loginResult.stdout) as { login?: unknown };
+  if (typeof loginPayload.login !== "string" || loginPayload.login.length === 0) {
+    throw new CommandError("GITHUB_IDENTITY_INVALID", "gh api user did not return a login");
+  }
+  return loginPayload.login;
+}
+
 async function createRetryExecutionContext(
   repoRoot: string,
   repository: string,
@@ -494,12 +638,7 @@ async function createRetryExecutionContext(
   const existingPullRequest = existingPullRequests[0];
   const resumePublication =
     existingPullRequest !== undefined &&
-    metadata.status === "publication_failed" &&
-    (metadata.pullRequestUrl === undefined ||
-      metadata.pullRequestUrl === existingPullRequest.url) &&
-    metadata.headSha === remoteSha &&
-    metadata.remoteSha === remoteSha &&
-    isMatchingDraftPullRequest(existingPullRequest, metadata.branch, snapshot.issue.number);
+    isRecordedPublicationMatch(metadata, existingPullRequest, remoteSha, snapshot.issue.number);
   if (existingPullRequest && !resumePublication) {
     throw new CommandError(
       "RETRY_PULL_REQUEST_MISMATCH",
@@ -1278,6 +1417,9 @@ async function main(): Promise<void> {
   const baseResult = await runCommand("git", ["rev-parse", "origin/main"], { cwd: repoRoot });
   const snapshot = await readSnapshot(repoRoot, repository, options.issueNumber);
   const branch = `${BRANCH_PREFIX}${options.issueNumber}`;
+  const publicationRecoveryLogin = options.retryRunId
+    ? await recordedPublicationRecoveryLogin(repoRoot, repository, snapshot, options.retryRunId)
+    : undefined;
   await admit(
     repoRoot,
     repository,
@@ -1285,6 +1427,7 @@ async function main(): Promise<void> {
     branch,
     options.capabilities,
     options.retryRunId !== undefined,
+    publicationRecoveryLogin,
   );
 
   if (options.execute) {
