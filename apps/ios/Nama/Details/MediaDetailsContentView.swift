@@ -124,6 +124,7 @@ private struct MediaDetailsPrimaryActionView: View {
         playability: details.playability,
         sourcesSelection: details.sourcesSelection,
         isRefreshing: isRefreshing,
+        refreshRecoveryIsActive: refreshFailure != nil,
         canRetryUnavailableSource: mediaDetailsCanRetryUnavailableSource(after: refreshFailure),
         play: play,
         retry: refresh
@@ -133,6 +134,7 @@ private struct MediaDetailsPrimaryActionView: View {
       MediaDetailsChildrenView(
         parentKind: details.kindDetails.mediaKind,
         state: childrenState,
+        refreshRecoveryIsActive: refreshFailure != nil,
         loadMore: loadMoreChildren,
         childDidAppear: childDidAppear,
         reauthorize: reauthorize,

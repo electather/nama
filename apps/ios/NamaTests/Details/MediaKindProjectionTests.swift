@@ -80,6 +80,31 @@ struct MediaKindProjectionTests {
     #expect(episode.childRuntime == MediaKindProjectionFixture.runtime)
   }
 
+  @Test(
+    "every media kind keeps title-bearing fallback when artwork is absent",
+    arguments: [
+      MediaDetailsKind.movie(releaseDate: nil),
+      .show(
+        firstReleaseDate: nil,
+        lastReleaseDate: nil,
+        seasonCount: nil,
+        episodeCount: nil
+      ),
+      .season(seasonNumber: 1, episodeCount: nil),
+      .episode(seasonNumber: 1, episodeNumber: 1, releaseDate: nil),
+    ]
+  )
+  func missingArtworkFallback(_ kindDetails: MediaDetailsKind) {
+    let details = projectionDetails(kindDetails: kindDetails)
+
+    #expect(details.preferredPosterArtwork == nil)
+    #expect(details.preferredBackdropArtwork == nil)
+    #expect(!details.title.isEmpty)
+  }
+}
+
+@Suite("Apple TV Details presentation projection")
+struct MediaDetailsTelevisionProjectionTests {
   @Test("Apple TV keeps one truthful Load More action across page states")
   func televisionPageActionProjection() {
     let item = projectionSummary(kind: .season)
@@ -107,9 +132,65 @@ struct MediaKindProjectionTests {
 
   @Test("Apple TV focus actions satisfy the focus system Hashable contract")
   func televisionFocusActionIdentity() {
-    let actions: Set<MediaDetailsTelevisionFocusAction> = [.play, .retry, .sources]
+    let actions: Set<MediaDetailsTelevisionFocusAction> = [
+      .refreshRecovery, .play, .retry, .sources,
+    ]
 
-    #expect(actions == [.play, .retry, .sources])
+    #expect(actions == [.refreshRecovery, .play, .retry, .sources])
+  }
+
+  @Test("Apple TV refresh recovery wins over every Details content focus request")
+  func televisionRefreshRecoveryFocusPriority() {
+    let child = MediaIdentity("first-child")
+
+    #expect(
+      mediaDetailsTelevisionFocusAction(
+        playability: .playable,
+        hasSources: true,
+        retryIsEnabled: true,
+        refreshRecoveryIsActive: true
+      ) == nil
+    )
+    #expect(
+      mediaDetailsTelevisionFocusAction(
+        playability: .temporarilyUnavailable,
+        hasSources: true,
+        retryIsEnabled: true,
+        refreshRecoveryIsActive: true
+      ) == nil
+    )
+    #expect(
+      mediaDetailsTelevisionFocusAction(
+        playability: .noAvailableSource,
+        hasSources: true,
+        retryIsEnabled: false,
+        refreshRecoveryIsActive: true
+      ) == nil
+    )
+    #expect(
+      mediaChildrenTelevisionFocusIdentity(
+        current: nil,
+        retainedPosition: nil,
+        available: [child],
+        refreshRecoveryIsActive: true
+      ) == nil
+    )
+    #expect(
+      mediaDetailsTelevisionFocusAction(
+        playability: .playable,
+        hasSources: true,
+        retryIsEnabled: true,
+        refreshRecoveryIsActive: false
+      ) == .play
+    )
+    #expect(
+      mediaChildrenTelevisionFocusIdentity(
+        current: nil,
+        retainedPosition: nil,
+        available: [child],
+        refreshRecoveryIsActive: false
+      ) == child
+    )
   }
 
   @Test("Apple TV initially focuses the first actionable child")
@@ -120,28 +201,56 @@ struct MediaKindProjectionTests {
     #expect(
       mediaChildrenTelevisionFocusIdentity(
         current: nil,
-        available: [first, second]
+        retainedPosition: nil,
+        available: [first, second],
+        refreshRecoveryIsActive: false
       ) == first
     )
   }
 
-  @Test("Apple TV restores the returned opaque child identity")
-  func televisionReturnedChildFocusProjection() {
+  @Test("Apple TV restores an opaque child identity that still survives")
+  func televisionSurvivingChildFocusProjection() {
     let first = MediaIdentity("first-child")
     let returned = MediaIdentity("returned-child")
-    let available = [first, returned]
 
     #expect(
       mediaChildrenTelevisionFocusIdentity(
         current: returned,
-        available: available
+        retainedPosition: 0,
+        available: [first, returned],
+        refreshRecoveryIsActive: false
       ) == returned
     )
+  }
+
+  @Test("Apple TV focuses the sibling occupying a removed middle row")
+  func televisionRemovedMiddleChildFocusProjection() {
+    let first = MediaIdentity("first-child")
+    let next = MediaIdentity("next-child")
+    let last = MediaIdentity("last-child")
+
     #expect(
       mediaChildrenTelevisionFocusIdentity(
         current: MediaIdentity("removed-child"),
-        available: available
-      ) == first
+        retainedPosition: 1,
+        available: [first, next, last],
+        refreshRecoveryIsActive: false
+      ) == next
+    )
+  }
+
+  @Test("Apple TV focuses the preceding row after removing the tail")
+  func televisionRemovedTailChildFocusProjection() {
+    let first = MediaIdentity("first-child")
+    let preceding = MediaIdentity("preceding-child")
+
+    #expect(
+      mediaChildrenTelevisionFocusIdentity(
+        current: MediaIdentity("removed-child"),
+        retainedPosition: 2,
+        available: [first, preceding],
+        refreshRecoveryIsActive: false
+      ) == preceding
     )
   }
 
@@ -179,52 +288,34 @@ struct MediaKindProjectionTests {
       mediaDetailsTelevisionFocusAction(
         playability: .playable,
         hasSources: true,
-        retryIsEnabled: true
+        retryIsEnabled: true,
+        refreshRecoveryIsActive: false
       ) == .play
     )
     #expect(
       mediaDetailsTelevisionFocusAction(
         playability: .temporarilyUnavailable,
         hasSources: true,
-        retryIsEnabled: true
+        retryIsEnabled: true,
+        refreshRecoveryIsActive: false
       ) == .retry
     )
     #expect(
       mediaDetailsTelevisionFocusAction(
         playability: .temporarilyUnavailable,
         hasSources: true,
-        retryIsEnabled: false
+        retryIsEnabled: false,
+        refreshRecoveryIsActive: false
       ) == .sources
     )
     #expect(
       mediaDetailsTelevisionFocusAction(
         playability: .noAvailableSource,
         hasSources: false,
-        retryIsEnabled: false
+        retryIsEnabled: false,
+        refreshRecoveryIsActive: false
       ) == nil
     )
-  }
-
-  @Test(
-    "every media kind keeps title-bearing fallback when artwork is absent",
-    arguments: [
-      MediaDetailsKind.movie(releaseDate: nil),
-      .show(
-        firstReleaseDate: nil,
-        lastReleaseDate: nil,
-        seasonCount: nil,
-        episodeCount: nil
-      ),
-      .season(seasonNumber: 1, episodeCount: nil),
-      .episode(seasonNumber: 1, episodeNumber: 1, releaseDate: nil),
-    ]
-  )
-  func missingArtworkFallback(_ kindDetails: MediaDetailsKind) {
-    let details = projectionDetails(kindDetails: kindDetails)
-
-    #expect(details.preferredPosterArtwork == nil)
-    #expect(details.preferredBackdropArtwork == nil)
-    #expect(!details.title.isEmpty)
   }
 }
 

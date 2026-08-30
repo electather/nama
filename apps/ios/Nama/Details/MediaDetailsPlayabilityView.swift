@@ -8,6 +8,7 @@ struct MediaDetailsPlayabilityView: View {
   let playability: MediaPlayability
   let sourcesSelection: MediaSourcesSelection?
   let isRefreshing: Bool
+  let refreshRecoveryIsActive: Bool
   let canRetryUnavailableSource: Bool
   let play: @MainActor () -> Void
   let retry: @MainActor () -> Void
@@ -27,7 +28,9 @@ struct MediaDetailsPlayabilityView: View {
     }
     #if os(tvOS)
       .task(id: defaultFocusAction) {
-        focusedAction = defaultFocusAction
+        if let defaultFocusAction {
+          focusedAction = defaultFocusAction
+        }
       }
     #endif
   }
@@ -71,7 +74,8 @@ struct MediaDetailsPlayabilityView: View {
       mediaDetailsTelevisionFocusAction(
         playability: playability,
         hasSources: sourcesSelection != nil,
-        retryIsEnabled: canRetryUnavailableSource && !isRefreshing
+        retryIsEnabled: canRetryUnavailableSource && !isRefreshing,
+        refreshRecoveryIsActive: refreshRecoveryIsActive
       )
     }
   #endif

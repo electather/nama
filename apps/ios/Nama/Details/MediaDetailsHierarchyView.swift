@@ -163,12 +163,13 @@ private struct MediaCalendarDateText: View {
 
 struct MediaDetailsChildrenView: View {
   #if os(tvOS)
-    @State private var retainedChildIdentity: MediaIdentity?
+    @State private var retainedChildFocus: (identity: MediaIdentity?, position: Int?) = (nil, nil)
     @FocusState private var focusedChildIdentity: MediaIdentity?
   #endif
 
   let parentKind: MediaKind
   let state: MediaChildrenState
+  let refreshRecoveryIsActive: Bool
   let loadMore: @MainActor () -> Void
   let childDidAppear: @MainActor (MediaIdentity) -> Void
   let reauthorize: @MainActor () async -> Void
@@ -194,17 +195,18 @@ struct MediaDetailsChildrenView: View {
       }
     }
     #if os(tvOS)
-      .task(id: firstChildIdentity) {
-        let target = mediaChildrenTelevisionFocusIdentity(
-          current: retainedChildIdentity,
-          available: state.confirmedItems.map(\.identity)
-        )
-        retainedChildIdentity = target
-        focusedChildIdentity = target
+      .task(id: state.confirmedItems.map(\.identity)) {
+        requestInitialFocus()
+      }
+      .onChange(of: refreshRecoveryIsActive) { _, isActive in
+        if !isActive {
+          requestInitialFocus()
+        }
       }
       .onChange(of: focusedChildIdentity) { _, identity in
         if let identity {
-          retainedChildIdentity = identity
+          retainedChildFocus.identity = identity
+          retainedChildFocus.position = state.confirmedItems.firstIndex { $0.identity == identity }
         }
       }
     #endif
@@ -226,8 +228,18 @@ struct MediaDetailsChildrenView: View {
   }
 
   #if os(tvOS)
-    private var firstChildIdentity: MediaIdentity? {
-      state.confirmedItems.first?.identity
+    private func requestInitialFocus() {
+      let available = state.confirmedItems.map(\.identity)
+      if let target = mediaChildrenTelevisionFocusIdentity(
+        current: retainedChildFocus.identity,
+        retainedPosition: retainedChildFocus.position,
+        available: available,
+        refreshRecoveryIsActive: refreshRecoveryIsActive
+      ) {
+        retainedChildFocus.identity = target
+        retainedChildFocus.position = available.firstIndex(of: target)
+        focusedChildIdentity = target
+      }
     }
   #endif
 
