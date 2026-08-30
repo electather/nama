@@ -23,3 +23,6 @@ xcuserdata/
 /.nama-docker-check.*
 /nama.toml
 /secrets/
+/extensions/jellyfin/artifacts/
+/extensions/jellyfin/bin/
+/extensions/jellyfin/obj/

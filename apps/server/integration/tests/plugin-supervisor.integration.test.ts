@@ -1747,7 +1747,7 @@ it.effect("starts the idle interval after a plugin RPC failure", () =>
   ),
 );
 
-it.effect("starts the idle interval after a plugin RPC deadline", () =>
+it.effect("restarts the idle interval after demand resumes following an RPC deadline", () =>
   withControlDirectory((controlDirectory) =>
     Effect.scoped(
       Effect.gen(function* deadlineDemandTest() {
@@ -1757,7 +1757,7 @@ it.effect("starts the idle interval after a plugin RPC deadline", () =>
           { kind: "discovery" },
         );
         const blockedCall = yield* Effect.forkChild(
-          plugin.call(PluginService.method.getConnection, {}, 100),
+          plugin.call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS),
         );
         yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1);
         const firstLaunch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
@@ -1765,7 +1765,7 @@ it.effect("starts the idle interval after a plugin RPC deadline", () =>
           return yield* Effect.die("fixture launch record missing");
         }
 
-        yield* TestClock.adjust(100);
+        yield* TestClock.adjust(CALL_DEADLINE_MILLISECONDS);
         expect(yield* Fiber.join(blockedCall).pipe(Effect.flip)).toMatchObject({
           _tag: "PluginDeadlineExceeded",
         });
@@ -1779,12 +1779,13 @@ it.effect("starts the idle interval after a plugin RPC deadline", () =>
         expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
         yield* TestClock.adjust(1);
         yield* TestClock.adjust(100);
+        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
         const recoveryLaunches = yield* awaitLaunchCount(controlDirectory, 2);
         const recoveredLaunch = recoveryLaunches[1];
         if (recoveredLaunch === undefined) {
           return yield* Effect.die("recovery launch record missing");
         }
-        yield* TestClock.adjust(28_799);
+        yield* TestClock.adjust(29_999);
         expect(() => process.kill(recoveredLaunch.pid, 0)).not.toThrow();
 
         yield* TestClock.adjust(1);

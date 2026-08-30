@@ -47,18 +47,20 @@ for movies, shows, positive-numbered seasons, and positive-numbered episodes,
 resumable best-effort full catalog and movie/episode watch-state scans, targeted
 movie and episode watch-state reads, explicit watched/unwatched writes, and
 observed artwork resolution into proven anonymous public leases for exact
-instance launches. It advertises `LIBRARY_READ`, `ARTWORK_RESOLVE`,
-`WATCH_STATE_READ`, and `WATCHED_WRITE`.
+instance launches. Successful configured stock connections advertise `LIBRARY_READ`,
+`ARTWORK_RESOLVE`, `WATCH_STATE_READ`, and `WATCHED_WRITE`.
 
-The target Jellyfin playback and coherent-progress path requires the manually
-installed first-party Jellyfin server extension accepted by
-[ADR-0036](adr/0036-first-party-jellyfin-server-extension.md) and tracked by
-issue #231. The extension validates its own Jellyfin host and exposes a
-versioned private JSON/HTTP protocol only to the existing provider plugin. It
-owns protected, expiring leases and an opaque media namespace while media bytes
-remain inside Jellyfin's delivery path. Missing, unhealthy, or incompatible
-extensions add no playback or coherent-progress capabilities; the implemented
-stock profile above remains available.
+The manually installed first-party Jellyfin server extension accepted by
+[ADR-0036](adr/0036-first-party-jellyfin-server-extension.md) now implements
+issue #232's direct-progressive slice. It validates the exact Jellyfin host,
+owns purpose-separated persisted lease protection, and exposes one bounded
+private JSON/HTTP protocol to the existing provider plugin. A compatible
+handshake adds `PLAYBACK_PLAN`, `PLAYBACK_OPEN`, `PLAYBACK_REPORT`, and
+`PLAYBACK_REPORTS_USER_STATE`; media stays in Jellyfin's delivery path behind
+an opaque expiring resource and scoped header. Missing, unhealthy, or
+incompatible extensions add none of those capabilities, so the stock profile
+above remains available. Issue #233 still owns HLS, fallback, and Track
+delivery; issue #234 owns coherent progress.
 
 The provider-management verification gate drives a compiled `nama` binary
 through the production listener, migrations, PostgreSQL boundary, supervisor,

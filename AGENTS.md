@@ -45,6 +45,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Do not claim a server, plugin runtime, authentication, or Jellyfin integration exists because generated clients and contract tests compile. Verify an executable entrypoint, handlers, persistence, and startup behavior.
 - Force the pinned Jellyfin 10.11.11 integration services to `linux/amd64` on Apple Silicon, and require `StartupWizardCompleted` in their healthcheck; its arm64 image exits 132 and its public endpoint becomes reachable before startup data is complete.
 - In the Docker gate, assert candidate cleanup before creating a stored provider instance; before killing an instance child, wait for initial catalog retirement and prove the new child owns a TCP connection to Jellyfin, because PID presence alone races lazy launch and recovery.
+- Run the restart-mutating real Jellyfin provider proof only after every other shared-fixture server test; restarting the Compose service interrupts concurrent consumers and can republish its ephemeral host port.
 - Give PostgreSQL activity-state integration polls enough wall-clock time for a cold `nama-server` process to reach migrations under the parallel repository check; a one-second poll expires before lock admission.
 - Give compiled-process liveness and bootstrap-output polls twenty seconds under the parallel repository check; six seconds can expire before cold Node startup under concurrent Apple and container builds.
 - Give the compiled provider-discovery process integration flow sixty seconds under the parallel Linux check; runner contention makes its multi-operation proof exceed thirty seconds.
@@ -63,6 +64,12 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Route every remote media, playlist child, key, and external-subtitle request through Nama's session-scoped loopback bridge; AetherEngine `6.21.0` cannot enforce `allowed_redirect_origins`, so never pass upstream Locator URLs or headers directly.
 - Keep the manually installed Jellyfin server extension distinct from the supervised provider plugin: the .NET extension owns host validation, protected lease keys, media interposition, and coherent user-data writes, while the TypeScript plugin alone translates its private JSON/HTTP protocol into `nama.plugin.v1`.
 - Advertise Jellyfin extension-backed playback and coherent-progress capabilities only after an authenticated compatible extension handshake; a missing, unhealthy, or incompatible extension leaves the implemented stock capabilities unchanged.
+- Require an actual Jellyfin API key on every private `/Nama/v1` control endpoint; never accept a user/device access token or label one as an API key in integration fixtures.
+- Bound the optional extension handshake independently from `GetConnection`; a stalled or unhealthy extension must preserve the already-verified stock capability result while caller cancellation still propagates.
+- Build the Jellyfin extension's playback Data Protection provider outside Jellyfin's host service collection; never configure the host-wide provider for extension lease keys.
+- Extract the packaged Jellyfin extension archive before fixture startup and mount its DLL into a writable plugin directory; a read-only directory prevents Jellyfin from writing `meta.json`.
+- Resolve an operation- and request-bound successful playback open before enforcing plan expiry, and retain that replay binding for the playback session lifetime.
+- Keep extension plan identifiers within the plugin contract's 256-character bound and advertise only track choices that `OpenPlayback` can materialize.
 - Keep every Nama-exposed Jellyfin media, playlist child, key, and subtitle URL in the opaque extension namespace with a scoped header; never expose stock paths, provider IDs, `ApiKey`, or broad authorization.
 - Treat independently discovered stock Jellyfin routes as outside Nama's scoped-access guarantee; never claim that the extension hardens or changes their behavior.
 - Keep the macOS incoming-network entitlement confined to `NamaPlayer`'s ephemeral broker and keep that listener bound to exact IPv4 loopback; never widen it to an any, link-local, or LAN endpoint.
@@ -93,6 +100,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Determine catalog read readiness from durable completed-import evidence, never Library-row presence; partial initial pages already create rows, while completed disabled-provider data remains readable beside an incomplete enabled provider.
 - Normalize omitted show and season runtime to zero duration during catalog import; Jellyfin omits runtime for non-playable hierarchy observations.
 - When Jellyfin omits source or part runtime, inherit the playable item's runtime before emitting the plugin observation; never pass absent durations into the canonical non-null runtime fields.
+- Treat exact-tag Jellyfin `MediaSourceInfo.Container` as comma-delimited format candidates inside the server extension; select a supported canonical container instead of comparing the raw internal value with the normalized catalog container.
 - Contain unreadable provider credentials only after persistence identifies the affected instance; an unscoped installation-configuration recovery failure remains fail-closed and must not be treated as schema compatibility.
 - Keep update-commit ambiguity state separate from retained delete-fence ownership; a non-delete mutation must fail while an ambiguous delete still owns the instance activity fence.
 - On a Nama fatal setup-commit ambiguity, make local `GetStatus` fail `UNAVAILABLE/SETUP_UNAVAILABLE` until exit; never report `initialized=false`.
@@ -129,6 +137,8 @@ apps/
   ios/                    # universal SwiftUI app using generated nama.api.v1
 plugins/
   jellyfin/               # stateless nama.plugin.v1 adapter
+extensions/
+  jellyfin/               # exact-versioned Jellyfin server extension
 proto/
   nama/api/v1/            # public api.v1 schema
   nama/plugin/v1/         # private plugin.v1 schema
