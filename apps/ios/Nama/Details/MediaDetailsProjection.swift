@@ -256,7 +256,32 @@ nonisolated func mediaChildrenTelevisionAction(
   }
 }
 
-nonisolated enum MediaDetailsTelevisionFocusAction: Equatable, Sendable {
+nonisolated func mediaChildrenTelevisionFocusIdentity(
+  current: MediaIdentity?,
+  available: [MediaIdentity]
+) -> MediaIdentity? {
+  guard let current else {
+    return available.first
+  }
+  return available.contains(current) ? current : available.first
+}
+
+nonisolated enum MediaDetailsTelevisionRefreshAction: Equatable, Sendable {
+  case enabled
+  case disabled
+}
+
+nonisolated func mediaDetailsTelevisionRefreshAction(
+  canRefresh: Bool,
+  isRefreshing: Bool
+) -> MediaDetailsTelevisionRefreshAction? {
+  guard canRefresh else {
+    return nil
+  }
+  return isRefreshing ? .disabled : .enabled
+}
+
+nonisolated enum MediaDetailsTelevisionFocusAction: Equatable, Hashable, Sendable {
   case play
   case retry
   case sources

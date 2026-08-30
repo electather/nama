@@ -105,8 +105,83 @@ struct MediaKindProjectionTests {
     )
   }
 
+  @Test("Apple TV focus actions satisfy the focus system Hashable contract")
+  func televisionFocusActionIdentity() {
+    let actions: Set<MediaDetailsTelevisionFocusAction> = [.play, .retry, .sources]
+
+    #expect(actions == [.play, .retry, .sources])
+  }
+
+  @Test("Apple TV initially focuses the first actionable child")
+  func televisionInitialChildFocusProjection() {
+    let first = MediaIdentity("first-child")
+    let second = MediaIdentity("second-child")
+
+    #expect(
+      mediaChildrenTelevisionFocusIdentity(
+        current: nil,
+        available: [first, second]
+      ) == first
+    )
+  }
+
+  @Test("Apple TV restores the returned opaque child identity")
+  func televisionReturnedChildFocusProjection() {
+    let first = MediaIdentity("first-child")
+    let returned = MediaIdentity("returned-child")
+    let available = [first, returned]
+
+    #expect(
+      mediaChildrenTelevisionFocusIdentity(
+        current: returned,
+        available: available
+      ) == returned
+    )
+    #expect(
+      mediaChildrenTelevisionFocusIdentity(
+        current: MediaIdentity("removed-child"),
+        available: available
+      ) == first
+    )
+  }
+
+  @Test("Apple TV hides unauthorized Refresh and disables an active Refresh")
+  func televisionRefreshActionProjection() {
+    let details = projectionDetails(
+      kindDetails: .movie(releaseDate: nil)
+    )
+
+    #expect(
+      mediaDetailsTelevisionRefreshAction(
+        canRefresh: mediaDetailsCanRefresh(
+          .refreshFailed(details, .authorizationUnavailable)
+        ),
+        isRefreshing: false
+      ) == nil
+    )
+    #expect(
+      mediaDetailsTelevisionRefreshAction(
+        canRefresh: mediaDetailsCanRefresh(.content(details)),
+        isRefreshing: false
+      ) == .enabled
+    )
+    #expect(
+      mediaDetailsTelevisionRefreshAction(
+        canRefresh: mediaDetailsCanRefresh(.refreshing(details)),
+        isRefreshing: true
+      ) == .disabled
+    )
+  }
+
   @Test("Apple TV focuses enabled Retry before Sources")
   func televisionPlayabilityFocusProjection() {
+    #expect(
+      mediaDetailsTelevisionFocusAction(
+        playability: .playable,
+        hasSources: true,
+        retryIsEnabled: true
+      ) == .play
+    )
     #expect(
       mediaDetailsTelevisionFocusAction(
         playability: .temporarilyUnavailable,
@@ -120,6 +195,13 @@ struct MediaKindProjectionTests {
         hasSources: true,
         retryIsEnabled: false
       ) == .sources
+    )
+    #expect(
+      mediaDetailsTelevisionFocusAction(
+        playability: .noAvailableSource,
+        hasSources: false,
+        retryIsEnabled: false
+      ) == nil
     )
   }
 

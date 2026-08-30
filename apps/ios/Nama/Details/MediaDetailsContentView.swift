@@ -58,35 +58,49 @@ private struct MediaDetailsContentSections: View {
   let creditArtwork: MediaCreditArtworkAccess
 
   var body: some View {
-    VStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
-      MediaDetailsRefreshStatusView(
-        isRefreshing: isRefreshing,
-        failure: refreshFailure,
-        retry: refresh,
-        reauthorize: reauthorize
-      )
-      MediaDetailsHeroView(details: details, artwork: artwork)
-      MediaDetailsPrimaryActionView(
-        details: details,
-        childrenState: childrenState,
-        isRefreshing: isRefreshing,
-        refreshFailure: refreshFailure,
-        refresh: refresh,
-        play: play,
-        loadMoreChildren: loadMoreChildren,
-        childDidAppear: childDidAppear,
-        reauthorize: reauthorize,
-        childArtwork: childArtwork
-      )
-      MediaDetailsSupportingContentView(details: details, creditArtwork: creditArtwork)
-      #if os(tvOS)
-        if canRefresh {
-          Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
-            .buttonStyle(.bordered)
-            .disabled(isRefreshing)
-        }
-      #endif
-    }
+    #if os(tvOS)
+      VStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
+        sections
+      }
+    #else
+      LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
+        sections
+      }
+    #endif
+  }
+
+  @ViewBuilder
+  private var sections: some View {
+    MediaDetailsRefreshStatusView(
+      isRefreshing: isRefreshing,
+      failure: refreshFailure,
+      retry: refresh,
+      reauthorize: reauthorize
+    )
+    MediaDetailsHeroView(details: details, artwork: artwork)
+    MediaDetailsPrimaryActionView(
+      details: details,
+      childrenState: childrenState,
+      isRefreshing: isRefreshing,
+      refreshFailure: refreshFailure,
+      refresh: refresh,
+      play: play,
+      loadMoreChildren: loadMoreChildren,
+      childDidAppear: childDidAppear,
+      reauthorize: reauthorize,
+      childArtwork: childArtwork
+    )
+    MediaDetailsSupportingContentView(details: details, creditArtwork: creditArtwork)
+    #if os(tvOS)
+      if let refreshAction = mediaDetailsTelevisionRefreshAction(
+        canRefresh: canRefresh,
+        isRefreshing: isRefreshing
+      ) {
+        Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
+          .buttonStyle(.bordered)
+          .disabled(refreshAction == .disabled)
+      }
+    #endif
   }
 }
 

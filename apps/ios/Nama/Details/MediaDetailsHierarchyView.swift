@@ -163,6 +163,7 @@ private struct MediaCalendarDateText: View {
 
 struct MediaDetailsChildrenView: View {
   #if os(tvOS)
+    @State private var retainedChildIdentity: MediaIdentity?
     @FocusState private var focusedChildIdentity: MediaIdentity?
   #endif
 
@@ -194,10 +195,17 @@ struct MediaDetailsChildrenView: View {
     }
     #if os(tvOS)
       .task(id: firstChildIdentity) {
-        guard let firstChildIdentity else {
-          return
+        let target = mediaChildrenTelevisionFocusIdentity(
+          current: retainedChildIdentity,
+          available: state.confirmedItems.map(\.identity)
+        )
+        retainedChildIdentity = target
+        focusedChildIdentity = target
+      }
+      .onChange(of: focusedChildIdentity) { _, identity in
+        if let identity {
+          retainedChildIdentity = identity
         }
-        focusedChildIdentity = firstChildIdentity
       }
     #endif
   }
