@@ -179,7 +179,21 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
   leases, keeps every media child in its extension namespace, and supplies
   provider-evidenced negotiation without exposing stock paths or the configured
   Jellyfin credential. Nama performs no remote extension installation.
-- The app reports the current player's real playback capabilities. Selection order is direct play, direct stream/remux, selective stream conversion, then full transcode. User-selected quality may request transcoding explicitly.
+- The app reports the conservative current-player capability profile defined in
+  the Playback architecture: HTTP progressive/HLS, MP4/MKV H.264 or HEVC,
+  bounded AAC/AC-3/E-AC-3/FLAC combinations, SDR/HDR10/Dolby Vision, 4K
+  10-bit/eight-channel limits, and declared text/PGS subtitle modes. The profile
+  describes input consumption, not every AetherEngine decoder, output fidelity,
+  or guaranteed performance for every matching Source.
+- Provider selection order is unchanged media, container-only remux, audio
+  conversion with copied video, then full video conversion. Player-local
+  demuxing, decoding, bridging, tone mapping, and downmixing do not change the
+  provider strategy. A compatible result that later fails in the engine is
+  visible rather than automatically retried through a more destructive
+  strategy.
+- Primary Play is uncapped Auto. Playback Options offers per-play Auto or
+  explicit 4, 8, 20, and 40 Mbps caps; no cap is inferred from network state or
+  persisted to later Details destinations.
 - Playback from provider-issued URLs, play/pause, seek, audio/subtitle selection, visible loading/failure states, and recovery to the details screen.
 - Accessibility and input basics for each platform: focus order, readable labels, Dynamic Type where supported, contrast, keyboard, pointer, touch, and remote interaction, with no critical action available only through an undiscoverable gesture.
 
@@ -190,7 +204,21 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
 ### Exit criteria
 
 - On a fresh iPhone or iPad, Apple TV, and Mac, the user can discover a LAN server or enter its URL, authorize by entering the displayed code in an already authenticated Go CLI, browse, search, open a movie or episode, and begin playback without a browser.
-- Supported fixtures direct-play through the selected engine on each platform; incompatible fixtures follow the expected Jellyfin fallback without sending media bytes through the core.
+- Supported MP4/H.264/AAC SDR, MKV/HEVC/E-AC-3 HDR10, Dolby Vision, declared
+  text-subtitle, and PGS fixtures direct-play through the selected engine.
+- An incompatible container remuxes with copied audio and video; unsupported
+  TrueHD or DTS-family audio converts with copied video; VP9 or AV1 outside the
+  initial profile converts video; and an unsupported selected DVD/DVB subtitle
+  burns into converted video.
+- A direct-compatible high-bit-rate fixture converts only after an explicit
+  cap, while the absence of any safe compatible result returns
+  `FAILED_PRECONDITION/PLAYBACK_UNSUPPORTED`.
+- Pinned Jellyfin integration asserts the public strategy, per-Track actions,
+  expected output, exact Source, and absence of core media relay for every row.
+  Representative physical iPhone or iPad, Apple TV, and Mac runs exercise every
+  resulting delivery strategy at least once and record applicable HDR, Dolby
+  Vision, multichannel, text-subtitle, and image-subtitle device/display
+  results. Unrun or incapable hardware rows remain explicit.
 - Playback capabilities remain absent when the Jellyfin server extension is
   missing, unhealthy, or incompatible. Exact fixtures prove five-minute plans,
   runtime-plus-30-minute session leases bounded to 24 hours, opaque progressive
@@ -383,7 +411,7 @@ Comments, social features, and recommendation ML remain outside the roadmap unti
 | Risk | Earliest proof | Containment |
 | --- | --- | --- |
 | On-device playback-engine maturity, security, licensing, or HDR/Dolby regressions | Milestone 1 source review and Milestone 4 physical-device matrix | Pin and inspect an exact revision, isolate it behind `NamaPlayer`, reproduce the representative media and network matrix on iOS, tvOS, and macOS, meet linked-artifact distribution obligations, and stop feature work if locator safety, native output, or distribution viability is not trustworthy. |
-| Jellyfin capability negotiation forces avoidable transcodes | Milestone 1 provider spike and Milestone 4 extension matrix | Send measured client capabilities through the first-party server extension, distinguish container/audio/subtitle incompatibility from video incompatibility using Jellyfin decision evidence, and inspect every selected strategy and Track action in tests. |
+| Jellyfin capability negotiation forces avoidable transcodes | Milestone 1 provider spike and Milestone 4 extension matrix | Send the conservative, fixture-backed client capability profile through the first-party server extension, distinguish container/audio/subtitle incompatibility from video incompatibility using Jellyfin decision evidence, and inspect every selected strategy and per-Track action in tests. |
 | Plugin subprocess/UDS behavior becomes platform or lifecycle complexity | Milestones 1 and 3 | Support Linux production/macOS development only, keep plugins stateless/on-demand, use one authenticated socket per process, and defer other transports. |
 | Better Auth does not map cleanly behind Connect | Milestone 1 auth spike | Keep app-owned auth messages/session semantics and allow replacement without changing generated client contracts. |
 | Provider timestamps are missing or semantically different | Milestones 1 and 5 | Preserve source evidence, use explicit provider priority, make updates idempotent, and expose sync health instead of silently guessing. |
