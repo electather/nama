@@ -8,6 +8,8 @@ import { BetterAuthAdapter } from "../../authentication/better-auth-adapter.ts";
 import type { BetterAuthAdapterService } from "../../authentication/better-auth-adapter.ts";
 import { SetupCoordinator } from "../../authentication/setup-coordinator.ts";
 import type { SetupCoordinatorService } from "../../authentication/setup-coordinator.ts";
+import { ArtworkAccess } from "../../catalog/catalog-artwork-access.ts";
+import type { ArtworkAccessService } from "../../catalog/catalog-artwork-access.ts";
 import { CatalogQuery } from "../../catalog/catalog-query-live.ts";
 import { Config } from "../../config/config.ts";
 import { Database } from "../../database/database.ts";
@@ -64,6 +66,7 @@ const messageText = (message: unknown): string => {
 };
 
 interface ServerLayerOptions {
+  readonly artworkAccess?: ArtworkAccessService;
   readonly authentication?: AuthenticationService;
   readonly catalogQuery?: CatalogQuery["Service"];
   readonly betterAuthAdapter?: BetterAuthAdapterService;
@@ -115,6 +118,12 @@ const defaultSetupCoordinator = SetupCoordinator.of({
   createAdministrator: () => Effect.die("unexpected administrator creation"),
   getStatus: Effect.succeed(true),
 });
+const defaultArtworkAccess = ArtworkAccess.of({
+  locator: () => {
+    throw new Error("unexpected artwork locator");
+  },
+  read: () => Effect.die("unexpected artwork read"),
+});
 const defaultCatalogQuery = CatalogQuery.of({
   getHome: () => Effect.die("unexpected catalog home read"),
   getMedia: () => Effect.die("unexpected catalog media read"),
@@ -146,6 +155,7 @@ const makeHttpServerTestDependencies = (
   runtimeControlLayer: Layer.Layer<RuntimeControl>,
 ) =>
   Layer.mergeAll(
+    Layer.succeed(ArtworkAccess, defaultArtworkAccess),
     Layer.succeed(BetterAuthAdapter, defaultBetterAuthAdapter),
     Layer.succeed(CatalogQuery, defaultCatalogQuery),
     Layer.succeed(Authentication, defaultAuthentication),
@@ -197,6 +207,7 @@ const serverLayerWithDatabase = (
     }
   });
   const dependencies = Layer.mergeAll(
+    Layer.succeed(ArtworkAccess, options.artworkAccess ?? defaultArtworkAccess),
     Layer.succeed(BetterAuthAdapter, options.betterAuthAdapter ?? defaultBetterAuthAdapter),
     Layer.succeed(CatalogQuery, options.catalogQuery ?? defaultCatalogQuery),
     Layer.succeed(Authentication, options.authentication ?? defaultAuthentication),

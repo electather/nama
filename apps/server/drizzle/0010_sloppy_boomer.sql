@@ -1,0 +1,3 @@
+ALTER TABLE "canonical_artwork" ADD COLUMN "asset_bytes" "bytea";--> statement-breakpoint
+ALTER TABLE "canonical_artwork" ADD COLUMN "asset_mime_type" text;--> statement-breakpoint
+ALTER TABLE "canonical_artwork" ADD CONSTRAINT "canonical_artwork_asset_check" CHECK (("canonical_artwork"."asset_bytes" is null and "canonical_artwork"."asset_mime_type" is null) or ("canonical_artwork"."asset_bytes" is not null and octet_length("canonical_artwork"."asset_bytes") between 1 and 20971520 and "canonical_artwork"."asset_mime_type" ~ '^image/[A-Za-z0-9.+-]+$' and char_length("canonical_artwork"."asset_mime_type") <= 256));

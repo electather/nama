@@ -38,7 +38,7 @@ interface StoredCatalogSummary {
   readonly genres: readonly string[];
   readonly id: string;
   readonly kind: CatalogMediaKind;
-  readonly libraryCreatedAt: Date;
+  readonly libraryCreatedAt: string;
   readonly normalizedTitle: string;
   readonly releaseDateSort: string | null;
   readonly releaseYear: number | null;

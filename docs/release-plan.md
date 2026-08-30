@@ -71,7 +71,7 @@ Prove the choices most likely to invalidate the design before building product l
 ### Included
 
 1. **Apple TV playback feasibility — passed and retired:** exercise representative H.264, HEVC, MKV, HDR10, Dolby Vision, multichannel audio, text subtitles, and image subtitles; inspect seeking, track switching, failure signals, adapter isolation, locator security, and distribution obligations. The feasibility pass records architecture knowledge, not physical-device or production-engine acceptance.
-2. **Jellyfin negotiation:** submit actual device capabilities, obtain direct-play/direct-stream/transcode choices, and confirm that media URLs can be consumed directly by the universal Apple app without routing bytes through Nama. Verify that unsupported audio/subtitles can be converted without forcing video transcoding when Jellyfin permits it.
+2. **Jellyfin negotiation — risk resolved, implementation pending:** stock Jellyfin cannot supply Nama-scoped authorization or the complete decision evidence safely. ADR-0036 selects a manually installed first-party server extension; exact direct, remux, transcode, and Track behavior remains an exercised Milestone 4 release gate rather than an assumption.
 3. **Plugin IPC:** launch a disposable subprocess, create a socket inside a core-owned `0700` runtime directory, authenticate with a per-launch secret, call health and one provider operation, enforce a deadline, then terminate and restart cleanly.
 4. **Connect-wrapped Better Auth:** create an administrator, sign in, authenticate a protected RPC with the returned session credential, retrieve the current user, and sign out without exposing Better Auth types or endpoints to clients.
 5. **Sync semantics:** replay timestamped and untimestamped provider events through the reconciliation rules and prove idempotency, backward progress for a genuine rewatch, tie-breaking, and prevention of echo loops.
@@ -127,11 +127,13 @@ Prove that Jellyfin is an implementation of capabilities, not part of the core.
 - One application image that includes the core and bundled Jellyfin executable; PostgreSQL remains the only separate service.
 
 Playback planning, scoped opening and reporting, and coherent exact progress
-export remain MVP release blockers outside this milestone. The Jellyfin
-provider type advertises none of those capabilities until its adapter satisfies
-the existing contracts without exposing a reusable provider credential,
-relaying media through Nama, or splitting one coherent state target across
-provider writes.
+export remain MVP release blockers outside this milestone. ADR-0036 assigns
+them to a manually installed first-party Jellyfin server extension behind the
+existing provider plugin. The Jellyfin provider type advertises none of those
+capabilities until the extension validates its own host and the adapter
+satisfies the existing contracts without exposing a reusable provider
+credential, relaying media through Nama, or splitting one coherent state target
+across provider writes.
 
 ### Explicit non-goals
 
@@ -172,6 +174,11 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
   accepted MVP limitations: local engine Release logs may contain complete
   short-lived locator URLs, and the engine may replay locator headers between
   core-allowlisted origins.
+- A manually installed first-party Jellyfin server extension behind the existing
+  provider plugin. It validates its own host, issues opaque scoped playback
+  leases, keeps every media child in its extension namespace, and supplies
+  provider-evidenced negotiation without exposing stock paths or the configured
+  Jellyfin credential. Nama performs no remote extension installation.
 - The app reports the conservative current-player capability profile defined in
   the Playback architecture: HTTP progressive/HLS, MP4/MKV H.264 or HEVC,
   bounded AAC/AC-3/E-AC-3/FLAC combinations, SDR/HDR10/Dolby Vision, 4K
@@ -179,10 +186,11 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
   describes input consumption, not every AetherEngine decoder, output fidelity,
   or guaranteed performance for every matching Source.
 - Provider selection order is unchanged media, container-only remux, audio
-  conversion with copied video, then video conversion. Player-local demuxing,
-  decoding, bridging, tone mapping, and downmixing do not change the provider
-  strategy. A compatible result that later fails in the engine is visible
-  rather than automatically retried through a more destructive strategy.
+  conversion with copied video, then full video conversion. Player-local
+  demuxing, decoding, bridging, tone mapping, and downmixing do not change the
+  provider strategy. A compatible result that later fails in the engine is
+  visible rather than automatically retried through a more destructive
+  strategy.
 - Primary Play is uncapped Auto. Playback Options offers per-play Auto or
   explicit 4, 8, 20, and 40 Mbps caps; no cap is inferred from network state or
   persisted to later Details destinations.
@@ -191,7 +199,7 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
 
 ### Explicit non-goals
 
-- Android, a general web-management UI beyond issue #167's separately tracked device-approval surface, separate Apple-platform codebases, offline downloads, live TV, AirPlay-specific features, custom video rendering, a second playback engine, or Nama media proxying.
+- Android, a general web-management UI beyond issue #167's separately tracked device-approval surface, separate Apple-platform codebases, offline downloads, live TV, AirPlay-specific features, custom video rendering, a second playback engine, a Nama media proxy, or automatic Jellyfin extension installation.
 
 ### Exit criteria
 
@@ -211,6 +219,11 @@ Deliver the primary loop on iPhone, iPad, Apple TV, and Mac: discover or connect
   resulting delivery strategy at least once and record applicable HDR, Dolby
   Vision, multichannel, text-subtitle, and image-subtitle device/display
   results. Unrun or incapable hardware rows remain explicit.
+- Playback capabilities remain absent when the Jellyfin server extension is
+  missing, unhealthy, or incompatible. Exact fixtures prove five-minute plans,
+  runtime-plus-30-minute session leases bounded to 24 hours, opaque progressive
+  and HLS graphs, redirect and header safety, process replacement, cancellation,
+  expiry, and raw-error redaction.
 - Administrator revocation stops every refresh-token family for the fixed Apple client; already-issued access JWTs remain valid only until Better Auth's pinned one-hour expiry.
 
 ## Milestone 5: Canonical progress and continuous two-way Jellyfin sync
@@ -230,6 +243,10 @@ Make Nama, rather than Jellyfin, own reliable resume and watched state while rem
 - Core-scheduled Jellyfin pull and push operations. Core stores cursors/checkpoints, backoff, pending work, and reconciliation decisions; the plugin only translates provider operations.
 - Latest reliable user activity wins, including legitimate rewind/rewatch movement. Configured provider priority handles missing timestamps and exact ties. A local Nama action wins immediately and is exported.
 - Origin/version tracking prevents a provider echo from becoming a new activity. Failed exports retry safely and surface operator-visible sync health through CLI.
+- Jellyfin coherent progress export runs through the first-party server
+  extension. It validates optional duration against item runtime, saves watched
+  state and position together, reads the result back, and never duplicates a
+  playback-telemetry write for the same canonical version.
 - Initial watch-state import plus recurring catalog refresh and incremental or
   bounded watch-state polling. Poll frequency and concurrency are conservative
   configuration values, not an elaborate scheduler.
@@ -394,12 +411,12 @@ Comments, social features, and recommendation ML remain outside the roadmap unti
 | Risk | Earliest proof | Containment |
 | --- | --- | --- |
 | On-device playback-engine maturity, security, licensing, or HDR/Dolby regressions | Milestone 1 source review and Milestone 4 physical-device matrix | Pin and inspect an exact revision, isolate it behind `NamaPlayer`, reproduce the representative media and network matrix on iOS, tvOS, and macOS, meet linked-artifact distribution obligations, and stop feature work if locator safety, native output, or distribution viability is not trustworthy. |
-| Jellyfin capability negotiation forces avoidable transcodes | Milestone 1 provider spike | Send a conservative, fixture-backed client capability profile, distinguish container/audio/subtitle incompatibility from video incompatibility, and inspect the selected provider strategy and per-Track actions in tests. |
+| Jellyfin capability negotiation forces avoidable transcodes | Milestone 1 provider spike and Milestone 4 extension matrix | Send the conservative, fixture-backed client capability profile through the first-party server extension, distinguish container/audio/subtitle incompatibility from video incompatibility using Jellyfin decision evidence, and inspect every selected strategy and per-Track action in tests. |
 | Plugin subprocess/UDS behavior becomes platform or lifecycle complexity | Milestones 1 and 3 | Support Linux production/macOS development only, keep plugins stateless/on-demand, use one authenticated socket per process, and defer other transports. |
 | Better Auth does not map cleanly behind Connect | Milestone 1 auth spike | Keep app-owned auth messages/session semantics and allow replacement without changing generated client contracts. |
 | Provider timestamps are missing or semantically different | Milestones 1 and 5 | Preserve source evidence, use explicit provider priority, make updates idempotent, and expose sync health instead of silently guessing. |
 | Canonical matching merges different titles | Milestone 7 | Prefer reliable external IDs, leave ambiguity unmerged, and avoid fuzzy automation until measured false-positive/negative data exists. |
-| Direct provider URLs expose credentials or are unreachable from an Apple client | Milestones 1 and 4 | Return short-lived/minimal playback descriptors where supported, never log URLs/tokens, validate reachability from iOS, tvOS, and macOS, and fail explicitly rather than proxying by default. |
+| Direct provider URLs expose credentials or are unreachable from an Apple client | Milestones 1 and 4 | Keep every Nama-conferred Jellyfin locator in the opaque extension namespace with a scoped header and bounded expiry, rewrite credential-bearing control children, validate reachability from iOS, tvOS, and macOS, and fail explicitly rather than proxying or exposing stock paths. |
 | Single image obscures plugin isolation | Milestone 3 | Preserve the process and contract boundary inside the image; packaging together never permits imports, shared memory state, or database access. |
 | Scope expands before the playback loop works | Every release gate | A milestone exits only on its acceptance criteria; conditional and post-v1 features cannot block the required vertical slice. |
 

@@ -19,7 +19,7 @@ type CatalogLibraryCursor =
       readonly releaseDate: string | null;
       readonly sort: "release_date";
     }>
-  | Readonly<{ readonly createdAt: Date; readonly id: string; readonly sort: "date_added" }>;
+  | Readonly<{ readonly createdAt: string; readonly id: string; readonly sort: "date_added" }>;
 
 interface CatalogLibraryQuery {
   readonly cursor?: CatalogLibraryCursor | undefined;
@@ -104,9 +104,9 @@ const libraryCursorCondition = (cursor: CatalogLibraryCursor | undefined): SQL |
     }
     case "date_added": {
       return sql`(
-        ${libraryEntry.createdAt} < ${cursor.createdAt}
+        ${libraryEntry.createdAt} < ${cursor.createdAt}::timestamptz
         or (
-          ${libraryEntry.createdAt} = ${cursor.createdAt}
+          ${libraryEntry.createdAt} = ${cursor.createdAt}::timestamptz
           and ${canonicalItem.id} > ${cursor.id}::uuid
         )
       )`;

@@ -13,6 +13,8 @@ import type { JellyfinArtworkProbeResponse, JellyfinJsonResponse } from "./reque
 import { hasMaximumCodePointLength } from "./value.ts";
 
 const EMPTY_LENGTH = 0;
+const COMPACT_JELLYFIN_UUID =
+  /^(?<first>[0-9a-f]{8})(?<second>[0-9a-f]{4})(?<third>[0-9a-f]{4})(?<fourth>[0-9a-f]{4})(?<fifth>[0-9a-f]{12})$/iu;
 const NO_DIMENSION_PREFERENCE = 0;
 const MINIMUM_JELLYFIN_DIMENSION = 1;
 const MAXIMUM_ITEM_REFERENCE_CODE_POINTS = 256;
@@ -106,11 +108,10 @@ const requestedDimension = (value: number | undefined): string | undefined => {
 };
 
 const artworkQuery = (
-  reference: JellyfinArtworkReference,
   maxWidth: number | undefined,
   maxHeight: number | undefined,
 ): Readonly<Record<string, string>> => {
-  const query: Record<string, string> = { tag: reference.cacheTag };
+  const query: Record<string, string> = {};
   const width = requestedDimension(maxWidth);
   const height = requestedDimension(maxHeight);
   if (width !== undefined) {
@@ -143,6 +144,8 @@ const artworkLease = (response: JellyfinArtworkProbeResponse, configuredOrigin: 
   }
   throw new ConnectError("Jellyfin artwork is not safely public", Code.FailedPrecondition);
 };
+const artworkLocatorItemId = (itemId: string): string =>
+  itemId.replace(COMPACT_JELLYFIN_UUID, "$<first>-$<second>-$<third>-$<fourth>-$<fifth>");
 
 const resolveJellyfinArtwork = async (
   launch: ProviderLaunchDocument,
@@ -152,13 +155,13 @@ const resolveJellyfinArtwork = async (
   const response = await request.probePublicArtwork(
     [
       "Items",
-      resolution.itemId,
+      artworkLocatorItemId(resolution.itemId),
       "Images",
       resolution.reference.imageType,
       String(resolution.reference.imageIndex),
     ],
     {
-      query: artworkQuery(resolution.reference, resolution.maxWidth, resolution.maxHeight),
+      query: artworkQuery(resolution.maxWidth, resolution.maxHeight),
       signal: resolution.signal,
     },
   );

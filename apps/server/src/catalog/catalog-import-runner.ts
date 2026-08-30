@@ -10,6 +10,7 @@ import type {
 } from "../database/catalog-persistence.ts";
 import { ProviderInstanceBusy } from "../provider/provider-activity.ts";
 import type { ProviderInstanceBusyFailure } from "../provider/provider-activity.ts";
+import { hydrateCatalogArtwork } from "./catalog-artwork-assets.ts";
 import { attempt, schedulingFailure } from "./catalog-import-effects.ts";
 import type { Attempt } from "./catalog-import-effects.ts";
 import { classifyCatalogFailure, isInvalidContinuationFailure } from "./catalog-import-failure.ts";
@@ -223,7 +224,13 @@ const acceptedPageNextState = (
       yield* recordFailure(context.dependencies, context.scan, mapped.failure);
       return SCAN_STOP;
     }
-    return yield* persistMappedPage(context, mapped.success);
+    const hydrated = yield* hydrateCatalogArtwork({
+      loadArtworkAsset: context.dependencies.loadArtworkAsset,
+      now: context.dependencies.now(),
+      page: mapped.success,
+      revision: context.scan.revision,
+    });
+    return yield* persistMappedPage(context, hydrated);
   });
 
 const callPage = (context: ScanPageContext) => {
@@ -269,7 +276,7 @@ const initialPageState = (scan: CatalogScanLease): ScanPageState => {
   return { continuation: scan.continuation, restarted: false };
 };
 
-const scanCatalogCandidate = (
+export const scanCatalogCandidate = (
   dependencies: CatalogImportDependencies,
   providerInstanceId: string,
 ): Effect.Effect<void> =>
@@ -290,5 +297,3 @@ const scanCatalogCandidate = (
       }
     }),
   );
-
-export { scanCatalogCandidate };

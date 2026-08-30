@@ -2,9 +2,7 @@ import { Context, Effect, Layer, Redacted } from "effect";
 
 import { Config } from "../config/config.ts";
 import { Database } from "../database/database.ts";
-import { PluginSupervisor } from "../plugin/supervisor.ts";
-import { ProviderManagement } from "../provider/provider-management.ts";
-import { makeCatalogArtworkLeaseResolver } from "./catalog-artwork-resolver.ts";
+import { ArtworkAccess } from "./catalog-artwork-access.ts";
 import type { CatalogQueryService } from "./catalog-query-model.ts";
 import { makeCatalogQuery } from "./catalog-query.ts";
 
@@ -18,17 +16,12 @@ class CatalogQuery extends contextService<CatalogQuery, CatalogQueryService>()(
     Effect.gen(function* makeCatalogQueryService() {
       const config = yield* Config;
       const database = yield* Database;
-      const providerManagement = yield* ProviderManagement;
-      const supervisor = yield* PluginSupervisor;
+      const artworkAccess = yield* ArtworkAccess;
       const query = yield* makeCatalogQuery({
+        artworkAccess,
         catalog: database.catalogQueries,
         masterKey: Redacted.value(config.security.masterKey),
         now: Date.now,
-        resolveArtworkLease: makeCatalogArtworkLeaseResolver(
-          database,
-          providerManagement,
-          supervisor,
-        ),
       });
       return CatalogQuery.of(query);
     }),

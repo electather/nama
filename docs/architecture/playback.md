@@ -85,10 +85,10 @@ across retries. Primary Play opens the plan defaults. Session Tracks that cannot
 switch without reopening remain visible but disabled until the ordered
 replacement lifecycle implements that behavior.
 
-Issue #96 remains the production prerequisite for truthful Jellyfin planning,
-safe expiring leases, and provider evidence. Nama does not choose or document a
-durable lease representation until that issue proves rematerialization without
-persisting Locator material or a reusable provider credential.
+Issue #233 is the production prerequisite for truthful Jellyfin planning,
+fallback, Track evidence, and the complete opaque media graph. It follows the
+extension runtime and direct-progressive foundation in issue #232; umbrella
+issue #231 owns the accepted extension boundary.
 
 [ADR-0012](../adr/0012-single-playback-engine-adapter.md) confines the selected
 engine behind one Nama-owned adapter with app-owned request, state, clock,
@@ -112,6 +112,25 @@ the initial and redirected origin, rewrites HLS child references, and reapplies
 headers only within the request's core-validated allowlist. The bridge is part
 of the concrete adapter, not a second playback engine or public media relay.
 
+[ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md) requires a
+manually installed first-party Jellyfin server extension for Jellyfin playback
+and coherent progress. The extension validates its own host and exposes one
+versioned private JSON/HTTP protocol to the supervised Jellyfin provider plugin;
+Nama does not inspect Jellyfin versions directly. Missing, unhealthy, or
+incompatible extensions advertise none of the extension-backed capabilities.
+
+The extension alone mints and verifies purpose-separated, self-contained
+leases from a protected key ring. A public playback locator contains an opaque
+extension URL plus one scoped request header. The extension keeps every
+playlist, segment, key, and subtitle child in that namespace, rewrites bounded
+control documents, and never returns stock paths, provider identifiers, or the
+configured Jellyfin credential. Stock Jellyfin routes retain their existing
+behavior; Nama's guarantee covers only access conferred through its opaque
+namespace. Plans expire after five minutes. Opened sessions and their children
+expire after the complete expected runtime plus 30 minutes, with a hard
+24-hour maximum; longer media is unsupported rather than receiving broader
+authorization.
+
 [ADR-0014](../adr/0014-four-stage-playback-lifecycle.md) defines the
 plan, open, report, and close lifecycle for the target public and plugin
 contracts.
@@ -130,6 +149,13 @@ and the original result commit atomically, while provider work remains outside
 that transaction. The public contract owns exact replay, retention, transaction,
 and terminal-race behavior; the Apple note owns coalescing, bounded retry,
 replacement ordering, lifecycle, and safe failure presentation.
+
+For Jellyfin, playback telemetry is the only provider writer for state produced
+by that Nama playback session. Coherent progress export handles other Activity
+origins and never writes the same canonical version. The extension saves
+watched state and position together, validates optional duration against the
+current Jellyfin item runtime, and reads the provider result back; a lost or
+conflicting outcome remains ambiguous and is never blindly replayed.
 
 The integration pins AetherEngine's exact source revision and complete resolved
 dependency closure and confines its rendering and control types to
@@ -162,3 +188,7 @@ actions, exact Source, actual device/display result where applicable, and proof
 that media travels from Jellyfin to the Apple client rather than through the
 core. Unrun or incapable hardware/display rows remain explicit instead of
 passing by inference.
+
+Provider-side implementation is tracked by umbrella issue #231: issue #232 owns
+the extension runtime and direct-progressive tracer, issue #233 owns complete
+HLS, fallback, and Track delivery, and issue #234 owns coherent progress.

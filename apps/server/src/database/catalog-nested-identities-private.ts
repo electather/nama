@@ -49,6 +49,7 @@ const appendPortraitArtwork = (
   }
   artwork.push({
     artworkReference: reference.artworkReference,
+    asset: reference.asset,
     displayOrder: artwork.length,
     role: "portrait",
     targetItemReference: reference.itemReference,

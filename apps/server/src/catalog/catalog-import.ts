@@ -1,11 +1,6 @@
-import { randomUUID } from "node:crypto";
-
-import { Cause, Context, Effect, Layer } from "effect";
+import { Cause, Effect } from "effect";
 import type { Scope } from "effect";
 
-import { Database } from "../database/database.ts";
-import { PluginSupervisor } from "../plugin/supervisor.ts";
-import { ProviderActivity } from "../provider/provider-activity.ts";
 import { attempt, schedulingFailure } from "./catalog-import-effects.ts";
 import type {
   CatalogImportDependencies,
@@ -13,7 +8,6 @@ import type {
   ReportCatalogFatalFailure,
 } from "./catalog-import-model.ts";
 import { scanCatalogCandidate } from "./catalog-import-runner.ts";
-import { listProviderCatalogPage } from "./catalog-provider-access.ts";
 
 const SCHEDULER_POLL_MILLISECONDS = 1000;
 const reportUnexpectedCause = (
@@ -89,29 +83,5 @@ const makeCatalogImport = (dependencies: CatalogImportDependencies): CatalogImpo
   return Object.freeze({ start });
 };
 
-const contextService = Context.Service;
-
-class CatalogImport extends contextService<CatalogImport, CatalogImportService>()(
-  "@nama/server/CatalogImport",
-) {
-  static readonly layer = Layer.effect(
-    CatalogImport,
-    Effect.gen(function* makeCatalogImportService() {
-      const supervisor = yield* PluginSupervisor;
-      const database = yield* Database;
-      const activity = yield* ProviderActivity;
-      return CatalogImport.of(
-        makeCatalogImport({
-          catalog: database.catalog,
-          coreRunId: randomUUID(),
-          listPage: listProviderCatalogPage(database.providers, supervisor),
-          random: Math.random,
-          runProviderActivity: activity.run,
-        }),
-      );
-    }),
-  );
-}
-
-export { CatalogImport, makeCatalogImport };
+export { makeCatalogImport };
 export type { CatalogImportDependencies, CatalogImportService } from "./catalog-import-model.ts";

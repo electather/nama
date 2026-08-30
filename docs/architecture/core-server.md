@@ -19,8 +19,8 @@ This note is the canonical record for durable core-server boundaries. The implem
 - runtime-controlled readiness and fatal post-bind failure;
 - one Effect-scoped authenticated, on-demand plugin-subprocess supervisor with context-free discovery, one-shot candidate, exact-revision instance launches, and bounded idle retirement;
 - one code-owned bundled-provider registry with bounded startup discovery, instance-local credential containment, compatible installation reconciliation, safe availability status, authenticated provider-type and connection-test reads, and provider-instance create/list/get/update/delete;
-- one durable initial catalog importer, stored canonical query owner, and versioned sparse canonical Watch state and exact Provider replica persistence boundary;
-- authenticated `LibraryService` home, list, search, details, hierarchy, source, and validated artwork-locator reads; and
+- one durable initial catalog importer that acquires and persists bounded canonical artwork assets, a stored canonical query owner, and versioned sparse canonical Watch state and exact Provider replica persistence boundary;
+- authenticated `LibraryService` home, list, search, details, hierarchy, source, and signed Nama-owned artwork-locator reads plus the token-verified artwork byte route; and
 - deterministic signal shutdown, bounded drain, process-group termination, and resource finalization.
 
 The private runtime-loaded Better Auth adapter implements administrator creation, sign-in, bearer resolution, current-user mapping, and confirmed sign-out without mounting Better Auth routes ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). All generated public services are registered behind the explicit default-deny authority inventory; Setup, Auth, `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, `GetProviderInstance`, `UpdateProviderInstance`, `DeleteProviderInstance`, and every `LibraryService` method are implemented, while other descriptors remain denied or reach Connect's `UNIMPLEMENTED` response only after authorization. The private plugin transport launches, authenticates, handshakes with, calls, recovers, and terminates code-owned subprocesses. Its production Jellyfin executable implements health, discovery, connection verification, catalog reads, and artwork resolution.
@@ -468,10 +468,21 @@ The server test gate must continue to exercise behavior, not only generated cont
   credential/code/token redaction;
 - one supervised production Jellyfin catalog scan through revision-fenced
   incremental commits, restart continuation, duplicate pages, out-of-order
-  hierarchy, provider failure, disable/re-enable, and provider deletion; and
+  hierarchy, provider failure, disable/re-enable, and provider deletion;
+- one production-listener flow that creates an enabled disposable-Jellyfin
+  instance, waits for a complete import, device-authorizes the fixed Apple
+  public client, and drives all seven generated `LibraryService` calls,
+  all three Library sorts, continuation paging, all-kind Search, canonical
+  hierarchy, and Movie and Episode Sources while an observing proxy proves
+  those ordinary calls produce no provider traffic; only the subsequent
+  artwork probe and anonymous fetch reach disposable Jellyfin;
+- focused date-added pagination coverage that preserves PostgreSQL microseconds
+  in authenticated cursors so same-millisecond imports cannot skip a page; and
 - real Connect Library reads over stored canonical state proving stable Nama
-  IDs, search and pagination, unavailable-source projection, and absence of
-  provider references or payload sentinels;
+  IDs, unavailable-source projection, and absence of captured real provider
+  item, source, path, and artwork-tag references, reusable credentials, or
+  payload sentinels from ordinary values, failures, logs, page tokens, and
+  request metadata;
 - root TypeScript checks that execute the complete server suite.
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.

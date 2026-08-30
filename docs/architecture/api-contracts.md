@@ -15,10 +15,17 @@ controlled provider fixtures. `LIBRARY_READ`, `ARTWORK_RESOLVE`,
 `WATCH_STATE_READ`, and `WATCHED_WRITE` are advertised.
 
 Initial catalog ingestion and all seven public `LibraryService` methods are
-implemented over stored canonical projections and verified through real Connect,
-PostgreSQL, and a supervised production Jellyfin scan. Ordinary reads remain
-provider-independent; artwork resolution alone exchanges a stored reference for
-a validated short-lived lease.
+implemented over stored canonical projections. The complete production proof
+creates an enabled instance against disposable Jellyfin, waits for its
+supervised catalog pass, authorizes the fixed Apple public client through the
+device grant, and drives Home, every Library sort, continuation paging,
+all-kind Search, all four Details kinds, both hierarchy levels, Movie and
+Episode Sources, artwork resolution, and the anonymous artwork fetch through
+the production listener and generated client. An observing proxy in front of
+the real Jellyfin fixture proves the provider request count stays unchanged
+through every ordinary read and invalid-token failure, then records only the
+artwork probe and fetch. It also captures the real provider item, source, path,
+and artwork-tag references for boundary-absence assertions.
 
 Issue #145's Better Auth authorization-server routes, authenticated CLI
 approval, JWT-protected consumer access, broad client-grant revocation, Apple
@@ -56,7 +63,7 @@ The MVP remains single-administrator and single-user. User administration, invit
 5. Management RPCs may expose Nama-managed resources for installed provider types and their configuration, such as the neutral type identifier `jellyfin`. Remote provider resource IDs, SDK errors and types, and provider-specific consumer shapes remain private to plugins. Provider types never appear in service or message names.
 6. Canonical Nama item IDs and provider-instance IDs are Nama-owned. A canonical item may have sources from more than one provider instance.
 7. The core maps plugin observations into stored canonical media before serving consumer reads. Public browse and search never proxy a live provider query.
-8. The core is a control plane. Artwork and media bytes travel directly from the provider to the client through short-lived, narrowly scoped locators when the provider can supply them safely.
+8. The core is a control plane with one bounded catalog-artwork exception. It persists canonical artwork assets and serves them through signed short-lived Nama locators; playable media bytes remain provider-direct through short-lived, narrowly scoped locators. The playable-media guarantee covers access conferred by Nama, and public responses never reveal independently addressable stock provider paths, provider identifiers, or reusable credentials.
 9. Nama application RPCs are unary Connect. Better Auth's target OAuth metadata, JWKS, device-code issuance, token, refresh, and revocation endpoints use their standard HTTP contracts; streaming application RPCs, event feeds, unrelated REST, and GraphQL remain deferred.
 10. Better Auth wire formats are public only on those standard OAuth authorization-server endpoints. Nama Connect APIs and provider boundaries continue to expose only Nama-owned messages ([ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md)).
 
@@ -555,9 +562,9 @@ The selected oneof member must agree with `summary.kind`. Counts are absent when
 
 Text presence is descriptive, not guaranteed. Clients prefer textless cover art when available but always render the mandatory media title as the accessibility and missing-art fallback.
 
-Under [ADR-0013](../adr/0013-origin-scoped-short-lived-locators.md), artwork references never contain a provider path, token, or URL. `LibraryService.ResolveArtwork` converts one reference into an `ArtworkLocator` containing `url`, repeated scoped `headers`, repeated `allowed_redirect_origins`, `refresh_at`, optional `access_expires_at`, and optional resolved dimensions. The request may include `max_width` and `max_height`; zero means no preference. `refresh_at` is the core-selected time after which the client resolves the reference again; it is cache freshness, not an access-control claim. `access_expires_at` is present only when the provider enforces that the locator authorization stops working at that time. Clients do not start a new fetch after either deadline.
+Under [ADR-0035](../adr/0035-nama-owned-canonical-artwork-assets.md), artwork references identify bounded canonical assets persisted by Nama during catalog ingestion. `LibraryService.ResolveArtwork` converts one visible stored asset into an `ArtworkLocator` whose absolute `url` targets the Nama listener, `headers` is empty, `allowed_redirect_origins` contains only the canonical Nama origin, and both `refresh_at` and `access_expires_at` are present. The request may include `max_width` and `max_height`, but those preferences never trigger a provider call; the MVP returns its single bounded stored rendition and its known source dimensions.
 
-The core validates the initial and allowed redirect origins and that the locator contains no reusable account credential. Headers apply only to the initial origin and are stripped on any origin change. A locator whose URL or headers carry authorization must have provider-enforced, item-constrained access and an `access_expires_at`; otherwise resolution fails as ordinary missing artwork and the client keeps its title fallback. A credential-free public artwork URL may omit `access_expires_at`; its `refresh_at` remains only a re-resolution deadline.
+The signed locator path is opaque and expires independently of the OAuth access token. `GET /artwork/<token>` verifies the signature and expiry, rechecks that the asset belongs to a visible Library entry, and returns the stored bytes with their validated image MIME type, exact length, `nosniff`, and private no-store caching. Missing, retired, unsafe, or unavailable assets return ordinary missing artwork and the client keeps its title fallback. Provider item IDs, artwork references, paths, cache tags, URLs, and credentials never enter the public locator.
 
 ### Sources, parts, and tracks
 
@@ -653,10 +660,10 @@ least one stored source is `AVAILABLE` through an enabled, currently usable
 provider instance; `TEMPORARILY_UNAVAILABLE` when no source is usable but at
 least one source or provider is temporarily unavailable; and
 `NO_AVAILABLE_SOURCE` when no active source remains or every source is
-permanently unsupported. `NOT_FOUND` means the canonical resource or artwork
-reference does not exist or is not visible. `ResolveArtwork` is the only
-Library read that calls a provider, and only to exchange a stored private
-artwork reference for a validated short-lived locator.
+permanently unsupported. `NOT_FOUND` means the canonical resource or persisted
+artwork asset does not exist or is not visible. `ResolveArtwork` reads only
+stored canonical data and mints a signed Nama artwork locator; no public Library
+read calls a provider.
 
 ## PlaybackService
 
@@ -772,17 +779,25 @@ Opening the same operation ID with the same request returns the same logical ses
 
 Under [ADR-0013](../adr/0013-origin-scoped-short-lived-locators.md), the locator authorizes only the planned item/session and expires no earlier than the expected runtime plus a bounded grace period. It never contains an administrator, device, provider API-key, or reusable provider-account credential. Media bytes then flow from the provider to the Apple client without traversing the core.
 
-Milestone 1 must prove that Jellyfin can satisfy this security boundary on real
-hardware. Current documented Jellyfin APIs do not themselves promise an item-
-or session-scoped media credential, so this is a release-blocking proof rather
-than an assumed implementation detail. Jellyfin does not advertise usable
-`PLAYBACK_OPEN` to the core until that proof passes. Milestone 4 repeats the
-transport and redirect proof on iOS, tvOS, and macOS, records ADR-0032's two
-accepted Apple-engine limitations, and verifies that neither limitation widens
-the core's credential scope or redirect allowlist. The same rule applies to
-every later provider, including Plex. If a provider cannot safely constrain
-direct authorization, playback returns to security design; Nama does not ship a
-reusable provider credential or silently become a proxy.
+Stock Jellyfin 10.11.11 cannot satisfy this boundary by itself. Under
+[ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md), Jellyfin
+playback instead requires a manually installed first-party server extension.
+The extension validates its own Jellyfin host and exposes a versioned private
+JSON/HTTP protocol only to Nama's Jellyfin provider plugin. It owns protected,
+self-contained leases and an opaque media namespace; stock Jellyfin routes
+retain their existing behavior and remain outside the access guarantee
+conferred by Nama.
+
+Jellyfin plans expire after five minutes. An opened lease and all main-media,
+playlist, segment, key, and external-subtitle children expire after the complete
+expected runtime plus 30 minutes and never later than 24 hours after open.
+Media requiring a longer lease is unsupported. The extension rewrites bounded
+control documents so stock paths, provider identifiers, and broad credentials
+never reach the client. Jellyfin advertises none of these capabilities while
+the extension is absent, unhealthy, or incompatible. Milestone 4 repeats the
+transport and redirect proof on iOS, tvOS, and macOS and verifies that
+ADR-0032's Apple-engine limitations widen neither credential scope nor the
+redirect allowlist.
 
 ### ReportPlayback
 
@@ -1045,8 +1060,11 @@ incrementally. A page applies only while its captured provider revision remains
 current and enabled. Disable pauses without deleting stored media; re-enable or
 revision replacement begins a fresh pass.
 
-The initial scan adds or refreshes exact mappings and never treats omission from
-one best-effort pass as deletion. A stale page is discarded. Restart resumes a
+The initial scan adds or refreshes exact mappings and fetches bounded artwork
+assets before accepting each page. Artwork acquisition is best effort per
+asset: an unavailable, oversized, empty, wrongly typed, expired, reusable-
+credential, or unsafe-redirect lease leaves that artwork unresolved without
+failing the canonical media page. A stale page is discarded. Restart resumes a
 valid continuation or begins again after invalidation. Retryable availability
 failures honor `RetryInfo` and then use persisted exponential backoff from five
 seconds to a five-minute cap with jitter; permission, incompatible capability,
@@ -1055,9 +1073,9 @@ and invalid-response failures wait for revision change or re-enable. Milestone
 
 `GetItem` supports targeted repair and refresh before a write. Missing items return `NOT_FOUND`; provider unavailability returns `UNAVAILABLE`. Provider event subscriptions are not part of the unary MVP contract.
 
-`ProviderArtworkLease` contains provider URL, required headers, repeated proposed `allowed_redirect_origins`, optional provider-enforced `access_expires_at`, MIME type, and artwork authorization scope (`PUBLIC`, `MEDIA_ITEM`, or `PROVIDER_ACCOUNT`). A `PUBLIC` lease carries no credential and may omit access expiry. A `MEDIA_ITEM` lease must be constrained to that item and include an enforced access expiry. `PROVIDER_ACCOUNT` is always rejected.
+`ProviderArtworkLease` contains provider URL, required headers, repeated proposed `allowed_redirect_origins`, optional provider-enforced `access_expires_at`, MIME type, and artwork authorization scope (`PUBLIC`, `MEDIA_ITEM`, or `PROVIDER_ACCOUNT`). It is an import-only acquisition contract. A `PUBLIC` lease carries no credential and may omit access expiry. A `MEDIA_ITEM` lease must be constrained to that item and include an enforced access expiry. `PROVIDER_ACCOUNT` is always rejected.
 
-The core independently validates every origin against configured provider/CDN policy before converting the lease to a public `ArtworkLocator`, and selects the public `refresh_at` no later than any provider access expiry. A lease that requires a reusable provider-account credential, claims protected access without enforced expiry, or proposes an unsafe redirect is rejected; the client receives ordinary missing artwork and keeps its title fallback.
+Before persistence, the core validates the initial and redirect origins against configured provider/CDN policy, strips authorization after an origin change, enforces access expiry, requires an image MIME match, and streams at most 20 MiB. Accepted bytes and MIME type are stored with the canonical artwork identity. The provider lease is never converted into a public locator.
 
 ### Plugin PlaybackService
 
@@ -1095,6 +1113,16 @@ proposed by a plugin are untrusted and must match core configuration; public
 clients enforce that allowlist and apply the shared locator-header rules,
 including ADR-0032's bounded Apple MVP exception. A plugin cannot weaken this
 rule by advertising a capability.
+
+For Jellyfin, only the server extension accepted by ADR-0036 may mint the
+`SESSION` lease. The provider plugin authenticates its private plan, open,
+report, and close calls with the configured Jellyfin API key, but returns only
+opaque extension URLs, scoped lease headers, and self-contained private
+context. The extension keeps every exposed media child in its own namespace and
+removes stock paths, provider identifiers, and credential-bearing query values
+from bounded control documents. Provider-plugin replacement does not change
+lease validity; extension or Jellyfin restart may instead produce the ordinary
+safe media or cleanup failure defined by this lifecycle.
 
 Plugin report fields mirror public event ID, sequence, state, position, duration, observed selected tracks, and optional diagnostic client time, plus the private session context. Selected track references must belong to the active lease and are observations rather than switch commands. Plugin close fields mirror final position, duration, reason, operation ID, and optional diagnostic client time, plus the context.
 
@@ -1141,6 +1169,16 @@ Provider activity semantics are `PLAYBACK_STARTED`, `PLAYBACK_COMPLETED`, `STATE
 - `SetProgress` with desired `watched`, `position`, and optional `duration` as one coherent target.
 
 There is no toggle, play-count setter, played-percentage setter, or last-played setter. `SetProgress` includes watched state because a resumable rewatch such as `watched = false, position > 0` must reach Jellyfin coherently in one per-item write. This claims no cross-item or cross-provider atomicity. Plex supports `SetWatched` but not an exact `SetProgress`; its active progress is reported through `Plugin PlaybackService.ReportPlayback`. Jellyfin may support both targets.
+
+The target Jellyfin server extension implements `SetProgress` without
+extension-owned user-state persistence. A present duration is a precondition
+validated against current Jellyfin item runtime; mismatch causes no mutation.
+The extension saves watched state and playback position together in one
+Jellyfin user-data transaction and then reads back watched state, position, and
+item runtime before reporting success. Jellyfin supplies no revision,
+compare-and-swap, or provider idempotency key, so a lost response receives one
+readback and a differing or unresolved result remains retryable ambiguity
+rather than being replayed.
 
 Each `WatchStateMutationResult` repeats `mutation_id`, returns optional observed state, and has one status:
 

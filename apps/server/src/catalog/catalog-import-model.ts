@@ -5,6 +5,7 @@ import type { Effect, Scope } from "effect";
 import type { CatalogPersistence, CatalogScanLease } from "../database/catalog-persistence.ts";
 import type { PluginCallFailure } from "../plugin/model.ts";
 import type { ProviderActivityAdmission } from "../provider/provider-activity.ts";
+import type { LoadArtworkAsset } from "./catalog-artwork-asset-fetch.ts";
 
 const taggedError = Data.TaggedError;
 const CatalogCapabilityIncompatible = taggedError("CatalogCapabilityIncompatible")<
@@ -37,6 +38,8 @@ type ListCatalogPage = (
 interface CatalogImportDependencies {
   readonly catalog: CatalogPersistence;
   readonly coreRunId: string;
+  readonly loadArtworkAsset: LoadArtworkAsset;
+  readonly now: () => number;
   readonly listPage: ListCatalogPage;
   readonly random: () => number;
   readonly runProviderActivity: ProviderActivityAdmission["run"];

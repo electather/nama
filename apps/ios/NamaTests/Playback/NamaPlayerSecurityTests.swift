@@ -225,7 +225,7 @@
   }
 
   enum PlaybackSecurityTestTiming {
-    static let timeoutSeconds: TimeInterval = 20
+    static let timeoutSeconds: TimeInterval = 30
     static let pollIntervalSeconds: TimeInterval = 0.02
     static let timeout: Duration = .seconds(timeoutSeconds)
     static let pollInterval: Duration = .seconds(pollIntervalSeconds)

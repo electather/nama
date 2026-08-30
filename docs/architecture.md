@@ -12,7 +12,7 @@ This document is Nama's canonical architecture entry point and ADR index. Read [
 
 ## System shape
 
-Nama's target MVP is a self-hosted control plane, not a media relay. A TypeScript core owns identity, configuration, the canonical media model, watch state, reconciliation, and authorization. Provider plugins translate between that model and external services. Application APIs use the versioned Protobuf/ConnectRPC contract; Better Auth's standard OAuth HTTP endpoints authorize the Apple public client. During playback the provider sends media directly to the client; the core only selects and authorizes the source.
+Nama's target MVP is a self-hosted control plane with one bounded catalog-artwork exception, not a playable-media relay. A TypeScript core owns identity, configuration, the canonical media model and artwork assets, watch state, reconciliation, and authorization. Provider plugins translate between that model and external services. Application APIs use the versioned Protobuf/ConnectRPC contract; Better Auth's standard OAuth HTTP endpoints authorize the Apple public client. The core serves signed short-lived access to stored canonical artwork, while during playback the provider sends playable media directly to the client and the core only selects and authorizes the source.
 
 ```text
 Apple app ── OAuth device grant ──┐
@@ -21,16 +21,16 @@ Apple app ──────────────┐         ├──> Node 
 Go CLI ── Connect api.v1├─────────┘        │
                         │                  └── Connect plugin.v1 over Unix socket
                         │                                   │
-                        │                            Jellyfin plugin ───> Jellyfin API
-                        │                                   │
-Apple player <──────────┴────────────────── playable URL ──┘
+                        │                            Jellyfin provider plugin ───> Jellyfin API
+                        │                                      └── private JSON/HTTP ──> server extension
+Apple player <──────────┴──────────────── opaque provider media ───────────────────────┘
 ```
 
 The target installation is one private deployment with one administrator, Jellyfin as its first provider type, and one universal SwiftUI client for iPhone, iPad, Apple TV, and Mac on Apple platform version 26 or later. Multiple Jellyfin provider instances may supply watch-state input. The public and plugin contracts are real from the first vertical slice, while a marketplace, web console, generic workflow engine, distributed queue, and native media server are not part of the target architecture.
 
 The MVP authorization path is complete without a browser: an already authenticated Go CLI sends the Apple app's displayed user code through role-neutral `AuthService.ApproveDeviceAuthorization`, and the core binds the grant to that session principal before invoking Better Auth's internal verification and approval APIs. The request selects no target user and grants no Administrator authority. Issue #167 may add a narrow browser approval web app over the same internal application service; it does not become a prerequisite for Apple authorization or a general web console.
 
-The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, initial canonical catalog ingestion, stored public Library reads, and versioned persistence for sparse canonical Watch state and exact Provider replicas. Public `PlaybackService` and public user-state behavior remain unimplemented.
+The implemented baseline runs one Effect application with one native listener, immutable configuration, reviewed Drizzle migrations, fail-closed initialization reconciliation over one PostgreSQL pool, setup and authentication RPCs, the durable provider persistence/protection boundary, initial canonical catalog and bounded artwork-asset ingestion, stored public Library and signed artwork reads, and versioned persistence for sparse canonical Watch state and exact Provider replicas. Public `PlaybackService` and public user-state behavior remain unimplemented.
 
 The same listener now exposes the fixed Apple public client's allowlisted Better Auth metadata, JWKS, device-code, token, refresh, and revocation routes. Generated `AuthService` handlers approve the current session principal's grant and revoke the fixed client's refresh-token families; Connect consumer authority verifies audience-bound, fixed-client, method-scoped JWTs locally without treating them as Administrator sessions.
 
@@ -50,6 +50,16 @@ observed artwork resolution into proven anonymous public leases for exact
 instance launches. It advertises `LIBRARY_READ`, `ARTWORK_RESOLVE`,
 `WATCH_STATE_READ`, and `WATCHED_WRITE`.
 
+The target Jellyfin playback and coherent-progress path requires the manually
+installed first-party Jellyfin server extension accepted by
+[ADR-0036](adr/0036-first-party-jellyfin-server-extension.md) and tracked by
+issue #231. The extension validates its own Jellyfin host and exposes a
+versioned private JSON/HTTP protocol only to the existing provider plugin. It
+owns protected, expiring leases and an opaque media namespace while media bytes
+remain inside Jellyfin's delivery path. Missing, unhealthy, or incompatible
+extensions add no playback or coherent-progress capabilities; the implemented
+stock profile above remains available.
+
 The provider-management verification gate drives a compiled `nama` binary
 through the production listener, migrations, PostgreSQL boundary, supervisor,
 Jellyfin plugin, and a pinned disposable Jellyfin server. It proves fresh
@@ -64,8 +74,12 @@ provider connection tests, and the local Linux application image are
 implemented. The Docker gate drives the real image through canonical Compose,
 the compiled Go CLI, the pinned Jellyfin fixture, plugin-child recovery,
 application replacement, and graceful shutdown. Core initial catalog ingestion
-and authenticated stored `LibraryService` reads are implemented and exercised
-through real Connect over a supervised production Jellyfin scan.
+and authenticated stored `LibraryService` reads are implemented. A complete
+production-listener proof creates an enabled instance against disposable
+Jellyfin, waits for its supervised import, device-authorizes the Apple public
+client, and drives every generated browse method, all Library sorts,
+continuation paging, canonical hierarchy and Sources, artwork resolution, and
+the anonymous artwork fetch without an ordinary live provider read.
 
 The current core technology is Node.js 24, strict TypeScript, ESM, pnpm, Effect, native Node HTTP, Drizzle, and PostgreSQL. The CLI currently targets Go and Cobra. These are living technology and repository architecture, not additional ADRs.
 
@@ -141,11 +155,21 @@ focus activated Load More and Retry Page and returned to the first result. The
 static loading surface remained onscreen on Apple TV and Mac, and full keyboard
 access selected the long Episode on Mac. Source inspection has self-contained
 choosing, technical, unavailable, distinct-unlabeled-choice, and stale-response
-previews. Apple TV result selection, Mac pointer selection, compact iPad
-collapse, focus return after nested Details, live OAuth-authorized catalog
-browsing and Search, successful artwork resolution, product consumer media
-coordination, VoiceOver inspection, physical Apple hardware, expiry-driven
-actual-surface refresh, and the remaining Apple surfaces remain unverified.
+previews. Issue #180 additionally rendered the OAuth-authorized production
+catalog on signed iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV 4K 1080p
+simulators: Home and Library, Movie, Show, Season, and Episode Details, canonical
+children, fallback artwork, and Apple TV focus movement into Library were
+visible. The iPhone Home surface also retained its content at the largest
+accessibility text size with increased contrast. A temporary DEBUG-only token
+installation and navigation harness used for those captures was removed before
+verification. The Apple Development-signed sandboxed Mac artifact carried the
+expected network entitlements but this run could not make it create a window,
+so no live Mac browse result was recorded. Successful production artwork
+resolution and fetch passed at the generated-client boundary; the actual app
+surfaces retained their title-bearing fallback. Live Search input, successful
+decoded artwork, VoiceOver reading order, reduced motion, compact iPad
+collapse, focus return after nested Details, physical Apple hardware, and
+expiry-driven actual-surface refresh remain unverified.
 
 ## Architectural decision records
 
@@ -185,13 +209,15 @@ ADRs record the choices and rationale below; superseded records remain linked as
 32. [ADR-0032 — Use AetherEngine 6.21.0 with a bounded MVP security exception](adr/0032-aetherengine-mvp-security-exception.md)
 33. [ADR-0033 — Use Better Auth OAuth device authorization](adr/0033-better-auth-oauth-device-authorization.md)
 34. [ADR-0034 — Persist watch state as versioned relational snapshots](adr/0034-versioned-watch-state-snapshots.md)
+35. [ADR-0035 — Persist canonical artwork assets in Nama](adr/0035-nama-owned-canonical-artwork-assets.md)
+36. [ADR-0036 — Require a first-party Jellyfin server extension](adr/0036-first-party-jellyfin-server-extension.md)
 
 ## Invariants
 
 1. The core is the source of truth for Nama-owned user and watch state; plugins never become hidden databases. See [ADR-0006](adr/0006-stateless-supervised-plugin-subprocesses.md), [ADR-0022](adr/0022-canonical-provider-neutral-media-model.md), [ADR-0023](adr/0023-canonical-watch-state-reconciliation.md), and [ADR-0034](adr/0034-versioned-watch-state-snapshots.md).
 2. Remote provider resource IDs, errors, SDK types, and provider-specific consumer shapes stop at plugin boundaries. Installed provider type IDs and schema-driven configuration are authenticated Nama management resources; public consumers otherwise see Nama concepts. See [ADR-0005](adr/0005-provider-neutral-public-api.md) and [ADR-0019](adr/0019-restricted-schema-driven-provider-configuration.md).
 3. Protobuf is the source of truth for every supported Nama client, CLI, and plugin RPC. Better Auth's standard OAuth authorization-server endpoints are the deliberate public authentication exception and are not mirrored through Protobuf. See [ADR-0003](adr/0003-protobuf-connectrpc-boundary.md), [ADR-0004](adr/0004-independent-public-plugin-protobuf-packages.md), [ADR-0007](adr/0007-private-better-auth-adapter.md), and [ADR-0033](adr/0033-better-auth-oauth-device-authorization.md).
-4. Media bytes do not pass through the core in normal playback. Locators remain short-lived and restricted to core-validated redirect origins; the selected Apple MVP engine carries the bounded logging and header-replay exceptions recorded in ADR-0032. See [ADR-0013](adr/0013-origin-scoped-short-lived-locators.md) and [ADR-0032](adr/0032-aetherengine-mvp-security-exception.md).
+4. Playable media bytes do not pass through the core in normal playback. Canonical artwork is the bounded stored-asset exception recorded in ADR-0035. Playable locators remain short-lived and restricted to core-validated redirect origins; the guarantee covers only access conferred by Nama and never reveals stock provider paths, identifiers, or reusable credentials. The selected Apple MVP engine carries the bounded logging and header-replay exceptions recorded in ADR-0032, while Jellyfin uses the opaque extension boundary recorded in ADR-0036. See [ADR-0013](adr/0013-origin-scoped-short-lived-locators.md), [ADR-0032](adr/0032-aetherengine-mvp-security-exception.md), [ADR-0035](adr/0035-nama-owned-canonical-artwork-assets.md), and [ADR-0036](adr/0036-first-party-jellyfin-server-extension.md).
 5. A plugin may be restarted or replaced without losing correctness; schedules, credentials, cursors, and reconciliation state belong to the core. See [ADR-0006](adr/0006-stateless-supervised-plugin-subprocesses.md) and [ADR-0024](adr/0024-best-effort-provider-scans.md).
 6. Playback-engine types do not escape the universal Apple app's playback adapter. See [ADR-0012](adr/0012-single-playback-engine-adapter.md).
 7. New infrastructure or abstraction requires a current use case, not only a plausible future one.
