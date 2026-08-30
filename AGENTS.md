@@ -78,6 +78,10 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
   assign initial focus to the first actionable row or button, and keep explicit
   Back and in-flow Refresh controls; lazy offscreen rows plus toolbar-only
   actions can trap focus in the top-level tabs.
+- On tvOS Details, make refresh recovery focus win over Play, Retry, Sources,
+  and child initial-focus requests; when a focused child disappears, restore its
+  exact opaque identity if it survives, otherwise choose the row at its retained
+  presentation position or the preceding row when the removed row was last.
 - Scope each universal-app connection feature to one window; when its scene leaves the foreground, cancel only the active verification, and treat a remote Connect `canceled` response as a safe visible failure rather than local cancellation.
 - Keep array-valued `NSBonjourServices` in the Apple app's partial Info property list; generated `INFOPLIST_KEY_*` build settings do not emit the Bonjour array.
 - Never copy a restored endpoint into the live manual-entry binding; its `onChange` intentionally cancels active verification as a user edit.
