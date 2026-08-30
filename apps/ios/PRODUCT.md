@@ -135,13 +135,36 @@ dependency. iPhone production Home was also inspected at the largest
 accessibility text size with increased contrast and reduced motion enabled.
 Termination and relaunch restored the authorized production Home; the temporary
 harness and authorization records were then removed.
-The Apple Development-signed sandboxed Mac artifact retained the expected
-network entitlements, but the app and a minimal SwiftUI `WindowGroup` probe
-created foreground processes without windows. Live Mac browsing, VoiceOver
-reading and focus order, live touch, refresh, Search input, Source selection,
-Play-button activation, Apple TV remote input in the production flow, compact
-iPad collapse, focus return after nested Details, and physical Apple hardware
-remain unverified actual surfaces.
+Issue #235's follow-up repeated the OAuth-authorized production flow on signed
+iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV 4K (3rd generation)
+simulators. Touch and keyboard input exercised Home, both Library kinds,
+all-kind Search, decoded canonical artwork, Movie/Show/Season/Episode Details,
+canonical children, Episode Source inspection, and default and source-specific
+typed Play intents. Apple TV keyboard and remote input selected Search results,
+moved through Show → Season → Episode, focused Play, activated an explicit
+Details Back action, restored focus to the Episode row, inspected the canonical
+Source, and focused and activated Play This Source. The run exposed that lazy
+Details rows and toolbar-only Refresh left the remote focus engine without an
+onscreen content target; Details now materializes its bounded actions eagerly,
+assigns the first actionable focus explicitly, and keeps Refresh in the tvOS
+content flow. The temporary token and forced-Source harness was removed.
+
+The pre-cleanup Mac production-catalog run exercised Home, both Library kinds,
+typed Search, every Details kind, hierarchy, and keyboard and pointer input; its
+exact Source route depended on a temporary DEBUG-only ID route, so it is
+supporting evidence rather than final-artifact acceptance. After every harness
+was removed, the final tree built with an Apple Development authority and the
+expected sandbox, client-network, and loopback-server entitlements. Under the
+current locked desktop graphical session, launching that artifact created a Nama
+process with zero windows, so the required permanent-artifact
+browse/search/details/source flow remains unverified.
+
+The production-backed Apple TV run did not exercise Load More or Retry recovery.
+VoiceOver previously activated on the live Home window and captioned its toolbar
+focus, but representative labels, reading order, action names, and focus order
+across Home, Library/Search, Details, and Sources remain unverified. Compact iPad
+collapse, expiry-driven actual-surface refresh, and physical Apple hardware also
+remain unverified.
 
 ## Product Principles
 

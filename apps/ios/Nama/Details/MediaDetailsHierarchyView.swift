@@ -162,8 +162,14 @@ private struct MediaCalendarDateText: View {
 }
 
 struct MediaDetailsChildrenView: View {
+  #if os(tvOS)
+    @State private var retainedChildFocus: (identity: MediaIdentity?, position: Int?) = (nil, nil)
+    @FocusState private var focusedChildIdentity: MediaIdentity?
+  #endif
+
   let parentKind: MediaKind
   let state: MediaChildrenState
+  let refreshRecoveryIsActive: Bool
   let loadMore: @MainActor () -> Void
   let childDidAppear: @MainActor (MediaIdentity) -> Void
   let reauthorize: @MainActor () async -> Void
@@ -177,19 +183,65 @@ struct MediaDetailsChildrenView: View {
       if state.confirmedItems.isEmpty {
         emptyOrLoadingContent
       } else {
-        LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
-          ForEach(state.confirmedItems) { item in
-            MediaChildRow(
-              item: item,
-              childDidAppear: childDidAppear,
-              artwork: artwork
-            )
+        #if os(tvOS)
+          VStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
+            childRows
           }
-          pageFooter
-        }
+        #else
+          LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
+            childRows
+          }
+        #endif
       }
     }
+    #if os(tvOS)
+      .task(id: state.confirmedItems.map(\.identity)) {
+        requestInitialFocus()
+      }
+      .onChange(of: refreshRecoveryIsActive) { _, isActive in
+        if !isActive {
+          requestInitialFocus()
+        }
+      }
+      .onChange(of: focusedChildIdentity) { _, identity in
+        if let identity {
+          retainedChildFocus.identity = identity
+          retainedChildFocus.position = state.confirmedItems.firstIndex { $0.identity == identity }
+        }
+      }
+    #endif
   }
+
+  @ViewBuilder
+  private var childRows: some View {
+    ForEach(state.confirmedItems) { item in
+      MediaChildRow(
+        item: item,
+        childDidAppear: childDidAppear,
+        artwork: artwork
+      )
+      #if os(tvOS)
+        .focused($focusedChildIdentity, equals: item.identity)
+      #endif
+    }
+    pageFooter
+  }
+
+  #if os(tvOS)
+    private func requestInitialFocus() {
+      let available = state.confirmedItems.map(\.identity)
+      if let target = mediaChildrenTelevisionFocusIdentity(
+        current: retainedChildFocus.identity,
+        retainedPosition: retainedChildFocus.position,
+        available: available,
+        refreshRecoveryIsActive: refreshRecoveryIsActive
+      ) {
+        retainedChildFocus.identity = target
+        retainedChildFocus.position = available.firstIndex(of: target)
+        focusedChildIdentity = target
+      }
+    }
+  #endif
 
   private var childTitle: LocalizedStringKey {
     switch parentKind {

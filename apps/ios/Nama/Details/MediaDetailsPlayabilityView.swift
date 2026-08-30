@@ -1,9 +1,14 @@
 import SwiftUI
 
 struct MediaDetailsPlayabilityView: View {
+  #if os(tvOS)
+    @FocusState private var focusedAction: MediaDetailsTelevisionFocusAction?
+  #endif
+
   let playability: MediaPlayability
   let sourcesSelection: MediaSourcesSelection?
   let isRefreshing: Bool
+  let refreshRecoveryIsActive: Bool
   let canRetryUnavailableSource: Bool
   let play: @MainActor () -> Void
   let retry: @MainActor () -> Void
@@ -16,8 +21,18 @@ struct MediaDetailsPlayabilityView: View {
           Label("Sources", systemImage: "rectangle.stack")
         }
         .buttonStyle(.bordered)
+        #if os(tvOS)
+          .focused($focusedAction, equals: .sources)
+        #endif
       }
     }
+    #if os(tvOS)
+      .task(id: defaultFocusAction) {
+        if let defaultFocusAction {
+          focusedAction = defaultFocusAction
+        }
+      }
+    #endif
   }
 
   @ViewBuilder
@@ -27,6 +42,9 @@ struct MediaDetailsPlayabilityView: View {
       Button("Play", systemImage: "play.fill", action: play)
         .buttonStyle(.borderedProminent)
         .controlSize(.extraLarge)
+        #if os(tvOS)
+          .focused($focusedAction, equals: .play)
+        #endif
 
     case .temporarilyUnavailable:
       VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
@@ -38,6 +56,9 @@ struct MediaDetailsPlayabilityView: View {
           Button("Retry", action: retry)
             .buttonStyle(.borderedProminent)
             .disabled(isRefreshing)
+            #if os(tvOS)
+              .focused($focusedAction, equals: .retry)
+            #endif
         }
       }
 
@@ -47,4 +68,15 @@ struct MediaDetailsPlayabilityView: View {
         .foregroundStyle(.secondary)
     }
   }
+
+  #if os(tvOS)
+    private var defaultFocusAction: MediaDetailsTelevisionFocusAction? {
+      mediaDetailsTelevisionFocusAction(
+        playability: playability,
+        hasSources: sourcesSelection != nil,
+        retryIsEnabled: canRetryUnavailableSource && !isRefreshing,
+        refreshRecoveryIsActive: refreshRecoveryIsActive
+      )
+    }
+  #endif
 }
