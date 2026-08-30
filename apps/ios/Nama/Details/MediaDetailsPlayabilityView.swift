@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct MediaDetailsPlayabilityView: View {
+  #if os(tvOS)
+    @FocusState private var focusedAction: FocusAction?
+  #endif
+
   let playability: MediaPlayability
   let sourcesSelection: MediaSourcesSelection?
   let isRefreshing: Bool
@@ -16,8 +20,16 @@ struct MediaDetailsPlayabilityView: View {
           Label("Sources", systemImage: "rectangle.stack")
         }
         .buttonStyle(.bordered)
+        #if os(tvOS)
+          .focused($focusedAction, equals: .sources)
+        #endif
       }
     }
+    #if os(tvOS)
+      .task(id: defaultFocusAction) {
+        focusedAction = defaultFocusAction
+      }
+    #endif
   }
 
   @ViewBuilder
@@ -27,6 +39,9 @@ struct MediaDetailsPlayabilityView: View {
       Button("Play", systemImage: "play.fill", action: play)
         .buttonStyle(.borderedProminent)
         .controlSize(.extraLarge)
+        #if os(tvOS)
+          .focused($focusedAction, equals: .play)
+        #endif
 
     case .temporarilyUnavailable:
       VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
@@ -38,6 +53,9 @@ struct MediaDetailsPlayabilityView: View {
           Button("Retry", action: retry)
             .buttonStyle(.borderedProminent)
             .disabled(isRefreshing)
+            #if os(tvOS)
+              .focused($focusedAction, equals: .retry)
+            #endif
         }
       }
 
@@ -47,4 +65,25 @@ struct MediaDetailsPlayabilityView: View {
         .foregroundStyle(.secondary)
     }
   }
+
+  #if os(tvOS)
+    private enum FocusAction: Hashable {
+      case play
+      case retry
+      case sources
+    }
+
+    private var defaultFocusAction: FocusAction? {
+      if playability == .playable {
+        return .play
+      }
+      if sourcesSelection != nil {
+        return .sources
+      }
+      if playability == .temporarilyUnavailable, canRetryUnavailableSource {
+        return .retry
+      }
+      return nil
+    }
+  #endif
 }

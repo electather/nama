@@ -77,6 +77,10 @@ private struct MediaSourceAggregateView: View {
 }
 
 private struct MediaSourcePlaybackActionView: View {
+  #if os(tvOS)
+    @FocusState private var actionFocused: Bool
+  #endif
+
   let availability: MediaSourceAvailability
   let play: @MainActor () -> Void
   let retry: @MainActor () -> Void
@@ -86,12 +90,24 @@ private struct MediaSourcePlaybackActionView: View {
       Button("Play This Source", systemImage: "play.fill", action: play)
         .buttonStyle(.borderedProminent)
         .controlSize(.extraLarge)
+        #if os(tvOS)
+          .focused($actionFocused)
+          .task {
+            actionFocused = true
+          }
+        #endif
     } else {
       VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
         Text("This source cannot be selected for playback right now.")
           .foregroundStyle(.secondary)
         Button("Try Again", action: retry)
           .buttonStyle(.borderedProminent)
+          #if os(tvOS)
+            .focused($actionFocused)
+            .task {
+              actionFocused = true
+            }
+          #endif
       }
     }
   }

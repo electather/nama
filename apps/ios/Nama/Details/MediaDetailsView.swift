@@ -37,6 +37,10 @@ enum MediaDetailsLayout {
 struct MediaDetailsView: View {
   @Environment(\.scenePhase) private var scenePhase
 
+  #if os(tvOS)
+    @Environment(\.dismiss) private var dismiss
+  #endif
+
   let feature: MediaDetailsFeature
   let selection: MediaDetailsSelection
   let authorization: HomeAuthorizationIdentity
@@ -70,6 +74,15 @@ struct MediaDetailsView: View {
         didDisappear: feature.creditArtworkDidDisappear
       )
     )
+    #if os(tvOS)
+      .toolbar {
+        ToolbarItem(placement: .navigation) {
+          Button("Back", systemImage: "chevron.backward") {
+            dismiss()
+          }
+        }
+      }
+    #endif
     .onAppear(perform: activateIfNeeded)
     .onChange(of: selection) { _, _ in
       activateIfNeeded()
@@ -192,14 +205,16 @@ struct MediaDetailsPresentationView: View {
       creditArtwork: creditArtwork
     )
     .navigationTitle(mediaDetailsNavigationTitle(state))
-    .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-        if mediaDetailsCanRefresh(state) {
-          Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
+    #if !os(tvOS)
+      .toolbar {
+        ToolbarItem(placement: .primaryAction) {
+          if mediaDetailsCanRefresh(state) {
+            Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
             .disabled(mediaDetailsIsRefreshing(state))
+          }
         }
       }
-    }
+    #endif
   }
 }
 

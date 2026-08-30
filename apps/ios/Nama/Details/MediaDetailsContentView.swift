@@ -55,7 +55,7 @@ private struct MediaDetailsContentSections: View {
   let creditArtwork: MediaCreditArtworkAccess
 
   var body: some View {
-    LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
+    VStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
       MediaDetailsRefreshStatusView(
         isRefreshing: isRefreshing,
         failure: refreshFailure,
@@ -76,6 +76,11 @@ private struct MediaDetailsContentSections: View {
         childArtwork: childArtwork
       )
       MediaDetailsSupportingContentView(details: details, creditArtwork: creditArtwork)
+      #if os(tvOS)
+        Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
+          .buttonStyle(.bordered)
+          .disabled(isRefreshing)
+      #endif
     }
   }
 }

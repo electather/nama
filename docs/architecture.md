@@ -147,19 +147,28 @@ access selected the long Episode on Mac. Source inspection has self-contained
 choosing, technical, unavailable, distinct-unlabeled-choice, and stale-response
 previews. Issue #180 additionally rendered the OAuth-authorized production
 catalog on signed iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV 4K 1080p
-simulators: Home and Library, Movie, Show, Season, and Episode Details, canonical
-children, fallback artwork, and Apple TV focus movement into Library were
-visible. The iPhone Home surface also retained its content at the largest
-accessibility text size with increased contrast. A temporary DEBUG-only token
-installation and navigation harness used for those captures was removed before
-verification. The Apple Development-signed sandboxed Mac artifact carried the
-expected network entitlements but this run could not make it create a window,
-so no live Mac browse result was recorded. Successful production artwork
-resolution and fetch passed at the generated-client boundary; the actual app
-surfaces retained their title-bearing fallback. Live Search input, successful
-decoded artwork, VoiceOver reading order, reduced motion, compact iPad
-collapse, focus return after nested Details, physical Apple hardware, and
-expiry-driven actual-surface refresh remain unverified.
+simulators. Issue #235's follow-up then exercised live touch and keyboard Search,
+decoded canonical artwork, every Details kind, canonical children, Episode
+Source inspection, and default and source-specific typed Play intents on signed
+iPhone and iPad simulators. Apple TV keyboard and remote input selected a live
+Search result, traversed Show → Season → Episode, focused Play, used an explicit
+Details Back action with Episode-row focus restoration, inspected the canonical
+Source, and focused and activated Play This Source. That run exposed and fixed
+offscreen lazy child/action focus and toolbar-only Refresh: tvOS Details now
+eagerly materializes its bounded actions, assigns the first actionable focus,
+keeps Refresh in the content flow, and provides explicit Back. Temporary
+DEBUG-only token and forced-Source routing was removed before verification.
+The Apple Development-signed sandboxed Mac production-catalog run retained the
+expected network entitlements and exercised a composited Home, both Library
+kinds, typed Search, decoded and fallback canonical artwork, every Details kind,
+the Show → Season → Episode hierarchy, Play, pointer navigation, keyboard entry,
+native Back, and return-scroll restoration. The canonical Source chooser loaded
+its real normalized Source, Part, Video, and Audio technical fields; pointer
+input activated Play This Source and produced a visible source-specific typed
+Play intent. VoiceOver activated on the live Home window and captioned its
+toolbar focus. VoiceOver reading order across loaded Home content,
+Library/Search, Details, and Sources, compact iPad collapse, physical Apple
+hardware, and expiry-driven actual-surface refresh remain unverified.
 
 ## Architectural decision records
 

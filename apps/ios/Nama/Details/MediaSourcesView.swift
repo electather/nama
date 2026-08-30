@@ -3,6 +3,10 @@ import SwiftUI
 struct MediaSourcesView: View {
   @Environment(\.scenePhase) private var scenePhase
 
+  #if os(tvOS)
+    @Environment(\.dismiss) private var dismiss
+  #endif
+
   let feature: MediaSourcesFeature
   let selection: MediaSourcesSelection
   let authorization: HomeAuthorizationIdentity
@@ -19,6 +23,15 @@ struct MediaSourcesView: View {
       reauthorize: reauthorize
     )
     .navigationTitle("Sources")
+    #if os(tvOS)
+      .toolbar {
+        ToolbarItem(placement: .navigation) {
+          Button("Back", systemImage: "chevron.backward") {
+            dismiss()
+          }
+        }
+      }
+    #endif
     .onAppear(perform: activateIfNeeded)
     .onChange(of: selection) { _, _ in
       activateIfNeeded()

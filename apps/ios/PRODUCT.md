@@ -135,13 +135,32 @@ dependency. iPhone production Home was also inspected at the largest
 accessibility text size with increased contrast and reduced motion enabled.
 Termination and relaunch restored the authorized production Home; the temporary
 harness and authorization records were then removed.
-The Apple Development-signed sandboxed Mac artifact retained the expected
-network entitlements, but the app and a minimal SwiftUI `WindowGroup` probe
-created foreground processes without windows. Live Mac browsing, VoiceOver
-reading and focus order, live touch, refresh, Search input, Source selection,
-Play-button activation, Apple TV remote input in the production flow, compact
-iPad collapse, focus return after nested Details, and physical Apple hardware
-remain unverified actual surfaces.
+Issue #235's follow-up repeated the OAuth-authorized production flow on signed
+iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV 4K (3rd generation)
+simulators. Touch and keyboard input exercised Home, both Library kinds,
+all-kind Search, decoded canonical artwork, Movie/Show/Season/Episode Details,
+canonical children, Episode Source inspection, and default and source-specific
+typed Play intents. Apple TV keyboard and remote input selected Search results,
+moved through Show → Season → Episode, focused Play, activated an explicit
+Details Back action, restored focus to the Episode row, inspected the canonical
+Source, and focused and activated Play This Source. The run exposed that lazy
+Details rows and toolbar-only Refresh left the remote focus engine without an
+onscreen content target; Details now materializes its bounded actions eagerly,
+assigns the first actionable focus explicitly, and keeps Refresh in the tvOS
+content flow. The temporary token and forced-Source harness was removed.
+
+The Apple Development-signed sandboxed Mac production-catalog run retained the
+expected network entitlements and exercised a composited Home, both Library
+kinds, typed Search, decoded and fallback canonical artwork,
+Movie/Show/Season/Episode Details, Show → Season → Episode children, Play,
+pointer navigation, keyboard entry, native Back, and return-scroll restoration.
+The canonical Source chooser loaded its real normalized Source, Part, Video, and
+Audio technical fields; pointer input activated Play This Source and produced a
+visible source-specific typed Play intent. VoiceOver activated on the live Home
+window and captioned its toolbar focus. VoiceOver reading and focus order across
+loaded Home content, Library/Search, Details, and Sources, compact iPad collapse,
+expiry-driven actual-surface refresh, and physical Apple hardware remain
+unverified.
 
 ## Product Principles
 

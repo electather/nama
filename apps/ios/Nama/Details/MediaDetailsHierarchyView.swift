@@ -162,6 +162,10 @@ private struct MediaCalendarDateText: View {
 }
 
 struct MediaDetailsChildrenView: View {
+  #if os(tvOS)
+    @FocusState private var focusedChildIdentity: MediaIdentity?
+  #endif
+
   let parentKind: MediaKind
   let state: MediaChildrenState
   let loadMore: @MainActor () -> Void
@@ -177,19 +181,36 @@ struct MediaDetailsChildrenView: View {
       if state.confirmedItems.isEmpty {
         emptyOrLoadingContent
       } else {
-        LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
+        VStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
           ForEach(state.confirmedItems) { item in
             MediaChildRow(
               item: item,
               childDidAppear: childDidAppear,
               artwork: artwork
             )
+            #if os(tvOS)
+              .focused($focusedChildIdentity, equals: item.identity)
+            #endif
           }
           pageFooter
         }
       }
     }
+    #if os(tvOS)
+      .task(id: firstChildIdentity) {
+        guard let firstChildIdentity else {
+          return
+        }
+        focusedChildIdentity = firstChildIdentity
+      }
+    #endif
   }
+
+  #if os(tvOS)
+    private var firstChildIdentity: MediaIdentity? {
+      state.confirmedItems.first?.identity
+    }
+  #endif
 
   private var childTitle: LocalizedStringKey {
     switch parentKind {
