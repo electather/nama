@@ -171,7 +171,7 @@ forbidden, retryable, permanent, ambiguous, malformed, oversized, and cancelled
 paths retain sanitized generated-RPC outcomes without exposing provider bodies,
 identifiers, or authorization.
 
-## Target Jellyfin server extension
+## Jellyfin server extension
 
 The first-party Jellyfin server extension accepted by
 [ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md) is distinct
@@ -182,14 +182,20 @@ and exposes one bounded private JSON/HTTP protocol authenticated by the
 configured Jellyfin API key. The provider plugin alone translates that
 Jellyfin-specific protocol into `nama.plugin.v1`.
 
-Successful configured connections advertise extension-backed playback or
-coherent-progress capabilities only after a compatible handshake. Playback
-uses an opaque extension namespace and scoped header leases; the extension
-internally dispatches to Jellyfin and rewrites bounded control documents so
-stock paths, provider identifiers, and broad credentials do not escape.
-Coherent progress saves watched state and position together, validates duration
-against item runtime, and returns readback without claiming provider-native
-idempotency. The extension owns neither a media database nor durable user state.
+Successful configured connections advertise the implemented direct-progressive
+plan, open, report, and provider-user-state telemetry capabilities only after a
+compatible handshake. The provider plugin keeps the private protocol bounded,
+rejects malformed or overlong leases, retains response loss as ambiguity, and
+never exposes a private response body. The extension dispatches an opaque
+progressive resource through Jellyfin under one scoped header; provider-plugin
+replacement preserves the opaque context, while a Jellyfin restart preserves
+lease verification but safely loses in-memory session resources.
+
+Issue #233 still owns opaque HLS, bounded control-document rewriting, fallback,
+and Track delivery. Issue #234 still owns coherent progress that saves watched
+state and position together, validates duration against item runtime, and
+returns readback without claiming provider-native idempotency. The extension
+owns neither a media database nor durable user state.
 
 Windows transport and persistent or background native-media provider plugins
 remain deferred until a real plugin requires them. Core-owned synchronization

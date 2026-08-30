@@ -32,11 +32,18 @@ const jellyfinConfigurationSchema = {
   type: "object",
 };
 
-const jellyfinCapabilities = [
+const jellyfinStockCapabilities = [
   ProviderCapability.LIBRARY_READ,
   ProviderCapability.ARTWORK_RESOLVE,
   ProviderCapability.WATCH_STATE_READ,
   ProviderCapability.WATCHED_WRITE,
+];
+const jellyfinCapabilities = [
+  ...jellyfinStockCapabilities,
+  ProviderCapability.PLAYBACK_PLAN,
+  ProviderCapability.PLAYBACK_OPEN,
+  ProviderCapability.PLAYBACK_REPORT,
+  ProviderCapability.PLAYBACK_REPORTS_USER_STATE,
 ];
 
 const jellyfinPluginInfo = {
@@ -51,4 +58,9 @@ const jellyfinPluginInfo = {
   schemaRevision: "1",
 };
 
-export { jellyfinCapabilities, jellyfinConfigurationSchema, jellyfinPluginInfo };
+export {
+  jellyfinCapabilities,
+  jellyfinConfigurationSchema,
+  jellyfinPluginInfo,
+  jellyfinStockCapabilities,
+};

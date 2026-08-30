@@ -1,14 +1,26 @@
 import { createHash } from "node:crypto";
 
-import { PluginConnectionStatus } from "@nama/api/nama/plugin/v1/plugin_pb.js";
+import { PluginConnectionStatus, ProviderCapability } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 
-import { jellyfinCapabilities } from "./info.ts";
+import { jellyfinStockCapabilities } from "./info.ts";
 import { createJellyfinRequest } from "./request.ts";
+import type { JellyfinRequest } from "./request.ts";
 import { isUnknownRecord } from "./value.ts";
 
 const EMPTY_LENGTH = 0;
 const MAXIMUM_CONNECTION_RESPONSE_BYTES = 65_536;
 const MAXIMUM_REMOTE_TEXT_BYTES = 256;
+const EXTENSION_PROTOCOL = "nama.jellyfin.extension";
+const EXTENSION_HANDSHAKE_TIMEOUT_MILLISECONDS = 1000;
+const EXTENSION_PROTOCOL_VERSION = 1;
+const DIRECT_PROGRESSIVE_CAPABILITY = "direct_progressive";
+const PLAYBACK_TELEMETRY_CAPABILITY = "playback_telemetry";
+const EXTENSION_PLAYBACK_CAPABILITIES = [
+  ProviderCapability.PLAYBACK_PLAN,
+  ProviderCapability.PLAYBACK_OPEN,
+  ProviderCapability.PLAYBACK_REPORT,
+  ProviderCapability.PLAYBACK_REPORTS_USER_STATE,
+] as const;
 
 interface JellyfinConnectionContext {
   readonly apiKey: string;
@@ -32,6 +44,38 @@ const principalReference = (serverId: string, userId: string): string => {
     .update(JSON.stringify([serverId.toLowerCase(), userId.toLowerCase()]), "utf8")
     .digest("base64url");
   return `jellyfin/v1:${digest}`;
+};
+const compatibleExtensionCapabilities = (value: Readonly<Record<string, unknown>>) => {
+  const { capabilities } = value;
+  if (
+    value["protocol"] !== EXTENSION_PROTOCOL ||
+    value["protocol_version"] !== EXTENSION_PROTOCOL_VERSION ||
+    typeof value["extension_version"] !== "string" ||
+    value["extension_version"].length === EMPTY_LENGTH ||
+    !Array.isArray(capabilities) ||
+    !capabilities.includes(DIRECT_PROGRESSIVE_CAPABILITY) ||
+    !capabilities.includes(PLAYBACK_TELEMETRY_CAPABILITY) ||
+    capabilities.some((capability) => typeof capability !== "string")
+  ) {
+    return [];
+  }
+  return EXTENSION_PLAYBACK_CAPABILITIES;
+};
+
+const extensionPlaybackCapabilities = async (request: JellyfinRequest, signal: AbortSignal) => {
+  const response = await request.requestJson(["Nama", "v1", "handshake"], {
+    authentication: "api_key",
+    cancellationSignal: signal,
+    maximumResponseBytes: MAXIMUM_CONNECTION_RESPONSE_BYTES,
+    signal: AbortSignal.any([
+      signal,
+      AbortSignal.timeout(EXTENSION_HANDSHAKE_TIMEOUT_MILLISECONDS),
+    ]),
+  });
+  if (response.kind !== "success") {
+    return [];
+  }
+  return compatibleExtensionCapabilities(response.body);
 };
 
 const nonConnected = (status: PluginConnectionStatus, summary: string) => ({
@@ -94,7 +138,7 @@ const verifyConnectionIdentity = (
     );
   }
   return {
-    capabilities: jellyfinCapabilities,
+    capabilities: jellyfinStockCapabilities,
     ...remoteDetails(system),
     providerUserReference: principalReference(serverId, context.userId),
     status: PluginConnectionStatus.CONNECTED,
@@ -131,7 +175,17 @@ const getJellyfinConnection = async (context: JellyfinConnectionContext, signal:
   if (user.kind !== "success") {
     return failedConnection(user.kind, true);
   }
-  return verifyConnectionIdentity(context, serverId, system.body, user.body);
+  const connection = verifyConnectionIdentity(context, serverId, system.body, user.body);
+  if (connection.status !== PluginConnectionStatus.CONNECTED) {
+    return connection;
+  }
+  return {
+    ...connection,
+    capabilities: [
+      ...connection.capabilities,
+      ...(await extensionPlaybackCapabilities(request, signal)),
+    ],
+  };
 };
 
 export { getJellyfinConnection };

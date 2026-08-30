@@ -5,3 +5,6 @@
 **/node_modules
 nama.toml
 secrets
+extensions/jellyfin/artifacts
+extensions/jellyfin/bin
+extensions/jellyfin/obj

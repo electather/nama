@@ -8,9 +8,10 @@ choice, completion, safe failure, and return-to-Details recovery visible through
 touch, pointer, keyboard, and Apple TV focus. Automated macOS-host verification
 loads, renders, controls, and stops controlled media and drives adversarial
 origin, redirect, nested HLS, external-subtitle, replacement, expiry, and
-surface-lifecycle cases through the real adapter. Public planning, opening,
-reporting, closing, and the Details-to-playback coordinator remain target
-architecture.
+surface-lifecycle cases through the real adapter. The provider-side
+direct-progressive plan, open, report, and close lifecycle is implemented
+through the first-party Jellyfin extension. Public lifecycle coordination and
+the Details-to-playback coordinator remain target architecture.
 
 The target Apple application reports a Nama-defined capability profile for the
 current device, and the Jellyfin plugin translates it into provider playback
@@ -46,18 +47,28 @@ and coherent progress. The extension validates its own host and exposes one
 versioned private JSON/HTTP protocol to the supervised Jellyfin provider plugin;
 Nama does not inspect Jellyfin versions directly. Missing, unhealthy, or
 incompatible extensions advertise none of the extension-backed capabilities.
+Private control endpoints accept only a real Jellyfin API key, and the optional
+handshake probe has its own short deadline so a stalled extension cannot erase
+an already-verified stock connection.
 
-The extension alone mints and verifies purpose-separated, self-contained
-leases from a protected key ring. A public playback locator contains an opaque
-extension URL plus one scoped request header. The extension keeps every
-playlist, segment, key, and subtitle child in that namespace, rewrites bounded
-control documents, and never returns stock paths, provider identifiers, or the
-configured Jellyfin credential. Stock Jellyfin routes retain their existing
-behavior; Nama's guarantee covers only access conferred through its opaque
-namespace. Plans expire after five minutes. Opened sessions and their children
-expire after the complete expected runtime plus 30 minutes, with a hard
-24-hour maximum; longer media is unsupported rather than receiving broader
-authorization.
+The implemented direct-progressive slice mints purpose-separated,
+self-contained leases from a protected key ring. It returns an opaque extension
+URL plus one scoped request header, accepts exact `GET` and `HEAD`, and never
+returns a stock path, provider identifier, or configured Jellyfin credential.
+Plan identifiers are purpose-protected references of at most 256 characters to
+five-minute in-memory plan records. The direct-only plan advertises only the
+default audio track that open can materialize. Opened sessions expire after the
+complete expected runtime plus 30 minutes, with a hard 24-hour maximum; longer
+media is unsupported rather than receiving broader authorization. Provider-plugin
+replacement retains the opaque session context. A Jellyfin restart retains
+lease verification through the stable key ring while lost in-memory session
+resources fail safely.
+
+Issue #233 still owns HLS and external-resource coverage. That slice must keep
+every playlist, segment, key, and subtitle child in the opaque namespace and
+rewrite bounded control documents before those capabilities broaden. Stock
+Jellyfin routes retain their existing behavior; Nama's guarantee covers only
+access conferred through its opaque namespace.
 
 [ADR-0014](../adr/0014-four-stage-playback-lifecycle.md) defines the
 plan, open, report, and close lifecycle for the target public and plugin
@@ -78,12 +89,14 @@ that transaction. The public contract owns exact replay, retention, transaction,
 and terminal-race behavior; the Apple note owns coalescing, bounded retry,
 replacement ordering, lifecycle, and safe failure presentation.
 
-For Jellyfin, playback telemetry is the only provider writer for state produced
-by that Nama playback session. Coherent progress export handles other Activity
-origins and never writes the same canonical version. The extension saves
-watched state and position together, validates optional duration against the
-current Jellyfin item runtime, and reads the provider result back; a lost or
-conflicting outcome remains ambiguous and is never blindly replayed.
+For Jellyfin, the implemented direct-progressive telemetry path is the only
+provider writer for state produced by that Nama playback session. It invokes
+Jellyfin start, ordered progress, and stop exactly once per accepted event;
+provider response loss remains ambiguous and the plugin never blindly replays
+it. Coherent progress export in issue #234 handles other Activity origins and
+must never write the same canonical version. Its target extension operation
+saves watched state and position together, validates optional duration against
+the current Jellyfin item runtime, and reads the provider result back.
 
 The integration pins AetherEngine's exact source revision and complete resolved
 dependency closure and confines its rendering and control types to

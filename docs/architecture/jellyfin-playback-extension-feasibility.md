@@ -1,25 +1,27 @@
 # Jellyfin playback server extension feasibility (Jellyfin 10.11.11)
 
-Status: accepted architecture direction under [ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md) and [issue #231](https://github.com/electather/nama/issues/231); implementation and release evidence remain incomplete.
+Status: accepted under [ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md). Issue #232 implements and verifies the exact-host runtime plus direct-progressive lifecycle; HLS, full negotiation, Track delivery, and coherent progress remain with issues #233 and #234.
 
 ## Verdict
 
-**Still plausible/unproved after an exact Jellyfin 10.11.11 runtime spike.**
+**Direct-progressive is proved; the complete issue #231 profile remains
+incomplete.**
 
-**[FACT]** The spike compiled, loaded, registered an `IStartupFilter`, and
-enforced a test HMAC lease before stock `CustomAuthentication` on progressive,
-Dynamic HLS, and direct-subtitle routes. It also constructed the exact-tag
-`StreamBuilder` and read `StreamInfo` at runtime. **[FACT]** It found a
-blocking coverage gap: the stock HLS-subtitle playlist emitted the configured
-broad `ApiKey` in a child URI after the guard's in-process header replacement.
-The spike did not rewrite response bodies into scoped child leases, and it did
-not establish complete legacy/encrypted-HLS/plan-action/telemetry coverage.
+The production extension now builds as an exact-versioned artifact, survives
+manual fixture installation and restart, validates the exact Jellyfin host,
+persists a purpose-separated ASP.NET Data Protection key ring, and completes an
+authenticated compatible handshake. Its direct-progressive plan, idempotent
+open, ordered report, idempotent close, opaque `GET`/`HEAD` lease, provider
+plugin replacement, one Jellyfin restart, wrong-resource and tampered-lease
+rejection, response-loss ambiguity, cancellation, malformed output, and
+redaction paths run against the pinned fixture and focused subprocess tests.
 
-The technical mechanism is real for the tested routes and supports the accepted
-server-extension direction. It does **not** authorize capability advertisement:
-full media graph coverage, response-side token removal where Jellyfin generates
-tokenized children, negotiation, telemetry ambiguity, and version-coupled
-operating constraints remain release-blocking.
+The earlier spike remains evidence for the exact startup hook and the
+unimplemented HLS surface. It found a blocking coverage gap: the stock
+HLS-subtitle playlist emitted the configured broad `ApiKey` in a child URI
+after in-process header replacement. Issue #233 must still rewrite bounded
+control documents and prove the complete HLS, negotiation, and Track matrix
+before those behaviors are advertised.
 
 This record does not create a broad-token exception. Nama still rejects
 `PROVIDER_ACCOUNT`; a public lease must be `SESSION` or sufficiently constrained
@@ -388,17 +390,20 @@ subtitle action mappings, track switching, or
 unproved and must not be guessed. It also did not produce an encrypted-HLS key
 URI, exercise an emitted legacy route, or prove all media controller templates.
 
-The telemetry endpoint proves invocation, not idempotency. No controlled lost
-response was executed; a response loss remains an unresolved provider outcome
-and must not be replayed or recorded as remote success. The single restart
-observation does not override the source-based conservative cleanup rule.
+The implemented extension serializes ordered telemetry and retains accepted
+event IDs for idempotent replay within one Jellyfin process. A focused provider
+adapter test withholds the response and proves one outbound attempt plus a
+redacted ambiguous result. The exact pinned fixture has not withheld a response
+after a confirmed Jellyfin commit, so that outcome remains unresolved rather
+than recorded as remote success or replayed. The restart proof likewise retains
+lease verification but treats lost in-memory session resources as safe failure.
 
-**Revised verdict: accepted direction, unproved implementation.** An
-exact-version, highly version-coupled extension can load and enforce a
-self-contained lease before stock authentication on the tested routes. The
-token-bearing HLS-subtitle response and the remaining graph, negotiation, and
-telemetry gaps mean it cannot yet advertise the capabilities tracked by
-issue #231.
+**Revised verdict: direct-progressive implemented; complete playback
+incomplete.** The exact-version extension now loads, validates its host, owns
+stable purpose-separated lease protection, and enforces an opaque progressive
+resource before stock authentication. The token-bearing HLS-subtitle response
+and remaining HLS graph, fallback negotiation, Track, and coherent-progress
+work remain release-blocking for their separately owned capabilities.
 
 ## Decisive option matrix
 
@@ -406,7 +411,7 @@ issue #231.
 | --- | --- | --- | --- |
 | Stock Jellyfin locator/token | **Infeasible.** | The core can still refuse playback capability. | Stock tokens have no item/route/expiry scope and generated playback/subtitle URLs put `ApiKey` in the client-visible query. |
 | Additive controller only | **Infeasible.** | None of the missing lease invariants become true. | A controller cannot interpose on a selected stock stream/segment action; redirects retain the stock credential problem. |
-| Middleware/auth-integrated Jellyfin server extension | **Accepted target; implementation incomplete.** | Tested paths preserve direct provider-to-client bytes, in-process fixture authorization, and a narrow expiring lease. | Exact 10.11.11 proved the hook, but stock HLS-subtitle output leaks the broad key without response rewriting; graph coverage, plan evidence, telemetry ambiguity, and host validation remain unproved. |
+| Middleware/auth-integrated Jellyfin server extension | **Accepted; direct-progressive implemented.** | The implemented progressive path preserves direct provider-to-client bytes, in-process authorization, bounded leases, restart verification, and narrow capability advertisement. | HLS response rewriting, complete graph coverage, fallback/Track negotiation, and coherent progress remain with issues #233 and #234. |
 | Provider-side byte gateway | **Infeasible.** | It could enforce a narrow authorization boundary. | It relays media through a gateway, violating the no-Nama-media-proxy/direct-delivery constraint. |
 | Jellyfin core/fork change | **Feasible in principle; not a plugin result.** | A native scoped media authorization model and explicit negotiation/telemetry contracts could preserve every listed invariant. | It requires a separately accepted server distribution, security, and compatibility decision. |
 
@@ -417,9 +422,9 @@ issue #231.
 | Hook and header order | Install only a minimal Jellyfin server extension that registers `IStartupFilter`; send a signed test lease to a protected core media route. | The filter runs before `CustomAuthenticationHandler`; a server-only rewritten `MediaBrowser` header authenticates the request; no response, redirect, log, or playlist contains the broad token. |
 | Route guard and compatibility | Exercise `GET`/`HEAD` progressive audio/video, dynamic HLS master/main/`hls1` playlist and children, legacy playlist/segments, direct/HLS subtitles, and an encrypted-HLS fixture's key URI. For each extension URL, test valid, expired, tampered, wrong-item, wrong-media-source, wrong-session, wrong-route-class, and no-lease requests; separately replay normal stock Jellyfin clients. | Every extension-namespace request succeeds only with the exact bound lease; no stock path, provider identifier, or credential appears in a locator or rewritten child; ordinary stock routes retain their existing behavior. |
 | Negotiation truth | Compare public `PlaybackInfo` and exact internal builder output for fixture combinations spanning direct, remux, audio transcode, video transcode, embedded/external/burned subtitles, each selectable track, and each Nama capability/preference. | Every advertised strategy, protocol, selected track, and action is observed from the Jellyfin decision path; unsupported or non-switchable choices are rejected/marked false rather than guessed; no returned locator contains `ApiKey`. |
-| Statelessness and restart | Replace the Jellyfin provider plugin during active plan/open/report/close; then restart the Jellyfin server extension/Jellyfin before a child request and before report/close. | Self-contained verification works across provider-plugin replacement; server-resource loss becomes safe failure and bounded cleanup, with no fabricated success or stale session acceptance. |
+| HLS statelessness and restart | Extend the implemented direct-progressive provider-plugin replacement and persisted-key restart proof to every HLS and external-resource child, then restart before report/close. | Self-contained verification works across provider-plugin replacement; server-resource loss becomes safe failure and bounded cleanup, with no fabricated success or stale session acceptance. |
 | Telemetry ambiguity and sole writer | Make Jellyfin commit start/progress/stop while withholding the response; verify the core's report/close behavior and a later watch-state export attempt. | Nama does not replay the uncertain write, does not claim remote cleanup, and never sends an equivalent `PushWatchStates` write when telemetry is advertised as the sole writer. |
 
-Issues #232, #233, and #234 must pass every applicable row on the exact pinned
-server before the provider plugin advertises their capabilities. The resulting
-operating and upgrade constraints remain part of that acceptance.
+Each child must pass its applicable rows on the exact pinned server before the
+provider plugin advertises that behavior. The resulting operating and upgrade
+constraints remain part of acceptance.

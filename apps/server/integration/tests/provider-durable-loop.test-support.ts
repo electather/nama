@@ -13,6 +13,7 @@ const HTTP_OK = 200;
 const HTTP_NO_CONTENT = 204;
 
 interface JellyfinFixture {
+  readonly administratorAccessToken: string;
   readonly baseUrl: string;
   readonly disabledUserId: string;
   readonly otherUserId: string;
@@ -25,11 +26,12 @@ interface JellyfinFixture {
 interface JellyfinPostInput {
   readonly authorization?: string;
   readonly body?: Readonly<Record<string, unknown>>;
+  readonly method?: "DELETE" | "POST";
   readonly path: string;
 }
 
 interface JellyfinIdentity {
-  readonly primaryApiKey: string;
+  readonly administratorAccessToken: string;
   readonly primaryUserId: string;
   readonly serverId: string;
 }
@@ -53,7 +55,7 @@ const jellyfinPost = (baseUrl: string, input: JellyfinPostInput): Promise<Respon
   if (input.authorization !== undefined) {
     headers["authorization"] = input.authorization;
   }
-  const request: RequestInit = { headers, method: "POST" };
+  const request: RequestInit = { headers, method: input.method ?? "POST" };
   if (input.body !== undefined) {
     request.body = JSON.stringify(input.body);
   }
@@ -145,10 +147,44 @@ const completeJellyfinStartup = async (baseUrl: string): Promise<void> => {
 const jellyfinIdentity = (authenticated: Readonly<Record<string, unknown>>): JellyfinIdentity => {
   const user = requiredObject(authenticated, "User", "the authenticated Jellyfin user");
   return {
-    primaryApiKey: requiredString(authenticated, "AccessToken"),
+    administratorAccessToken: requiredString(authenticated, "AccessToken"),
     primaryUserId: requiredString(user, "Id"),
     serverId: requiredString(authenticated, "ServerId"),
   };
+};
+const apiKeyForApp = async (
+  baseUrl: string,
+  authorization: string,
+  appName: string,
+): Promise<string> => {
+  const readKeys = async (): Promise<readonly Record<string, unknown>[]> => {
+    const body = await jsonResponse(
+      await fetch(new URL("Auth/Keys", baseUrl), { headers: { authorization } }),
+      HTTP_OK,
+    );
+    const items = body["Items"];
+    if (!Array.isArray(items)) {
+      throw new TypeError("expected Jellyfin API keys");
+    }
+    return items.map((item) => jsonObject(item, "expected Jellyfin API key"));
+  };
+  const existingKeys = await readKeys();
+  let apiKey = existingKeys.find((item) => item["AppName"] === appName);
+  if (apiKey === undefined) {
+    expectResponseStatus(
+      await jellyfinPost(baseUrl, {
+        authorization,
+        path: `Auth/Keys?app=${encodeURIComponent(appName)}`,
+      }),
+      HTTP_NO_CONTENT,
+    );
+    const createdKeys = await readKeys();
+    apiKey = createdKeys.find((item) => item["AppName"] === appName);
+  }
+  if (apiKey === undefined) {
+    throw new TypeError("expected created Jellyfin API key");
+  }
+  return requiredString(apiKey, "AccessToken");
 };
 
 const provisionSecondaryUsers = async (
@@ -180,16 +216,22 @@ const provisionSecondaryUsers = async (
 
 const configuredJellyfinFixture = async (baseUrl: string): Promise<JellyfinFixture> => {
   const authenticated = await authenticateJellyfin(baseUrl, "nama-primary");
-  const replacement = await authenticateJellyfin(baseUrl, "nama-replacement");
   const identity = jellyfinIdentity(authenticated);
-  const administration = jellyfinAuthorization("nama-primary", identity.primaryApiKey);
+  const administration = jellyfinAuthorization("nama-primary", identity.administratorAccessToken);
   const secondaryUsers = await provisionSecondaryUsers(baseUrl, administration);
   await ensureRepresentativeMedia(baseUrl, administration, identity.primaryUserId);
+  const primaryApiKey = await apiKeyForApp(baseUrl, administration, "Nama Integration Primary");
+  const replacementApiKey = await apiKeyForApp(
+    baseUrl,
+    administration,
+    "Nama Integration Replacement",
+  );
   return {
     baseUrl,
     ...identity,
     ...secondaryUsers,
-    replacementApiKey: requiredString(replacement, "AccessToken"),
+    primaryApiKey,
+    replacementApiKey,
   };
 };
 
@@ -199,8 +241,9 @@ const revokeJellyfinCredential = (fixture: JellyfinFixture) =>
     try: async (): Promise<void> => {
       expectResponseStatus(
         await jellyfinPost(fixture.baseUrl, {
-          authorization: jellyfinAuthorization("nama-primary", fixture.primaryApiKey),
-          path: "Sessions/Logout",
+          authorization: jellyfinAuthorization("nama-replacement", fixture.replacementApiKey),
+          method: "DELETE",
+          path: `Auth/Keys/${fixture.primaryApiKey}`,
         }),
         HTTP_NO_CONTENT,
       );

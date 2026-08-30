@@ -542,6 +542,10 @@ it.live(
                       "artwork_resolve",
                       "watch_state_read",
                       "watched_write",
+                      "playback_plan",
+                      "playback_open",
+                      "playback_report",
+                      "playback_reports_user_state",
                     ],
                     configuration_schema: {
                       additionalProperties: false,

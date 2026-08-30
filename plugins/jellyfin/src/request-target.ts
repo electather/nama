@@ -130,7 +130,7 @@ const applyConfinedQuery = (
 const confinedEndpoint = (
   baseUrl: URL,
   pathSegments: readonly string[],
-  query: Readonly<Record<string, string>> | undefined,
+  query?: Readonly<Record<string, string>>,
 ) => {
   if (
     pathSegments.length === EMPTY_LENGTH ||
