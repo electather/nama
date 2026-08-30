@@ -8,17 +8,23 @@ internal sealed record StoredPlaybackPlan(
     PlaybackPlan Plan,
     DateTimeOffset ExpiresAt);
 
+internal sealed record PlaybackOpenRequest(
+    string OperationId,
+    string PlanId,
+    int? AudioTrackIndex,
+    int? SubtitleTrackIndex);
+
 internal sealed class PlaybackSessionState
 {
   public PlaybackSessionState(
       PlaybackPlan plan,
-      string openSignature,
+      PlaybackOpenRequest openRequest,
       string jellyfinSessionId,
       DateTimeOffset expiresAt,
       OpenPlaybackOutput output)
   {
     Plan = plan;
-    OpenSignature = openSignature;
+    OpenRequest = openRequest;
     JellyfinSessionId = jellyfinSessionId;
     ExpiresAt = expiresAt;
     Output = output;
@@ -30,7 +36,7 @@ internal sealed class PlaybackSessionState
 
   public PlaybackPlan Plan { get; }
 
-  public string OpenSignature { get; }
+  public PlaybackOpenRequest OpenRequest { get; }
 
   public string JellyfinSessionId { get; }
 
@@ -55,6 +61,8 @@ internal sealed class PlaybackSessionStore
   private readonly ConcurrentDictionary<string, StoredPlaybackPlan> _plansByNonce = new(StringComparer.Ordinal);
   private readonly ConcurrentDictionary<string, PlaybackSessionState> _sessionsById = new(StringComparer.Ordinal);
   private readonly ConcurrentDictionary<string, PlaybackSessionState> _sessionsByPlanNonce = new(StringComparer.Ordinal);
+  private readonly ConcurrentDictionary<string, PlaybackSessionState> _sessionsByPlanId = new(StringComparer.Ordinal);
+  private readonly ConcurrentDictionary<string, PlaybackSessionState> _sessionsByOperationId = new(StringComparer.Ordinal);
 
   public void StorePlan(PlaybackPlan plan, DateTimeOffset expiresAt)
   {
@@ -79,31 +87,55 @@ internal sealed class PlaybackSessionStore
   }
 
   public async Task<PlaybackSessionState> OpenAsync(
-      PlaybackPlan plan,
-      string openSignature,
-      Func<Task<PlaybackSessionState>> create)
+      PlaybackOpenRequest request,
+      Func<PlaybackPlan> resolveLivePlan,
+      Func<PlaybackPlan, Task<PlaybackSessionState>> create)
   {
     await _openGate.WaitAsync().ConfigureAwait(false);
     try
     {
       RemoveExpiredSessions();
-      if (_sessionsByPlanNonce.TryGetValue(plan.Nonce, out var existing))
+      if (_sessionsByOperationId.TryGetValue(request.OperationId, out var replay))
       {
-        if (!string.Equals(existing.OpenSignature, openSignature, StringComparison.Ordinal))
-        {
-          throw new PlaybackRequestException(StatusCodes.Status409Conflict);
-        }
-
-        return existing;
+        return RequireMatchingReplay(replay, request);
+      }
+      if (_sessionsByPlanId.ContainsKey(request.PlanId))
+      {
+        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
       }
 
-      var created = await create().ConfigureAwait(false);
+      var plan = resolveLivePlan();
+      if (_sessionsByPlanNonce.ContainsKey(plan.Nonce))
+      {
+        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+      }
+      var selectedAudioTrackIndex = request.AudioTrackIndex ?? plan.DefaultAudioTrackIndex;
+      if (selectedAudioTrackIndex != plan.DefaultAudioTrackIndex
+          || request.SubtitleTrackIndex is not null)
+      {
+        throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
+      }
+
+      var created = await create(plan).ConfigureAwait(false);
       if (!_sessionsByPlanNonce.TryAdd(plan.Nonce, created))
       {
         throw new PlaybackRequestException(StatusCodes.Status409Conflict);
       }
+      if (!_sessionsByPlanId.TryAdd(request.PlanId, created))
+      {
+        _sessionsByPlanNonce.TryRemove(plan.Nonce, out _);
+        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+      }
+      if (!_sessionsByOperationId.TryAdd(request.OperationId, created))
+      {
+        _sessionsByPlanId.TryRemove(request.PlanId, out _);
+        _sessionsByPlanNonce.TryRemove(plan.Nonce, out _);
+        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+      }
       if (!_sessionsById.TryAdd(created.Output.SessionId, created))
       {
+        _sessionsByOperationId.TryRemove(request.OperationId, out _);
+        _sessionsByPlanId.TryRemove(request.PlanId, out _);
         _sessionsByPlanNonce.TryRemove(plan.Nonce, out _);
         throw new PlaybackRequestException(StatusCodes.Status409Conflict);
       }
@@ -142,8 +174,29 @@ internal sealed class PlaybackSessionStore
     foreach (var session in _sessionsById.Values.Where(session => session.ExpiresAt <= now).ToArray())
     {
       _sessionsById.TryRemove(session.Output.SessionId, out _);
+      _sessionsByPlanId.TryRemove(session.OpenRequest.PlanId, out _);
       _sessionsByPlanNonce.TryRemove(session.Plan.Nonce, out _);
+      _sessionsByOperationId.TryRemove(session.OpenRequest.OperationId, out _);
       session.Gate.Dispose();
     }
   }
+
+  private static PlaybackSessionState RequireMatchingReplay(
+      PlaybackSessionState replay,
+      PlaybackOpenRequest request)
+  {
+    var selectedAudioTrackIndex =
+        request.AudioTrackIndex ?? replay.Output.SelectedAudioTrackIndex;
+    var selectedSubtitleTrackIndex =
+        request.SubtitleTrackIndex ?? replay.Output.SelectedSubtitleTrackIndex;
+    if (!string.Equals(replay.OpenRequest.PlanId, request.PlanId, StringComparison.Ordinal)
+        || selectedAudioTrackIndex != replay.Output.SelectedAudioTrackIndex
+        || selectedSubtitleTrackIndex != replay.Output.SelectedSubtitleTrackIndex)
+    {
+      throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+    }
+
+    return replay;
+  }
+
 }

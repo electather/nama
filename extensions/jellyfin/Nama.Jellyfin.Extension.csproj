@@ -24,11 +24,15 @@
     <PropertyGroup>
       <ExtensionPackageDirectory>$(IntermediateOutputPath)extension-package</ExtensionPackageDirectory>
       <ExtensionArtifact>$(MSBuildProjectDirectory)/artifacts/$(AssemblyName)-$(Version)-jellyfin-10.11.11.zip</ExtensionArtifact>
+      <ExtensionFixtureDirectory>$(MSBuildProjectDirectory)/artifacts/fixture</ExtensionFixtureDirectory>
     </PropertyGroup>
     <RemoveDir Directories="$(ExtensionPackageDirectory)" />
     <MakeDir Directories="$(ExtensionPackageDirectory);$([System.IO.Path]::GetDirectoryName('$(ExtensionArtifact)'))" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ExtensionPackageDirectory)" />
     <Delete Files="$(ExtensionArtifact)" />
     <ZipDirectory SourceDirectory="$(ExtensionPackageDirectory)" DestinationFile="$(ExtensionArtifact)" />
+    <RemoveDir Directories="$(ExtensionFixtureDirectory)" />
+    <MakeDir Directories="$(ExtensionFixtureDirectory)" />
+    <Unzip SourceFiles="$(ExtensionArtifact)" DestinationFolder="$(ExtensionFixtureDirectory)" />
   </Target>
 </Project>

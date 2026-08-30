@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { Code, ConnectError } from "@connectrpc/connect";
 import { PluginConnectionStatus, ProviderCapability } from "@nama/api/nama/plugin/v1/plugin_pb.js";
 
 import { jellyfinStockCapabilities } from "./info.ts";
@@ -26,6 +27,11 @@ interface JellyfinConnectionContext {
   readonly apiKey: string;
   readonly baseUrl: string;
   readonly userId: string;
+}
+
+interface JellyfinExtensionContext {
+  readonly apiKey: string;
+  readonly baseUrl: string;
 }
 
 const boundedRemoteText = (value: unknown): string | undefined => {
@@ -76,6 +82,20 @@ const extensionPlaybackCapabilities = async (request: JellyfinRequest, signal: A
     return [];
   }
   return compatibleExtensionCapabilities(response.body);
+};
+
+const requireJellyfinExtensionPlayback = async (
+  context: JellyfinExtensionContext,
+  signal: AbortSignal,
+) => {
+  const request = createJellyfinRequest(context);
+  if (request === undefined) {
+    throw new ConnectError("Jellyfin extension playback is unavailable", Code.Unimplemented);
+  }
+  const capabilities = await extensionPlaybackCapabilities(request, signal);
+  if (capabilities.length === EMPTY_LENGTH) {
+    throw new ConnectError("Jellyfin extension playback is unavailable", Code.Unimplemented);
+  }
 };
 
 const nonConnected = (status: PluginConnectionStatus, summary: string) => ({
@@ -188,5 +208,5 @@ const getJellyfinConnection = async (context: JellyfinConnectionContext, signal:
   };
 };
 
-export { getJellyfinConnection };
+export { getJellyfinConnection, requireJellyfinExtensionPlayback };
 export type { JellyfinConnectionContext };

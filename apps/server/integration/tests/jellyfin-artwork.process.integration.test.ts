@@ -42,13 +42,6 @@ const STOCK_CAPABILITIES = [
   ProviderCapability.WATCH_STATE_READ,
   ProviderCapability.WATCHED_WRITE,
 ];
-const PLUGIN_CAPABILITIES = [
-  ...STOCK_CAPABILITIES,
-  ProviderCapability.PLAYBACK_PLAN,
-  ProviderCapability.PLAYBACK_OPEN,
-  ProviderCapability.PLAYBACK_REPORT,
-  ProviderCapability.PLAYBACK_REPORTS_USER_STATE,
-];
 const REDIRECT_WIDTH = 301;
 const PROTECTED_WIDTH = 401;
 const MISSING_WIDTH = 404;
@@ -271,7 +264,7 @@ it.live(
           {},
           CALL_DEADLINE_MILLISECONDS,
         );
-        expect(info.pluginInfo?.capabilities).toEqual(PLUGIN_CAPABILITIES);
+        expect(info.pluginInfo?.capabilities).toEqual(STOCK_CAPABILITIES);
 
         const connection = yield* plugin.call(
           PluginService.method.getConnection,

@@ -2,6 +2,7 @@ import type { ConnectRouter } from "@connectrpc/connect";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { PlaybackService } from "@nama/api/nama/plugin/v1/playback_pb.js";
 
+import { requireJellyfinExtensionPlayback } from "./connection.ts";
 import {
   closeJellyfinPlayback,
   openJellyfinPlayback,
@@ -19,27 +20,55 @@ const requireInstanceLaunch = (launch: LaunchDocument): ProviderLaunchDocument =
   return launch;
 };
 
+const requireCompatibleInstance = async (launch: LaunchDocument, signal: AbortSignal) => {
+  const instance = requireInstanceLaunch(launch);
+  await requireJellyfinExtensionPlayback(
+    {
+      apiKey: instance.credentials.api_key,
+      baseUrl: instance.configuration.base_url,
+    },
+    signal,
+  );
+  return instance;
+};
+
 const registerJellyfinPlaybackService = (
   router: ConnectRouter,
   launch: LaunchDocument,
   requireAuthorization: RequireAuthorization,
 ): void => {
   router.service(PlaybackService, {
-    closePlayback: (request, context) => {
+    closePlayback: async (request, context) => {
       requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
-      return closeJellyfinPlayback(requireInstanceLaunch(launch), request, context.signal);
+      return closeJellyfinPlayback(
+        await requireCompatibleInstance(launch, context.signal),
+        request,
+        context.signal,
+      );
     },
-    openPlayback: (request, context) => {
+    openPlayback: async (request, context) => {
       requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
-      return openJellyfinPlayback(requireInstanceLaunch(launch), request, context.signal);
+      return openJellyfinPlayback(
+        await requireCompatibleInstance(launch, context.signal),
+        request,
+        context.signal,
+      );
     },
-    planPlayback: (request, context) => {
+    planPlayback: async (request, context) => {
       requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
-      return planJellyfinPlayback(requireInstanceLaunch(launch), request, context.signal);
+      return planJellyfinPlayback(
+        await requireCompatibleInstance(launch, context.signal),
+        request,
+        context.signal,
+      );
     },
-    reportPlayback: (request, context) => {
+    reportPlayback: async (request, context) => {
       requireAuthorization(context.requestHeader.get("authorization"), launch.bearer);
-      return reportJellyfinPlayback(requireInstanceLaunch(launch), request, context.signal);
+      return reportJellyfinPlayback(
+        await requireCompatibleInstance(launch, context.signal),
+        request,
+        context.signal,
+      );
     },
   });
 };

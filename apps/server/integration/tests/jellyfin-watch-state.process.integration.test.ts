@@ -300,10 +300,6 @@ const targetedMovieWatchStateTest = () => {
       ProviderCapability.ARTWORK_RESOLVE,
       ProviderCapability.WATCH_STATE_READ,
       ProviderCapability.WATCHED_WRITE,
-      ProviderCapability.PLAYBACK_PLAN,
-      ProviderCapability.PLAYBACK_OPEN,
-      ProviderCapability.PLAYBACK_REPORT,
-      ProviderCapability.PLAYBACK_REPORTS_USER_STATE,
     ]);
     const beforeCallSeconds = BigInt(Math.floor(Date.now() / MILLISECONDS_PER_SECOND));
     const response = yield* callWatchStates(plugin, [{ itemId: MOVIE_ID }]);

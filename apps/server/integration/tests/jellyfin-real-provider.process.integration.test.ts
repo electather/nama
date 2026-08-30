@@ -1,6 +1,7 @@
 // oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, import/max-dependencies, unicorn/max-nested-calls -- The ordered real-provider proof keeps one subprocess lifecycle, exact fixture values, and watched-state transitions visible across the real Jellyfin boundary.
 import { join } from "node:path";
 
+import { Code } from "@connectrpc/connect";
 import { expect, it } from "@effect/vitest";
 import {
   ArtworkAuthorizationScope,
@@ -35,21 +36,28 @@ import type {
   WatchStateMutationResult,
   WatchStateReadResult,
 } from "@nama/api/nama/plugin/v1/watch_state_pb.js";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Fiber } from "effect";
 
 import { catalogPageFromPlugin } from "../../src/catalog/catalog-item-mapper.ts";
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 import { restartJellyfin } from "./jellyfin-extension-restart.test-support.ts";
+import { acquireJellyfinFaultProxy } from "./jellyfin-fault-proxy.test-support.ts";
 import { provisionJellyfin } from "./provider-durable-loop.test-support.ts";
 
 const JELLYFIN_PLUGIN_PATH = join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts");
 const CALL_DEADLINE_MILLISECONDS = 10_000;
-const TEST_TIMEOUT_MILLISECONDS = 120_000;
-const EXPECTED_CAPABILITIES = [
+const EXPIRY_OBSERVATION_DELAY_MILLISECONDS = 1000;
+const PLAN_EXPIRY_WAIT_MILLISECONDS = 301_000;
+const SESSION_LIFETIME_MILLISECONDS = 1_801_000;
+const TEST_TIMEOUT_MILLISECONDS = 2_100_000;
+const STOCK_CAPABILITIES = [
   ProviderCapability.LIBRARY_READ,
   ProviderCapability.ARTWORK_RESOLVE,
   ProviderCapability.WATCH_STATE_READ,
   ProviderCapability.WATCHED_WRITE,
+];
+const EXPECTED_CAPABILITIES = [
+  ...STOCK_CAPABILITIES,
   ProviderCapability.PLAYBACK_PLAN,
   ProviderCapability.PLAYBACK_OPEN,
   ProviderCapability.PLAYBACK_REPORT,
@@ -170,6 +178,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
     Effect.scoped(
       Effect.gen(function* realJellyfinAdapterProof() {
         const jellyfin = yield* provisionJellyfin;
+        const faultProxy = yield* acquireJellyfinFaultProxy(jellyfin);
         const supervisor = yield* PluginSupervisor;
         const plugin = yield* supervisor.supervise(
           {
@@ -192,7 +201,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           {},
           CALL_DEADLINE_MILLISECONDS,
         );
-        expect(info.pluginInfo?.capabilities).toEqual(EXPECTED_CAPABILITIES);
+        expect(info.pluginInfo?.capabilities).toEqual(STOCK_CAPABILITIES);
 
         const connection = yield* plugin.call(
           PluginService.method.getConnection,
@@ -492,12 +501,19 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
             subtitlePreference: SubtitlePreference.AUTO,
           },
           sourceReference: movieSource,
-          startPosition: { nanos: 0, seconds: 0n },
         };
         const planned = yield* plugin.call(
           PlaybackService.method.planPlayback,
           directPlanRequest,
           CALL_DEADLINE_MILLISECONDS,
+        );
+        const unopenedPlan = required(
+          (yield* plugin.call(
+            PlaybackService.method.planPlayback,
+            directPlanRequest,
+            CALL_DEADLINE_MILLISECONDS,
+          )).plan,
+          "unopened playback plan",
         );
         const plan = required(planned.plan, "direct-progressive playback plan");
         expect(plan).toMatchObject({
@@ -509,9 +525,9 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           videoCodec: "h264",
         });
         expect(plan.defaultAudioTrackReference).toEqual(audioTrack);
+        const openStartedAt = Date.now();
         expect(plan.tracks).toHaveLength(1);
         const openRequest = {
-          audioTrackReference: plan.defaultAudioTrackReference,
           operationId: "real-extension-open",
           planId: plan.id,
           subtitle: plan.defaultSubtitle,
@@ -521,6 +537,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           openRequest,
           CALL_DEADLINE_MILLISECONDS,
         );
+        const openFinishedAt = Date.now();
         const replayedOpen = yield* plugin.call(
           PlaybackService.method.openPlayback,
           openRequest,
@@ -528,6 +545,57 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
         );
         const playbackLease = required(opened.lease, "direct-progressive playback lease");
         expect(replayedOpen.lease).toEqual(playbackLease);
+        const equivalentPlanId = Buffer.from(plan.id, "base64url").toString("base64");
+        expect(equivalentPlanId).not.toBe(plan.id);
+        const equivalentPlanFailure = yield* plugin
+          .call(
+            PlaybackService.method.openPlayback,
+            {
+              operationId: "equivalent-plan-open",
+              planId: equivalentPlanId,
+              subtitle: plan.defaultSubtitle,
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(
+            Effect.flatMap(() => Effect.fail(new Error("equivalent plan opened twice"))),
+            Effect.flip,
+          );
+        expect(equivalentPlanFailure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.FailedPrecondition,
+        });
+        yield* Effect.sleep(PLAN_EXPIRY_WAIT_MILLISECONDS);
+        const replayedAfterPlanExpiry = yield* plugin.call(
+          PlaybackService.method.openPlayback,
+          openRequest,
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(replayedAfterPlanExpiry.lease).toEqual(playbackLease);
+        const leaseExpiry = required(playbackLease.expiresAt, "playback lease expiry");
+        const leaseExpiryMilliseconds =
+          Number(leaseExpiry.seconds) * 1000 + leaseExpiry.nanos / 1_000_000;
+        expect(leaseExpiryMilliseconds).toBeGreaterThanOrEqual(
+          openStartedAt + SESSION_LIFETIME_MILLISECONDS,
+        );
+        expect(leaseExpiryMilliseconds).toBeLessThanOrEqual(
+          openFinishedAt + SESSION_LIFETIME_MILLISECONDS,
+        );
+        const expiredUnopenedPlanFailure = yield* plugin
+          .call(
+            PlaybackService.method.openPlayback,
+            {
+              operationId: "expired-unopened-plan",
+              planId: unopenedPlan.id,
+              subtitle: unopenedPlan.defaultSubtitle,
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(expiredUnopenedPlanFailure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.FailedPrecondition,
+        });
         expect(playbackLease).toMatchObject({
           authorizationScope: PlaybackAuthorizationScope.SESSION,
           headers: [{ name: "X-Nama-Playback-Lease" }],
@@ -569,6 +637,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           }),
         );
         expect(authorizedHead.status).toBe(200);
+        expect(authorizedHead.headers.get("location")).toBeNull();
         expect((yield* Effect.promise(() => authorizedHead.arrayBuffer())).byteLength).toBe(0);
         const authorizedMedia = yield* Effect.promise(() =>
           fetch(playbackLease.url, {
@@ -577,6 +646,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           }),
         );
         expect(authorizedMedia.status).toBe(200);
+        expect(authorizedMedia.headers.get("location")).toBeNull();
         expect(
           (yield* Effect.promise(() => authorizedMedia.arrayBuffer())).byteLength,
         ).toBeGreaterThan(0);
@@ -589,7 +659,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
             stderrEvents: [],
           },
           {
-            configuration: { base_url: jellyfin.baseUrl, user_id: jellyfin.primaryUserId },
+            configuration: { base_url: faultProxy.baseUrl, user_id: jellyfin.primaryUserId },
             credentials: { api_key: jellyfin.primaryApiKey },
             kind: "instance",
             providerInstanceId: "real-jellyfin-provider-instance",
@@ -604,20 +674,62 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           )).connection?.capabilities,
         ).toEqual(EXPECTED_CAPABILITIES);
 
-        const { sessionContext } = playbackLease;
-        yield* replacementPlugin.call(
-          PlaybackService.method.reportPlayback,
-          {
-            eventId: "real-extension-report",
-            position: { nanos: 0, seconds: 0n },
-            selectedAudioTrackReference: playbackLease.selectedAudioTrackReference,
-            sequence: 1n,
-            sessionContext,
-            sessionId: playbackLease.sessionId,
-            state: PlaybackState.PLAYING,
-          },
-          CALL_DEADLINE_MILLISECONDS,
+        const planRequestsBeforeFaults = faultProxy.planRequests();
+        const malformedSecret = "real-extension-malformed-secret-sentinel";
+        faultProxy.malformNextPlanResponse(malformedSecret);
+        const malformedFailure = yield* replacementPlugin
+          .call(PlaybackService.method.planPlayback, directPlanRequest, CALL_DEADLINE_MILLISECONDS)
+          .pipe(Effect.flip);
+        expect(malformedFailure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.Internal,
+        });
+        expect(JSON.stringify(malformedFailure)).not.toContain(malformedSecret);
+        expect(JSON.stringify(malformedFailure)).not.toContain(jellyfin.primaryApiKey);
+
+        faultProxy.redirectNextPlanResponse();
+        const redirectFailure = yield* replacementPlugin
+          .call(PlaybackService.method.planPlayback, directPlanRequest, CALL_DEADLINE_MILLISECONDS)
+          .pipe(Effect.flip);
+        expect(redirectFailure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.FailedPrecondition,
+        });
+        expect(JSON.stringify(redirectFailure)).not.toContain("attacker.example");
+
+        const stalledPlan = faultProxy.stallNextPlanResponse();
+        const canceledPlanCall = yield* Effect.forkChild(
+          replacementPlugin.call(
+            PlaybackService.method.planPlayback,
+            directPlanRequest,
+            CALL_DEADLINE_MILLISECONDS,
+          ),
         );
+        yield* Effect.promise(() => stalledPlan.requestStarted);
+        yield* Fiber.interrupt(canceledPlanCall);
+        yield* Effect.promise(() => stalledPlan.cancellationObserved);
+        expect(faultProxy.planRequests() - planRequestsBeforeFaults).toBe(3);
+
+        const { sessionContext } = playbackLease;
+        faultProxy.loseNextReportResponse();
+        const reportFailure = yield* replacementPlugin
+          .call(
+            PlaybackService.method.reportPlayback,
+            {
+              eventId: "real-extension-report",
+              position: { nanos: 0, seconds: 0n },
+              sequence: 1n,
+              sessionContext,
+              sessionId: playbackLease.sessionId,
+              state: PlaybackState.PLAYING,
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(reportFailure).toMatchObject({ _tag: "PluginRpcError", code: Code.Unavailable });
+        expect(faultProxy.reportRequests()).toBe(1);
+        expect(faultProxy.committedLostReportResponses()).toBe(1);
+        expect(JSON.stringify(reportFailure)).not.toContain(jellyfin.primaryApiKey);
         const closeRequest = {
           finalPosition: { nanos: 0, seconds: 0n },
           operationId: "real-extension-close",
@@ -718,6 +830,18 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           ),
         );
         expect(Exit.isFailure(lostSessionExit)).toBe(true);
+        const remainingLeaseLifetime =
+          leaseExpiryMilliseconds - Date.now() + EXPIRY_OBSERVATION_DELAY_MILLISECONDS;
+        if (remainingLeaseLifetime > 0) {
+          yield* Effect.sleep(remainingLeaseLifetime);
+        }
+        const expiredMedia = yield* Effect.promise(() =>
+          fetch(new URL(new URL(playbackLease.url).pathname, restartedBaseUrl), {
+            headers: mediaHeaders,
+            redirect: "manual",
+          }),
+        );
+        expect(expiredMedia.status).toBe(401);
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),
   TEST_TIMEOUT_MILLISECONDS,

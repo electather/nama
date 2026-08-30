@@ -37,12 +37,12 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
           UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 
-    serviceCollection
-        .AddDataProtection()
-        .SetApplicationName(DataProtectionApplicationName)
-        .PersistKeysToFileSystem(keyRingDirectory);
+    serviceCollection.AddSingleton(
+        _ => new PlaybackTokenService(
+            DataProtectionProvider.Create(
+                keyRingDirectory,
+                builder => builder.SetApplicationName(DataProtectionApplicationName))));
     serviceCollection.AddSingleton(new ExtensionHostCompatibility(applicationHost));
-    serviceCollection.AddSingleton<PlaybackTokenService>();
     serviceCollection.AddSingleton<PlaybackSessionStore>();
     serviceCollection.AddSingleton<PlaybackRuntimeService>();
     serviceCollection.AddTransient<IStartupFilter, PlaybackStartupFilter>();

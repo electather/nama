@@ -84,21 +84,20 @@ internal sealed class PlaybackRuntimeService
     var input = Deserialize<OpenPlaybackInput>(body);
     var operationId = RequiredText(input.OperationId, MaximumOperationLength);
     var planId = RequiredText(input.PlanId, MaximumIdentifierLength);
-    var planNonce = _tokens.UnprotectPlan(planId, out _);
-    var plan = _sessions.GetPlan(planNonce);
-    if (input.AudioTrackIndex != plan.DefaultAudioTrackIndex || input.SubtitleTrackIndex is not null)
-    {
-      throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
-    }
-
+    var openRequest = new PlaybackOpenRequest(
+        operationId,
+        planId,
+        input.AudioTrackIndex,
+        input.SubtitleTrackIndex);
     var apiKey = ApiKeyFrom(authorizationHeaders);
-    var openSignature = string.Create(
-        CultureInfo.InvariantCulture,
-        $"{operationId}\n{plan.DefaultAudioTrackIndex}\n-");
     var state = await _sessions.OpenAsync(
-        plan,
-        openSignature,
-        async () => await CreateSessionAsync(plan, apiKey, openSignature).ConfigureAwait(false))
+        openRequest,
+        () =>
+        {
+          var planNonce = _tokens.UnprotectPlan(openRequest.PlanId, out _);
+          return _sessions.GetPlan(planNonce);
+        },
+        async plan => await CreateSessionAsync(plan, openRequest, apiKey).ConfigureAwait(false))
         .ConfigureAwait(false);
     return state.Output;
   }
@@ -120,15 +119,19 @@ internal sealed class PlaybackRuntimeService
 
     var positionTicks = DurationTicks(input.Position, state.Plan.RuntimeTicks);
     ValidateDuration(input.Duration, state.Plan.RuntimeTicks);
-    if (input.SelectedAudioTrackIndex != state.Plan.DefaultAudioTrackIndex
-        || input.SelectedSubtitleTrackIndex is not null)
+    var selectedAudioTrackIndex =
+        input.SelectedAudioTrackIndex ?? state.Output.SelectedAudioTrackIndex;
+    var selectedSubtitleTrackIndex =
+        input.SelectedSubtitleTrackIndex ?? state.Output.SelectedSubtitleTrackIndex;
+    if (selectedAudioTrackIndex != state.Output.SelectedAudioTrackIndex
+        || selectedSubtitleTrackIndex != state.Output.SelectedSubtitleTrackIndex)
     {
       throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
     }
 
     var reportSignature = string.Create(
         CultureInfo.InvariantCulture,
-        $"{sequence}\n{input.State}\n{positionTicks}\n{input.SelectedAudioTrackIndex}\n-");
+        $"{sequence}\n{input.State}\n{positionTicks}\n{selectedAudioTrackIndex}\n-");
     await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
     try
     {
@@ -301,7 +304,9 @@ internal sealed class PlaybackRuntimeService
           "PROFILE_UNSUPPORTED");
     }
 
-    var startPosition = DurationTicks(input.StartPosition, source.RunTimeTicks.Value);
+    var startPosition = input.StartPosition is null
+        ? 0
+        : DurationTicks(input.StartPosition, source.RunTimeTicks.Value);
     if (startPosition > source.RunTimeTicks.Value)
     {
       throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
@@ -349,8 +354,8 @@ internal sealed class PlaybackRuntimeService
 
   private async Task<PlaybackSessionState> CreateSessionAsync(
       PlaybackPlan plan,
-      string apiKey,
-      string openSignature)
+      PlaybackOpenRequest openRequest,
+      string apiKey)
   {
     var user = _userManager.GetUserById(plan.UserId)
         ?? throw new PlaybackRequestException(StatusCodes.Status404NotFound);
@@ -393,7 +398,7 @@ internal sealed class PlaybackRuntimeService
         sessionContext);
     return new PlaybackSessionState(
         plan,
-        openSignature,
+        openRequest,
         jellyfinSession.Id,
         expiresAt,
         output);

@@ -67,7 +67,7 @@ services:
       - jellyfin-cache:/cache
       - jellyfin-config:/config
       - jellyfin-media:/media:ro
-      - ../../../../extensions/jellyfin/bin/Release/net9.0/Nama.Jellyfin.Extension.dll:/config/plugins/Nama_1.0.0/Nama.Jellyfin.Extension.dll:ro
+      - ../../../../extensions/jellyfin/artifacts/fixture/Nama.Jellyfin.Extension.dll:/config/plugins/Nama_1.0.0/Nama.Jellyfin.Extension.dll:ro
 
 volumes:
   jellyfin-cache:

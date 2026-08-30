@@ -216,6 +216,13 @@ it.live("derives playback capabilities only from a compatible extension handshak
         providerInstanceId: "incompatible-extension",
       });
 
+      const staticInfo = yield* compatiblePlugin.call(
+        PluginService.method.getInfo,
+        {},
+        CALL_DEADLINE_MILLISECONDS,
+      );
+      expect(staticInfo.pluginInfo?.capabilities).toEqual(STOCK_CAPABILITIES);
+
       const compatibleConnection = yield* compatiblePlugin.call(
         PluginService.method.getConnection,
         {},
@@ -246,6 +253,50 @@ it.live("derives playback capabilities only from a compatible extension handshak
     }).pipe(Effect.provide(PluginSupervisor.layer())),
   ),
 );
+
+it.live("rejects playback dispatch without a compatible extension handshake", () => {
+  const requests: string[] = [];
+  const now = Date.now();
+  const playbackHandler = lifecycleHandler({
+    planExpiresAt: new Date(now + 5 * 60 * 1000).toISOString(),
+    requests,
+    sessionExpiresAt: new Date(now + 60 * 60 * 1000).toISOString(),
+  });
+  const incompatibleHandshake = connectionHandler({
+    capabilities: ["direct_progressive", "playback_telemetry"],
+    extension_version: "2.0.0",
+    protocol: "nama.jellyfin.extension",
+    protocol_version: 2,
+  });
+  const handler: ControlledHandler = (request, response, observation) => {
+    if (
+      new URL(observation.url, "http://jellyfin.invalid").pathname === "/jellyfin/Nama/v1/handshake"
+    ) {
+      incompatibleHandshake(request, response, observation);
+      return;
+    }
+    playbackHandler(request, response, observation);
+  };
+  return Effect.scoped(
+    Effect.gen(function* incompatiblePlaybackScenario() {
+      const jellyfin = yield* controlledJellyfin(handler);
+      const supervisor = yield* PluginSupervisor;
+      const plugin = yield* superviseJellyfin(supervisor, jellyfin, {
+        providerInstanceId: "incompatible-playback-extension",
+      });
+
+      const failure = yield* plugin
+        .call(PlaybackService.method.planPlayback, directPlanRequest, CALL_DEADLINE_MILLISECONDS)
+        .pipe(
+          Effect.flatMap(() => Effect.fail(new Error("playback unexpectedly dispatched"))),
+          Effect.flip,
+        );
+
+      expect(failure).toMatchObject({ _tag: "PluginRpcError", code: Code.Unimplemented });
+      expect(requests).toEqual([]);
+    }).pipe(Effect.provide(PluginSupervisor.layer())),
+  );
+});
 
 it.live("retains stock capabilities when the optional extension handshake stalls", () => {
   const baseConnectionHandler = connectionHandler();
@@ -555,7 +606,7 @@ it.live("rejects malformed extension output without exposing its body", () => {
         .pipe(Effect.flip);
       expect(failure).toMatchObject({ _tag: "PluginRpcError", code: Code.Internal });
       expect(JSON.stringify(failure)).not.toContain(secret);
-      expect(requests).toEqual(["/jellyfin/Nama/v1/playback/plans"]);
+      expect(requests).toEqual(["/jellyfin/Nama/v1/handshake", "/jellyfin/Nama/v1/playback/plans"]);
     }).pipe(Effect.provide(PluginSupervisor.layer())),
   );
 });

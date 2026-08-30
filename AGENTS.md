@@ -66,6 +66,9 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Advertise Jellyfin extension-backed playback and coherent-progress capabilities only after an authenticated compatible extension handshake; a missing, unhealthy, or incompatible extension leaves the implemented stock capabilities unchanged.
 - Require an actual Jellyfin API key on every private `/Nama/v1` control endpoint; never accept a user/device access token or label one as an API key in integration fixtures.
 - Bound the optional extension handshake independently from `GetConnection`; a stalled or unhealthy extension must preserve the already-verified stock capability result while caller cancellation still propagates.
+- Build the Jellyfin extension's playback Data Protection provider outside Jellyfin's host service collection; never configure the host-wide provider for extension lease keys.
+- Extract the packaged Jellyfin extension archive before fixture startup and mount its DLL into a writable plugin directory; a read-only directory prevents Jellyfin from writing `meta.json`.
+- Resolve an operation- and request-bound successful playback open before enforcing plan expiry, and retain that replay binding for the playback session lifetime.
 - Keep extension plan identifiers within the plugin contract's 256-character bound and advertise only track choices that `OpenPlayback` can materialize.
 - Keep every Nama-exposed Jellyfin media, playlist child, key, and subtitle URL in the opaque extension namespace with a scoped header; never expose stock paths, provider IDs, `ApiKey`, or broad authorization.
 - Treat independently discovered stock Jellyfin routes as outside Nama's scoped-access guarantee; never claim that the extension hardens or changes their behavior.
