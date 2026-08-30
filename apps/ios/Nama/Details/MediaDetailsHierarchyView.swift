@@ -181,19 +181,15 @@ struct MediaDetailsChildrenView: View {
       if state.confirmedItems.isEmpty {
         emptyOrLoadingContent
       } else {
-        VStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
-          ForEach(state.confirmedItems) { item in
-            MediaChildRow(
-              item: item,
-              childDidAppear: childDidAppear,
-              artwork: artwork
-            )
-            #if os(tvOS)
-              .focused($focusedChildIdentity, equals: item.identity)
-            #endif
+        #if os(tvOS)
+          VStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
+            childRows
           }
-          pageFooter
-        }
+        #else
+          LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
+            childRows
+          }
+        #endif
       }
     }
     #if os(tvOS)
@@ -204,6 +200,21 @@ struct MediaDetailsChildrenView: View {
         focusedChildIdentity = firstChildIdentity
       }
     #endif
+  }
+
+  @ViewBuilder
+  private var childRows: some View {
+    ForEach(state.confirmedItems) { item in
+      MediaChildRow(
+        item: item,
+        childDidAppear: childDidAppear,
+        artwork: artwork
+      )
+      #if os(tvOS)
+        .focused($focusedChildIdentity, equals: item.identity)
+      #endif
+    }
+    pageFooter
   }
 
   #if os(tvOS)

@@ -255,3 +255,23 @@ nonisolated func mediaChildrenTelevisionAction(
     nil
   }
 }
+
+nonisolated enum MediaDetailsTelevisionFocusAction: Equatable, Sendable {
+  case play
+  case retry
+  case sources
+}
+
+nonisolated func mediaDetailsTelevisionFocusAction(
+  playability: MediaPlayability,
+  hasSources: Bool,
+  retryIsEnabled: Bool
+) -> MediaDetailsTelevisionFocusAction? {
+  if playability == .playable {
+    return .play
+  }
+  if playability == .temporarilyUnavailable, retryIsEnabled {
+    return .retry
+  }
+  return hasSources ? .sources : nil
+}

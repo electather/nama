@@ -149,18 +149,22 @@ onscreen content target; Details now materializes its bounded actions eagerly,
 assigns the first actionable focus explicitly, and keeps Refresh in the tvOS
 content flow. The temporary token and forced-Source harness was removed.
 
-The Apple Development-signed sandboxed Mac production-catalog run retained the
-expected network entitlements and exercised a composited Home, both Library
-kinds, typed Search, decoded and fallback canonical artwork,
-Movie/Show/Season/Episode Details, Show → Season → Episode children, Play,
-pointer navigation, keyboard entry, native Back, and return-scroll restoration.
-The canonical Source chooser loaded its real normalized Source, Part, Video, and
-Audio technical fields; pointer input activated Play This Source and produced a
-visible source-specific typed Play intent. VoiceOver activated on the live Home
-window and captioned its toolbar focus. VoiceOver reading and focus order across
-loaded Home content, Library/Search, Details, and Sources, compact iPad collapse,
-expiry-driven actual-surface refresh, and physical Apple hardware remain
-unverified.
+The pre-cleanup Mac production-catalog run exercised Home, both Library kinds,
+typed Search, every Details kind, hierarchy, and keyboard and pointer input; its
+exact Source route depended on a temporary DEBUG-only ID route, so it is
+supporting evidence rather than final-artifact acceptance. After every harness
+was removed, the final tree built with an Apple Development authority and the
+expected sandbox, client-network, and loopback-server entitlements. Under the
+current locked desktop graphical session, launching that artifact created a Nama
+process with zero windows, so the required permanent-artifact
+browse/search/details/source flow remains unverified.
+
+The production-backed Apple TV run did not exercise Load More or Retry recovery.
+VoiceOver previously activated on the live Home window and captioned its toolbar
+focus, but representative labels, reading order, action names, and focus order
+across Home, Library/Search, Details, and Sources remain unverified. Compact iPad
+collapse, expiry-driven actual-surface refresh, and physical Apple hardware also
+remain unverified.
 
 ## Product Principles
 

@@ -40,18 +40,20 @@ typed Play intents on signed iPhone and iPad simulators. Apple TV keyboard and
 remote input selected a live Search result, traversed Show → Season → Episode,
 focused Play, used explicit Back with Episode-row focus restoration, inspected
 the canonical Source, and focused and activated Play This Source. The temporary
-DEBUG-only token and forced-Source harness was removed. The Apple
-Development-signed sandboxed Mac production-catalog run retained the expected
-entitlements and exercised a composited Home, both Library kinds, typed Search,
-decoded and fallback canonical artwork, every Details kind, the
-Show → Season → Episode hierarchy, Play, pointer navigation, keyboard entry,
-native Back, and return-scroll restoration. The canonical Source chooser loaded
-its real normalized Source, Part, Video, and Audio technical fields; pointer
-input activated Play This Source and produced a visible source-specific typed
-Play intent. VoiceOver activated on the live Home window and captioned its
-toolbar focus. VoiceOver reading order across loaded Home content,
-Library/Search, Details, and Sources, compact iPad collapse, physical Apple
-hardware, and expiry-driven actual-surface refresh remain unverified.
+DEBUG-only token and forced-Source harness was removed. The pre-cleanup Mac
+production-catalog run exercised Home, both Library kinds, typed Search, every
+Details kind, hierarchy, and keyboard and pointer input, but its exact Source
+path depended on a temporary DEBUG-only ID route. After every harness was
+removed, the final tree built with an Apple Development authority and the
+expected sandbox, client-network, and loopback-server entitlements. Its launch
+under the current locked desktop graphical session created a Nama process with
+zero windows, so the complete permanent-artifact Mac flow remains unverified.
+The production-backed Apple TV run did not exercise Load More or Retry recovery.
+VoiceOver previously activated and captioned the live Home toolbar, but
+representative labels, reading order, action names, and focus order across Home,
+Library/Search, Details, and Sources remain unverified. Compact iPad collapse,
+physical Apple hardware, and expiry-driven actual-surface refresh also remain
+unverified.
 
 The controlled playback presentation rendered on iPhone 17 Pro and iPad Pro
 13-inch (M5) simulators, an Apple TV 4K (3rd generation) 1080p simulator, and an
@@ -451,20 +453,30 @@ Show result, traversed Season and Episode Details, focused and activated Play,
 used an explicit Details Back action, and returned focus to the Episode row.
 The initial run exposed that lazy Details/child materialization and toolbar-only
 Refresh left the remote focus engine without an onscreen content target. The
-corrected run eagerly materialized the bounded actions, focused the first child,
-primary Play, and inspected-Source Play action, and retained an in-flow Refresh.
-Apple TV then inspected the imported Episode Source, focused Play This Source,
-and emitted the source-specific intent. The temporary token and forced-Source
-harness was removed before repository verification.
+corrected run eagerly materialized the bounded tvOS actions, focused the first
+child, primary Play, and inspected-Source Play action, and retained an in-flow
+Refresh. Apple TV then inspected the imported Episode Source, focused Play This
+Source, and emitted the source-specific intent. The temporary token and
+forced-Source harness was removed before repository verification. This
+production-backed run did not exercise Load More or Retry recovery.
 
-The latest Mac artifact was Apple Development-signed and sandboxed with client
-and loopback-server network entitlements. It created an onscreen Home window and
-rendered its loading surface before the desktop graphical session locked; the
-complete live Mac browse/search/details/source flow could not run afterward.
-The run also exposed no usable VoiceOver output or reading-order surface. Live
-Mac input, VoiceOver inspection, compact iPad collapse, physical Apple hardware,
-and expiry-driven actual-surface refresh remain explicitly unverified rather
-than inferred from simulator, accessibility-tree, or fixture evidence.
+The pre-cleanup Mac production-catalog run exercised Home, both Library kinds,
+typed Search, every Details kind, hierarchy, and keyboard and pointer input, but
+its exact Source route depended on the temporary DEBUG-only ID route. It is
+supporting evidence rather than final-artifact acceptance. After every harness
+was removed, the final tree was rebuilt with an Apple Development authority; its
+sandbox, client-network, and loopback-server entitlements were verified. During
+the final launch attempt, the locked desktop graphical session stayed black
+after an explicit wake and the Nama process exposed zero windows. The complete
+permanent-artifact Mac flow therefore could not be observed.
+
+VoiceOver previously activated on the live Home window and captioned its toolbar
+focus. The locked graphical session prevented a representative inspection of
+labels, reading order, action names, and focus order across Home, Library/Search,
+Details, and Sources. Those rows, production-backed Apple TV Load More or Retry
+recovery, compact iPad collapse, physical Apple hardware, and expiry-driven
+actual-surface refresh remain explicitly unverified rather than inferred from
+simulator, accessibility-tree, fixture, build, or pre-cleanup harness evidence.
 `check:ios` lints Swift formatting, runs the test target through its macOS host,
 inspects the built ATS shape, and performs signing-disabled iOS, tvOS, and macOS
 builds. The real-player tests prove controlled SDR HLS rendering and control

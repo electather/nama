@@ -105,6 +105,24 @@ struct MediaKindProjectionTests {
     )
   }
 
+  @Test("Apple TV focuses enabled Retry before Sources")
+  func televisionPlayabilityFocusProjection() {
+    #expect(
+      mediaDetailsTelevisionFocusAction(
+        playability: .temporarilyUnavailable,
+        hasSources: true,
+        retryIsEnabled: true
+      ) == .retry
+    )
+    #expect(
+      mediaDetailsTelevisionFocusAction(
+        playability: .temporarilyUnavailable,
+        hasSources: true,
+        retryIsEnabled: false
+      ) == .sources
+    )
+  }
+
   @Test(
     "every media kind keeps title-bearing fallback when artwork is absent",
     arguments: [

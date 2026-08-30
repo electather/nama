@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MediaDetailsPlayabilityView: View {
   #if os(tvOS)
-    @FocusState private var focusedAction: FocusAction?
+    @FocusState private var focusedAction: MediaDetailsTelevisionFocusAction?
   #endif
 
   let playability: MediaPlayability
@@ -67,23 +67,12 @@ struct MediaDetailsPlayabilityView: View {
   }
 
   #if os(tvOS)
-    private enum FocusAction: Hashable {
-      case play
-      case retry
-      case sources
-    }
-
-    private var defaultFocusAction: FocusAction? {
-      if playability == .playable {
-        return .play
-      }
-      if sourcesSelection != nil {
-        return .sources
-      }
-      if playability == .temporarilyUnavailable, canRetryUnavailableSource {
-        return .retry
-      }
-      return nil
+    private var defaultFocusAction: MediaDetailsTelevisionFocusAction? {
+      mediaDetailsTelevisionFocusAction(
+        playability: playability,
+        hasSources: sourcesSelection != nil,
+        retryIsEnabled: canRetryUnavailableSource && !isRefreshing
+      )
     }
   #endif
 }
