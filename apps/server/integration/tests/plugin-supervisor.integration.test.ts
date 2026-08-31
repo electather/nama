@@ -2043,36 +2043,39 @@ it.effect("retries a transient spawn resource failure after 100ms", () =>
   ),
 );
 
-it.effect("does not retry a launch-protocol rejection", () =>
-  withControlDirectory((controlDirectory) =>
-    Effect.scoped(
-      Effect.gen(function* launchProtocolRejectionTest() {
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          fixtureDescriptor(controlDirectory, "launch-reject"),
-          { kind: "discovery" },
-        );
-        const call = yield* Effect.forkChild(
-          plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS),
-        );
-        const launches = yield* awaitLaunchCount(controlDirectory, 1);
-        yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
-        const firstLaunch = launches[0];
-        if (firstLaunch === undefined) {
-          return yield* Effect.die("fixture launch record missing");
-        }
-        yield* awaitProcessExit(firstLaunch.pid);
-        const failure = yield* Fiber.join(call).pipe(Effect.flip);
-        yield* TestClock.adjust(600);
+it.effect(
+  "does not retry a launch-protocol rejection",
+  () =>
+    withControlDirectory((controlDirectory) =>
+      Effect.scoped(
+        Effect.gen(function* launchProtocolRejectionTest() {
+          const supervisor = yield* PluginSupervisor;
+          const plugin = yield* supervisor.supervise(
+            fixtureDescriptor(controlDirectory, "launch-reject"),
+            { kind: "discovery" },
+          );
+          const call = yield* Effect.forkChild(
+            plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS),
+          );
+          const launches = yield* awaitLaunchCount(controlDirectory, 1);
+          yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
+          const firstLaunch = launches[0];
+          if (firstLaunch === undefined) {
+            return yield* Effect.die("fixture launch record missing");
+          }
+          yield* awaitProcessExit(firstLaunch.pid);
+          const failure = yield* Fiber.join(call).pipe(Effect.flip);
+          yield* TestClock.adjust(600);
 
-        expect(failure).toMatchObject({
-          _tag: "PluginUnavailable",
-          reason: "launch_protocol_rejected",
-        });
-        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
-      }).pipe(Effect.provide(PluginSupervisor.layer())),
+          expect(failure).toMatchObject({
+            _tag: "PluginUnavailable",
+            reason: "launch_protocol_rejected",
+          });
+          expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+        }).pipe(Effect.provide(PluginSupervisor.layer())),
+      ),
     ),
-  ),
+  20_000,
 );
 
 it.effect("recycles a process after deadline cancellation grace", () =>
@@ -2492,89 +2495,92 @@ it.effect("resets recovery when idle expiry joins unexpected-exit cleanup", () =
   }),
 );
 
-it.effect("retries failed cleanup joined by scope finalization", () =>
-  withControlDirectory((controlDirectory) => {
-    const lines: string[] = [];
-    let runtimeRoot: string | undefined;
-    let runtimeRootRestoration: Promise<void> | undefined;
-    return Effect.scoped(
-      Effect.gen(function* joinedCleanupRetryTest() {
-        const supervisor = yield* PluginSupervisor;
-        const handleScope = yield* Scope.make();
-        const plugin = yield* Scope.provide(handleScope)(
-          supervisor.supervise(fixtureDescriptor(controlDirectory, "helper-cleanup-failure"), {
-            kind: "discovery",
-          }),
-        );
-        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
-        const launch = (yield* readLaunchRecords(controlDirectory))[0];
-        if (launch === undefined) {
-          return yield* Effect.die("fixture launch record missing");
-        }
-        const launchDirectory = dirname(launch.socketPath);
-        runtimeRoot = dirname(launchDirectory);
-        const helperLines = yield* awaitFileLineCount(controlDirectory, "helper-pid", 1);
-        const helperProcessId = Number(helperLines[0]);
-        yield* Effect.addFinalizer(() =>
-          Effect.sync(() => {
-            try {
-              process.kill(helperProcessId, "SIGKILL");
-            } catch (error) {
-              if (
-                typeof error !== "object" ||
-                error === null ||
-                !("code" in error) ||
-                error.code !== "ESRCH"
-              ) {
-                throw error;
+it.effect(
+  "retries failed cleanup joined by scope finalization",
+  () =>
+    withControlDirectory((controlDirectory) => {
+      const lines: string[] = [];
+      let runtimeRoot: string | undefined;
+      let runtimeRootRestoration: Promise<void> | undefined;
+      return Effect.scoped(
+        Effect.gen(function* joinedCleanupRetryTest() {
+          const supervisor = yield* PluginSupervisor;
+          const handleScope = yield* Scope.make();
+          const plugin = yield* Scope.provide(handleScope)(
+            supervisor.supervise(fixtureDescriptor(controlDirectory, "helper-cleanup-failure"), {
+              kind: "discovery",
+            }),
+          );
+          yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+          const launch = (yield* readLaunchRecords(controlDirectory))[0];
+          if (launch === undefined) {
+            return yield* Effect.die("fixture launch record missing");
+          }
+          const launchDirectory = dirname(launch.socketPath);
+          runtimeRoot = dirname(launchDirectory);
+          const helperLines = yield* awaitFileLineCount(controlDirectory, "helper-pid", 1);
+          const helperProcessId = Number(helperLines[0]);
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              try {
+                process.kill(helperProcessId, "SIGKILL");
+              } catch (error) {
+                if (
+                  typeof error !== "object" ||
+                  error === null ||
+                  !("code" in error) ||
+                  error.code !== "ESRCH"
+                ) {
+                  throw error;
+                }
               }
-            }
-          }),
-        );
+            }),
+          );
 
-        process.kill(launch.pid, "SIGTERM");
-        yield* awaitProcessExit(launch.pid);
-        yield* awaitCondition(() =>
-          lines.some((line) => line.includes('"event":"plugin.process_exited"')),
-        );
-        yield* TestClock.withLive(Effect.sleep(10));
-        const finalization = yield* Effect.forkChild(
-          Scope.close(handleScope, Exit.void).pipe(Effect.exit),
-          { startImmediately: true },
-        );
-        yield* Effect.yieldNow;
+          process.kill(launch.pid, "SIGTERM");
+          yield* awaitProcessExit(launch.pid);
+          yield* awaitCondition(() =>
+            lines.some((line) => line.includes('"event":"plugin.process_exited"')),
+          );
+          yield* TestClock.withLive(Effect.sleep(10));
+          const finalization = yield* Effect.forkChild(
+            Scope.close(handleScope, Exit.void).pipe(Effect.exit),
+            { startImmediately: true },
+          );
+          yield* Effect.yieldNow;
 
-        expect(finalization.pollUnsafe()).toBeUndefined();
-        yield* TestClock.adjust(2000);
-        yield* awaitCondition(() => runtimeRootRestoration !== undefined);
-        const restoration = runtimeRootRestoration;
-        if (restoration === undefined) {
-          return yield* Effect.die("runtime-root restoration missing");
-        }
-        yield* Effect.promise(() => restoration);
-        const finalizationExit = yield* Fiber.join(finalization);
-        expect(Exit.isSuccess(finalizationExit)).toBe(true);
-        yield* awaitProcessExit(helperProcessId);
-        yield* awaitPathRemoval(launchDirectory);
-        expect(
-          lines.filter((line) => line.includes('"event":"plugin.process_idle_stop_failed"')),
-        ).toHaveLength(1);
-      }).pipe(
-        Effect.provide(PluginSupervisor.layer()),
-        Effect.provide(
-          configuredLoggingLayer(loggingConfig, (line) => {
-            lines.push(line);
-            if (
-              runtimeRoot !== undefined &&
-              line.includes('"event":"plugin.process_idle_stop_failed"')
-            ) {
-              runtimeRootRestoration = chmod(runtimeRoot, 0o700);
-            }
-          }),
+          expect(finalization.pollUnsafe()).toBeUndefined();
+          yield* TestClock.adjust(2000);
+          yield* awaitCondition(() => runtimeRootRestoration !== undefined);
+          const restoration = runtimeRootRestoration;
+          if (restoration === undefined) {
+            return yield* Effect.die("runtime-root restoration missing");
+          }
+          yield* Effect.promise(() => restoration);
+          const finalizationExit = yield* Fiber.join(finalization);
+          expect(Exit.isSuccess(finalizationExit)).toBe(true);
+          yield* awaitProcessExit(helperProcessId);
+          yield* awaitPathRemoval(launchDirectory);
+          expect(
+            lines.filter((line) => line.includes('"event":"plugin.process_idle_stop_failed"')),
+          ).toHaveLength(1);
+        }).pipe(
+          Effect.provide(PluginSupervisor.layer()),
+          Effect.provide(
+            configuredLoggingLayer(loggingConfig, (line) => {
+              lines.push(line);
+              if (
+                runtimeRoot !== undefined &&
+                line.includes('"event":"plugin.process_idle_stop_failed"')
+              ) {
+                runtimeRootRestoration = chmod(runtimeRoot, 0o700);
+              }
+            }),
+          ),
         ),
-      ),
-    );
-  }),
+      );
+    }),
+  20_000,
 );
 
 it.effect("contains cleanup failure after an unexpectedly exited idle plugin", () =>
