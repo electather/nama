@@ -620,10 +620,15 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
         );
         expect(wrongResourceMedia.status).toBe(401);
         const leaseHeader = required(playbackLease.headers[0], "playback lease header");
+        let tamperedLeaseHeaderValue = `${leaseHeader.value.slice(0, -1)}A`;
+        if (tamperedLeaseHeaderValue === leaseHeader.value) {
+          tamperedLeaseHeaderValue = `${leaseHeader.value.slice(0, -1)}B`;
+        }
+        expect(tamperedLeaseHeaderValue).not.toBe(leaseHeader.value);
         const tamperedLeaseMedia = yield* Effect.promise(() =>
           fetch(playbackLease.url, {
             headers: {
-              [leaseHeader.name]: `${leaseHeader.value.slice(0, -1)}A`,
+              [leaseHeader.name]: tamperedLeaseHeaderValue,
             },
             redirect: "manual",
           }),
