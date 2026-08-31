@@ -146,18 +146,14 @@ const exhaustedRecovery = (
   options: RecoveryPluginOptions,
   failure: PluginUnavailableFailure,
   launchesInEpisode: number,
-): Effect.Effect<never, PluginUnavailableFailure> => {
-  options.emit(
-    Effect.logError(
-      pluginLifecycleMessage(
-        { descriptor: options.descriptor, launch: options.launch },
-        "plugin.recovery_exhausted",
-        { recoveryAttempt: launchesInEpisode },
-      ),
+): Effect.Effect<never, PluginUnavailableFailure> =>
+  Effect.logError(
+    pluginLifecycleMessage(
+      { descriptor: options.descriptor, launch: options.launch },
+      "plugin.recovery_exhausted",
+      { recoveryAttempt: launchesInEpisode },
     ),
-  );
-  return Effect.fail(failure);
-};
+  ).pipe(Effect.andThen(Effect.fail(failure)));
 
 const recoverPluginAttempt = (
   options: RecoveryPluginOptions,
@@ -168,17 +164,14 @@ const recoverPluginAttempt = (
     return exhaustedRecovery(options, lastFailure, launchesInEpisode);
   }
   const recoveryAttempt = launchesInEpisode + FIRST_RECOVERY_ATTEMPT;
-  options.emit(
-    Effect.logInfo(
-      pluginLifecycleMessage(
-        { descriptor: options.descriptor, launch: options.launch },
-        "plugin.recovery_attempt",
-        { recoveryAttempt },
-      ),
-    ),
-  );
   const delay = RECOVERY_DELAYS_MILLISECONDS[launchesInEpisode];
-  const attempt = waitForRecoveryDelay(delay).pipe(Effect.andThen(launchPlugin(options)));
+  const attempt = Effect.logInfo(
+    pluginLifecycleMessage(
+      { descriptor: options.descriptor, launch: options.launch },
+      "plugin.recovery_attempt",
+      { recoveryAttempt },
+    ),
+  ).pipe(Effect.andThen(waitForRecoveryDelay(delay)), Effect.andThen(launchPlugin(options)));
   return attempt.pipe(
     Effect.matchEffect({
       onFailure: (failure) => {

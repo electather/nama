@@ -1,0 +1,143 @@
+name: Test Health
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 3"
+
+permissions:
+  contents: read
+
+jobs:
+  typescript:
+    name: TypeScript health
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install locked TypeScript tools
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+        with:
+          version: 2026.8.3
+          install: true
+          install_args: go node pnpm
+          cache: true
+      - name: Resolve locked TypeScript test dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          go mod download
+          git diff --exit-code -- go.mod go.sum
+      - name: Build the shared Jellyfin extension fixture once
+        run: mise run check:jellyfin-extension
+      - name: Repeat and compare server tests
+        run: |
+          status=0
+          mkdir -p test-health
+          for iteration in 1 2 3; do
+            seed=$(( (${{ github.run_id }} + iteration * 104729) % 2147483647 ))
+            if ! NAMA_TEST_EXTENSION_READY=1 \
+              NAMA_TEST_HEALTH_REPORT="test-health/typescript-${iteration}.json" \
+              NAMA_TEST_ITERATION="${iteration}" \
+              NAMA_TEST_RUN_ID="${{ github.run_id }}-${{ github.run_attempt }}" \
+              NAMA_TEST_SHUFFLE_SEED="${seed}" \
+              scripts/check-server-tests.sh; then
+              status=1
+            fi
+          done
+          node scripts/test-health.mjs compare \
+            test-health/typescript-1.json \
+            test-health/typescript-2.json \
+            test-health/typescript-3.json || status=1
+          exit "${status}"
+      - name: Upload TypeScript health reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: weekly-test-health-typescript-${{ github.run_attempt }}
+          path: test-health/typescript-*.json
+          if-no-files-found: error
+          retention-days: 14
+
+  go:
+    name: Go health
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install locked Go tools
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+        with:
+          version: 2026.8.3
+          install: true
+          install_args: go node go:honnef.co/go/tools/cmd/staticcheck
+          cache: true
+      - name: Resolve locked Go dependencies
+        run: |
+          go mod download
+          git diff --exit-code -- go.mod go.sum
+      - name: Repeat and compare Go tests
+        run: |
+          status=0
+          mkdir -p test-health
+          for iteration in 1 2 3; do
+            seed=$(( (${{ github.run_id }} + iteration * 104729) % 2147483647 ))
+            if ! NAMA_TEST_HEALTH_REPORT="test-health/go-${iteration}.json" \
+              NAMA_TEST_ITERATION="${iteration}" \
+              NAMA_TEST_RUN_ID="${{ github.run_id }}-${{ github.run_attempt }}" \
+              NAMA_TEST_SHUFFLE_SEED="${seed}" \
+              mise run check:go; then
+              status=1
+            fi
+          done
+          node scripts/test-health.mjs compare \
+            test-health/go-1.json \
+            test-health/go-2.json \
+            test-health/go-3.json || status=1
+          exit "${status}"
+      - name: Upload Go health reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: weekly-test-health-go-${{ github.run_attempt }}
+          path: test-health/go-*.json
+          if-no-files-found: error
+          retention-days: 14
+
+  swift:
+    name: Swift health
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install locked Swift tooling
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+        with:
+          version: 2026.8.3
+          install: true
+          install_args: node swiftlint
+          cache: true
+      - name: Repeat and compare Swift tests
+        run: |
+          status=0
+          mkdir -p test-health
+          for iteration in 1 2 3; do
+            if ! NAMA_TEST_HEALTH_REPORT="test-health/swift-${iteration}.json" \
+              NAMA_TEST_ITERATION="${iteration}" \
+              NAMA_TEST_RUN_ID="${{ github.run_id }}-${{ github.run_attempt }}" \
+              mise run check:swift; then
+              status=1
+            fi
+          done
+          node scripts/test-health.mjs compare \
+            test-health/swift-1.json \
+            test-health/swift-2.json \
+            test-health/swift-3.json || status=1
+          exit "${status}"
+      - name: Upload Swift health reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: weekly-test-health-swift-${{ github.run_attempt }}
+          path: test-health/swift-*.json
+          if-no-files-found: error
+          retention-days: 14

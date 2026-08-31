@@ -228,7 +228,7 @@ it.live("derives playback capabilities only from a compatible extension handshak
           capabilities: ["direct_progressive", "playback_telemetry", "coherent_progress"],
           extension_version: "1.0.0",
           protocol: "nama.jellyfin.extension",
-          protocol_version: 1,
+          protocol_version: 2,
         }),
       );
       const playbackOnly = yield* controlledJellyfin(

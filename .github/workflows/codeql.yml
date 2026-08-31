@@ -7,6 +7,10 @@ on:
       - main
   schedule:
     - cron: "0 4 * * 1"
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 
 permissions:
   contents: read

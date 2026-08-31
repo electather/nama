@@ -267,28 +267,31 @@ interface PluginCloseRetirement {
   readonly joined: boolean;
 }
 
+const commitRetirementLifecycle = (retirement: PluginRetirement): void => {
+  if (retirement.kind === "close") {
+    retirement.state.lifecycle = { kind: "closed" };
+    return;
+  }
+  retirement.state.lifecycle = { kind: "absent" };
+};
+
 const completePluginRetirement = (retirement: PluginRetirement): Effect.Effect<void> => {
-  const { options } = retirement.state;
   if (retirement.kind === "idle" || retirement.state.resetRecoveryEpisodeAfterRetirement) {
     retirement.state.launchesInEpisode = NO_RECOVERY_DELAY_MILLISECONDS;
     retirement.state.resetRecoveryEpisodeAfterRetirement = false;
   }
-  if (retirement.kind === "close") {
-    retirement.state.lifecycle = { kind: "closed" };
-  } else {
-    if (retirement.kind === "idle") {
-      options.emit(
-        Effect.logDebug(
-          pluginLifecycleMessage(
-            { descriptor: options.descriptor, launch: options.launch },
-            "plugin.process_idle_stopped",
-          ),
-        ),
-      );
-    }
-    retirement.state.lifecycle = { kind: "absent" };
+  const complete = Deferred.done(retirement.completion, Exit.void).pipe(Effect.asVoid);
+  commitRetirementLifecycle(retirement);
+  if (retirement.kind !== "idle") {
+    return complete;
   }
-  return Deferred.done(retirement.completion, Exit.void).pipe(Effect.asVoid);
+  const { options } = retirement.state;
+  return Effect.logDebug(
+    pluginLifecycleMessage(
+      { descriptor: options.descriptor, launch: options.launch },
+      "plugin.process_idle_stopped",
+    ),
+  ).pipe(Effect.andThen(complete));
 };
 
 const failPluginRetirement = (retirement: PluginRetirement): Effect.Effect<void> => {
@@ -298,18 +301,17 @@ const failPluginRetirement = (retirement: PluginRetirement): Effect.Effect<void>
     kind: "retirement_failed",
     ownership: retirement.ownership,
   };
-  if (retirement.kind !== "close") {
-    const { options } = retirement.state;
-    options.emit(
-      Effect.logError(
-        pluginLifecycleMessage(
-          { descriptor: options.descriptor, launch: options.launch },
-          "plugin.process_idle_stop_failed",
-        ),
-      ),
-    );
+  const complete = Deferred.fail(retirement.completion, failure).pipe(Effect.asVoid);
+  if (retirement.kind === "close") {
+    return complete;
   }
-  return Deferred.fail(retirement.completion, failure).pipe(Effect.asVoid);
+  const { options } = retirement.state;
+  return Effect.logError(
+    pluginLifecycleMessage(
+      { descriptor: options.descriptor, launch: options.launch },
+      "plugin.process_idle_stop_failed",
+    ),
+  ).pipe(Effect.andThen(complete));
 };
 
 const finishPluginRetirement = (
@@ -771,19 +773,25 @@ const recoverPluginAfterCall = (
   if (options.launch.kind === "candidate") {
     return Effect.void;
   }
-  let graceMilliseconds = NO_RECOVERY_DELAY_MILLISECONDS;
-  if (reason === "rpc_deadline_exceeded") {
-    options.emit(
-      Effect.logWarning(
-        pluginLifecycleMessage(
-          { descriptor: options.descriptor, launch: options.launch },
-          "plugin.rpc_deadline_exceeded",
-        ),
-      ),
-    );
-    graceMilliseconds = RPC_TIMEOUT_RECOVERY_GRACE_MILLISECONDS;
+  if (reason !== "rpc_deadline_exceeded") {
+    return beginPluginRecovery(state, {
+      graceMilliseconds: NO_RECOVERY_DELAY_MILLISECONDS,
+      plugin,
+    });
   }
-  return beginPluginRecovery(state, { graceMilliseconds, plugin });
+  return Effect.logWarning(
+    pluginLifecycleMessage(
+      { descriptor: options.descriptor, launch: options.launch },
+      "plugin.rpc_deadline_exceeded",
+    ),
+  ).pipe(
+    Effect.andThen(
+      beginPluginRecovery(state, {
+        graceMilliseconds: RPC_TIMEOUT_RECOVERY_GRACE_MILLISECONDS,
+        plugin,
+      }),
+    ),
+  );
 };
 
 const handleUnexpectedPluginExit = (
@@ -824,13 +832,10 @@ const forkPluginExitWatcher = (
         return Effect.void;
       }
       const { options } = state;
-      options.emit(
-        pluginProcessExitLog(
-          { descriptor: options.descriptor, launch: options.launch },
-          processExit,
-        ),
-      );
-      return handleUnexpectedPluginExit(state, plugin);
+      return pluginProcessExitLog(
+        { descriptor: options.descriptor, launch: options.launch },
+        processExit,
+      ).pipe(Effect.andThen(handleUnexpectedPluginExit(state, plugin)));
     }),
     Effect.forkIn(state.scope, { startImmediately: false }),
     Effect.asVoid,

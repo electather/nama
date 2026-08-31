@@ -22,7 +22,7 @@ const (
 )
 
 var goPseudoVersionPattern = regexp.MustCompile(
-	`^\d+\.\d+\.\d+-(?:[0-9A-Za-z-]+\.)*\d{14}-[0-9a-f]{12,}(?:\+incompatible)?$`,
+	`^\d+\.\d+\.\d+-(?:[0-9A-Za-z-]+\.)*\d{14}-[0-9a-f]{12,}(?:\+(?:dirty|incompatible))?$`,
 )
 
 // Clients contains the generated service clients used by CLI operations.

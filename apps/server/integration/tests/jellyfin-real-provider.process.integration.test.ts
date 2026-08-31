@@ -52,9 +52,9 @@ import { provisionJellyfin } from "./provider-durable-loop.test-support.ts";
 const JELLYFIN_PLUGIN_PATH = join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts");
 const CALL_DEADLINE_MILLISECONDS = 10_000;
 const EXPIRY_OBSERVATION_DELAY_MILLISECONDS = 1000;
-const PLAN_EXPIRY_WAIT_MILLISECONDS = 301_000;
-const SESSION_LIFETIME_MILLISECONDS = 1_801_000;
-const TEST_TIMEOUT_MILLISECONDS = 2_100_000;
+const PLAN_EXPIRY_WAIT_MILLISECONDS = 3000;
+const SESSION_LIFETIME_MILLISECONDS = 121_000;
+const TEST_TIMEOUT_MILLISECONDS = 600_000;
 const STOCK_CAPABILITIES = [
   ProviderCapability.LIBRARY_READ,
   ProviderCapability.ARTWORK_RESOLVE,

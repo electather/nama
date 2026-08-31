@@ -40,5 +40,4 @@ Load only the branches required by the task:
 - Run Swift Testing filters at the suite level; a method-level
   `xcodebuild -only-testing` filter can match nothing while exiting
   successfully.
-- Run `mise run check:swift` and `mise run check:ios` for handwritten Swift
-  changes.
+- Run `mise run check:swift` for handwritten Swift changes.

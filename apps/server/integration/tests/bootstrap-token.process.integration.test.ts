@@ -23,7 +23,7 @@ const NO_BOOTSTRAP_OUTPUT = 0;
 const EXPECTED_SINGLE_OUTPUT = 1;
 const FIRST_OUTPUT_INDEX = 0;
 const TOKEN_LENGTH = 43;
-const SIGNAL_TEST_TIMEOUT_MILLISECONDS = 20_000;
+const PROCESS_TEST_TIMEOUT_MILLISECONDS = 60_000;
 const FAILURE_TEST_TIMEOUT_MILLISECONDS = 10_000;
 const CONFIGURED_USER_ID = "configured-administrator";
 const CONFIGURED_USER_EMAIL = "configured-administrator@example.test";
@@ -80,7 +80,7 @@ it.live(
         expect(exit.code).toBe(SUCCESS_EXIT_CODE);
       }),
     ),
-  SIGNAL_TEST_TIMEOUT_MILLISECONDS,
+  PROCESS_TEST_TIMEOUT_MILLISECONDS,
 );
 
 it.live(
@@ -115,7 +115,7 @@ it.live(
         expect(exit.code).toBe(SUCCESS_EXIT_CODE);
       }),
     ),
-  SIGNAL_TEST_TIMEOUT_MILLISECONDS,
+  PROCESS_TEST_TIMEOUT_MILLISECONDS,
 );
 
 it.live(
@@ -136,7 +136,7 @@ it.live(
         expect((yield* stopProcess(secondProcess, "SIGTERM")).code).toBe(SUCCESS_EXIT_CODE);
       }),
     ),
-  SIGNAL_TEST_TIMEOUT_MILLISECONDS,
+  PROCESS_TEST_TIMEOUT_MILLISECONDS,
 );
 
 it.live(

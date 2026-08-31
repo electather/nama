@@ -180,7 +180,8 @@ struct ConsumerNavigationTests {
     LibrarySearchPageLoading,
     MediaDetailsLoading,
     MediaChildrenLoading,
-    MediaSourceLoading {
+    MediaSourceLoading
+  {
     private(set) var homeCallCount = 0
     private(set) var homeCancellationCount = 0
 

@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { NodeFileSystem } from "@effect/platform-node";
 import { expect, it } from "@effect/vitest";
-import { Clock, Effect, FileSystem } from "effect";
+import { Clock, Deferred, Effect, Exit, Fiber, FileSystem } from "effect";
 
 import {
   exerciseMarkerConstraints,
@@ -15,7 +15,7 @@ import {
   useDatabase,
   withPool,
 } from "./database.test-support.ts";
-import { integrationUrl, withIsolatedDatabase } from "./postgres.test-support.ts";
+import { integrationUrl, withAdminPool, withIsolatedDatabase } from "./postgres.test-support.ts";
 
 const FIRST_ROW_INDEX = 0;
 const PROBE_BOUND_MILLISECONDS = 3000;
@@ -85,6 +85,144 @@ const makeInvalidMigrationFolders = Effect.gen(function* invalidMigrationFolders
   yield* fileSystem.writeFileString(join(malformed, "meta", "_journal.json"), "not-json");
   return { malformed, missing };
 }).pipe(Effect.provide(NodeFileSystem.layer));
+
+interface DatabaseScopeControl {
+  readonly claimedName: Deferred.Deferred<string>;
+  readonly peerReady: Deferred.Deferred<void>;
+  readonly ready: Deferred.Deferred<void>;
+  readonly release: Deferred.Deferred<void>;
+}
+
+interface ConcurrentDatabaseScopes {
+  readonly databaseNames: readonly [string, string];
+  readonly firstScope: Fiber.Fiber<void>;
+  readonly releaseFirst: Deferred.Deferred<void>;
+  readonly releaseSecond: Deferred.Deferred<void>;
+  readonly secondScope: Fiber.Fiber<void>;
+}
+
+const holdDatabaseScope = ({ claimedName, peerReady, ready, release }: DatabaseScopeControl) =>
+  withIsolatedDatabase((databaseUrl) =>
+    Deferred.done(ready, Exit.void).pipe(
+      Effect.andThen(Deferred.await(peerReady)),
+      Effect.andThen(
+        withPool(databaseUrl, (pool) =>
+          Effect.promise(() =>
+            pool.query<{ readonly database_name: string }>(
+              "SELECT current_database() AS database_name",
+            ),
+          ),
+        ),
+      ),
+      Effect.flatMap((result) => {
+        const databaseName = result.rows[FIRST_ROW_INDEX]?.database_name;
+        if (databaseName === undefined) {
+          return Effect.die("database scope did not report its owned database");
+        }
+        return Deferred.succeed(claimedName, databaseName);
+      }),
+      Effect.andThen(Deferred.await(release)),
+    ),
+  );
+
+const awaitDatabaseName = (
+  claimedName: Deferred.Deferred<string>,
+  scope: Fiber.Fiber<void>,
+  earlyExitMessage: string,
+) => {
+  const earlyExit = Fiber.join(scope).pipe(Effect.andThen(Effect.die(earlyExitMessage)));
+  return Effect.raceFirst(Deferred.await(claimedName), earlyExit);
+};
+
+const existingDatabases = (databaseNames: readonly string[]) =>
+  withAdminPool((pool) =>
+    Effect.promise(() =>
+      pool.query<{ readonly database_name: string }>(
+        "SELECT datname AS database_name FROM pg_database WHERE datname = ANY($1::text[]) ORDER BY datname",
+        [databaseNames],
+      ),
+    ),
+  );
+
+const makeConcurrentDatabaseScopes = Effect.gen(function* makeConcurrentDatabaseScopesEffect() {
+  const [firstReady, secondReady, releaseFirst, releaseSecond, firstName, secondName] =
+    yield* Effect.all([
+      Deferred.make<void>(),
+      Deferred.make<void>(),
+      Deferred.make<void>(),
+      Deferred.make<void>(),
+      Deferred.make<string>(),
+      Deferred.make<string>(),
+    ] as const);
+  const firstScope = yield* Effect.forkChild(
+    holdDatabaseScope({
+      claimedName: firstName,
+      peerReady: secondReady,
+      ready: firstReady,
+      release: releaseFirst,
+    }),
+  );
+  const secondScope = yield* Effect.forkChild(
+    holdDatabaseScope({
+      claimedName: secondName,
+      peerReady: firstReady,
+      ready: secondReady,
+      release: releaseSecond,
+    }),
+  );
+  const firstDatabaseName = yield* awaitDatabaseName(
+    firstName,
+    firstScope,
+    "first database scope exited before release",
+  );
+  const secondDatabaseName = yield* awaitDatabaseName(
+    secondName,
+    secondScope,
+    "second database scope exited before release",
+  );
+  return {
+    databaseNames: [firstDatabaseName, secondDatabaseName],
+    firstScope,
+    releaseFirst,
+    releaseSecond,
+    secondScope,
+  } satisfies ConcurrentDatabaseScopes;
+});
+
+const verifyFirstDatabaseCleanup = (scopes: ConcurrentDatabaseScopes) =>
+  Effect.gen(function* verifyFirstDatabaseCleanupEffect() {
+    const [firstDatabaseName, secondDatabaseName] = scopes.databaseNames;
+    expect(firstDatabaseName).not.toBe(secondDatabaseName);
+    yield* Deferred.done(scopes.releaseFirst, Exit.void);
+    yield* Fiber.join(scopes.firstScope);
+    expect((yield* existingDatabases(scopes.databaseNames)).rows).toEqual([
+      { database_name: secondDatabaseName },
+    ]);
+
+    const secondDatabaseUrl = new URL(integrationUrl);
+    secondDatabaseUrl.pathname = `/${secondDatabaseName}`;
+    const currentDatabaseName = yield* withPool(secondDatabaseUrl.toString(), (pool) =>
+      Effect.map(
+        Effect.promise(() =>
+          pool.query<{ readonly database_name: string }>(
+            "SELECT current_database() AS database_name",
+          ),
+        ),
+        (result) => result.rows[FIRST_ROW_INDEX]?.database_name,
+      ),
+    );
+    expect(currentDatabaseName).toBe(secondDatabaseName);
+  });
+
+it.live("gives concurrent database scopes distinct ownership and exact cleanup", () =>
+  Effect.gen(function* concurrentDatabaseScopesTest() {
+    const scopes = yield* makeConcurrentDatabaseScopes;
+    yield* verifyFirstDatabaseCleanup(scopes);
+    yield* Deferred.done(scopes.releaseSecond, Exit.void);
+    yield* Fiber.join(scopes.secondScope);
+    expect((yield* existingDatabases(scopes.databaseNames)).rows).toEqual([]);
+  }),
+);
 
 it.live("creates all production tables and one uninitialized server singleton", () =>
   withIsolatedDatabase((databaseUrl) =>

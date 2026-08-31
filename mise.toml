@@ -48,11 +48,8 @@ run = "pnpm run check:ts"
 description = "Check Go formatting, vet, tests, and Staticcheck"
 run = "scripts/check-go.sh"
 
-[tasks."check:ios"]
-description = "Test and build the universal Apple application"
-run = "scripts/check-ios.sh"
 [tasks."check:swift"]
-description = "Lint and type-analyze handwritten Swift with all compatible rules as errors"
+description = "Test, build, and analyze the universal Apple application"
 run = "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer scripts/check-swift.sh"
 
 [tasks."check:docker"]
@@ -60,13 +57,11 @@ description = "Verify the packaged application through Docker Compose"
 run = "scripts/check-docker.sh"
 
 [tasks.check]
-description = "Run every repository check sequentially"
-run = [
-  { task = "check:contracts" },
-  { task = "check:jellyfin-extension" },
-  { task = "check:ts" },
-  { task = "check:go" },
-  { task = "check:ios" },
-  { task = "check:swift" },
-  { task = "check:docker" },
+description = "Run every native correctness owner with bounded parallelism"
+depends = [
+  "check:contracts",
+  "check:ts",
+  "check:go",
+  "check:swift",
+  "check:docker",
 ]

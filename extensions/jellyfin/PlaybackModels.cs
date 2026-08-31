@@ -9,8 +9,13 @@ internal static class PlaybackConstants
   public const int MaximumMediaResourceLength = 7168;
   public const int ReportIntervalSeconds = 15;
   public static readonly TimeSpan MaximumSessionLifetime = TimeSpan.FromHours(24);
+#if NAMA_TEST_FAULTS
+  public static readonly TimeSpan PlanLifetime = TimeSpan.FromSeconds(2);
+  public static readonly TimeSpan SessionGrace = TimeSpan.FromMinutes(2);
+#else
   public static readonly TimeSpan PlanLifetime = TimeSpan.FromMinutes(5);
   public static readonly TimeSpan SessionGrace = TimeSpan.FromMinutes(30);
+#endif
   public const string LeaseHeader = "X-Nama-Playback-Lease";
 }
 

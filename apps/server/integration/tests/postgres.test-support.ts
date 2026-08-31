@@ -1,14 +1,38 @@
+import { createHash } from "node:crypto";
+
 import { Clock, Effect } from "effect";
 import { Pool } from "pg";
 
 const SINGLE_CONNECTION = 1;
-const ISOLATED_DATABASE_NAME = "nama_test_isolated";
+const DATABASE_SCOPE_HASH_LENGTH = 20;
+const DATABASE_SCOPE_INCREMENT = 1;
+const FIRST_DATABASE_SCOPE = 1;
 const FIRST_ROW_INDEX = 0;
 const ACTIVITY_WAIT_MILLISECONDS = 5000;
 const ACTIVITY_POLL_MILLISECONDS = 20;
 const NO_ACTIVITY_COUNT = 0;
 const ALL_NAMA_SERVER_ACTIVITY = false;
 const MIGRATION_LOCK_ACTIVITY = true;
+
+let nextDatabaseScope = FIRST_DATABASE_SCOPE;
+
+const databaseScopePrefix = createHash("sha256")
+  .update(
+    [
+      process.env["NAMA_TEST_RUN_ID"] ?? `local-${process.ppid}`,
+      process.env["VITEST_POOL_ID"] ?? "pool-unknown",
+      process.env["VITEST_WORKER_ID"] ?? "worker-unknown",
+      process.pid.toString(),
+    ].join(":"),
+  )
+  .digest("hex")
+  .slice(FIRST_ROW_INDEX, DATABASE_SCOPE_HASH_LENGTH);
+
+const claimDatabaseName = () => {
+  const databaseName = `nama_test_${databaseScopePrefix}_${nextDatabaseScope}`;
+  nextDatabaseScope += DATABASE_SCOPE_INCREMENT;
+  return databaseName;
+};
 
 const integrationUrl = (() => {
   const value = process.env["NAMA_TEST_DATABASE_URL"];
@@ -79,13 +103,14 @@ const withAdminPool = <Result, Error, Requirements>(
 const withIsolatedDatabase = <Result, Error, Requirements>(
   use: (databaseUrl: string) => Effect.Effect<Result, Error, Requirements>,
 ) => {
+  const databaseName = claimDatabaseName();
   const databaseUrl = new URL(integrationUrl);
-  databaseUrl.pathname = `/${ISOLATED_DATABASE_NAME}`;
+  databaseUrl.pathname = `/${databaseName}`;
 
   return withAdminPool((admin) =>
     Effect.acquireUseRelease(
       Effect.promise(async () => {
-        await admin.query('CREATE DATABASE "nama_test_isolated"');
+        await admin.query(`CREATE DATABASE "${databaseName}"`);
         return databaseUrl.toString();
       }),
       (url) => Effect.scoped(use(url)),
@@ -93,9 +118,9 @@ const withIsolatedDatabase = <Result, Error, Requirements>(
         Effect.promise(async () => {
           await admin.query(
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
-            [ISOLATED_DATABASE_NAME],
+            [databaseName],
           );
-          await admin.query('DROP DATABASE IF EXISTS "nama_test_isolated"');
+          await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
         }),
     ),
   );

@@ -62,7 +62,7 @@ const extensionHandshake = (response: ServerResponse, coherent = true): void => 
     capabilities,
     extension_version: "1.0.0",
     protocol: "nama.jellyfin.extension",
-    protocol_version: 1,
+    protocol_version: 2,
   });
 };
 

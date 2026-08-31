@@ -6,6 +6,7 @@ sdk_image="mcr.microsoft.com/dotnet/sdk:9.0.203@sha256:fe3c1ed472bb0964c100f06aa
 extension_directory="${repository_root}/extensions/jellyfin"
 artifact="${extension_directory}/artifacts/Nama.Jellyfin.Extension-1.0.0-jellyfin-10.11.11.zip"
 fixture_dll="${extension_directory}/artifacts/fixture/Nama.Jellyfin.Extension.dll"
+release_dll="${extension_directory}/bin/Release/net9.0/Nama.Jellyfin.Extension.dll"
 
 run_dotnet() {
   docker run --rm \
@@ -24,12 +25,7 @@ run_dotnet sh -c \
    dotnet build Nama.Jellyfin.Extension.csproj \
      --configuration Release \
      --no-restore \
-     --property:ContinuousIntegrationBuild=true &&
-   dotnet build Nama.Jellyfin.Extension.csproj \
-     --configuration Debug \
-     --no-restore \
-     --property:DefineConstants=NAMA_TEST_FAULTS \
-     --output artifacts/fixture"
+     --property:ContinuousIntegrationBuild=true"
 
 
 run_dotnet sh -c \
@@ -38,9 +34,21 @@ run_dotnet sh -c \
    dotnet run --project tests/Nama.Jellyfin.Extension.Tests.csproj \
      --configuration Release \
      --no-restore \
-     --property:ContinuousIntegrationBuild=true"
+     --property:ContinuousIntegrationBuild=true &&
+   dotnet build Nama.Jellyfin.Extension.csproj \
+     --configuration Debug \
+     --no-restore \
+     --no-incremental \
+     --property:DefineConstants=NAMA_TEST_FAULTS &&
+   cp bin/Debug/net9.0/Nama.Jellyfin.Extension.dll \
+     artifacts/fixture/Nama.Jellyfin.Extension.dll"
 
 test -f "${artifact}"
 test -s "${artifact}"
 test -f "${fixture_dll}"
 test -s "${fixture_dll}"
+test -f "${release_dll}"
+if cmp -s "${fixture_dll}" "${release_dll}"; then
+  printf '%s\n' "fault-injected fixture DLL matches the release DLL" >&2
+  exit 1
+fi
