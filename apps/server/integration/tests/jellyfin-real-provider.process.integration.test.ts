@@ -1,5 +1,6 @@
 // oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, import/max-dependencies, unicorn/max-nested-calls -- The ordered real-provider proof keeps one subprocess lifecycle, exact fixture values, and watched-state transitions visible across the real Jellyfin boundary.
 import { join } from "node:path";
+import { inspect } from "node:util";
 
 import type { MessageInitShape } from "@bufbuild/protobuf";
 import { Code } from "@connectrpc/connect";
@@ -66,10 +67,12 @@ const EXPECTED_CAPABILITIES = [
   ProviderCapability.PLAYBACK_OPEN,
   ProviderCapability.PLAYBACK_REPORT,
   ProviderCapability.PLAYBACK_REPORTS_USER_STATE,
+  ProviderCapability.PROGRESS_WRITE,
 ];
 const MOVIE_TITLE = "Nama Proof Movie (2026)";
 const EPISODE_TITLE = "Nama Proof Show S01E02";
 const FIXTURE_RUNTIME_SECONDS = 1n;
+const TEST_PROGRESS_FAULT_HEADER = "x-nama-test-progress-fault";
 
 interface AppliedMutationExpectation {
   readonly itemId: string;
@@ -413,6 +416,301 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           required(finalReadback.results[0], "final unwatched readback"),
           movieItemId,
         );
+        const privateProgressInput = {
+          duration: { nanos: 0, seconds: FIXTURE_RUNTIME_SECONDS.toString() },
+          item_id: movieItemId,
+          position: { nanos: 0, seconds: "0" },
+          user_id: jellyfin.primaryUserId,
+          watched: false,
+        };
+        const ordinaryProgressProbe = yield* Effect.promise(() =>
+          fetch(new URL("Nama/v1/progress", jellyfin.baseUrl), {
+            body: JSON.stringify(privateProgressInput),
+            headers: {
+              authorization: `MediaBrowser Token="${jellyfin.administratorAccessToken}"`,
+              "content-type": "application/json",
+            },
+            method: "POST",
+            redirect: "manual",
+          }),
+        );
+        expect(ordinaryProgressProbe.status).toBe(403);
+        const fixtureFaultInput = {
+          ...privateProgressInput,
+          position: { nanos: 100_000_000, seconds: "0" },
+          watched: true,
+        };
+        const fixtureFaultHeaders = new Headers({
+          authorization: `MediaBrowser Token="${jellyfin.primaryApiKey}"`,
+          "content-type": "application/json",
+        });
+        fixtureFaultHeaders.set(TEST_PROGRESS_FAULT_HEADER, "persistence");
+        const persistenceFaultProbe = yield* Effect.promise(() =>
+          fetch(new URL("Nama/v1/progress", jellyfin.baseUrl), {
+            body: JSON.stringify(fixtureFaultInput),
+            headers: fixtureFaultHeaders,
+            method: "POST",
+            redirect: "manual",
+          }),
+        );
+        expect(persistenceFaultProbe.status).toBe(500);
+        const afterPersistenceFault = yield* plugin.call(
+          WatchStateService.method.getWatchStates,
+          { itemReferences: [movieItemReference] },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(afterPersistenceFault.results[0]).toMatchObject({
+          state: { watched: false },
+          status: WatchStateReadStatus.FOUND,
+        });
+        expect(afterPersistenceFault.results[0]?.state?.position).toBeUndefined();
+
+        fixtureFaultHeaders.set(TEST_PROGRESS_FAULT_HEADER, "readback");
+        const readbackFaultProbe = yield* Effect.promise(() =>
+          fetch(new URL("Nama/v1/progress", jellyfin.baseUrl), {
+            body: JSON.stringify(fixtureFaultInput),
+            headers: fixtureFaultHeaders,
+            method: "POST",
+            redirect: "manual",
+          }),
+        );
+        expect(readbackFaultProbe.status).toBe(503);
+        const afterReadbackFault = yield* plugin.call(
+          WatchStateService.method.getWatchStates,
+          { itemReferences: [movieItemReference] },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(afterReadbackFault.results[0]).toMatchObject({
+          state: {
+            position: { nanos: 100_000_000, seconds: 0n },
+            watched: true,
+          },
+          status: WatchStateReadStatus.FOUND,
+        });
+        const resetFixtureFaultState = yield* plugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-reset-progress-fault-state",
+            mutations: [
+              {
+                itemReference: movieItemReference,
+                mutationId: "reset-progress-fault-state",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    position: { nanos: 0, seconds: 0n },
+                    watched: false,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(resetFixtureFaultState.results[0]).toMatchObject({
+          mutationId: "reset-progress-fault-state",
+          observedState: {
+            watched: false,
+          },
+          status: WatchStateMutationStatus.APPLIED,
+        });
+        expect(resetFixtureFaultState.results[0]?.observedState?.position).toBeUndefined();
+
+        const progressTargets = [
+          {
+            mutationId: "progress-forward",
+            position: { nanos: 750_000_000, seconds: 0n },
+            status: WatchStateMutationStatus.APPLIED,
+            watched: false,
+          },
+          {
+            mutationId: "progress-equal",
+            position: { nanos: 750_000_000, seconds: 0n },
+            status: WatchStateMutationStatus.ALREADY_APPLIED,
+            watched: false,
+          },
+          {
+            mutationId: "progress-backward",
+            position: { nanos: 250_000_000, seconds: 0n },
+            status: WatchStateMutationStatus.APPLIED,
+            watched: false,
+          },
+          {
+            mutationId: "progress-watched",
+            position: { nanos: 0, seconds: 1n },
+            status: WatchStateMutationStatus.APPLIED,
+            watched: true,
+          },
+          {
+            mutationId: "progress-rewatch",
+            position: { nanos: 500_000_000, seconds: 0n },
+            status: WatchStateMutationStatus.APPLIED,
+            watched: false,
+          },
+          {
+            mutationId: "progress-unwatched",
+            position: { nanos: 0, seconds: 0n },
+            status: WatchStateMutationStatus.APPLIED,
+            watched: false,
+          },
+        ] as const;
+        for (const target of progressTargets) {
+          const progress = yield* plugin.call(
+            WatchStateService.method.pushWatchStates,
+            {
+              batchId: `batch-${target.mutationId}`,
+              mutations: [
+                {
+                  itemReference: movieItemReference,
+                  mutationId: target.mutationId,
+                  target: {
+                    case: "setProgress",
+                    value: {
+                      duration: {
+                        nanos: 0,
+                        seconds: FIXTURE_RUNTIME_SECONDS,
+                      },
+                      position: target.position,
+                      watched: target.watched,
+                    },
+                  },
+                },
+              ],
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          );
+          const result = required(progress.results[0], `${target.mutationId} result`);
+          expect(result).toMatchObject({
+            mutationId: target.mutationId,
+            observedState: {
+              duration: { nanos: 0, seconds: FIXTURE_RUNTIME_SECONDS },
+              itemReference: movieItemReference,
+              watched: target.watched,
+            },
+            status: target.status,
+          });
+          if (target.position.seconds === 0n && target.position.nanos === 0) {
+            expect(result.observedState?.position).toBeUndefined();
+          } else {
+            expect(result.observedState?.position).toMatchObject(target.position);
+          }
+        }
+        const malformedProgress = yield* plugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-malformed-progress",
+            mutations: [
+              {
+                itemReference: movieItemReference,
+                mutationId: "malformed-progress",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    position: { nanos: 1, seconds: 0n },
+                    watched: false,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(malformedProgress.results[0]?.status).toBe(WatchStateMutationStatus.INVALID);
+
+        const staleProgress = yield* plugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-stale-progress",
+            mutations: [
+              {
+                itemReference: movieItemReference,
+                mutationId: "stale-progress",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    duration: { nanos: 0, seconds: 2n },
+                    position: { nanos: 750_000_000, seconds: 0n },
+                    watched: true,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(staleProgress.results[0]).toMatchObject({
+          mutationId: "stale-progress",
+          status: WatchStateMutationStatus.INVALID,
+        });
+        const afterStaleProgress = yield* plugin.call(
+          WatchStateService.method.getWatchStates,
+          { itemReferences: [movieItemReference] },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(afterStaleProgress.results[0]).toMatchObject({
+          state: { watched: false },
+          status: WatchStateReadStatus.FOUND,
+        });
+        expect(afterStaleProgress.results[0]?.state?.position).toBeUndefined();
+
+        const missingProgress = yield* plugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-missing-progress",
+            mutations: [
+              {
+                itemReference: { itemId: "ffffffffffffffffffffffffffffffff" },
+                mutationId: "missing-progress",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    position: { nanos: 0, seconds: 0n },
+                    watched: false,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(missingProgress.results[0]?.status).toBe(WatchStateMutationStatus.NOT_FOUND);
+
+        const disabledPlugin = yield* supervisor.supervise(
+          {
+            arguments: [JELLYFIN_PLUGIN_PATH],
+            executable: process.execPath,
+            expectedProviderType: "jellyfin",
+            stderrEvents: [],
+          },
+          {
+            configuration: { base_url: jellyfin.baseUrl, user_id: jellyfin.disabledUserId },
+            credentials: { api_key: jellyfin.primaryApiKey },
+            kind: "instance",
+            providerInstanceId: "real-jellyfin-disabled-principal",
+            revision: "real-jellyfin-disabled-revision-1",
+          },
+        );
+        const forbiddenProgress = yield* disabledPlugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-forbidden-progress",
+            mutations: [
+              {
+                itemReference: movieItemReference,
+                mutationId: "forbidden-progress",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    position: { nanos: 0, seconds: 0n },
+                    watched: false,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(forbiddenProgress.results[0]?.status).toBe(WatchStateMutationStatus.FORBIDDEN);
 
         const movieSource = required(movie.sources[0]?.sourceReference, "movie source reference");
         const moviePart = required(movie.sources[0]?.parts[0], "movie source part");
@@ -1319,6 +1617,199 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
         yield* Fiber.interrupt(canceledPlanCall);
         yield* Effect.promise(() => stalledPlan.cancellationObserved);
         expect(faultProxy.planRequests() - planRequestsBeforeFaults).toBe(3);
+        const progressRequestsBeforeFaults = faultProxy.progressRequests();
+        faultProxy.loseNextProgressResponse();
+        const lostProgressResponse = yield* replacementPlugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-lost-progress-response",
+            mutations: [
+              {
+                itemReference: movieItemReference,
+                mutationId: "lost-progress-response",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    duration: { nanos: 0, seconds: FIXTURE_RUNTIME_SECONDS },
+                    position: { nanos: 400_000_000, seconds: 0n },
+                    watched: false,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(lostProgressResponse.results[0]).toMatchObject({
+          mutationId: "lost-progress-response",
+          observedState: {
+            duration: { nanos: 0, seconds: FIXTURE_RUNTIME_SECONDS },
+            position: { nanos: 400_000_000, seconds: 0n },
+            watched: false,
+          },
+          status: WatchStateMutationStatus.APPLIED,
+        });
+        expect(faultProxy.progressRequests() - progressRequestsBeforeFaults).toBe(1);
+        expect(faultProxy.committedLostProgressResponses()).toBe(1);
+        faultProxy.loseNextProgressResponse();
+        faultProxy.failNextProgressReadback();
+        const failedProgressReadback = yield* replacementPlugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-failed-progress-readback",
+            mutations: [
+              {
+                itemReference: movieItemReference,
+                mutationId: "failed-progress-readback",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    position: { nanos: 600_000_000, seconds: 0n },
+                    watched: true,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(failedProgressReadback.results[0]).toMatchObject({
+          mutationId: "failed-progress-readback",
+          status: WatchStateMutationStatus.RETRYABLE_AMBIGUOUS,
+        });
+        expect(failedProgressReadback.results[0]?.observedState).toBeUndefined();
+        expect(faultProxy.committedLostProgressResponses()).toBe(2);
+        faultProxy.failNextExtensionProgressPersistence();
+        const failedPersistence = yield* replacementPlugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-failed-progress-persistence",
+            mutations: [
+              {
+                itemReference: movieItemReference,
+                mutationId: "failed-progress-persistence",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    position: { nanos: 700_000_000, seconds: 0n },
+                    watched: false,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(failedPersistence.results[0]).toMatchObject({
+          mutationId: "failed-progress-persistence",
+          observedState: {
+            position: { nanos: 600_000_000, seconds: 0n },
+            watched: true,
+          },
+          status: WatchStateMutationStatus.RETRYABLE_AMBIGUOUS,
+        });
+
+        faultProxy.failNextExtensionProgressReadback();
+        const recoveredExtensionReadback = yield* replacementPlugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-recovered-extension-progress-readback",
+            mutations: [
+              {
+                itemReference: movieItemReference,
+                mutationId: "recovered-extension-progress-readback",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    position: { nanos: 700_000_000, seconds: 0n },
+                    watched: false,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(recoveredExtensionReadback.results[0]).toMatchObject({
+          mutationId: "recovered-extension-progress-readback",
+          observedState: {
+            position: { nanos: 700_000_000, seconds: 0n },
+            watched: false,
+          },
+          status: WatchStateMutationStatus.APPLIED,
+        });
+
+        faultProxy.failNextExtensionProgressReadback();
+        faultProxy.failNextProgressReadback();
+        const unresolvedExtensionReadback = yield* replacementPlugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-unresolved-extension-progress-readback",
+            mutations: [
+              {
+                itemReference: movieItemReference,
+                mutationId: "unresolved-extension-progress-readback",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    position: { nanos: 750_000_000, seconds: 0n },
+                    watched: true,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(unresolvedExtensionReadback.results[0]).toMatchObject({
+          mutationId: "unresolved-extension-progress-readback",
+          status: WatchStateMutationStatus.RETRYABLE_AMBIGUOUS,
+        });
+        expect(unresolvedExtensionReadback.results[0]?.observedState).toBeUndefined();
+
+        const progressFailureSecret = "real-extension-progress-failure-secret-sentinel";
+        faultProxy.failNextProgressResponse(progressFailureSecret);
+        const failedProgress = yield* replacementPlugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-failed-progress",
+            mutations: [
+              {
+                itemReference: movieItemReference,
+                mutationId: "failed-progress",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    position: { nanos: 800_000_000, seconds: 0n },
+                    watched: false,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(failedProgress.results[0]).toMatchObject({
+          mutationId: "failed-progress",
+          observedState: {
+            position: { nanos: 750_000_000, seconds: 0n },
+            watched: true,
+          },
+          status: WatchStateMutationStatus.RETRYABLE_AMBIGUOUS,
+        });
+        expect(inspect(failedProgress, { depth: undefined })).not.toContain(progressFailureSecret);
+        const afterFailedProgress = yield* replacementPlugin.call(
+          WatchStateService.method.getWatchStates,
+          { itemReferences: [movieItemReference] },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(afterFailedProgress.results[0]).toMatchObject({
+          state: {
+            position: { nanos: 750_000_000, seconds: 0n },
+            watched: true,
+          },
+          status: WatchStateReadStatus.FOUND,
+        });
 
         const { sessionContext } = playbackLease;
         faultProxy.loseNextReportResponse();
@@ -1415,6 +1906,36 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
         );
         expect(restartedConnection.connection?.status).toBe(PluginConnectionStatus.CONNECTED);
         expect(restartedConnection.connection?.capabilities).toEqual(EXPECTED_CAPABILITIES);
+        const restartedProgress = yield* restartedPlugin.call(
+          WatchStateService.method.pushWatchStates,
+          {
+            batchId: "batch-restarted-progress",
+            mutations: [
+              {
+                itemReference: movieItemReference,
+                mutationId: "restarted-progress",
+                target: {
+                  case: "setProgress",
+                  value: {
+                    duration: { nanos: 0, seconds: FIXTURE_RUNTIME_SECONDS },
+                    position: { nanos: 800_000_000, seconds: 0n },
+                    watched: true,
+                  },
+                },
+              },
+            ],
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(restartedProgress.results[0]).toMatchObject({
+          mutationId: "restarted-progress",
+          observedState: {
+            duration: { nanos: 0, seconds: FIXTURE_RUNTIME_SECONDS },
+            position: { nanos: 800_000_000, seconds: 0n },
+            watched: true,
+          },
+          status: WatchStateMutationStatus.APPLIED,
+        });
         const restartedMedia = yield* Effect.promise(() =>
           fetch(new URL(new URL(restartLease.url).pathname, restartedBaseUrl), {
             headers: Object.fromEntries(

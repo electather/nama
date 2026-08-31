@@ -42,12 +42,13 @@ for context-free discovery, `GetConnection` for candidate and instance
 launches, targeted `LibraryService.GetItem`, resumable
 `LibraryService.ListItems`, `LibraryService.ResolveArtwork`, targeted
 `WatchStateService.GetWatchStates`, resumable
-`WatchStateService.ListWatchStates`, and explicit
-`WatchStateService.PushWatchStates` watched/unwatched mutations for configured
-instance launches. It declares provider type `jellyfin`, contract major `1`,
-and a restricted schema requiring `base_url`, `user_id`, and write-only
-`api_key`. Static information and successful configured connections advertise
-`LIBRARY_READ`, `ARTWORK_RESOLVE`, `WATCH_STATE_READ`, and `WATCHED_WRITE`.
+`WatchStateService.ListWatchStates`, and explicit watched/unwatched plus
+extension-backed coherent-progress `WatchStateService.PushWatchStates`
+mutations for configured instance launches. It declares provider type
+`jellyfin`, contract major `1`, and a restricted schema requiring `base_url`,
+`user_id`, and write-only `api_key`. Static information and successful
+configured stock connections advertise `LIBRARY_READ`, `ARTWORK_RESOLVE`,
+`WATCH_STATE_READ`, and `WATCHED_WRITE`.
 Startup validates and persists discovery information before the public
 provider-type list becomes available.
 
@@ -184,11 +185,13 @@ Jellyfin-specific protocol into `nama.plugin.v1`.
 
 Successful configured connections advertise the complete implemented playback
 plan, open, report, and provider-user-state telemetry capabilities only after a
-compatible handshake. The provider plugin translates every private
+compatible handshake. A handshake that also declares coherent progress adds
+`PROGRESS_WRITE`. The provider plugin translates every private
 capability/preference field and validates strategy, protocol, expected output,
 audio/subtitle Track evidence, actions, external locators, lease expiry, and
-bounded opaque identifiers before returning `nama.plugin.v1`. It retains lost
-telemetry responses as ambiguity and never exposes a private response body.
+bounded opaque identifiers before returning `nama.plugin.v1`. It rejects
+malformed output, retains lost telemetry and progress responses as ambiguity,
+and never exposes a private response body.
 
 The extension uses Jellyfin's exact-tag negotiation classes rather than
 inferring compatibility from a stock URL. Progressive and HLS resources carry
@@ -197,14 +200,21 @@ playlist rewriting recursively replaces stock variants, media playlists,
 segments, keys, and subtitle children while stripping generated credential
 queries. Provider-plugin replacement preserves the self-contained resource and
 opaque context. A Jellyfin restart preserves key-ring verification; lost
-provider resources fail safely. Issue #234 still owns coherent progress that
-saves watched state and position together, validates duration against item
-runtime, and returns readback without claiming provider-native idempotency. The
-extension owns neither a media database nor durable user state.
+provider resources fail safely.
+
+The coherent progress operation resolves the configured principal and exact
+movie or episode, rejects stale optional duration evidence before mutation,
+saves watched state and position through one Jellyfin user-data transaction,
+and reads watched state, position, and runtime back before success. Equal
+targets avoid another save. A lost response or retryable mutation failure
+receives one ordinary targeted read; an observed target succeeds, while a
+differing or unresolved result stays retryable ambiguity and is never blindly
+replayed. The extension owns neither a media database nor durable user state
+and claims no provider compare-and-swap or idempotency key.
 
 Windows transport and persistent or background native-media provider plugins
 remain deferred until a real plugin requires them. Core-owned synchronization
 execution remains in issue #45. The server-extension umbrella is issue #231:
 issue #232 delivered the runtime and direct-progressive tracer, issue #233
-delivered complete HLS, negotiation, and Track delivery, and issue #234 owns
-coherent progress. Container packaging remains in issue #32.
+delivered complete HLS, negotiation, and Track delivery, and issue #234
+delivered coherent progress. Container packaging remains in issue #32.

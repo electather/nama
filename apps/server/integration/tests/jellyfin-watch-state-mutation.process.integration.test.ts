@@ -393,6 +393,11 @@ const conflictingMembersTest = () => {
         method: "GET",
         url: `/jellyfin/Items/independent-item?userId=${USER_ID}`,
       },
+      {
+        authorization: `MediaBrowser Token="${API_KEY}"`,
+        method: "GET",
+        url: "/jellyfin/Nama/v1/handshake",
+      },
     ]);
   }).pipe(Effect.provide(PluginSupervisor.layer()));
   return Effect.scoped(program);
@@ -728,7 +733,7 @@ const cancelledMutationTest = () => {
 };
 
 it.live(
-  "applies explicit watched and unwatched targets and rejects progress without provider work",
+  "applies explicit watched and unwatched targets and rejects progress without a progress write",
   explicitTargetsTest,
   TEST_TIMEOUT_MILLISECONDS,
 );

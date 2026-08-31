@@ -5,7 +5,7 @@ Nama is a self-hosted, iOS-first Jellyfin control plane. It has a TypeScript/Nod
 - `apps/server/` — executable TypeScript core; its one-listener Connect runtime implements Administrator setup and authentication, Better Auth device authorization and refresh, locally verified scoped OAuth consumer authority, fixed-Apple-client refresh-family revocation, bundled-provider discovery and reconciliation, provider-type listing, candidate and exact-revision stored-instance connection tests, verified provider-instance create/list/get/update/delete including disable and re-enable, durable initial provider-catalog and bounded artwork-asset ingestion with exact canonical mapping, sparse canonical Watch state and exact Provider replica persistence, and authenticated stored canonical Library and signed artwork-asset reads. Playback and user-state consumer handlers remain unimplemented.
 - `apps/cli/` — Go public-API client surface; named server profiles, Administrator setup and sign-in, authentication status, authenticated device approval, fixed-Apple-client refresh revocation, provider-type listing, and provider-instance create/list/get/update/delete are implemented. The remaining management command families are unimplemented.
 - `apps/ios/` — universal SwiftUI application and Swift Testing target; manual Nama endpoint normalization, explicit foreground `_nama._tcp` discovery, cancellable public setup-status verification, safe connection states, verified endpoint preference persistence and restoration, native Better Auth device authorization and refresh, endpoint-bound Keychain storage, provider-neutral Home, paginated Movie/Show Library, and debounced all-kind Search over stored canonical media with safe artwork, canonical Movie/Show/Season/Episode Details hierarchy with typed Play intents, native form/tvOS presentation, and the macOS outgoing-network sandbox are implemented. Watch State and playback product behavior remain unimplemented.
-- `plugins/jellyfin/` — first-party TypeScript provider adapter; its production executable implements private health, provider information, connection inspection, targeted normalized library reads, resumable best-effort catalog and movie/episode watch-state scans with bounded safe failures, exact-instance targeted movie/episode watch-state reads, bounded artwork-acquisition leases, anonymous public provider artwork fetches, bounded explicit watched/unwatched writes with ambiguity readback, and the complete extension-backed progressive/HLS playback, fallback, Track, and telemetry lifecycle. It always advertises `LIBRARY_READ`, `ARTWORK_RESOLVE`, `WATCH_STATE_READ`, and `WATCHED_WRITE`; a compatible first-party server extension additionally enables `PLAYBACK_PLAN`, `PLAYBACK_OPEN`, `PLAYBACK_REPORT`, and `PLAYBACK_REPORTS_USER_STATE`.
+- `plugins/jellyfin/` — first-party TypeScript provider adapter; its production executable implements private health, provider information, connection inspection, targeted normalized library reads, resumable best-effort catalog and movie/episode watch-state scans with bounded safe failures, exact-instance targeted movie/episode watch-state reads, bounded artwork-acquisition leases, anonymous public provider artwork fetches, bounded explicit watched/unwatched writes with ambiguity readback, the complete extension-backed progressive/HLS playback, fallback, Track, and telemetry lifecycle, and coherent extension progress writes. Stock connections advertise `LIBRARY_READ`, `ARTWORK_RESOLVE`, `WATCH_STATE_READ`, and `WATCHED_WRITE`; a compatible extension handshake adds `PLAYBACK_PLAN`, `PLAYBACK_OPEN`, `PLAYBACK_REPORT`, `PLAYBACK_REPORTS_USER_STATE`, and `PROGRESS_WRITE` only for its corresponding declared features.
 - `proto/` — authoritative Protobuf schemas and generation configuration.
 - `gen/` — committed, Buf-owned generated bindings.
 
@@ -68,8 +68,13 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Bound the optional extension handshake independently from `GetConnection`; a stalled or unhealthy extension must preserve the already-verified stock capability result while caller cancellation still propagates.
 - Build the Jellyfin extension's playback Data Protection provider outside Jellyfin's host service collection; never configure the host-wide provider for extension lease keys.
 - Extract the packaged Jellyfin extension archive before fixture startup and mount its DLL into a writable plugin directory; a read-only directory prevents Jellyfin from writing `meta.json`.
+- Compile extension fault injection only into the unpackaged fixture DLL; never
+  ship it in the release archive.
 - Resolve an operation- and request-bound successful playback open before enforcing plan expiry, and retain that replay binding for the playback session lifetime.
 - Keep extension plan identifiers within the plugin contract's 256-character bound and advertise only track choices that `OpenPlayback` can materialize.
+- Tamper protected base64url fixture values in a non-final character and ensure
+  the replacement differs; changing the last character can preserve decoded
+  bytes through unused bits or leave the value unchanged.
 - Keep every Nama-exposed Jellyfin media, playlist child, key, and subtitle URL in the opaque extension namespace with a scoped header; never expose stock paths, provider IDs, `ApiKey`, or broad authorization.
 - Enforce Jellyfin control-document byte limits while accepting stock writes and while constructing rewritten output; a post-buffer length check does not bound memory.
 - Remint safe same-origin Jellyfin media redirects as session-bound opaque resources and suppress redirect bodies; reject every unsafe target without forwarding its `Location`.
@@ -121,6 +126,12 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Emit Nama `server.runtime_failed` at `fatal` severity so configured `warn`, `error`, and `fatal` thresholds retain it.
 - Pass eligible non-loopback interface names to Ciao's responder as well as restricted addresses; on Darwin, an empty ARP table can leave autodetection with loopback only while `advertise()` still reports success.
 - Join the LAN-advertisement fiber from its owning scope finalizer; Effect's built-in scoped-fiber finalizer ignores the child exit, which would otherwise turn responder-shutdown failure into successful process shutdown.
+- Clone Jellyfin `UserItemData` before a coherent progress mutation; `GetUserData`
+  returns a cached object, so changing it before `SaveUserData` can alter
+  in-memory state before the transactional save or cancellation check.
+- Convert every extension post-save progress readback failure to a retryable
+  response so the plugin performs one ordinary readback; never emit a
+  definitive 4xx result after a possible commit.
 
 ## The loop
 
@@ -223,5 +234,6 @@ When a correction reveals durable repository knowledge:
 2. Put a repeatable workflow in `.agents/skills/` and link it here when a one-line rule is insufficient.
 3. Keep domain language in `CONTEXT.md`, accepted choices and rationale in `docs/adr/`, current and target shape in `docs/architecture/`, required behavior in contract notes, and concrete wire definitions in `proto/`; keep subtree rules in their nested `AGENTS.md` files.
 4. Include the update in the same commit and mention it in the summary.
+
 
 Keep this file below 500 lines. Move a section that outgrows its usefulness to the owning architecture record, subtree guidance, or project skill.

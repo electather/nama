@@ -8,11 +8,15 @@ and re-enable are implemented and verified through real Connect, PostgreSQL,
 supervised-plugin, compiled-CLI, and disposable-Jellyfin flows. Targeted
 Jellyfin movie, show, positive-numbered season, and positive-numbered episode
 observations, resumable best-effort catalog and movie/episode watch-state scans,
-movie and episode targeted watch-state reads, explicit watched/unwatched writes,
-and anonymous public artwork resolution are implemented and verified through
-the generated private Connect interface, supervised production plugin, and
-controlled provider fixtures. `LIBRARY_READ`, `ARTWORK_RESOLVE`,
-`WATCH_STATE_READ`, and `WATCHED_WRITE` are advertised.
+movie and episode targeted watch-state reads, explicit watched/unwatched and
+coherent progress writes, anonymous public artwork resolution, and one
+direct-progressive extension playback lifecycle are implemented and verified
+through the generated private Connect interface, supervised production plugin,
+and pinned Jellyfin fixture. Stock connections advertise `LIBRARY_READ`,
+`ARTWORK_RESOLVE`, `WATCH_STATE_READ`, and `WATCHED_WRITE`. A compatible
+extension handshake independently advertises the implemented playback
+capabilities when it declares direct-progressive playback and telemetry, and
+`PROGRESS_WRITE` when it declares coherent progress.
 
 Initial catalog ingestion and all seven public `LibraryService` methods are
 implemented over stored canonical projections. The complete production proof
