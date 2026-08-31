@@ -9,6 +9,7 @@ fixture_dll="${extension_directory}/artifacts/fixture/Nama.Jellyfin.Extension.dl
 
 run_dotnet() {
   docker run --rm \
+    --platform linux/amd64 \
     --user "$(id -u):$(id -g)" \
     --env HOME=/tmp/nama-dotnet-home \
     --volume "${repository_root}:/src" \
