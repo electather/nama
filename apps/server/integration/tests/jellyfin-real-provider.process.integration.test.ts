@@ -1,6 +1,7 @@
 // oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, import/max-dependencies, unicorn/max-nested-calls -- The ordered real-provider proof keeps one subprocess lifecycle, exact fixture values, and watched-state transitions visible across the real Jellyfin boundary.
 import { join } from "node:path";
 
+import type { MessageInitShape } from "@bufbuild/protobuf";
 import { Code } from "@connectrpc/connect";
 import { expect, it } from "@effect/vitest";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@nama/api/nama/plugin/v1/library_pb.js";
 import { DynamicRange, MediaKind, SourceAvailability } from "@nama/api/nama/plugin/v1/media_pb.js";
 import type { ProviderMediaItem } from "@nama/api/nama/plugin/v1/media_pb.js";
+import type { PlanPlaybackRequestSchema } from "@nama/api/nama/plugin/v1/playback_pb.js";
 import {
   DeliveryProtocol,
   PlaybackAuthorizationScope,
@@ -18,7 +20,9 @@ import {
   PlaybackService,
   PlaybackState,
   PlaybackStrategy,
+  SubtitleDeliveryMode,
   SubtitlePreference,
+  TrackActionKind,
 } from "@nama/api/nama/plugin/v1/playback_pb.js";
 import {
   PluginConnectionStatus,
@@ -79,12 +83,26 @@ const required = <Value>(value: Value | undefined, description: string): Value =
   }
   return value;
 };
+
+const jsonForSecretAbsence = (value: unknown): string =>
+  JSON.stringify(value, (_key, nested: unknown) => {
+    if (typeof nested === "bigint") {
+      return nested.toString();
+    }
+    return nested;
+  });
 const isUnknownRecord = (value: unknown): value is Readonly<Record<string, unknown>> => {
   if (typeof value !== "object" || !value || Array.isArray(value)) {
     return false;
   }
   return true;
 };
+
+const playlistUris = (playlist: string): readonly string[] =>
+  playlist
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
 
 const itemNamed = (
   items: readonly ProviderMediaItem[],
@@ -109,9 +127,23 @@ const expectNormalizedSource = (item: ProviderMediaItem): void => {
   expect(part.container).toBe("mp4");
   expect(part.runtime).toMatchObject({ nanos: 0, seconds: FIXTURE_RUNTIME_SECONDS });
   expect(part.sizeBytes).toBeGreaterThan(0n);
-  expect(part.tracks).toHaveLength(3);
-  expect(part.tracks.map(({ details }) => details.case)).toEqual(["video", "audio", "audio"]);
-  expect(part.tracks[0]?.details).toMatchObject({
+  expect(part.tracks.length).toBeGreaterThanOrEqual(3);
+  const videoTrack = required(
+    part.tracks.find(({ details }) => details.case === "video"),
+    `${item.title} video track`,
+  );
+  const defaultAudioTrack = required(
+    part.tracks.find(({ details }) => details.case === "audio" && details.value.isDefault),
+    `${item.title} default audio track`,
+  );
+  const spanishAudioTrack = required(
+    part.tracks.find(
+      ({ details }) =>
+        details.case === "audio" && !details.value.isDefault && details.value.language === "spa",
+    ),
+    `${item.title} Spanish audio track`,
+  );
+  expect(videoTrack.details).toMatchObject({
     case: "video",
     value: {
       codec: "h264",
@@ -120,7 +152,7 @@ const expectNormalizedSource = (item: ProviderMediaItem): void => {
       width: 160,
     },
   });
-  expect(part.tracks[1]?.details).toMatchObject({
+  expect(defaultAudioTrack.details).toMatchObject({
     case: "audio",
     value: {
       channelCount: 1,
@@ -130,7 +162,7 @@ const expectNormalizedSource = (item: ProviderMediaItem): void => {
       sampleRateHz: 48_000,
     },
   });
-  expect(part.tracks[2]?.details).toMatchObject({
+  expect(spanishAudioTrack.details).toMatchObject({
     case: "audio",
     value: {
       channelCount: 1,
@@ -390,15 +422,59 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           )?.trackReference,
           "movie default audio track",
         );
+        const spanishAudioTrack = required(
+          moviePart.tracks.find(
+            ({ details }) => details.case === "audio" && details.value.language === "spa",
+          )?.trackReference,
+          "movie Spanish audio track",
+        );
+        const flacAudioTrack = required(
+          moviePart.tracks.find(
+            ({ details }) =>
+              details.case === "audio" &&
+              details.value.codec === "flac" &&
+              details.value.language === "deu",
+          )?.trackReference,
+          "movie German FLAC audio track",
+        );
+        const videoTrack = required(
+          moviePart.tracks.find(({ details }) => details.case === "video")?.trackReference,
+          "movie video track",
+        );
+        const subtitleTrack = required(
+          moviePart.tracks.find(
+            ({ details }) =>
+              details.case === "subtitle" &&
+              details.value.codec === "ass" &&
+              details.value.language === "eng",
+          )?.trackReference,
+          "movie external ASS subtitle track",
+        );
+        const embeddedSubtitleTrack = required(
+          moviePart.tracks.find(
+            ({ details }) =>
+              details.case === "subtitle" &&
+              details.value.codec === "mov_text" &&
+              details.value.language === "fra",
+          )?.trackReference,
+          "movie embedded subtitle track",
+        );
         const privatePlanInput = {
           capabilities: {
             direct_play_profiles: [
               { audio_codecs: ["aac"], container: "mp4", video_codec: "h264" },
             ],
+            dynamic_ranges: ["sdr"],
             protocols: ["http_progressive"],
+            subtitle_capabilities: [],
           },
           item_id: movieItemId,
-          preferences: { quality: 1 },
+          preferences: {
+            preferred_audio_languages: [],
+            preferred_subtitle_languages: [],
+            quality: "auto",
+            subtitle_preference: "auto",
+          },
           source_id: movieSource.sourceId,
           start_position: { nanos: 0, seconds: "0" },
           user_id: jellyfin.primaryUserId,
@@ -451,8 +527,14 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           throw new TypeError("private extension plan identifier was not a string");
         }
         expect(Buffer.byteLength(privatePlanId, "utf8")).toBeLessThanOrEqual(256);
+        expect(privatePlanBody["actions"]).toEqual(
+          expect.arrayContaining([
+            { action: "copy", track_index: Number(videoTrack.trackId) },
+            { action: "copy", track_index: Number(audioTrack.trackId) },
+            { action: "omit", track_index: Number(spanishAudioTrack.trackId) },
+          ]),
+        );
         expect({
-          actions: privatePlanBody["actions"],
           audio_codec: privatePlanBody["audio_codec"],
           container: privatePlanBody["container"],
           default_audio_track_index: privatePlanBody["default_audio_track_index"],
@@ -463,27 +545,15 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           strategy: privatePlanBody["strategy"],
           tracks: privatePlanBody["tracks"],
           video_codec: privatePlanBody["video_codec"],
-        }).toEqual({
-          actions: [{ action: "copy", track_index: 1 }],
+        }).toMatchObject({
           audio_codec: "aac",
           container: "mp4",
-          default_audio_track_index: 1,
+          default_audio_track_index: Number(audioTrack.trackId),
           default_subtitle_track_index: undefined,
           expires_at_type: "string",
           plan_id_type: "string",
           protocol: "http_progressive",
           strategy: "direct",
-          tracks: [
-            {
-              channels: 1,
-              codec: "aac",
-              index: 1,
-              is_default: true,
-              is_forced: false,
-              language: "eng",
-              type: "audio",
-            },
-          ],
           video_codec: "h264",
         });
         const directPlanRequest = {
@@ -525,8 +595,535 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           videoCodec: "h264",
         });
         expect(plan.defaultAudioTrackReference).toEqual(audioTrack);
+        const spanishPlan = required(
+          (yield* plugin.call(
+            PlaybackService.method.planPlayback,
+            {
+              ...directPlanRequest,
+              preferences: {
+                ...directPlanRequest.preferences,
+                preferredAudioLanguages: ["spa"],
+              },
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          )).plan,
+          "preferred-audio playback plan",
+        );
+        expect(spanishPlan.defaultAudioTrackReference).toEqual(spanishAudioTrack);
+        expect(spanishPlan.strategy).toBe(PlaybackStrategy.DIRECT);
+        const spanishOpened = yield* plugin.call(
+          PlaybackService.method.openPlayback,
+          {
+            audioTrackReference: spanishAudioTrack,
+            operationId: "real-extension-spanish-audio-open",
+            planId: spanishPlan.id,
+            subtitle: spanishPlan.defaultSubtitle,
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        const spanishLease = required(spanishOpened.lease, "preferred-audio playback lease");
+        expect(spanishLease.selectedAudioTrackReference).toEqual(spanishAudioTrack);
+        expect(
+          spanishLease.tracks.every(({ switchableWithoutReopen }) => !switchableWithoutReopen),
+        ).toBe(true);
+        const unsafeAudioSwitch = yield* plugin
+          .call(
+            PlaybackService.method.reportPlayback,
+            {
+              eventId: "unsafe-audio-switch",
+              position: { nanos: 0, seconds: 0n },
+              selectedAudioTrackReference: audioTrack,
+              sequence: 1n,
+              sessionContext: spanishLease.sessionContext,
+              sessionId: spanishLease.sessionId,
+              state: PlaybackState.PLAYING,
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(unsafeAudioSwitch).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.FailedPrecondition,
+        });
+
+        const externalSubtitlePlan = required(
+          (yield* plugin.call(
+            PlaybackService.method.planPlayback,
+            {
+              ...directPlanRequest,
+              capabilities: {
+                ...directPlanRequest.capabilities,
+                subtitleCapabilities: [
+                  { deliveryModes: [SubtitleDeliveryMode.EXTERNAL], format: "ass" },
+                ],
+              },
+              preferences: {
+                ...directPlanRequest.preferences,
+                preferredSubtitleLanguages: ["eng"],
+                subtitlePreference: SubtitlePreference.ALWAYS,
+              },
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          )).plan,
+          "external-subtitle playback plan",
+        );
+        expect(externalSubtitlePlan.defaultSubtitle).toEqual({
+          $typeName: "nama.plugin.v1.ProviderSubtitleSelection",
+          selection: { case: "trackReference", value: subtitleTrack },
+        });
+        expect(externalSubtitlePlan.actions).toContainEqual({
+          $typeName: "nama.plugin.v1.ProviderTrackAction",
+          action: TrackActionKind.EXTERNAL,
+          trackReference: subtitleTrack,
+        });
+        const externalSubtitleOpened = yield* plugin.call(
+          PlaybackService.method.openPlayback,
+          {
+            audioTrackReference: externalSubtitlePlan.defaultAudioTrackReference,
+            operationId: "real-extension-external-subtitle-open",
+            planId: externalSubtitlePlan.id,
+            subtitle: externalSubtitlePlan.defaultSubtitle,
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        const externalSubtitleLease = required(
+          externalSubtitleOpened.lease,
+          "external-subtitle playback lease",
+        );
+        const externalSubtitle = required(
+          externalSubtitleLease.externalSubtitles[0],
+          "external subtitle locator",
+        );
+        expect(externalSubtitle.trackReference).toEqual(subtitleTrack);
+        expect(externalSubtitle.url).not.toContain(movieItemId);
+        expect(externalSubtitle.url).not.toContain(movieSource.sourceId);
+        expect(externalSubtitle.url).not.toContain(jellyfin.primaryApiKey);
+        const externalSubtitleResponse = yield* Effect.promise(() =>
+          fetch(externalSubtitle.url, {
+            headers: Object.fromEntries(
+              externalSubtitle.headers.map(({ name, value }) => [name, value]),
+            ),
+            redirect: "manual",
+          }),
+        );
+        expect(externalSubtitleResponse.status).toBe(200);
+        expect(yield* Effect.promise(() => externalSubtitleResponse.text())).toContain(
+          "Nama subtitle fixture",
+        );
+        const embeddedSubtitlePlan = required(
+          (yield* plugin.call(
+            PlaybackService.method.planPlayback,
+            {
+              ...directPlanRequest,
+              capabilities: {
+                ...directPlanRequest.capabilities,
+                subtitleCapabilities: [
+                  { deliveryModes: [SubtitleDeliveryMode.EMBEDDED], format: "mov_text" },
+                ],
+              },
+              preferences: {
+                ...directPlanRequest.preferences,
+                preferredSubtitleLanguages: ["fra"],
+                subtitlePreference: SubtitlePreference.ALWAYS,
+              },
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          )).plan,
+          "embedded-subtitle playback plan",
+        );
+        expect(embeddedSubtitlePlan).toMatchObject({
+          defaultSubtitle: {
+            selection: { case: "trackReference", value: embeddedSubtitleTrack },
+          },
+          strategy: PlaybackStrategy.DIRECT,
+        });
+        expect(embeddedSubtitlePlan.actions).toContainEqual({
+          $typeName: "nama.plugin.v1.ProviderTrackAction",
+          action: TrackActionKind.COPY,
+          trackReference: embeddedSubtitleTrack,
+        });
+        const embeddedSubtitleOpened = yield* plugin.call(
+          PlaybackService.method.openPlayback,
+          {
+            audioTrackReference: embeddedSubtitlePlan.defaultAudioTrackReference,
+            operationId: "real-extension-embedded-subtitle-open",
+            planId: embeddedSubtitlePlan.id,
+            subtitle: embeddedSubtitlePlan.defaultSubtitle,
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(embeddedSubtitleOpened.lease).toMatchObject({
+          externalSubtitles: [],
+          selectedSubtitle: {
+            selection: { case: "trackReference", value: embeddedSubtitleTrack },
+          },
+        });
+
+        const fallbackCases: readonly {
+          readonly audioCodec: string;
+          readonly name: string;
+          readonly request: MessageInitShape<typeof PlanPlaybackRequestSchema>;
+          readonly strategy: PlaybackStrategy;
+          readonly videoCodec: string;
+        }[] = [
+          {
+            audioCodec: "aac",
+            name: "audio-transcode",
+            request: {
+              ...directPlanRequest,
+              preferences: {
+                ...directPlanRequest.preferences,
+                preferredAudioLanguages: ["deu"],
+              },
+            },
+            strategy: PlaybackStrategy.TRANSCODE_AUDIO,
+            videoCodec: "h264",
+          },
+          {
+            audioCodec: "aac",
+            name: "bit-rate-cap",
+            request: {
+              ...directPlanRequest,
+              preferences: {
+                ...directPlanRequest.preferences,
+                maxBitRateBps: 1000n,
+                quality: PlaybackQuality.CAPPED,
+              },
+            },
+            strategy: PlaybackStrategy.TRANSCODE_VIDEO,
+            videoCodec: "h264",
+          },
+          {
+            audioCodec: "aac",
+            name: "subtitle-burn",
+            request: {
+              ...directPlanRequest,
+              capabilities: {
+                ...directPlanRequest.capabilities,
+                subtitleCapabilities: [
+                  { deliveryModes: [SubtitleDeliveryMode.BURNED_IN], format: "ass" },
+                ],
+              },
+              preferences: {
+                ...directPlanRequest.preferences,
+                preferredSubtitleLanguages: ["eng"],
+                subtitlePreference: SubtitlePreference.ALWAYS,
+              },
+            },
+            strategy: PlaybackStrategy.TRANSCODE_VIDEO,
+            videoCodec: "h264",
+          },
+        ];
+        for (const fallback of fallbackCases) {
+          const fallbackPlan = required(
+            (yield* plugin.call(
+              PlaybackService.method.planPlayback,
+              fallback.request,
+              CALL_DEADLINE_MILLISECONDS,
+            )).plan,
+            `${fallback.name} playback plan`,
+          );
+          expect(fallbackPlan).toMatchObject({
+            audioCodec: fallback.audioCodec,
+            protocol: DeliveryProtocol.HTTP_PROGRESSIVE,
+            strategy: fallback.strategy,
+            videoCodec: fallback.videoCodec,
+          });
+          let expectedVideoAction = TrackActionKind.COPY;
+          if (fallback.strategy === PlaybackStrategy.TRANSCODE_VIDEO) {
+            expectedVideoAction = TrackActionKind.TRANSCODE;
+          }
+          expect(fallbackPlan.actions).toContainEqual({
+            $typeName: "nama.plugin.v1.ProviderTrackAction",
+            action: expectedVideoAction,
+            trackReference: videoTrack,
+          });
+          if (fallback.name === "audio-transcode") {
+            expect(fallbackPlan.actions).toContainEqual({
+              $typeName: "nama.plugin.v1.ProviderTrackAction",
+              action: TrackActionKind.TRANSCODE,
+              trackReference: flacAudioTrack,
+            });
+          }
+          if (fallback.name === "subtitle-burn") {
+            expect(fallbackPlan.actions).toContainEqual({
+              $typeName: "nama.plugin.v1.ProviderTrackAction",
+              action: TrackActionKind.BURN,
+              trackReference: subtitleTrack,
+            });
+          }
+          const fallbackOpened = yield* plugin.call(
+            PlaybackService.method.openPlayback,
+            {
+              audioTrackReference: fallbackPlan.defaultAudioTrackReference,
+              operationId: `real-extension-${fallback.name}-open`,
+              planId: fallbackPlan.id,
+              subtitle: fallbackPlan.defaultSubtitle,
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          );
+          const fallbackLease = required(fallbackOpened.lease, `${fallback.name} playback lease`);
+          const fallbackMedia = yield* Effect.promise(() =>
+            fetch(fallbackLease.url, {
+              headers: Object.fromEntries(
+                fallbackLease.headers.map(({ name, value }) => [name, value]),
+              ),
+              redirect: "manual",
+            }),
+          );
+          expect(fallbackMedia.status).toBe(200);
+          expect(
+            (yield* Effect.promise(() => fallbackMedia.arrayBuffer())).byteLength,
+          ).toBeGreaterThan(0);
+        }
+        const unsupportedPlayback = yield* plugin
+          .call(
+            PlaybackService.method.planPlayback,
+            {
+              ...directPlanRequest,
+              capabilities: {
+                ...directPlanRequest.capabilities,
+                directPlayProfiles: [
+                  {
+                    audioCodecs: ["unsupported-audio"],
+                    container: "mp4",
+                    videoCodec: "unsupported-video",
+                  },
+                ],
+              },
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(unsupportedPlayback).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.FailedPrecondition,
+        });
+        const unavailableSource = yield* plugin
+          .call(
+            PlaybackService.method.planPlayback,
+            {
+              ...directPlanRequest,
+              sourceReference: {
+                ...movieSource,
+                sourceId: "unavailable-source",
+              },
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(unavailableSource).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.NotFound,
+        });
+        const privateHlsProbe = yield* Effect.promise(() =>
+          fetch(new URL("Nama/v1/playback/plans", jellyfin.baseUrl), {
+            body: JSON.stringify({
+              ...privatePlanInput,
+              capabilities: {
+                ...privatePlanInput.capabilities,
+                dynamic_ranges: ["sdr"],
+                protocols: ["hls"],
+              },
+              start_position: undefined,
+            }),
+            headers: {
+              authorization: `MediaBrowser Token="${jellyfin.primaryApiKey}"`,
+              "content-type": "application/json",
+            },
+            method: "POST",
+            redirect: "manual",
+          }),
+        );
+        if (privateHlsProbe.status !== 200) {
+          const failureBody = yield* Effect.promise(() => privateHlsProbe.text());
+          throw new Error(
+            `private extension HLS plan failed: ${privateHlsProbe.status} ${failureBody}`,
+          );
+        }
+        const hlsPlanRequest = {
+          ...directPlanRequest,
+          capabilities: {
+            ...directPlanRequest.capabilities,
+            protocols: [DeliveryProtocol.HLS],
+            subtitleCapabilities: [
+              { deliveryModes: [SubtitleDeliveryMode.EXTERNAL], format: "ass" },
+            ],
+          },
+          preferences: {
+            ...directPlanRequest.preferences,
+            preferredSubtitleLanguages: ["eng"],
+            subtitlePreference: SubtitlePreference.ALWAYS,
+          },
+        };
+        const hlsPlan = required(
+          (yield* plugin.call(
+            PlaybackService.method.planPlayback,
+            hlsPlanRequest,
+            CALL_DEADLINE_MILLISECONDS,
+          )).plan,
+          "HLS playback plan",
+        );
+        expect(hlsPlan).toMatchObject({
+          audioCodec: "aac",
+          container: "mp4",
+          defaultSubtitle: {
+            selection: { case: "trackReference", value: subtitleTrack },
+          },
+          protocol: DeliveryProtocol.HLS,
+          strategy: PlaybackStrategy.REMUX,
+          videoCodec: "h264",
+        });
+        expect(hlsPlan.actions).toContainEqual({
+          $typeName: "nama.plugin.v1.ProviderTrackAction",
+          action: TrackActionKind.EXTERNAL,
+          trackReference: subtitleTrack,
+        });
+        const disabledHlsPlan = required(
+          (yield* plugin.call(
+            PlaybackService.method.planPlayback,
+            hlsPlanRequest,
+            CALL_DEADLINE_MILLISECONDS,
+          )).plan,
+          "disabled-subtitle HLS plan",
+        );
+        const disabledHlsOpened = yield* plugin.call(
+          PlaybackService.method.openPlayback,
+          {
+            audioTrackReference: disabledHlsPlan.defaultAudioTrackReference,
+            operationId: "real-extension-hls-disabled-open",
+            planId: disabledHlsPlan.id,
+            subtitle: { selection: { case: "disabled", value: true } },
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(disabledHlsOpened.lease).toMatchObject({
+          externalSubtitles: [],
+          selectedSubtitle: { selection: { case: "disabled", value: true } },
+        });
+        const hlsOpened = yield* plugin.call(
+          PlaybackService.method.openPlayback,
+          {
+            audioTrackReference: hlsPlan.defaultAudioTrackReference,
+            operationId: "real-extension-hls-open",
+            planId: hlsPlan.id,
+            subtitle: hlsPlan.defaultSubtitle,
+          },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        const hlsLease = required(hlsOpened.lease, "HLS playback lease");
+        expect(hlsLease).toMatchObject({
+          mimeType: "application/vnd.apple.mpegurl",
+          protocol: DeliveryProtocol.HLS,
+        });
+        expect(hlsLease.externalSubtitles).toHaveLength(1);
+        expect(hlsLease.externalSubtitles[0]?.trackReference).toEqual(subtitleTrack);
+        const changedHlsReplay = yield* plugin
+          .call(
+            PlaybackService.method.openPlayback,
+            {
+              audioTrackReference: hlsPlan.defaultAudioTrackReference,
+              operationId: "real-extension-hls-open",
+              planId: hlsPlan.id,
+              subtitle: { selection: { case: "disabled", value: true } },
+            },
+            CALL_DEADLINE_MILLISECONDS,
+          )
+          .pipe(Effect.flip);
+        expect(changedHlsReplay).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.FailedPrecondition,
+        });
+        const hlsHeaders = Object.fromEntries(
+          hlsLease.headers.map(({ name, value }) => [name, value]),
+        );
+        const hlsMasterResponse = yield* Effect.promise(() =>
+          fetch(hlsLease.url, { headers: hlsHeaders, redirect: "manual" }),
+        );
+        expect(hlsMasterResponse.status).toBe(200);
+        const hlsMaster = yield* Effect.promise(() => hlsMasterResponse.text());
+        expect(hlsMaster).not.toContain("ApiKey");
+        expect(hlsMaster).not.toContain(jellyfin.primaryApiKey);
+        expect(hlsMaster).not.toContain(movieItemId);
+        expect(hlsMaster).not.toContain(movieSource.sourceId);
+        const hlsVariants = playlistUris(hlsMaster);
+        expect(hlsVariants.length).toBeGreaterThan(0);
+        expect(hlsVariants.every((uri) => uri.startsWith("/Nama/v1/playback/"))).toBe(true);
+        const hlsVariantResponse = yield* Effect.promise(() =>
+          fetch(new URL(required(hlsVariants[0], "HLS variant"), hlsLease.url), {
+            headers: hlsHeaders,
+            redirect: "manual",
+          }),
+        );
+        expect(hlsVariantResponse.status).toBe(200);
+        const hlsVariant = yield* Effect.promise(() => hlsVariantResponse.text());
+        expect(hlsVariant).not.toContain("ApiKey");
+        expect(hlsVariant).not.toContain(jellyfin.primaryApiKey);
+        expect(hlsVariant).not.toContain(movieItemId);
+        expect(hlsVariant).not.toContain(movieSource.sourceId);
+        const hlsSegments = playlistUris(hlsVariant);
+        expect(hlsSegments.length).toBeGreaterThan(0);
+        expect(hlsSegments.every((uri) => uri.startsWith("/Nama/v1/playback/"))).toBe(true);
+        const hlsSegmentResponse = yield* Effect.promise(() =>
+          fetch(new URL(required(hlsSegments[0], "HLS segment"), hlsLease.url), {
+            headers: hlsHeaders,
+            redirect: "manual",
+          }),
+        );
+        expect(hlsSegmentResponse.status).toBe(200);
+        expect(
+          (yield* Effect.promise(() => hlsSegmentResponse.arrayBuffer())).byteLength,
+        ).toBeGreaterThan(0);
+        const hlsSubtitle = required(
+          hlsLease.externalSubtitles[0],
+          "HLS external subtitle locator",
+        );
+        expect(hlsSubtitle.url).not.toContain("ApiKey");
+        expect(hlsSubtitle.url).not.toContain(movieItemId);
+        expect(hlsSubtitle.url).not.toContain(movieSource.sourceId);
+        const hlsSubtitleResponse = yield* Effect.promise(() =>
+          fetch(hlsSubtitle.url, {
+            headers: Object.fromEntries(
+              hlsSubtitle.headers.map(({ name, value }) => [name, value]),
+            ),
+            redirect: "manual",
+          }),
+        );
+        expect(hlsSubtitleResponse.status).toBe(200);
+        const hlsSubtitlePlaylist = yield* Effect.promise(() => hlsSubtitleResponse.text());
+        expect(hlsSubtitlePlaylist).not.toContain("ApiKey");
+        expect(hlsSubtitlePlaylist).not.toContain(jellyfin.primaryApiKey);
+        expect(hlsSubtitlePlaylist).not.toContain(movieItemId);
+        expect(hlsSubtitlePlaylist).not.toContain(movieSource.sourceId);
+        const hlsSubtitleChildren = playlistUris(hlsSubtitlePlaylist);
+        expect(hlsSubtitleChildren.length).toBeGreaterThan(0);
+        expect(hlsSubtitleChildren.every((uri) => uri.startsWith("/Nama/v1/playback/"))).toBe(true);
+        const hlsSubtitleChildUrl = new URL(
+          required(hlsSubtitleChildren[0], "HLS subtitle child"),
+          hlsSubtitle.url,
+        );
+        const hlsSubtitleChildResponse = yield* Effect.promise(() =>
+          fetch(hlsSubtitleChildUrl, {
+            headers: Object.fromEntries(
+              hlsSubtitle.headers.map(({ name, value }) => [name, value]),
+            ),
+            redirect: "manual",
+          }),
+        );
+        expect(hlsSubtitleChildResponse.status).toBe(200);
+        const hlsSubtitleBody = yield* Effect.promise(() => hlsSubtitleChildResponse.text());
+        expect(hlsSubtitleBody).toContain("Nama subtitle fixture");
+        const wrongSessionSubtitleChild = yield* Effect.promise(() =>
+          fetch(hlsSubtitleChildUrl, {
+            headers: Object.fromEntries(
+              externalSubtitleLease.headers.map(({ name, value }) => [name, value]),
+            ),
+            redirect: "manual",
+          }),
+        );
+        expect(wrongSessionSubtitleChild.status).toBe(401);
         const openStartedAt = Date.now();
-        expect(plan.tracks).toHaveLength(1);
+        expect(plan.tracks).toHaveLength(2);
         const openRequest = {
           operationId: "real-extension-open",
           planId: plan.id,
@@ -620,10 +1217,15 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
         );
         expect(wrongResourceMedia.status).toBe(401);
         const leaseHeader = required(playbackLease.headers[0], "playback lease header");
+        let tamperedLeasePrefix = "A";
+        if (leaseHeader.value.startsWith(tamperedLeasePrefix)) {
+          tamperedLeasePrefix = "B";
+        }
+        const tamperedLeaseValue = tamperedLeasePrefix + leaseHeader.value.slice(1);
         const tamperedLeaseMedia = yield* Effect.promise(() =>
           fetch(playbackLease.url, {
             headers: {
-              [leaseHeader.name]: `${leaseHeader.value.slice(0, -1)}A`,
+              [leaseHeader.name]: tamperedLeaseValue,
             },
             redirect: "manual",
           }),
@@ -673,6 +1275,14 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
             CALL_DEADLINE_MILLISECONDS,
           )).connection?.capabilities,
         ).toEqual(EXPECTED_CAPABILITIES);
+        const replacementHlsMain = yield* Effect.promise(() =>
+          fetch(hlsLease.url, { headers: hlsHeaders, redirect: "manual" }),
+        );
+        expect(replacementHlsMain.status).toBe(200);
+        const replacementHlsSubtitle = yield* Effect.promise(() =>
+          fetch(hlsSubtitleChildUrl, { headers: hlsHeaders, redirect: "manual" }),
+        );
+        expect(replacementHlsSubtitle.status).toBe(200);
 
         const planRequestsBeforeFaults = faultProxy.planRequests();
         const malformedSecret = "real-extension-malformed-secret-sentinel";
@@ -684,8 +1294,8 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           _tag: "PluginRpcError",
           code: Code.Internal,
         });
-        expect(JSON.stringify(malformedFailure)).not.toContain(malformedSecret);
-        expect(JSON.stringify(malformedFailure)).not.toContain(jellyfin.primaryApiKey);
+        expect(jsonForSecretAbsence(malformedFailure)).not.toContain(malformedSecret);
+        expect(jsonForSecretAbsence(malformedFailure)).not.toContain(jellyfin.primaryApiKey);
 
         faultProxy.redirectNextPlanResponse();
         const redirectFailure = yield* replacementPlugin
@@ -695,7 +1305,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           _tag: "PluginRpcError",
           code: Code.FailedPrecondition,
         });
-        expect(JSON.stringify(redirectFailure)).not.toContain("attacker.example");
+        expect(jsonForSecretAbsence(redirectFailure)).not.toContain("attacker.example");
 
         const stalledPlan = faultProxy.stallNextPlanResponse();
         const canceledPlanCall = yield* Effect.forkChild(
@@ -729,7 +1339,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
         expect(reportFailure).toMatchObject({ _tag: "PluginRpcError", code: Code.Unavailable });
         expect(faultProxy.reportRequests()).toBe(1);
         expect(faultProxy.committedLostReportResponses()).toBe(1);
-        expect(JSON.stringify(reportFailure)).not.toContain(jellyfin.primaryApiKey);
+        expect(jsonForSecretAbsence(reportFailure)).not.toContain(jellyfin.primaryApiKey);
         const closeRequest = {
           finalPosition: { nanos: 0, seconds: 0n },
           operationId: "real-extension-close",
@@ -814,6 +1424,20 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           }),
         );
         expect(restartedMedia.status).toBe(200);
+        const restartedHlsMain = yield* Effect.promise(() =>
+          fetch(new URL(new URL(hlsLease.url).pathname, restartedBaseUrl), {
+            headers: hlsHeaders,
+            redirect: "manual",
+          }),
+        );
+        expect(restartedHlsMain.status).toBe(200);
+        const restartedHlsSubtitle = yield* Effect.promise(() =>
+          fetch(new URL(hlsSubtitleChildUrl.pathname, restartedBaseUrl), {
+            headers: hlsHeaders,
+            redirect: "manual",
+          }),
+        );
+        expect(restartedHlsSubtitle.status).toBe(200);
         const lostSessionExit = yield* Effect.exit(
           restartedPlugin.call(
             PlaybackService.method.reportPlayback,

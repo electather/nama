@@ -26,3 +26,5 @@ xcuserdata/
 /extensions/jellyfin/artifacts/
 /extensions/jellyfin/bin/
 /extensions/jellyfin/obj/
+/extensions/jellyfin/tests/bin/
+/extensions/jellyfin/tests/obj/

@@ -11,6 +11,7 @@ using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Session;
 using MediaBrowser.Model.MediaInfo;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Primitives;
 
 namespace Nama.Jellyfin.Extension;
@@ -20,11 +21,10 @@ internal sealed class PlaybackRuntimeService
   private const int MaximumIdentifierLength = 256;
   private const int MaximumOperationLength = 256;
   private const int MaximumApiKeyLength = 4096;
-  private const int AutoQuality = 1;
-  private const string DirectContainer = "mp4";
   private readonly ExtensionHostCompatibility _compatibility;
   private readonly ILibraryManager _libraryManager;
   private readonly IMediaSourceManager _mediaSourceManager;
+  private readonly PlaybackNegotiationService _negotiation;
   private readonly ISessionManager _sessionManager;
   private readonly PlaybackSessionStore _sessions;
   private readonly PlaybackTokenService _tokens;
@@ -33,6 +33,7 @@ internal sealed class PlaybackRuntimeService
   public PlaybackRuntimeService(
       ExtensionHostCompatibility compatibility,
       ILibraryManager libraryManager,
+      PlaybackNegotiationService negotiation,
       IMediaSourceManager mediaSourceManager,
       ISessionManager sessionManager,
       PlaybackSessionStore sessions,
@@ -41,6 +42,7 @@ internal sealed class PlaybackRuntimeService
   {
     _compatibility = compatibility;
     _libraryManager = libraryManager;
+    _negotiation = negotiation;
     _mediaSourceManager = mediaSourceManager;
     _sessionManager = sessionManager;
     _sessions = sessions;
@@ -72,7 +74,7 @@ internal sealed class PlaybackRuntimeService
     }
 
     cancellationToken.ThrowIfCancellationRequested();
-    var plan = CreateDirectPlan(input, itemId, sourceId, userId, source);
+    var plan = CreatePlan(input, itemId, sourceId, userId, source);
     return Task.FromResult(plan);
   }
 
@@ -84,10 +86,15 @@ internal sealed class PlaybackRuntimeService
     var input = Deserialize<OpenPlaybackInput>(body);
     var operationId = RequiredText(input.OperationId, MaximumOperationLength);
     var planId = RequiredText(input.PlanId, MaximumIdentifierLength);
+    if (input.SubtitleDisabled == input.SubtitleTrackIndex.HasValue)
+    {
+      throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
+    }
     var openRequest = new PlaybackOpenRequest(
         operationId,
         planId,
         input.AudioTrackIndex,
+        input.SubtitleDisabled,
         input.SubtitleTrackIndex);
     var apiKey = ApiKeyFrom(authorizationHeaders);
     var state = await _sessions.OpenAsync(
@@ -131,7 +138,7 @@ internal sealed class PlaybackRuntimeService
 
     var reportSignature = string.Create(
         CultureInfo.InvariantCulture,
-        $"{sequence}\n{input.State}\n{positionTicks}\n{selectedAudioTrackIndex}\n-");
+        $"{sequence}\n{input.State}\n{positionTicks}\n{selectedAudioTrackIndex}\n{selectedSubtitleTrackIndex?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
     await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
     try
     {
@@ -223,19 +230,13 @@ internal sealed class PlaybackRuntimeService
     }
   }
 
-  private PlanPlaybackOutput CreateDirectPlan(
+  private PlanPlaybackOutput CreatePlan(
       PlanPlaybackInput input,
       Guid itemId,
       string sourceId,
       Guid userId,
       MediaSourceInfo source)
   {
-    if (!source.SupportsDirectPlay)
-    {
-      throw new PlaybackRequestException(
-          StatusCodes.Status412PreconditionFailed,
-          "DIRECT_PLAY_NOT_SUPPORTED");
-    }
     if (source.RequiresOpening || source.RequiresClosing)
     {
       throw new PlaybackRequestException(
@@ -254,25 +255,6 @@ internal sealed class PlaybackRuntimeService
           StatusCodes.Status412PreconditionFailed,
           "SOURCE_RUNTIME_MISSING");
     }
-    if (!ProviderContainerIncludes(source.Container, DirectContainer))
-    {
-      throw new PlaybackRequestException(
-          StatusCodes.Status412PreconditionFailed,
-          "CONTAINER_UNSUPPORTED");
-    }
-    if (input.Preferences?.Quality != AutoQuality || input.Preferences.MaxBitRateBps is not null)
-    {
-      throw new PlaybackRequestException(
-          StatusCodes.Status412PreconditionFailed,
-          "PREFERENCES_UNSUPPORTED");
-    }
-    if (input.Capabilities?.Protocols?.Contains("http_progressive", StringComparer.Ordinal) != true)
-    {
-      throw new PlaybackRequestException(
-          StatusCodes.Status412PreconditionFailed,
-          "PROTOCOL_UNSUPPORTED");
-    }
-
     var runtime = TimeSpan.FromTicks(source.RunTimeTicks.Value);
     if (runtime + PlaybackConstants.SessionGrace > PlaybackConstants.MaximumSessionLifetime)
     {
@@ -280,49 +262,25 @@ internal sealed class PlaybackRuntimeService
           StatusCodes.Status412PreconditionFailed,
           "RUNTIME_UNSUPPORTED");
     }
-
-    var videoStreams = source.MediaStreams.Where(stream => stream.Type == MediaStreamType.Video).ToArray();
-    var audioStreams = source.MediaStreams.Where(stream => stream.Type == MediaStreamType.Audio).ToArray();
-    var subtitleStreams = source.MediaStreams.Where(stream => stream.Type == MediaStreamType.Subtitle).ToArray();
-    if (videoStreams.Length != 1 || audioStreams.Length == 0 || subtitleStreams.Length != 0)
-    {
-      throw new PlaybackRequestException(
-          StatusCodes.Status412PreconditionFailed,
-          "STREAMS_UNSUPPORTED");
-    }
-
-    var videoCodec = RequiredProviderText(videoStreams[0].Codec);
-    var defaultAudio = audioStreams.FirstOrDefault(
-        stream => stream.Index == source.DefaultAudioStreamIndex)
-        ?? audioStreams.FirstOrDefault(stream => stream.IsDefault)
-        ?? audioStreams[0];
-    var audioCodec = RequiredProviderText(defaultAudio.Codec);
-    if (!SupportsDirectProfile(input.Capabilities?.DirectPlayProfiles, DirectContainer, videoCodec, audioCodec))
-    {
-      throw new PlaybackRequestException(
-          StatusCodes.Status412PreconditionFailed,
-          "PROFILE_UNSUPPORTED");
-    }
-
     var startPosition = input.StartPosition is null
         ? 0
         : DurationTicks(input.StartPosition, source.RunTimeTicks.Value);
-    if (startPosition > source.RunTimeTicks.Value)
+    var initialNegotiation = _negotiation.Negotiate(input, itemId, source);
+    var tracks = MaterializableTracks(
+        input,
+        itemId,
+        source,
+        initialNegotiation,
+        _negotiation.Tracks(source));
+    var trackIndexes = tracks.Select(track => track.Index).ToHashSet();
+    var videoTrackIndex = source.VideoStream?.Index;
+    var negotiation = initialNegotiation with
     {
-      throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
-    }
-
-    var tracks = new[]
-    {
-      new PlaybackTrackModel(
-          defaultAudio.Index,
-          "audio",
-          audioCodec,
-          defaultAudio.Channels,
-          true,
-          defaultAudio.IsForced,
-          BoundedProviderText(defaultAudio.Title),
-          BoundedProviderText(defaultAudio.Language)),
+      Actions = initialNegotiation.Actions
+          .Where(action =>
+              trackIndexes.Contains(action.TrackIndex)
+              || action.TrackIndex == videoTrackIndex)
+          .ToArray()
     };
     var plan = new PlaybackPlan(
         PlaybackTokenService.CreateOpaqueId(),
@@ -330,10 +288,9 @@ internal sealed class PlaybackRuntimeService
         sourceId,
         userId,
         source.RunTimeTicks.Value,
-        DirectContainer,
-        videoCodec,
-        audioCodec,
-        defaultAudio.Index,
+        startPosition,
+        input,
+        negotiation,
         tracks);
     var expiresAt = DateTimeOffset.UtcNow + PlaybackConstants.PlanLifetime;
     var planId = _tokens.ProtectPlan(plan.Nonce, expiresAt);
@@ -341,15 +298,15 @@ internal sealed class PlaybackRuntimeService
     return new PlanPlaybackOutput(
         planId,
         expiresAt,
-        "direct",
-        plan.Container,
-        videoCodec,
-        audioCodec,
-        "http_progressive",
+        negotiation.Strategy,
+        negotiation.Container,
+        negotiation.VideoCodec,
+        negotiation.AudioCodec,
+        negotiation.Protocol,
         tracks,
-        defaultAudio.Index,
-        null,
-        tracks.Select(track => new PlaybackActionModel(track.Index, "copy")).ToArray());
+        negotiation.AudioTrackIndex,
+        negotiation.SubtitleTrackIndex,
+        negotiation.Actions);
   }
 
   private async Task<PlaybackSessionState> CreateSessionAsync(
@@ -359,8 +316,38 @@ internal sealed class PlaybackRuntimeService
   {
     var user = _userManager.GetUserById(plan.UserId)
         ?? throw new PlaybackRequestException(StatusCodes.Status404NotFound);
+    var item = _libraryManager.GetItemById<BaseItem>(plan.ItemId, user);
+    if (item is not Movie && item is not Episode)
+    {
+      throw new PlaybackRequestException(StatusCodes.Status404NotFound);
+    }
+    var source = _mediaSourceManager
+        .GetStaticMediaSources(item, enablePathSubstitution: false, user)
+        .SingleOrDefault(candidate => string.Equals(
+            candidate.Id,
+            plan.SourceId,
+            StringComparison.Ordinal))
+        ?? throw new PlaybackRequestException(StatusCodes.Status404NotFound);
+    var selectedAudioTrackIndex =
+        openRequest.AudioTrackIndex ?? plan.Negotiation.AudioTrackIndex;
+    var negotiation = _negotiation.Negotiate(
+        plan.Input,
+        plan.ItemId,
+        source,
+        selectedAudioTrackIndex,
+        openRequest.SubtitleTrackIndex,
+        openRequest.SubtitleDisabled);
+    if (!EquivalentPlan(plan.Negotiation, negotiation))
+    {
+      throw new PlaybackRequestException(
+          StatusCodes.Status412PreconditionFailed,
+          "TRACK_SELECTION_REQUIRES_REPLAN");
+    }
+
     var sessionId = PlaybackTokenService.CreateOpaqueId();
-    var mediaResource = PlaybackTokenService.CreateOpaqueId();
+    negotiation.Stream.PlaySessionId = sessionId;
+    negotiation.Stream.StartPositionTicks = plan.StartPositionTicks;
+    var stockTarget = RequiredStockTarget(negotiation.Stream.ToUrl(null, null, null));
     var expiresAt = DateTimeOffset.UtcNow
         + TimeSpan.FromTicks(plan.RuntimeTicks)
         + PlaybackConstants.SessionGrace;
@@ -374,27 +361,34 @@ internal sealed class PlaybackRuntimeService
     var mediaLease = _tokens.ProtectMediaLease(
         new MediaLeasePayload(
             sessionId,
-            mediaResource,
             plan.ItemId,
             plan.SourceId,
-            plan.Container,
             apiKey),
+        expiresAt);
+    var mediaResource = _tokens.ProtectMediaResource(
+        new MediaResourcePayload(
+            sessionId,
+            stockTarget,
+            negotiation.Protocol == "hls"),
         expiresAt);
     var sessionContext = _tokens.ProtectSessionContext(
         new SessionContextPayload(sessionId),
         expiresAt);
+    var externalSubtitles = ExternalSubtitles(plan, negotiation, sessionId, expiresAt);
     var output = new OpenPlaybackOutput(
         sessionId,
         plan.ItemId.ToString("N", CultureInfo.InvariantCulture),
         plan.SourceId,
         mediaResource,
         mediaLease,
-        "video/mp4",
+        negotiation.Protocol,
+        negotiation.MimeType,
         expiresAt,
         PlaybackConstants.ReportIntervalSeconds,
         plan.Tracks.Select(track => new SessionTrackModel(track.Index, false)).ToArray(),
-        plan.DefaultAudioTrackIndex,
-        null,
+        negotiation.AudioTrackIndex,
+        negotiation.SubtitleTrackIndex,
+        externalSubtitles,
         sessionContext);
     return new PlaybackSessionState(
         plan,
@@ -402,6 +396,94 @@ internal sealed class PlaybackRuntimeService
         jellyfinSession.Id,
         expiresAt,
         output);
+  }
+
+  private IReadOnlyList<PlaybackTrackModel> MaterializableTracks(
+      PlanPlaybackInput input,
+      Guid itemId,
+      MediaSourceInfo source,
+      NegotiatedPlayback planned,
+      IReadOnlyList<PlaybackTrackModel> tracks)
+  {
+    return tracks.Where(track => track.Type switch
+    {
+      "audio" => CanMaterialize(
+          input,
+          itemId,
+          source,
+          planned,
+          track.Index,
+          planned.SubtitleTrackIndex,
+          !planned.SubtitleTrackIndex.HasValue),
+      "subtitle" => CanMaterialize(
+          input,
+          itemId,
+          source,
+          planned,
+          planned.AudioTrackIndex,
+          track.Index,
+          false),
+      "video" => true,
+      _ => false
+    }).ToArray();
+  }
+
+  private bool CanMaterialize(
+      PlanPlaybackInput input,
+      Guid itemId,
+      MediaSourceInfo source,
+      NegotiatedPlayback planned,
+      int audioTrackIndex,
+      int? subtitleTrackIndex,
+      bool subtitleDisabled)
+  {
+    try
+    {
+      return EquivalentPlan(
+          planned,
+          _negotiation.Negotiate(
+              input,
+              itemId,
+              source,
+              audioTrackIndex,
+              subtitleTrackIndex,
+              subtitleDisabled));
+    }
+    catch (PlaybackRequestException)
+    {
+      return false;
+    }
+  }
+
+  private IReadOnlyList<ExternalSubtitleModel> ExternalSubtitles(
+      PlaybackPlan plan,
+      NegotiatedPlayback negotiation,
+      string sessionId,
+      DateTimeOffset expiresAt)
+  {
+    if (negotiation.SubtitleTrackIndex is not int subtitleIndex
+        || negotiation.SubtitleAction != "external")
+    {
+      return [];
+    }
+    var subtitle = plan.Tracks.Single(track =>
+        track.Type == "subtitle" && track.Index == subtitleIndex);
+    var stockTarget = negotiation.Stream.SubtitleDeliveryMethod
+        == MediaBrowser.Model.Dlna.SubtitleDeliveryMethod.Hls
+        ? $"/Videos/{plan.ItemId.ToString("N", CultureInfo.InvariantCulture)}/{Uri.EscapeDataString(plan.SourceId)}/Subtitles/{subtitleIndex.ToString(CultureInfo.InvariantCulture)}/subtitles.m3u8?segmentLength=2"
+        : $"/Videos/{plan.ItemId.ToString("N", CultureInfo.InvariantCulture)}/{Uri.EscapeDataString(plan.SourceId)}/Subtitles/{subtitleIndex.ToString(CultureInfo.InvariantCulture)}/0/Stream.{Uri.EscapeDataString(negotiation.Stream.SubtitleFormat ?? subtitle.Codec)}";
+    var rewritePlaylist = negotiation.Stream.SubtitleDeliveryMethod
+        == MediaBrowser.Model.Dlna.SubtitleDeliveryMethod.Hls;
+    var mediaResource = _tokens.ProtectMediaResource(
+        new MediaResourcePayload(sessionId, RequiredStockTarget(stockTarget), rewritePlaylist),
+        expiresAt);
+    return
+    [
+      new ExternalSubtitleModel(
+          subtitleIndex,
+          mediaResource,
+          rewritePlaylist ? "application/vnd.apple.mpegurl" : SubtitleMimeType(subtitle.Codec))
+    ];
   }
 
   private async Task WriteReportAsync(
@@ -418,12 +500,13 @@ internal sealed class PlaybackRuntimeService
     {
       await _sessionManager.OnPlaybackStart(new PlaybackStartInfo
       {
-        AudioStreamIndex = state.Plan.DefaultAudioTrackIndex,
+        AudioStreamIndex = state.Output.SelectedAudioTrackIndex,
         CanSeek = true,
         IsPaused = playbackState == "paused",
         ItemId = state.Plan.ItemId,
         MediaSourceId = state.Plan.SourceId,
-        PlayMethod = PlayMethod.DirectPlay,
+        PlayMethod = PlayMethodFrom(state.Plan.Negotiation.Strategy),
+        SubtitleStreamIndex = state.Output.SelectedSubtitleTrackIndex,
         PlaySessionId = state.Output.SessionId,
         PositionTicks = positionTicks,
         SessionId = state.JellyfinSessionId
@@ -433,12 +516,13 @@ internal sealed class PlaybackRuntimeService
 
     await _sessionManager.OnPlaybackProgress(new PlaybackProgressInfo
     {
-      AudioStreamIndex = state.Plan.DefaultAudioTrackIndex,
+      AudioStreamIndex = state.Output.SelectedAudioTrackIndex,
       CanSeek = true,
       IsPaused = playbackState == "paused",
       ItemId = state.Plan.ItemId,
       MediaSourceId = state.Plan.SourceId,
-      PlayMethod = PlayMethod.DirectPlay,
+      PlayMethod = PlayMethodFrom(state.Plan.Negotiation.Strategy),
+      SubtitleStreamIndex = state.Output.SelectedSubtitleTrackIndex,
       PlaySessionId = state.Output.SessionId,
       PositionTicks = positionTicks,
       SessionId = state.JellyfinSessionId
@@ -498,41 +582,6 @@ internal sealed class PlaybackRuntimeService
     return value;
   }
 
-  private static string RequiredProviderText(string? value)
-  {
-    if (string.IsNullOrEmpty(value) || value.Length > MaximumIdentifierLength)
-    {
-      throw new PlaybackRequestException(StatusCodes.Status412PreconditionFailed);
-    }
-
-    return value.ToLowerInvariant();
-  }
-
-  private static string? BoundedProviderText(string? value)
-  {
-    return string.IsNullOrEmpty(value) || value.Length > MaximumIdentifierLength
-        ? null
-        : value;
-  }
-
-  private static bool ProviderContainerIncludes(string? providerContainers, string expected)
-  {
-    return providerContainers?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .Contains(expected, StringComparer.OrdinalIgnoreCase) == true;
-  }
-
-  private static bool SupportsDirectProfile(
-      IReadOnlyList<DirectPlayProfileInput>? profiles,
-      string container,
-      string videoCodec,
-      string audioCodec)
-  {
-    return profiles is { Count: > 0 and <= 100 }
-        && profiles.Any(profile =>
-            string.Equals(profile.Container, container, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(profile.VideoCodec, videoCodec, StringComparison.OrdinalIgnoreCase)
-            && profile.AudioCodecs?.Contains(audioCodec, StringComparer.OrdinalIgnoreCase) == true);
-  }
 
   private static long DurationTicks(DurationInput? input, long maximumTicks)
   {
@@ -566,6 +615,58 @@ internal sealed class PlaybackRuntimeService
     {
       throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
     }
+  }
+
+  private static bool EquivalentPlan(
+      NegotiatedPlayback planned,
+      NegotiatedPlayback selected)
+  {
+    return string.Equals(planned.Strategy, selected.Strategy, StringComparison.Ordinal)
+        && string.Equals(planned.Container, selected.Container, StringComparison.Ordinal)
+        && string.Equals(planned.VideoCodec, selected.VideoCodec, StringComparison.Ordinal)
+        && string.Equals(planned.AudioCodec, selected.AudioCodec, StringComparison.Ordinal)
+        && string.Equals(planned.Protocol, selected.Protocol, StringComparison.Ordinal);
+  }
+
+  private static string RequiredStockTarget(string value)
+  {
+    var queryIndex = value.IndexOf('?');
+    var path = queryIndex < 0 ? value : value[..queryIndex];
+    var query = queryIndex < 0 ? string.Empty : value[queryIndex..];
+    if (value.Length is 0 or > 4096
+        || value[0] != '/'
+        || value.Contains("://", StringComparison.Ordinal)
+        || path.Length == 0
+        || QueryHelpers.ParseQuery(query).Any(pair =>
+            PlaybackStockTarget.IsCredentialQueryName(pair.Key)))
+    {
+      throw new PlaybackRequestException(
+          StatusCodes.Status412PreconditionFailed,
+          "STOCK_TARGET_UNSAFE");
+    }
+    return value;
+  }
+
+  private static string SubtitleMimeType(string codec)
+  {
+    return codec.ToLowerInvariant() switch
+    {
+      "srt" => "application/x-subrip",
+      "vtt" or "webvtt" => "text/vtt",
+      "ass" or "ssa" => "text/x-ssa",
+      _ => "application/octet-stream"
+    };
+  }
+
+  private static PlayMethod PlayMethodFrom(string strategy)
+  {
+    return strategy switch
+    {
+      "direct" => PlayMethod.DirectPlay,
+      "remux" => PlayMethod.DirectStream,
+      "transcode_audio" or "transcode_video" => PlayMethod.Transcode,
+      _ => throw new InvalidOperationException("The stored playback strategy is invalid.")
+    };
   }
 
   private static string ApiKeyFrom(StringValues headers)

@@ -44,6 +44,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
                 builder => builder.SetApplicationName(DataProtectionApplicationName))));
     serviceCollection.AddSingleton(new ExtensionHostCompatibility(applicationHost));
     serviceCollection.AddSingleton<PlaybackSessionStore>();
+    serviceCollection.AddSingleton<PlaybackNegotiationService>();
     serviceCollection.AddSingleton<PlaybackRuntimeService>();
     serviceCollection.AddTransient<IStartupFilter, PlaybackStartupFilter>();
   }
