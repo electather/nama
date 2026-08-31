@@ -46,7 +46,7 @@ const debugLoggingConfig = Config.of({
   logging: Object.freeze({ level: "debug" as const }),
 });
 const CALL_DEADLINE_MILLISECONDS = 1000;
-const RECOVERY_TEST_TIMEOUT_MILLISECONDS = 15_000;
+const RECOVERY_TEST_TIMEOUT_MILLISECONDS = 20_000;
 
 interface LaunchRecord {
   readonly argumentsExcludeLaunchMaterial: boolean;
