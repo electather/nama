@@ -26,6 +26,14 @@ run_dotnet sh -c \
      --no-restore \
      --property:ContinuousIntegrationBuild=true"
 
+run_dotnet sh -c \
+  "dotnet restore tests/Nama.Jellyfin.Extension.Tests.csproj &&
+   dotnet format tests/Nama.Jellyfin.Extension.Tests.csproj --no-restore --verify-no-changes &&
+   dotnet run --project tests/Nama.Jellyfin.Extension.Tests.csproj \
+     --configuration Release \
+     --no-restore \
+     --property:ContinuousIntegrationBuild=true"
+
 test -f "${artifact}"
 test -s "${artifact}"
 test -f "${fixture_dll}"

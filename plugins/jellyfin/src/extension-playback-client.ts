@@ -1,4 +1,5 @@
 import { Code, ConnectError } from "@connectrpc/connect";
+import { SubtitleRepresentation } from "@nama/api/nama/plugin/v1/media_pb.js";
 import {
   DeliveryProtocol,
   PlaybackStrategy,
@@ -15,6 +16,7 @@ import {
   requiredText,
   trackReference,
 } from "./extension-playback-values.ts";
+import type { ProviderSourceIdentity } from "./extension-playback-values.ts";
 import type { ProviderLaunchDocument } from "./launch-document.ts";
 import { createJellyfinRequest } from "./request.ts";
 import type { JellyfinMutationResponse, JellyfinRequest } from "./request.ts";
@@ -34,6 +36,8 @@ interface ExtensionTrack {
   readonly isForced: boolean;
   readonly label: string | undefined;
   readonly language: string | undefined;
+  readonly representation: SubtitleRepresentation | undefined;
+  readonly type: PlaybackTrackType;
 }
 
 interface ExtensionCall {
@@ -89,11 +93,38 @@ const optionalChannelCount = (value: unknown): number | undefined => {
   return requiredInteger(value, MINIMUM_CHANNEL_COUNT, MAXIMUM_CHANNEL_COUNT);
 };
 
+const extensionTrackType = (value: unknown): PlaybackTrackType => {
+  if (value === "audio") {
+    return PlaybackTrackType.AUDIO;
+  }
+  if (value === "subtitle") {
+    return PlaybackTrackType.SUBTITLE;
+  }
+  return invalidExtensionResponse();
+};
+
+const extensionTrackMetadata = (
+  value: Readonly<Record<string, unknown>>,
+  type: PlaybackTrackType,
+) => {
+  if (type === PlaybackTrackType.AUDIO) {
+    return {
+      channels: optionalChannelCount(value["channels"]),
+      representation: undefined,
+    };
+  }
+  return {
+    channels: undefined,
+    representation: subtitleRepresentation(value["representation"]),
+  };
+};
+
 const extensionTrack = (value: unknown): ExtensionTrack => {
-  if (!isUnknownRecord(value) || value["type"] !== "audio") {
+  if (!isUnknownRecord(value)) {
     return invalidExtensionResponse();
   }
-  const channels = optionalChannelCount(value["channels"]);
+  const type = extensionTrackType(value["type"]);
+  const { channels, representation } = extensionTrackMetadata(value, type);
   return {
     channels,
     codec: requiredText(value["codec"], MAXIMUM_CODEC_BYTES),
@@ -102,71 +133,124 @@ const extensionTrack = (value: unknown): ExtensionTrack => {
     isForced: requiredBoolean(value["is_forced"]),
     label: optionalText(value["label"]),
     language: optionalText(value["language"]),
+    representation,
+    type,
   };
 };
 
-const providerTrack = (track: ExtensionTrack, itemId: string, sourceId: string) => ({
-  $typeName: "nama.plugin.v1.ProviderPlaybackTrack" as const,
-  details: {
-    case: "audio" as const,
-    value: {
-      $typeName: "nama.plugin.v1.PlaybackAudioTrackDetails" as const,
-      channelCount: track.channels,
-      codec: track.codec,
-    },
-  },
-  isDefault: track.isDefault,
-  isForced: track.isForced,
-  label: track.label,
-  language: track.language,
-  trackReference: trackReference(itemId, sourceId, track.index),
-  type: PlaybackTrackType.AUDIO,
-});
-
-const extensionAction = (value: unknown, itemId: string, sourceId: string) => {
-  if (!isUnknownRecord(value) || value["action"] !== "copy") {
-    return invalidExtensionResponse();
+const trackDetails = (track: ExtensionTrack) => {
+  if (track.type === PlaybackTrackType.AUDIO) {
+    return {
+      case: "audio" as const,
+      value: {
+        $typeName: "nama.plugin.v1.PlaybackAudioTrackDetails" as const,
+        channelCount: track.channels,
+        codec: track.codec,
+      },
+    };
   }
   return {
-    $typeName: "nama.plugin.v1.ProviderTrackAction" as const,
-    action: TrackActionKind.COPY,
-    trackReference: trackReference(itemId, sourceId, requiredJellyfinIndex(value["track_index"])),
+    case: "subtitle" as const,
+    value: {
+      $typeName: "nama.plugin.v1.PlaybackSubtitleTrackDetails" as const,
+      codec: track.codec,
+      representation: track.representation ?? SubtitleRepresentation.UNSPECIFIED,
+    },
   };
 };
 
-const providerSessionTrack = (value: unknown, itemId: string, sourceId: string) => {
+const providerTrack = (track: ExtensionTrack, source: ProviderSourceIdentity) => {
+  const details = trackDetails(track);
+  return {
+    $typeName: "nama.plugin.v1.ProviderPlaybackTrack" as const,
+    details,
+    isDefault: track.isDefault,
+    isForced: track.isForced,
+    label: track.label,
+    language: track.language,
+    trackReference: trackReference(source, track.index),
+    type: track.type,
+  };
+};
+
+const extensionAction = (value: unknown, source: ProviderSourceIdentity) => {
+  if (!isUnknownRecord(value)) {
+    return invalidExtensionResponse();
+  }
+  const action = trackAction(value["action"]);
+  return {
+    $typeName: "nama.plugin.v1.ProviderTrackAction" as const,
+    action,
+    trackReference: trackReference(source, requiredJellyfinIndex(value["track_index"])),
+  };
+};
+
+const providerSessionTrack = (value: unknown, source: ProviderSourceIdentity) => {
   if (!isUnknownRecord(value)) {
     return invalidExtensionResponse();
   }
   return {
     $typeName: "nama.plugin.v1.ProviderSessionTrack" as const,
     switchableWithoutReopen: requiredBoolean(value["switchable_without_reopen"]),
-    trackReference: trackReference(itemId, sourceId, requiredJellyfinIndex(value["index"])),
+    trackReference: trackReference(source, requiredJellyfinIndex(value["index"])),
   };
 };
 
-const directStrategy = (value: unknown): PlaybackStrategy => {
-  if (value !== "direct") {
+const playbackStrategy = (value: unknown): PlaybackStrategy => {
+  const strategies: Readonly<Record<string, PlaybackStrategy>> = {
+    direct: PlaybackStrategy.DIRECT,
+    remux: PlaybackStrategy.REMUX,
+    transcode_audio: PlaybackStrategy.TRANSCODE_AUDIO,
+    transcode_video: PlaybackStrategy.TRANSCODE_VIDEO,
+  };
+  if (typeof value !== "string") {
     return invalidExtensionResponse();
   }
-  return PlaybackStrategy.DIRECT;
+  return strategies[value] ?? invalidExtensionResponse();
 };
 
-const progressiveProtocol = (value: unknown): DeliveryProtocol => {
-  if (value !== "http_progressive") {
+const deliveryProtocol = (value: unknown): DeliveryProtocol => {
+  if (value === "http_progressive") {
+    return DeliveryProtocol.HTTP_PROGRESSIVE;
+  }
+  if (value === "hls") {
+    return DeliveryProtocol.HLS;
+  }
+  return invalidExtensionResponse();
+};
+
+const subtitleRepresentation = (value: unknown): SubtitleRepresentation => {
+  if (value === "text") {
+    return SubtitleRepresentation.TEXT;
+  }
+  if (value === "image") {
+    return SubtitleRepresentation.IMAGE;
+  }
+  return invalidExtensionResponse();
+};
+
+const trackAction = (value: unknown): TrackActionKind => {
+  const actions: Readonly<Record<string, TrackActionKind>> = {
+    burn: TrackActionKind.BURN,
+    copy: TrackActionKind.COPY,
+    external: TrackActionKind.EXTERNAL,
+    omit: TrackActionKind.OMIT,
+    transcode: TrackActionKind.TRANSCODE,
+  };
+  if (typeof value !== "string") {
     return invalidExtensionResponse();
   }
-  return DeliveryProtocol.HTTP_PROGRESSIVE;
+  return actions[value] ?? invalidExtensionResponse();
 };
 
 export {
-  directStrategy,
+  deliveryProtocol,
   EXTENSION_PATH,
   extensionAction,
   extensionRequest,
   extensionTrack,
+  playbackStrategy,
   postExtension,
-  progressiveProtocol,
   providerSessionTrack,
   providerTrack,
 };

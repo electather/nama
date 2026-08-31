@@ -42,7 +42,7 @@ public sealed class HandshakeController : ControllerBase
         Capabilities,
         "1.0.0",
         "nama.jellyfin.extension",
-        1);
+        2);
   }
 }
 

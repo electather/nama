@@ -15,6 +15,17 @@ const NANOSECONDS_PER_MILLISECOND = 1_000_000;
 const NO_TRACK_INDEX = void Number.NaN;
 const ZERO_INDEX = 0;
 
+interface ProtobufTimestamp {
+  readonly $typeName: "google.protobuf.Timestamp";
+  readonly nanos: number;
+  readonly seconds: bigint;
+}
+
+interface ProviderSourceIdentity {
+  readonly itemId: string;
+  readonly sourceId: string;
+}
+
 const invalidExtensionResponse = (): never => {
   throw new ConnectError("Jellyfin extension response is invalid", Code.Internal);
 };
@@ -52,6 +63,13 @@ const requiredInteger = (value: unknown, minimum: number, maximum: number): numb
 const requiredJellyfinIndex = (value: unknown): number =>
   requiredInteger(value, ZERO_INDEX, MAXIMUM_JELLYFIN_INDEX);
 
+const optionalJellyfinIndex = (value: unknown): number | undefined => {
+  if (value === undefined) {
+    return value;
+  }
+  return requiredJellyfinIndex(value);
+};
+
 const requiredBoolean = (value: unknown): boolean => {
   if (typeof value !== "boolean") {
     return invalidExtensionResponse();
@@ -66,7 +84,10 @@ const requiredArray = (value: unknown): readonly unknown[] => {
   return value;
 };
 
-const futureTimestamp = (value: unknown, maximumLifetimeMilliseconds: number) => {
+const futureTimestamp = (
+  value: unknown,
+  maximumLifetimeMilliseconds: number,
+): ProtobufTimestamp => {
   const text = requiredText(value, MAXIMUM_TIMESTAMP_BYTES);
   const milliseconds = new Date(text).getTime();
   const now = Date.now();
@@ -101,31 +122,30 @@ const durationBody = (value: Readonly<{ nanos: number; seconds: bigint }> | unde
   return { nanos: value.nanos, seconds: value.seconds.toString() };
 };
 
-const sourceReferenceBody = (sourceReference: ProviderSourceReference | undefined) => {
+const sourceIdentity = (sourceReference: ProviderSourceReference | undefined) => {
   const itemId = sourceReference?.itemReference?.itemId;
   const sourceId = sourceReference?.sourceId;
   if (itemId === undefined || sourceId === undefined) {
     throw new ConnectError("playback source reference is invalid", Code.InvalidArgument);
   }
-  return { item_id: itemId, source_id: sourceId };
+  return { itemId, sourceId };
 };
 
 const trackReference = (
-  itemId: string,
-  sourceId: string,
+  source: ProviderSourceIdentity,
   trackIndex: number,
 ): ProviderTrackReference => ({
   $typeName: "nama.plugin.v1.ProviderTrackReference",
   partReference: {
     $typeName: "nama.plugin.v1.ProviderPartReference",
-    partId: sourceId,
+    partId: source.sourceId,
     sourceReference: {
       $typeName: "nama.plugin.v1.ProviderSourceReference",
       itemReference: {
         $typeName: "nama.plugin.v1.ProviderItemReference",
-        itemId,
+        itemId: source.itemId,
       },
-      sourceId,
+      sourceId: source.sourceId,
     },
   },
   trackId: String(trackIndex),
@@ -159,12 +179,14 @@ export {
   invalidExtensionResponse,
   optionalText,
   requiredArray,
+  optionalJellyfinIndex,
   requiredBoolean,
   requiredInteger,
   requiredJellyfinIndex,
   requiredText,
-  sourceReferenceBody,
+  sourceIdentity,
   subtitleIndex,
   trackIndex,
   trackReference,
 };
+export type { ProtobufTimestamp, ProviderSourceIdentity };

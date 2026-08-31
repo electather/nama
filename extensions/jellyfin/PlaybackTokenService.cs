@@ -27,6 +27,7 @@ internal sealed class PlaybackTokenService
   private readonly ITimeLimitedDataProtector _planProtector;
   private readonly ITimeLimitedDataProtector _sessionContextProtector;
   private readonly ITimeLimitedDataProtector _mediaLeaseProtector;
+  private readonly ITimeLimitedDataProtector _mediaResourceProtector;
 
   public PlaybackTokenService(IDataProtectionProvider provider)
   {
@@ -40,6 +41,9 @@ internal sealed class PlaybackTokenService
         .ToTimeLimitedDataProtector();
     _mediaLeaseProtector = provider
         .CreateProtector("nama-jellyfin-extension", "media-lease", "v1")
+        .ToTimeLimitedDataProtector();
+    _mediaResourceProtector = provider
+        .CreateProtector("nama-jellyfin-extension", "media-resource", "v1")
         .ToTimeLimitedDataProtector();
   }
 
@@ -81,7 +85,10 @@ internal sealed class PlaybackTokenService
     return Protect(_mediaLeaseProtector, payload, expiration);
   }
 
-  public bool TryUnprotectMediaLease(string token, out MediaLeasePayload? payload)
+  public bool TryUnprotectMediaLease(
+      string token,
+      out MediaLeasePayload? payload,
+      out DateTimeOffset expiration)
   {
     try
     {
@@ -89,12 +96,40 @@ internal sealed class PlaybackTokenService
           _mediaLeaseProtector,
           token,
           StatusCodes.Status401Unauthorized,
-          out _);
+          out expiration);
       return true;
     }
     catch (PlaybackRequestException)
     {
       payload = null;
+      expiration = default;
+      return false;
+    }
+  }
+
+  public string ProtectMediaResource(MediaResourcePayload payload, DateTimeOffset expiration)
+  {
+    return Protect(_mediaResourceProtector, payload, expiration);
+  }
+
+  public bool TryUnprotectMediaResource(
+      string token,
+      out MediaResourcePayload? payload,
+      out DateTimeOffset expiration)
+  {
+    try
+    {
+      payload = Unprotect<MediaResourcePayload>(
+          _mediaResourceProtector,
+          token,
+          StatusCodes.Status401Unauthorized,
+          out expiration);
+      return true;
+    }
+    catch (PlaybackRequestException)
+    {
+      payload = null;
+      expiration = default;
       return false;
     }
   }

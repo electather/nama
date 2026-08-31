@@ -33,6 +33,13 @@ token ownership, and removal of the obsolete `DeviceService` contract are
 implemented. Issue #167 separately owns browser sign-in and device
 confirmation.
 
+The first-party Jellyfin extension and provider plugin implement the complete
+private `PlaybackService` profile: direct, remux, audio-transcode, and
+video-transcode negotiation; progressive and recursively opaque HLS delivery;
+selected audio; embedded, external, and burned subtitles; ordered telemetry;
+and idempotent close. Public `PlaybackService` handlers and persistence remain
+target behavior rather than implemented core runtime.
+
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
 The core implements Setup and Auth workflows, `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, `GetProviderInstance`, `TestProviderConfiguration`, `UpdateProviderInstance`, `TestProviderInstance`, and `DeleteProviderInstance`, plus every `LibraryService` method over the stored canonical catalog. It also implements private plugin process launch, bearer authentication, health/identity handshake, deadline and cancellation propagation, bounded recovery, cleanup, code-owned bundled discovery, restricted-schema acceptance, instance-local credential containment, durable installation reconciliation, one-shot candidate and exact-revision stored-instance inspection, encrypted provider credentials, immutable principal digests, revision-fenced observations, durable create/update/delete idempotency, supervised runtime cutover, and safe disabled-instance deletion against generated `nama.plugin.v1` clients. The remaining public and plugin method workflows are durable contracts, not evidence that their handlers, provider adapters, persistence flows, or scheduling exist.

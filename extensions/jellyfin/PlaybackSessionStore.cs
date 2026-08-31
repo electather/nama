@@ -12,6 +12,7 @@ internal sealed record PlaybackOpenRequest(
     string OperationId,
     string PlanId,
     int? AudioTrackIndex,
+    bool SubtitleDisabled,
     int? SubtitleTrackIndex);
 
 internal sealed class PlaybackSessionState
@@ -105,15 +106,11 @@ internal sealed class PlaybackSessionStore
       }
 
       var plan = resolveLivePlan();
+      RequireTrackMembership(plan, request.AudioTrackIndex, "audio");
+      RequireTrackMembership(plan, request.SubtitleTrackIndex, "subtitle");
       if (_sessionsByPlanNonce.ContainsKey(plan.Nonce))
       {
         throw new PlaybackRequestException(StatusCodes.Status409Conflict);
-      }
-      var selectedAudioTrackIndex = request.AudioTrackIndex ?? plan.DefaultAudioTrackIndex;
-      if (selectedAudioTrackIndex != plan.DefaultAudioTrackIndex
-          || request.SubtitleTrackIndex is not null)
-      {
-        throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
       }
 
       var created = await create(plan).ConfigureAwait(false);
@@ -159,6 +156,22 @@ internal sealed class PlaybackSessionStore
     throw new PlaybackRequestException(StatusCodes.Status404NotFound);
   }
 
+  private static void RequireTrackMembership(
+      PlaybackPlan plan,
+      int? selectedIndex,
+      string expectedType)
+  {
+    if (selectedIndex.HasValue
+        && !plan.Tracks.Any(track =>
+            track.Index == selectedIndex.Value
+            && string.Equals(track.Type, expectedType, StringComparison.Ordinal)))
+    {
+      throw new PlaybackRequestException(
+          StatusCodes.Status412PreconditionFailed,
+          "TRACK_SELECTION_REQUIRES_REPLAN");
+    }
+  }
+
   private void RemoveExpiredPlans()
   {
     var now = DateTimeOffset.UtcNow;
@@ -187,11 +200,10 @@ internal sealed class PlaybackSessionStore
   {
     var selectedAudioTrackIndex =
         request.AudioTrackIndex ?? replay.Output.SelectedAudioTrackIndex;
-    var selectedSubtitleTrackIndex =
-        request.SubtitleTrackIndex ?? replay.Output.SelectedSubtitleTrackIndex;
     if (!string.Equals(replay.OpenRequest.PlanId, request.PlanId, StringComparison.Ordinal)
         || selectedAudioTrackIndex != replay.Output.SelectedAudioTrackIndex
-        || selectedSubtitleTrackIndex != replay.Output.SelectedSubtitleTrackIndex)
+        || replay.OpenRequest.SubtitleDisabled != request.SubtitleDisabled
+        || replay.OpenRequest.SubtitleTrackIndex != request.SubtitleTrackIndex)
     {
       throw new PlaybackRequestException(StatusCodes.Status409Conflict);
     }
