@@ -26,20 +26,16 @@ import {
   requiredArray,
   requiredJellyfinIndex,
   requiredText,
-  sourceReferenceBody,
+  sourceIdentity,
   trackReference,
 } from "./extension-playback-values.ts";
+import type { ProviderSourceIdentity } from "./extension-playback-values.ts";
 import type { ProviderLaunchDocument } from "./launch-document.ts";
 
 const MAXIMUM_IDENTIFIER_BYTES = 256;
 const MILLISECONDS_PER_MINUTE = 60_000;
 const PLAN_LIFETIME_MINUTES = 5;
 const MAXIMUM_PLAN_LIFETIME_MILLISECONDS = PLAN_LIFETIME_MINUTES * MILLISECONDS_PER_MINUTE;
-
-interface PlanSource {
-  readonly item_id: string;
-  readonly source_id: string;
-}
 
 const deliveryProtocolName = (protocol: DeliveryProtocol): string => {
   if (protocol === DeliveryProtocol.HTTP_PROGRESSIVE) {
@@ -103,7 +99,7 @@ const subtitlePreferenceName = (preference: SubtitlePreference | undefined): str
 const planRequestBody = (
   launch: ProviderLaunchDocument,
   input: PlanPlaybackRequest,
-  source: PlanSource,
+  source: ProviderSourceIdentity,
 ) => ({
   capabilities: {
     direct_play_profiles: input.capabilities?.directPlayProfiles.map((profile) => ({
@@ -122,7 +118,7 @@ const planRequestBody = (
       format: capability.format,
     })),
   },
-  item_id: source.item_id,
+  item_id: source.itemId,
   preferences: {
     max_bit_rate_bps: input.preferences?.maxBitRateBps?.toString(),
     preferred_audio_languages: input.preferences?.preferredAudioLanguages,
@@ -130,7 +126,7 @@ const planRequestBody = (
     quality: qualityName(input.preferences?.quality),
     subtitle_preference: subtitlePreferenceName(input.preferences?.subtitlePreference),
   },
-  source_id: source.source_id,
+  source_id: source.sourceId,
   start_position: durationBody(input.startPosition),
   user_id: launch.configuration.user_id,
 });
@@ -144,10 +140,8 @@ const uniqueTracks = (value: unknown) => {
   return tracks;
 };
 
-const uniqueActions = (value: unknown, source: PlanSource) => {
-  const actions = requiredArray(value).map((action) =>
-    extensionAction(action, source.item_id, source.source_id),
-  );
+const uniqueActions = (value: unknown, source: ProviderSourceIdentity) => {
+  const actions = requiredArray(value).map((action) => extensionAction(action, source));
   const trackIds = actions.map(({ trackReference: reference }) => reference?.trackId);
   if (new Set(trackIds).size !== trackIds.length) {
     return invalidExtensionResponse();
@@ -176,19 +170,19 @@ const planTracks = (body: Readonly<Record<string, unknown>>) => {
   return { defaultAudioIndex, defaultSubtitleIndex, tracks };
 };
 
-const defaultSubtitle = (source: PlanSource, trackIndexValue: number | undefined) => {
+const defaultSubtitle = (source: ProviderSourceIdentity, trackIndexValue: number | undefined) => {
   if (trackIndexValue === undefined) {
     return { case: "disabled" as const, value: true };
   }
   return {
     case: "trackReference" as const,
-    value: trackReference(source.item_id, source.source_id, trackIndexValue),
+    value: trackReference(source, trackIndexValue),
   };
 };
 
 const planFromBody = (
   body: Readonly<Record<string, unknown>>,
-  source: PlanSource,
+  source: ProviderSourceIdentity,
   input: PlanPlaybackRequest,
 ) => {
   const { defaultAudioIndex, defaultSubtitleIndex, tracks } = planTracks(body);
@@ -217,11 +211,7 @@ const planFromBody = (
       actions,
       audioCodec,
       container,
-      defaultAudioTrackReference: trackReference(
-        source.item_id,
-        source.source_id,
-        defaultAudioIndex,
-      ),
+      defaultAudioTrackReference: trackReference(source, defaultAudioIndex),
       defaultSubtitle: {
         $typeName: "nama.plugin.v1.ProviderSubtitleSelection" as const,
         selection: defaultSubtitle(source, defaultSubtitleIndex),
@@ -230,7 +220,7 @@ const planFromBody = (
       id: requiredText(body["plan_id"], MAXIMUM_IDENTIFIER_BYTES),
       protocol,
       strategy,
-      tracks: tracks.map((track) => providerTrack(track, source.item_id, source.source_id)),
+      tracks: tracks.map((track) => providerTrack(track, source)),
       videoCodec,
     },
   };
@@ -241,7 +231,7 @@ const planJellyfinPlayback = async (
   input: PlanPlaybackRequest,
   signal: AbortSignal,
 ) => {
-  const source = sourceReferenceBody(input.sourceReference);
+  const source = sourceIdentity(input.sourceReference);
   const request = extensionRequest(launch);
   const body = await postExtension({
     body: planRequestBody(launch, input, source),

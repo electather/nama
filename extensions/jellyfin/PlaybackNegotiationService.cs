@@ -63,9 +63,10 @@ internal sealed class PlaybackNegotiationService
       int? requestedSubtitleTrackIndex = null,
       bool requestedSubtitleDisabled = false)
   {
-    source = CloneMediaSource(source);
     var capabilities = input.Capabilities
         ?? throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
+    PlaybackCapabilityValidator.Validate(capabilities);
+    source = CloneMediaSource(source);
     var preferences = input.Preferences
         ?? throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
     var protocols = RequiredTokens(capabilities.Protocols);
@@ -433,41 +434,21 @@ internal sealed class PlaybackNegotiationService
       PlaybackPreferencesInput preferences,
       IReadOnlyList<SubtitleCapabilityInput>? capabilities)
   {
-    var streams = source.MediaStreams
+    var candidates = source.MediaStreams
         .Where(stream => stream.Type == MediaStreamType.Subtitle)
+        .Select(stream => new SubtitleCandidate(
+            stream.Index,
+            stream.Codec,
+            stream.Language,
+            stream.IsDefault,
+            stream.IsForced))
         .ToArray();
-    var preferredLanguages = RequiredTokens(preferences.PreferredSubtitleLanguages);
-    if (preferences.SubtitlePreference == "off" || streams.Length == 0)
-    {
-      return null;
-    }
-    if (preferences.SubtitlePreference == "forced_only")
-    {
-      var forced = streams.Where(stream => stream.IsForced).ToArray();
-      return PreferredTrack(forced, preferredLanguages)?.Index
-          ?? forced.FirstOrDefault(stream => SupportsSubtitle(stream, capabilities))?.Index;
-    }
-    if (preferences.SubtitlePreference == "always")
-    {
-      return PreferredTrack(streams, preferredLanguages)?.Index
-          ?? streams.FirstOrDefault(stream => stream.Index == source.DefaultSubtitleStreamIndex)?.Index
-          ?? streams.FirstOrDefault(stream => stream.IsDefault)?.Index
-          ?? streams[0].Index;
-    }
-    if (preferences.SubtitlePreference != "auto")
-    {
-      throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
-    }
-    var providerDefault = streams.FirstOrDefault(
-        stream => stream.Index == source.DefaultSubtitleStreamIndex
-            && SupportsSubtitle(stream, capabilities));
-    var preferredForced = PreferredTrack(
-        streams.Where(stream => stream.IsForced).ToArray(),
-        preferredLanguages);
-    return providerDefault?.Index
-        ?? preferredForced?.Index
-        ?? streams.FirstOrDefault(
-            stream => stream.IsForced && SupportsSubtitle(stream, capabilities))?.Index;
+    return PlaybackSubtitleSelector.Select(
+        candidates,
+        source.DefaultSubtitleStreamIndex,
+        preferences.SubtitlePreference,
+        RequiredTokens(preferences.PreferredSubtitleLanguages),
+        capabilities);
   }
 
   private static MediaStream? PreferredTrack(
@@ -750,5 +731,96 @@ internal sealed class PlaybackNegotiationService
   private static PlaybackRequestException Unsupported(string reason)
   {
     return new PlaybackRequestException(StatusCodes.Status412PreconditionFailed, reason);
+  }
+}
+
+internal sealed record SubtitleCandidate(
+    int Index,
+    string? Codec,
+    string? Language,
+    bool IsDefault,
+    bool IsForced);
+
+internal static class PlaybackSubtitleSelector
+{
+  public static int? Select(
+      IReadOnlyList<SubtitleCandidate> candidates,
+      int? providerDefaultIndex,
+      string? preference,
+      IReadOnlyList<string> preferredLanguages,
+      IReadOnlyList<SubtitleCapabilityInput>? capabilities)
+  {
+    if (preference == "off" || candidates.Count == 0)
+    {
+      return null;
+    }
+    var supported = candidates
+        .Where(candidate => Supports(candidate, capabilities))
+        .ToArray();
+    if (preference == "forced_only")
+    {
+      var forcedOnly = supported.Where(candidate => candidate.IsForced).ToArray();
+      return Preferred(forcedOnly, preferredLanguages)?.Index
+          ?? forcedOnly.FirstOrDefault()?.Index;
+    }
+    if (preference == "always")
+    {
+      return Preferred(supported, preferredLanguages)?.Index
+          ?? supported.FirstOrDefault(candidate => candidate.Index == providerDefaultIndex)?.Index
+          ?? supported.FirstOrDefault(candidate => candidate.IsDefault)?.Index
+          ?? supported.FirstOrDefault()?.Index;
+    }
+    if (preference != "auto")
+    {
+      throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
+    }
+    var providerDefault = supported.FirstOrDefault(
+        candidate => candidate.Index == providerDefaultIndex);
+    var forced = supported.Where(candidate => candidate.IsForced).ToArray();
+    return providerDefault?.Index
+        ?? Preferred(forced, preferredLanguages)?.Index
+        ?? forced.FirstOrDefault()?.Index;
+  }
+
+  private static SubtitleCandidate? Preferred(
+      IReadOnlyList<SubtitleCandidate> candidates,
+      IReadOnlyList<string> languages)
+  {
+    foreach (var language in languages)
+    {
+      var match = candidates.FirstOrDefault(
+          candidate => string.Equals(
+              candidate.Language,
+              language,
+              StringComparison.OrdinalIgnoreCase));
+      if (match is not null)
+      {
+        return match;
+      }
+    }
+    return null;
+  }
+
+  private static bool Supports(
+      SubtitleCandidate? candidate,
+      IReadOnlyList<SubtitleCapabilityInput>? capabilities)
+  {
+    return candidate is not null
+        && capabilities?.Any(capability =>
+            string.Equals(capability.Format, candidate.Codec, StringComparison.OrdinalIgnoreCase)
+            && capability.DeliveryModes is { Count: > 0 }) == true;
+  }
+}
+
+internal static class PlaybackCapabilityValidator
+{
+  public static void Validate(PlaybackCapabilitiesInput capabilities)
+  {
+    if (capabilities.DynamicRanges is not { Count: > 0 })
+    {
+      throw new PlaybackRequestException(
+          StatusCodes.Status412PreconditionFailed,
+          "DYNAMIC_RANGE_UNSUPPORTED");
+    }
   }
 }

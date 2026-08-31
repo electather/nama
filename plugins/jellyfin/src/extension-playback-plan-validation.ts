@@ -1,4 +1,9 @@
-import { PlaybackStrategy, TrackActionKind } from "@nama/api/nama/plugin/v1/playback_pb.js";
+import {
+  PlaybackStrategy,
+  PlaybackTrackType,
+  SubtitleDeliveryMode,
+  TrackActionKind,
+} from "@nama/api/nama/plugin/v1/playback_pb.js";
 import type {
   DeliveryProtocol,
   PlanPlaybackRequest,
@@ -19,7 +24,9 @@ interface ParsedPlanAction {
 }
 
 interface ParsedPlanTrack {
+  readonly codec: string;
   readonly index: number;
+  readonly type: PlaybackTrackType;
 }
 
 interface PlanOutputValidation {
@@ -33,6 +40,13 @@ interface PlanOutputValidation {
   readonly strategy: PlaybackStrategy;
   readonly tracks: ParsedPlanTrack[];
   readonly videoCodec: string;
+}
+
+interface SubtitleActionValidation {
+  readonly actionByTrackId: ReadonlyMap<string | undefined, TrackActionKind>;
+  readonly input: PlanPlaybackRequest;
+  readonly strategy: PlaybackStrategy;
+  readonly tracks: ParsedPlanTrack[];
 }
 
 type ActionValidation = Pick<
@@ -87,10 +101,46 @@ const expectedActions = (strategy: PlaybackStrategy, audioAction: TrackActionKin
   return { expectedVideoAction, validAudioAction };
 };
 
+const SUBTITLE_ACTION_MODES: Readonly<Partial<Record<TrackActionKind, SubtitleDeliveryMode>>> = {
+  [TrackActionKind.BURN]: SubtitleDeliveryMode.BURNED_IN,
+  [TrackActionKind.COPY]: SubtitleDeliveryMode.EMBEDDED,
+  [TrackActionKind.EXTERNAL]: SubtitleDeliveryMode.EXTERNAL,
+};
+
+const subtitleActionsMatchCapabilities = ({
+  actionByTrackId,
+  input,
+  strategy,
+  tracks,
+}: SubtitleActionValidation) =>
+  tracks.every((track) => {
+    if (track.type !== PlaybackTrackType.SUBTITLE) {
+      return true;
+    }
+    const action = actionByTrackId.get(String(track.index));
+    if (action === TrackActionKind.OMIT) {
+      return true;
+    }
+    if (action === undefined) {
+      return false;
+    }
+    const deliveryMode = SUBTITLE_ACTION_MODES[action];
+    return (
+      deliveryMode !== undefined &&
+      (action !== TrackActionKind.BURN || strategy === PlaybackStrategy.TRANSCODE_VIDEO) &&
+      input.capabilities?.subtitleCapabilities.some(
+        (capability) =>
+          capability.format.toLowerCase() === track.codec.toLowerCase() &&
+          capability.deliveryModes.includes(deliveryMode),
+      ) === true
+    );
+  });
+
 const actionsMatchPlan = ({
   actions,
   defaultAudioIndex,
   defaultSubtitleIndex,
+  input,
   strategy,
   tracks,
 }: PlanOutputValidation) => {
@@ -108,6 +158,7 @@ const actionsMatchPlan = ({
     (videoAction === undefined || videoAction === expectedVideoAction) &&
     validAudioAction &&
     (subtitleAction === undefined || subtitleAction !== TrackActionKind.OMIT) &&
+    subtitleActionsMatchCapabilities({ actionByTrackId, input, strategy, tracks }) &&
     tracks.every(({ index }) => actionByTrackId.has(String(index)))
   );
 };

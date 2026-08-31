@@ -88,6 +88,22 @@ try
   {
   }
 
+  var oversizedChild = "/" + new string('a', 6_000) + ".ts";
+  try
+  {
+    rewriter.Rewrite(
+        $"#EXTM3U\n{oversizedChild}\n",
+        "/Videos/provider-item/master.m3u8",
+        publicPrefix,
+        sessionId,
+        expiration,
+        maximumBytes);
+    throw new InvalidOperationException("unusable opaque child resource was emitted");
+  }
+  catch (PlaybackRequestException exception) when (exception.StatusCode == 502)
+  {
+  }
+
   await using (var bounded = new BoundedMemoryStream(1))
   {
     try
@@ -134,6 +150,45 @@ try
   Require(!redirectResource.RewritePlaylist, "redirect changed resource classification");
   Require(redirectExpiration == expiration, "redirect changed expiry");
 
+  var notModifiedContext = new DefaultHttpContext();
+  notModifiedContext.Response.StatusCode = StatusCodes.Status304NotModified;
+  notModifiedContext.Response.Headers.ETag = "\"provider-etag\"";
+  PlaybackLeaseMiddleware.RewriteRedirect(
+      notModifiedContext.Response,
+      rewriter,
+      new MediaResourcePayload(
+          sessionId,
+          "/Videos/provider-item/original.ts",
+          false),
+      expiration,
+      publicPrefix);
+  Require(
+      notModifiedContext.Response.StatusCode == StatusCodes.Status304NotModified,
+      "not-modified response was treated as a redirect");
+  Require(
+      notModifiedContext.Response.Headers.ETag == "\"provider-etag\"",
+      "not-modified response headers changed");
+
+  var unsupportedRedirectContext = new DefaultHttpContext();
+  unsupportedRedirectContext.Response.StatusCode = StatusCodes.Status305UseProxy;
+  unsupportedRedirectContext.Response.Headers.Location =
+      "/Videos/provider-item/redirected.ts?ApiKey=broad-secret";
+  PlaybackLeaseMiddleware.RewriteRedirect(
+      unsupportedRedirectContext.Response,
+      rewriter,
+      new MediaResourcePayload(
+          sessionId,
+          "/Videos/provider-item/original.ts",
+          false),
+      expiration,
+      publicPrefix);
+  Require(
+      unsupportedRedirectContext.Response.StatusCode == StatusCodes.Status502BadGateway,
+      "unsupported redirect status was forwarded");
+  Require(
+      !unsupportedRedirectContext.Response.Headers.ContainsKey("Location"),
+      "unsupported redirect location escaped");
+
   var unsafeRedirectContext = new DefaultHttpContext();
   unsafeRedirectContext.Response.StatusCode = StatusCodes.Status302Found;
   unsafeRedirectContext.Response.Headers.Location = "https://attacker.example/media.ts";
@@ -163,10 +218,87 @@ try
     await redirectBody.WriteAsync(new byte[] { 1, 2, 3 });
   }
   Require(redirectOutput.Length == 0, "redirect body escaped");
+
+  var selectionPlan = new PlaybackPlan(
+      "selection-plan",
+      Guid.NewGuid(),
+      "selection-source",
+      Guid.NewGuid(),
+      TimeSpan.TicksPerMinute,
+      0,
+      null!,
+      null!,
+      [
+        new PlaybackTrackModel(1, "audio", "aac", 2, true, false, null, null, null),
+        new PlaybackTrackModel(2, "subtitle", "srt", null, false, false, null, null, "text")
+      ]);
+  await RequireRejectedTrackSelection(
+      selectionPlan,
+      new PlaybackOpenRequest("wrong-type-operation", "wrong-type-plan", 2, true, null),
+      "audio selection used a subtitle track");
+  await RequireRejectedTrackSelection(
+      selectionPlan,
+      new PlaybackOpenRequest("missing-track-operation", "missing-track-plan", 1, false, 99),
+      "subtitle selection was absent from the plan");
+
+  IReadOnlyList<SubtitleCandidate> subtitleCandidates =
+  [
+    new SubtitleCandidate(3, "ass", "eng", false, true),
+    new SubtitleCandidate(4, "srt", "fra", false, true)
+  ];
+  IReadOnlyList<SubtitleCapabilityInput> subtitleCapabilities =
+  [
+    new SubtitleCapabilityInput("srt", ["embedded"])
+  ];
+  foreach (var preference in new[] { "always", "forced_only", "auto" })
+  {
+    var selected = PlaybackSubtitleSelector.Select(
+        subtitleCandidates,
+        -1,
+        preference,
+        ["eng"],
+        subtitleCapabilities);
+    Require(
+        selected is 4,
+        $"{preference} subtitle fallback ignored hard capabilities");
+  }
+
+  try
+  {
+    PlaybackCapabilityValidator.Validate(
+        new PlaybackCapabilitiesInput([], ["http_progressive"], [], null, null, null, null, []));
+    throw new InvalidOperationException("empty dynamic-range capabilities were accepted");
+  }
+  catch (PlaybackRequestException exception) when (
+      exception.StatusCode == StatusCodes.Status412PreconditionFailed
+      && exception.Reason == "DYNAMIC_RANGE_UNSUPPORTED")
+  {
+  }
 }
 finally
 {
   keyDirectory.Delete(recursive: true);
+}
+
+static async Task RequireRejectedTrackSelection(
+    PlaybackPlan plan,
+    PlaybackOpenRequest request,
+    string message)
+{
+  var store = new PlaybackSessionStore();
+  try
+  {
+    await store.OpenAsync(
+        request,
+        () => plan,
+        _ => Task.FromException<PlaybackSessionState>(new InvalidOperationException(message)));
+    throw new InvalidOperationException($"{message}: selection was accepted");
+  }
+  catch (PlaybackRequestException exception) when (
+      exception.StatusCode == StatusCodes.Status412PreconditionFailed
+      && exception.Reason == "TRACK_SELECTION_REQUIRES_REPLAN")
+  {
+  }
 }
 
 static void Require(bool condition, string message)

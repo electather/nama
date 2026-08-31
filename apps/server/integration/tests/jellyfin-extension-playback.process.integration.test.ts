@@ -1,7 +1,7 @@
 // oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-magic-numbers, unicorn/max-nested-calls -- The private extension process proof keeps each ordered protocol lifecycle and exact expiry boundary visible.
 import { Code } from "@connectrpc/connect";
 import { expect, it } from "@effect/vitest";
-import { SubtitleRepresentation } from "@nama/api/nama/plugin/v1/media_pb.js";
+import { DynamicRange, SubtitleRepresentation } from "@nama/api/nama/plugin/v1/media_pb.js";
 import {
   DeliveryProtocol,
   SubtitleDeliveryMode,
@@ -63,7 +63,7 @@ const subtitleTrackReference = {
 const directPlanRequest = {
   capabilities: {
     directPlayProfiles: [{ audioCodecs: ["aac"], container: "mp4", videoCodec: "h264" }],
-    dynamicRanges: [],
+    dynamicRanges: [DynamicRange.SDR],
     protocols: [DeliveryProtocol.HTTP_PROGRESSIVE],
     subtitleCapabilities: [],
   },
@@ -208,7 +208,7 @@ const lifecycleHandler =
       capabilities: ["direct_progressive", "playback_telemetry"],
       extension_version: "1.0.0",
       protocol: "nama.jellyfin.extension",
-      protocol_version: 1,
+      protocol_version: 2,
     })(request, response, {
       authorization: request.headers.authorization,
       method: request.method,
@@ -224,16 +224,16 @@ it.live("derives playback capabilities only from a compatible extension handshak
           capabilities: ["direct_progressive", "playback_telemetry"],
           extension_version: "1.0.0",
           protocol: "nama.jellyfin.extension",
-          protocol_version: 1,
+          protocol_version: 2,
         }),
       );
       const absent = yield* controlledJellyfin(connectionHandler());
       const incompatible = yield* controlledJellyfin(
         connectionHandler({
           capabilities: ["direct_progressive", "playback_telemetry"],
-          extension_version: "2.0.0",
+          extension_version: "1.0.0",
           protocol: "nama.jellyfin.extension",
-          protocol_version: 2,
+          protocol_version: 1,
         }),
       );
       const supervisor = yield* PluginSupervisor;
@@ -297,7 +297,7 @@ it.live("rejects playback dispatch without a compatible extension handshake", ()
     capabilities: ["direct_progressive", "playback_telemetry"],
     extension_version: "2.0.0",
     protocol: "nama.jellyfin.extension",
-    protocol_version: 2,
+    protocol_version: 1,
   });
   const handler: ControlledHandler = (request, response, observation) => {
     if (
@@ -559,7 +559,7 @@ it.live("translates opaque HLS delivery with provider-evidenced subtitle tracks"
             direct_play_profiles: [
               { audio_codecs: ["aac"], container: "mp4", video_codec: "h264" },
             ],
-            dynamic_ranges: [],
+            dynamic_ranges: ["sdr"],
             protocols: ["hls"],
             subtitle_capabilities: [{ delivery_modes: ["external"], format: "vtt" }],
           },
@@ -716,14 +716,64 @@ it.live("rejects extension plans inconsistent with the submitted capabilities", 
   return Effect.scoped(
     Effect.gen(function* inconsistentPlanScenario() {
       const supervisor = yield* PluginSupervisor;
+      const subtitleTrack = {
+        codec: "srt",
+        index: 3,
+        is_default: true,
+        is_forced: false,
+        language: "eng",
+        representation: "text",
+        type: "subtitle",
+      };
+      const subtitlePlan = (action: "burn" | "external") => ({
+        actions: [
+          { action: "copy", track_index: 1 },
+          { action, track_index: 3 },
+        ],
+        default_subtitle_track_index: 3,
+        tracks: [
+          {
+            channels: 2,
+            codec: "aac",
+            index: 1,
+            is_default: true,
+            is_forced: false,
+            label: "Main",
+            language: "eng",
+            type: "audio",
+          },
+          subtitleTrack,
+        ],
+      });
+      const burnedSubtitleRequest = {
+        ...directPlanRequest,
+        capabilities: {
+          ...directPlanRequest.capabilities,
+          subtitleCapabilities: [
+            { deliveryModes: [SubtitleDeliveryMode.BURNED_IN], format: "srt" },
+          ],
+        },
+      };
       const cases = [
         {
           id: "inconsistent-plan-protocol",
+          request: directPlanRequest,
           response: { protocol: "hls" },
         },
         {
           id: "inconsistent-plan-actions",
+          request: directPlanRequest,
           response: { strategy: "transcode_audio" },
+        },
+        {
+          id: "undeclared-external-subtitle-action",
+          request: directPlanRequest,
+          response: subtitlePlan("external"),
+        },
+        {
+          id: "direct-burned-subtitle-action",
+          request: burnedSubtitleRequest,
+          response: subtitlePlan("burn"),
         },
       ] as const;
       for (const testCase of cases) {
@@ -738,10 +788,14 @@ it.live("rejects extension plans inconsistent with the submitted capabilities", 
         const plugin = yield* superviseJellyfin(supervisor, jellyfin, {
           providerInstanceId: testCase.id,
         });
-        const failure = yield* plugin
-          .call(PlaybackService.method.planPlayback, directPlanRequest, CALL_DEADLINE_MILLISECONDS)
-          .pipe(Effect.flip);
-        expect(failure).toMatchObject({ _tag: "PluginRpcError", code: Code.Internal });
+        const exit = yield* Effect.exit(
+          plugin.call(
+            PlaybackService.method.planPlayback,
+            testCase.request,
+            CALL_DEADLINE_MILLISECONDS,
+          ),
+        );
+        expect(Exit.isFailure(exit)).toBe(true);
       }
     }).pipe(Effect.provide(PluginSupervisor.layer())),
   );
@@ -822,7 +876,7 @@ it.live("rejects malformed extension output without exposing its body", () => {
     capabilities: ["direct_progressive", "playback_telemetry"],
     extension_version: "1.0.0",
     protocol: "nama.jellyfin.extension",
-    protocol_version: 1,
+    protocol_version: 2,
   });
   const handler: ControlledHandler = (request, response, observation) => {
     const endpoint = new URL(observation.url, "http://jellyfin.invalid");
@@ -858,7 +912,7 @@ it.live("propagates playback planning cancellation to the extension request", ()
     capabilities: ["direct_progressive", "playback_telemetry"],
     extension_version: "1.0.0",
     protocol: "nama.jellyfin.extension",
-    protocol_version: 1,
+    protocol_version: 2,
   });
   const handler: ControlledHandler = (request, response, observation) => {
     const endpoint = new URL(observation.url, "http://jellyfin.invalid");

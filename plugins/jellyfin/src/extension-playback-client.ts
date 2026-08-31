@@ -16,6 +16,7 @@ import {
   requiredText,
   trackReference,
 } from "./extension-playback-values.ts";
+import type { ProviderSourceIdentity } from "./extension-playback-values.ts";
 import type { ProviderLaunchDocument } from "./launch-document.ts";
 import { createJellyfinRequest } from "./request.ts";
 import type { JellyfinMutationResponse, JellyfinRequest } from "./request.ts";
@@ -158,7 +159,7 @@ const trackDetails = (track: ExtensionTrack) => {
   };
 };
 
-const providerTrack = (track: ExtensionTrack, itemId: string, sourceId: string) => {
+const providerTrack = (track: ExtensionTrack, source: ProviderSourceIdentity) => {
   const details = trackDetails(track);
   return {
     $typeName: "nama.plugin.v1.ProviderPlaybackTrack" as const,
@@ -167,12 +168,12 @@ const providerTrack = (track: ExtensionTrack, itemId: string, sourceId: string) 
     isForced: track.isForced,
     label: track.label,
     language: track.language,
-    trackReference: trackReference(itemId, sourceId, track.index),
+    trackReference: trackReference(source, track.index),
     type: track.type,
   };
 };
 
-const extensionAction = (value: unknown, itemId: string, sourceId: string) => {
+const extensionAction = (value: unknown, source: ProviderSourceIdentity) => {
   if (!isUnknownRecord(value)) {
     return invalidExtensionResponse();
   }
@@ -180,18 +181,18 @@ const extensionAction = (value: unknown, itemId: string, sourceId: string) => {
   return {
     $typeName: "nama.plugin.v1.ProviderTrackAction" as const,
     action,
-    trackReference: trackReference(itemId, sourceId, requiredJellyfinIndex(value["track_index"])),
+    trackReference: trackReference(source, requiredJellyfinIndex(value["track_index"])),
   };
 };
 
-const providerSessionTrack = (value: unknown, itemId: string, sourceId: string) => {
+const providerSessionTrack = (value: unknown, source: ProviderSourceIdentity) => {
   if (!isUnknownRecord(value)) {
     return invalidExtensionResponse();
   }
   return {
     $typeName: "nama.plugin.v1.ProviderSessionTrack" as const,
     switchableWithoutReopen: requiredBoolean(value["switchable_without_reopen"]),
-    trackReference: trackReference(itemId, sourceId, requiredJellyfinIndex(value["index"])),
+    trackReference: trackReference(source, requiredJellyfinIndex(value["index"])),
   };
 };
 

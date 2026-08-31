@@ -26,7 +26,7 @@ import {
   trackIndex,
   trackReference,
 } from "./extension-playback-values.ts";
-import type { ProtobufTimestamp } from "./extension-playback-values.ts";
+import type { ProtobufTimestamp, ProviderSourceIdentity } from "./extension-playback-values.ts";
 import type { ProviderLaunchDocument } from "./launch-document.ts";
 import type { JellyfinRequest } from "./request.ts";
 import { isUnknownRecord } from "./value.ts";
@@ -42,15 +42,13 @@ const MINIMUM_REPORT_INTERVAL_SECONDS = 1;
 const MAXIMUM_SESSION_LIFETIME_MILLISECONDS = HOURS_PER_DAY * MILLISECONDS_PER_HOUR;
 const ZERO_NANOSECONDS = 0;
 
-interface OpenIdentity {
-  readonly itemId: string;
+interface OpenIdentity extends ProviderSourceIdentity {
   readonly mediaResource: string;
   readonly mimeType: string;
   readonly protocol: DeliveryProtocol;
   readonly selectedAudioIndex: number;
   readonly selectedSubtitleIndex: number | undefined;
   readonly sessionId: string;
-  readonly sourceId: string;
   readonly url: string;
 }
 
@@ -121,11 +119,7 @@ const leaseHeaders = (lease: unknown) => [
   },
 ];
 
-const subtitleSelection = (
-  itemId: string,
-  sourceId: string,
-  trackIndexValue: number | undefined,
-) => {
+const subtitleSelection = (source: ProviderSourceIdentity, trackIndexValue: number | undefined) => {
   if (trackIndexValue === undefined) {
     return disabledSubtitleSelection();
   }
@@ -133,7 +127,7 @@ const subtitleSelection = (
     $typeName: "nama.plugin.v1.ProviderSubtitleSelection" as const,
     selection: {
       case: "trackReference" as const,
-      value: trackReference(itemId, sourceId, trackIndexValue),
+      value: trackReference(source, trackIndexValue),
     },
   };
 };
@@ -167,11 +161,7 @@ const externalSubtitle = ({
     expiresAt,
     headers: leaseHeaders(lease),
     mimeType: normalizedMimeType(value["mime_type"]),
-    trackReference: trackReference(
-      identity.itemId,
-      identity.sourceId,
-      requiredJellyfinIndex(value["track_index"]),
-    ),
+    trackReference: trackReference(identity, requiredJellyfinIndex(value["track_index"])),
     url,
   };
 };
@@ -191,7 +181,7 @@ interface OpenParsing {
 
 const sessionResources = ({ body, expiresAt, identity, lease, request }: OpenParsing) => {
   const tracks = requiredArray(body["tracks"]).map((value) =>
-    providerSessionTrack(value, identity.itemId, identity.sourceId),
+    providerSessionTrack(value, identity),
   );
   const trackIds = tracks.map(({ trackReference: reference }) => reference?.trackId);
   const externalSubtitles = requiredArray(body["external_subtitles"]).map((value) =>
@@ -236,16 +226,8 @@ const openResponse = (body: Readonly<Record<string, unknown>>, request: Jellyfin
       mimeType: identity.mimeType,
       protocol: identity.protocol,
       reportInterval: reportInterval(body["report_interval_seconds"]),
-      selectedAudioTrackReference: trackReference(
-        identity.itemId,
-        identity.sourceId,
-        identity.selectedAudioIndex,
-      ),
-      selectedSubtitle: subtitleSelection(
-        identity.itemId,
-        identity.sourceId,
-        identity.selectedSubtitleIndex,
-      ),
+      selectedAudioTrackReference: trackReference(identity, identity.selectedAudioIndex),
+      selectedSubtitle: subtitleSelection(identity, identity.selectedSubtitleIndex),
       sessionContext: canonicalBase64Url(body["session_context"]),
       sessionId: identity.sessionId,
       tracks,

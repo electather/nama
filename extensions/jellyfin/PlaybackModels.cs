@@ -6,6 +6,7 @@ namespace Nama.Jellyfin.Extension;
 internal static class PlaybackConstants
 {
   public const long JellyfinTicksPerSecond = 10_000_000;
+  public const int MaximumMediaResourceLength = 7168;
   public const int ReportIntervalSeconds = 15;
   public static readonly TimeSpan MaximumSessionLifetime = TimeSpan.FromHours(24);
   public static readonly TimeSpan PlanLifetime = TimeSpan.FromMinutes(5);

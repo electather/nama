@@ -464,7 +464,7 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
             direct_play_profiles: [
               { audio_codecs: ["aac"], container: "mp4", video_codec: "h264" },
             ],
-            dynamic_ranges: [],
+            dynamic_ranges: ["sdr"],
             protocols: ["http_progressive"],
             subtitle_capabilities: [],
           },

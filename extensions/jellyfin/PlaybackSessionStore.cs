@@ -106,6 +106,8 @@ internal sealed class PlaybackSessionStore
       }
 
       var plan = resolveLivePlan();
+      RequireTrackMembership(plan, request.AudioTrackIndex, "audio");
+      RequireTrackMembership(plan, request.SubtitleTrackIndex, "subtitle");
       if (_sessionsByPlanNonce.ContainsKey(plan.Nonce))
       {
         throw new PlaybackRequestException(StatusCodes.Status409Conflict);
@@ -152,6 +154,22 @@ internal sealed class PlaybackSessionStore
     }
 
     throw new PlaybackRequestException(StatusCodes.Status404NotFound);
+  }
+
+  private static void RequireTrackMembership(
+      PlaybackPlan plan,
+      int? selectedIndex,
+      string expectedType)
+  {
+    if (selectedIndex.HasValue
+        && !plan.Tracks.Any(track =>
+            track.Index == selectedIndex.Value
+            && string.Equals(track.Type, expectedType, StringComparison.Ordinal)))
+    {
+      throw new PlaybackRequestException(
+          StatusCodes.Status412PreconditionFailed,
+          "TRACK_SELECTION_REQUIRES_REPLAN");
+    }
   }
 
   private void RemoveExpiredPlans()

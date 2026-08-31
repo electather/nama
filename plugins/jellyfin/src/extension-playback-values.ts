@@ -21,6 +21,11 @@ interface ProtobufTimestamp {
   readonly seconds: bigint;
 }
 
+interface ProviderSourceIdentity {
+  readonly itemId: string;
+  readonly sourceId: string;
+}
+
 const invalidExtensionResponse = (): never => {
   throw new ConnectError("Jellyfin extension response is invalid", Code.Internal);
 };
@@ -117,31 +122,30 @@ const durationBody = (value: Readonly<{ nanos: number; seconds: bigint }> | unde
   return { nanos: value.nanos, seconds: value.seconds.toString() };
 };
 
-const sourceReferenceBody = (sourceReference: ProviderSourceReference | undefined) => {
+const sourceIdentity = (sourceReference: ProviderSourceReference | undefined) => {
   const itemId = sourceReference?.itemReference?.itemId;
   const sourceId = sourceReference?.sourceId;
   if (itemId === undefined || sourceId === undefined) {
     throw new ConnectError("playback source reference is invalid", Code.InvalidArgument);
   }
-  return { item_id: itemId, source_id: sourceId };
+  return { itemId, sourceId };
 };
 
 const trackReference = (
-  itemId: string,
-  sourceId: string,
+  source: ProviderSourceIdentity,
   trackIndex: number,
 ): ProviderTrackReference => ({
   $typeName: "nama.plugin.v1.ProviderTrackReference",
   partReference: {
     $typeName: "nama.plugin.v1.ProviderPartReference",
-    partId: sourceId,
+    partId: source.sourceId,
     sourceReference: {
       $typeName: "nama.plugin.v1.ProviderSourceReference",
       itemReference: {
         $typeName: "nama.plugin.v1.ProviderItemReference",
-        itemId,
+        itemId: source.itemId,
       },
-      sourceId,
+      sourceId: source.sourceId,
     },
   },
   trackId: String(trackIndex),
@@ -180,9 +184,9 @@ export {
   requiredInteger,
   requiredJellyfinIndex,
   requiredText,
-  sourceReferenceBody,
+  sourceIdentity,
   subtitleIndex,
   trackIndex,
   trackReference,
 };
-export type { ProtobufTimestamp };
+export type { ProtobufTimestamp, ProviderSourceIdentity };

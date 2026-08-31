@@ -143,6 +143,10 @@ internal sealed class PlaybackPlaylistRewriter
             rewritePlaylist
                 ?? child.AbsolutePath.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)),
         expiration);
+    if (mediaResource.Length > PlaybackConstants.MaximumMediaResourceLength)
+    {
+      throw new PlaybackRequestException(StatusCodes.Status502BadGateway);
+    }
     return publicPrefix + mediaResource;
   }
 

@@ -38,7 +38,7 @@ internal sealed class PlaybackLeaseMiddleware
 
     var mediaResource = path[MediaPrefix.Length..];
     if (!_compatibility.IsCompatible
-        || mediaResource.Length is 0 or > 7168
+        || mediaResource.Length is 0 or > PlaybackConstants.MaximumMediaResourceLength
         || mediaResource.Contains('/', StringComparison.Ordinal)
         || !context.Request.Headers.TryGetValue(PlaybackConstants.LeaseHeader, out var leaseHeaders)
         || leaseHeaders.Count != 1
@@ -66,7 +66,9 @@ internal sealed class PlaybackLeaseMiddleware
     RedirectSuppressingStream? redirectBody = null;
     context.Response.OnStarting(() =>
     {
-      var wasRedirect = context.Response.StatusCode is >= 300 and < 400;
+      var statusCode = context.Response.StatusCode;
+      var wasRedirect = statusCode is >= 300 and < 400
+          && statusCode != StatusCodes.Status304NotModified;
       RewriteRedirect(
           context.Response,
           _playlistRewriter,
@@ -205,6 +207,22 @@ internal sealed class PlaybackLeaseMiddleware
             StringComparison.OrdinalIgnoreCase) == true;
   }
 
+  private static bool IsRedirectStatus(int statusCode)
+  {
+    return statusCode is StatusCodes.Status301MovedPermanently
+        or StatusCodes.Status302Found
+        or StatusCodes.Status303SeeOther
+        or StatusCodes.Status307TemporaryRedirect
+        or StatusCodes.Status308PermanentRedirect;
+  }
+
+  private static void RejectRedirect(HttpResponse response)
+  {
+    response.Headers.Remove("Location");
+    response.ContentLength = 0;
+    response.StatusCode = StatusCodes.Status502BadGateway;
+  }
+
   internal static void RewriteRedirect(
       HttpResponse response,
       PlaybackPlaylistRewriter rewriter,
@@ -212,8 +230,14 @@ internal sealed class PlaybackLeaseMiddleware
       DateTimeOffset expiration,
       string publicPrefix)
   {
-    if (response.StatusCode is < 300 or >= 400)
+    if (response.StatusCode == StatusCodes.Status304NotModified
+        || response.StatusCode is < 300 or >= 400)
     {
+      return;
+    }
+    if (!IsRedirectStatus(response.StatusCode))
+    {
+      RejectRedirect(response);
       return;
     }
     var locations = response.Headers.Location;
@@ -234,9 +258,7 @@ internal sealed class PlaybackLeaseMiddleware
     }
     catch (PlaybackRequestException)
     {
-      response.Headers.Remove("Location");
-      response.ContentLength = 0;
-      response.StatusCode = StatusCodes.Status502BadGateway;
+      RejectRedirect(response);
     }
   }
 
