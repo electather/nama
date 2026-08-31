@@ -76,6 +76,26 @@ struct MovieDetailsProjectionTests {
     )
     #expect(mediaDetailsCanRefresh(.content(details)))
   }
+
+  @Test("Retry receives initial television focus before Sources")
+  func televisionRetryPrecedesSourcesFocus() {
+    #expect(
+      mediaDetailsDefaultFocusAction(
+        playability: .temporarilyUnavailable,
+        hasSources: true,
+        isRefreshing: false,
+        canRetryUnavailableSource: true
+      ) == .retry
+    )
+    #expect(
+      mediaDetailsDefaultFocusAction(
+        playability: .temporarilyUnavailable,
+        hasSources: true,
+        isRefreshing: true,
+        canRetryUnavailableSource: true
+      ) == .sources
+    )
+  }
 }
 
 private func movieProjectionCredits(cast: [MediaCredit]) -> [MediaCredit] {

@@ -79,7 +79,7 @@ actor KeychainOAuthTokenStore: OAuthTokenStoring {
     guard loadSnapshot() == .damaged(data) else {
       return
     }
-    let attributes: [CFString: Any] = [
+    var attributes: [CFString: Any] = [
       kSecClass: kSecClassGenericPassword,
       kSecAttrService: Self.quarantineService,
       kSecAttrAccount: quarantineAccount(),
@@ -87,6 +87,9 @@ actor KeychainOAuthTokenStore: OAuthTokenStoring {
       kSecAttrSynchronizable: false,
       kSecValueData: data,
     ]
+    #if os(macOS)
+      attributes[kSecUseDataProtectionKeychain] = true
+    #endif
     guard keychain.add(attributes) == errSecSuccess else {
       throw OAuthTokenStoreError.unavailable
     }
@@ -160,6 +163,9 @@ actor KeychainOAuthTokenStore: OAuthTokenStoring {
       kSecAttrAccount: activeAccount,
       kSecAttrSynchronizable: false,
     ]
+    #if os(macOS)
+      query[kSecUseDataProtectionKeychain] = true
+    #endif
     if returnData {
       query[kSecReturnData] = true
       query[kSecMatchLimit] = kSecMatchLimitOne

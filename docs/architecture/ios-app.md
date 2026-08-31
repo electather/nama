@@ -435,36 +435,52 @@ preparation, legitimate empty, long content, no-results, later-page failure,
 unavailable-source, missing-artwork, touch, pointer, keyboard, and broader
 Apple TV focus evidence.
 
-Issue #235's production follow-up created another fresh device grant and reused
-the same production listener, PostgreSQL catalog, supervised Jellyfin plugin,
-and signed iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV 4K (3rd
-generation) simulator surfaces. Touch and keyboard input exercised Home, both
-Library kinds, all-kind Search, decoded canonical artwork, every Details kind,
-canonical Show → Season → Episode children, and default Play. A temporary
-DEBUG-only ID route reused `NamaLibraryClient`, `MediaSourcesFeature`, and the
-real Sources presentation to inspect the exact imported Episode Source and
-visibly confirm source-specific typed Play intent emission without planning or
-opening playback.
+Issue #235's production follow-up used a fresh Apple public-client device grant
+against a production listener, isolated PostgreSQL database, completed Jellyfin
+catalog import, and supervised plugin. Signed iPhone 17 Pro and iPad Pro
+13-inch (M5) iOS 26.5 simulators and an Apple TV 4K (3rd generation) tvOS 26.5
+simulator visibly exercised Home, both Library kinds, typed all-kind Search and
+result selection, decoded canonical artwork or the title-bearing fallback,
+Movie/Show/Season/Episode Details, Show → Season → Episode children, Source
+choice and inspection, and default and source-specific typed Play intents. The
+selected Source and its normalized Source, Part, Video, and Audio fields came
+from the completed Jellyfin import. An isolated nonselected canonical Source
+exposed the two-choice presentation; a provider-imported multi-version item
+remains unverified.
 
-Apple TV keyboard and remote input entered Library, typed Search, selected the
-Show result, traversed Season and Episode Details, focused and activated Play,
-used an explicit Details Back action, and returned focus to the Episode row.
-The initial run exposed that lazy Details/child materialization and toolbar-only
-Refresh left the remote focus engine without an onscreen content target. The
-corrected run eagerly materialized the bounded actions, focused the first child,
-primary Play, and inspected-Source Play action, and retained an in-flow Refresh.
-Apple TV then inspected the imported Episode Source, focused Play This Source,
-and emitted the source-specific intent. The temporary token and forced-Source
-harness was removed before repository verification.
+Apple TV remote focus traversed the hierarchy, Play, Sources, the selected
+Source, and Play This Source. Back navigation restored focus to Sources and
+then the Episode and Season rows. During a production-server interruption Home
+retained its content and exposed Try Again; remote retry recovered after server
+resume. The pass exposed that lazy offscreen Details content and toolbar-only
+Refresh could leave no focus target. tvOS now eagerly materializes bounded
+children and actions, assigns the first actionable focus, orders actionable
+Retry before Sources, and retains eligible Refresh in the content flow. iOS and
+macOS keep lazy hierarchy materialization.
 
-The latest Mac artifact was Apple Development-signed and sandboxed with client
-and loopback-server network entitlements. It created an onscreen Home window and
-rendered its loading surface before the desktop graphical session locked; the
-complete live Mac browse/search/details/source flow could not run afterward.
-The run also exposed no usable VoiceOver output or reading-order surface. Live
-Mac input, VoiceOver inspection, compact iPad collapse, physical Apple hardware,
-and expiry-driven actual-surface refresh remain explicitly unverified rather
-than inferred from simulator, accessibility-tree, or fixture evidence.
+The final arm64 Mac artifact was Apple Development-signed and sandboxed with
+client and loopback-server network entitlements and the scoped application
+Keychain group. It created a visible window and completed the same production
+flow with pointer and keyboard input, native Back, and return-position
+restoration. The run found three additional actual-surface defects. The macOS
+token store now opts into the Data Protection Keychain; transient
+`HomeView.onDisappear` no longer cancels the still-visible window's initial
+load; and one `ConsumerNavigationDestination` path owns both Details and
+Sources because a homogeneous Details path silently ignored Sources links.
+Collapsing a Source-choice button into one accessibility element also now
+restores the button trait.
+
+VoiceOver was activated on the signed Mac window. Its visible cursor and
+caption panel confirmed spoken guidance for the focused content, and the actual
+accessibility trees recorded representative Home, Library/Search, Details, and
+Sources labels, reading order, button action names, and nested focus
+restoration. A complete iPhone production flow remained usable at the largest
+tested accessibility text size with increased contrast and reduced motion
+enabled. Those settings were restored, and the temporary authorization,
+acceptance catalog row, endpoint state, UI harness, diagnostics, containers,
+volumes, and signed test artifacts were removed. No accepted flow invoked
+playback planning or media opening. Physical iPhone, iPad, and Apple TV
+hardware and expiry-driven actual-surface refresh remain unverified.
 `check:ios` lints Swift formatting, runs the test target through its macOS host,
 inspects the built ATS shape, and performs signing-disabled iOS, tvOS, and macOS
 builds. The real-player tests prove controlled SDR HLS rendering and control

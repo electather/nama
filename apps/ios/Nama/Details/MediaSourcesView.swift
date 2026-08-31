@@ -193,6 +193,7 @@ private struct MediaSourceChoiceButton: View {
     .buttonStyle(.bordered)
     .disabled(isLoading)
     .accessibilityElement(children: .ignore)
+    .accessibilityAddTraits(.isButton)
     .accessibilityLabel(title)
     .accessibilityValue(
       Text(mediaSourceAvailabilityPresentation(summary.availability).title)

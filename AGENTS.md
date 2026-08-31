@@ -78,6 +78,15 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
   assign initial focus to the first actionable row or button, and keep explicit
   Back and in-flow Refresh controls; lazy offscreen rows plus toolbar-only
   actions can trap focus in the top-level tabs.
+- Wrap heterogeneous Nama `NavigationLink` values in one compatible navigation
+  destination type; a homogeneous typed path silently ignores links whose value
+  has another type.
+- On macOS, do not cancel Home from `HomeView.onDisappear`; SwiftUI can remove
+  that view transiently while the same visible window still owns its initial
+  load.
+- After collapsing a custom SwiftUI button with
+  `.accessibilityElement(children: .ignore)`, restore `.isButton`; otherwise
+  assistive technologies expose the action as a non-actionable element.
 - Scope each universal-app connection feature to one window; when its scene leaves the foreground, cancel only the active verification, and treat a remote Connect `canceled` response as a safe visible failure rather than local cancellation.
 - Keep array-valued `NSBonjourServices` in the Apple app's partial Info property list; generated `INFOPLIST_KEY_*` build settings do not emit the Bonjour array.
 - Never copy a restored endpoint into the live manual-entry binding; its `onChange` intentionally cancels active verification as a user edit.

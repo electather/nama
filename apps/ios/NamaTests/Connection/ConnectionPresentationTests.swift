@@ -49,17 +49,19 @@ struct ConnectionPresentationTests {
     )
   }
 
-  @MainActor
-  @Test("a long endpoint expands the production endpoint control instead of truncating")
-  func longEndpointExpandsEndpointControl() throws {
-    let shortEndpoint = try NamaEndpoint("http://nama.local")
-    let longEndpoint = try NamaEndpoint(
-      "http://nama.local/a/very/long/reverse/proxy/path/that/must/remain/visible/to/the/person/"
-    )
-    let shortHeight = try renderedEndpointHeight(for: shortEndpoint)
-    let longHeight = try renderedEndpointHeight(for: longEndpoint)
-    #expect(longHeight > shortHeight)
-  }
+  #if !os(tvOS)
+    @MainActor
+    @Test("a long endpoint expands the production endpoint control instead of truncating")
+    func longEndpointExpandsEndpointControl() throws {
+      let shortEndpoint = try NamaEndpoint("http://nama.local")
+      let longEndpoint = try NamaEndpoint(
+        "http://nama.local/a/very/long/reverse/proxy/path/that/must/remain/visible/to/the/person/"
+      )
+      let shortHeight = try renderedEndpointHeight(for: shortEndpoint)
+      let longHeight = try renderedEndpointHeight(for: longEndpoint)
+      #expect(longHeight > shortHeight)
+    }
+  #endif
 
   @Test("every selected local HTTP state exposes the unencrypted warning")
   func selectedLocalHTTPWarningStates() throws {
@@ -198,13 +200,15 @@ struct ConnectionPresentationTests {
   }
 }
 
-@MainActor
-private func renderedEndpointHeight(for endpoint: NamaEndpoint) throws -> Int {
-  let presentationWidth: CGFloat = 320
-  let renderer = ImageRenderer(
-    content: EndpointValue(endpoint: endpoint)
-      .frame(width: presentationWidth, alignment: .leading)
-  )
-  let image = try #require(renderer.cgImage)
-  return image.height
-}
+#if !os(tvOS)
+  @MainActor
+  private func renderedEndpointHeight(for endpoint: NamaEndpoint) throws -> Int {
+    let presentationWidth: CGFloat = 320
+    let renderer = ImageRenderer(
+      content: EndpointValue(endpoint: endpoint)
+        .frame(width: presentationWidth, alignment: .leading)
+    )
+    let image = try #require(renderer.cgImage)
+    return image.height
+  }
+#endif

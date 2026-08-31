@@ -39,11 +39,33 @@ struct ConsumerNavigationTests {
 
     #expect(navigation.topLevel == .library)
     #expect(navigation.libraryQuery == LibraryQuery(kind: .shows, sort: .dateAdded))
-    let restored = try #require(navigation.libraryPath.first)
+    let restored = try #require(navigation.libraryPath.first?.detailsSelection)
     #expect(restored.identity == MediaIdentity("opaque/show:id?unchanged"))
     #expect(restored.kind == nil)
     #expect(restored.title == nil)
     #expect(navigation.restoration == restoration)
+  }
+
+  @Test("Sources can nest under Details without changing the restored media")
+  func nestedSourcesRetainDetailsRestoration() {
+    let navigation = ConsumerSceneNavigation(restoration: .default)
+    let details = MediaDetailsSelection(
+      identity: MediaIdentity("episode-with-sources"),
+      kind: .episode,
+      title: "Episode With Sources"
+    )
+    let sources = MediaSourcesSelection(
+      mediaIdentity: details.identity,
+      mediaKind: .episode,
+      mediaTitle: "Episode With Sources",
+      sourceSummaries: []
+    )
+
+    navigation.select(details, from: .home)
+    navigation.homePath.append(.sources(sources))
+
+    #expect(navigation.homePath == [.details(details), .sources(sources)])
+    #expect(navigation.restoration.selectedMediaID == details.identity.rawValue)
   }
 
   @Test("Home See All opens the matching date-added Library")
