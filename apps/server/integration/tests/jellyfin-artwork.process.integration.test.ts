@@ -30,12 +30,13 @@ const HTTP_OK = 200;
 const API_KEY = "jellyfin-artwork-api-key-sentinel";
 const SERVER_ID = "artwork-server-identity";
 const USER_ID = "artwork-user-identity";
-const MOVIE_ID = "artwork-movie-identity";
+const MOVIE_ID = "0123456789abcdef0123456789abcdef";
+const PUBLIC_MOVIE_ID = "01234567-89ab-cdef-0123-456789abcdef";
 const BACKDROP_CACHE_TAG = "backdrop-cache-tag";
 const CACHE_TAG = "poster-cache-tag";
 const MAXIMUM_WIDTH = 600;
 const MAXIMUM_HEIGHT = 900;
-const ARTWORK_CAPABILITIES = [
+const STOCK_CAPABILITIES = [
   ProviderCapability.LIBRARY_READ,
   ProviderCapability.ARTWORK_RESOLVE,
   ProviderCapability.WATCH_STATE_READ,
@@ -143,7 +144,7 @@ const acquireControlledJellyfin = Effect.acquireRelease(
         if (
           request.method === "HEAD" &&
           request.headers.authorization === undefined &&
-          request.url === `/jellyfin/Items/${MOVIE_ID}/Images/Backdrop/0?tag=${BACKDROP_CACHE_TAG}`
+          request.url === `/jellyfin/Items/${PUBLIC_MOVIE_ID}/Images/Backdrop/0`
         ) {
           response.statusCode = HTTP_OK;
           response.setHeader("content-type", "image/png");
@@ -154,7 +155,7 @@ const acquireControlledJellyfin = Effect.acquireRelease(
           request.method === "HEAD" &&
           request.headers.authorization === undefined &&
           request.url ===
-            `/jellyfin/Items/${MOVIE_ID}/Images/Primary/0?tag=${CACHE_TAG}&maxWidth=${MAXIMUM_WIDTH}&maxHeight=${MAXIMUM_HEIGHT}`
+            `/jellyfin/Items/${PUBLIC_MOVIE_ID}/Images/Primary/0?maxWidth=${MAXIMUM_WIDTH}&maxHeight=${MAXIMUM_HEIGHT}`
         ) {
           response.statusCode = HTTP_OK;
           response.setHeader("content-type", "IMAGE/JPEG; charset=binary");
@@ -165,7 +166,7 @@ const acquireControlledJellyfin = Effect.acquireRelease(
           request.method === "HEAD" &&
           request.headers.authorization === undefined &&
           request.url?.startsWith(
-            `/jellyfin/Items/${MOVIE_ID}/Images/Primary/0?tag=${CACHE_TAG}&maxWidth=`,
+            `/jellyfin/Items/${PUBLIC_MOVIE_ID}/Images/Primary/0?maxWidth=`,
           ) === true
         ) {
           const endpoint = new URL(request.url, "http://controlled.invalid");
@@ -263,7 +264,7 @@ it.live(
           {},
           CALL_DEADLINE_MILLISECONDS,
         );
-        expect(info.pluginInfo?.capabilities).toEqual(ARTWORK_CAPABILITIES);
+        expect(info.pluginInfo?.capabilities).toEqual(STOCK_CAPABILITIES);
 
         const connection = yield* plugin.call(
           PluginService.method.getConnection,
@@ -271,7 +272,7 @@ it.live(
           CALL_DEADLINE_MILLISECONDS,
         );
         expect(connection.connection).toMatchObject({
-          capabilities: ARTWORK_CAPABILITIES,
+          capabilities: STOCK_CAPABILITIES,
           status: PluginConnectionStatus.CONNECTED,
         });
 
@@ -302,7 +303,7 @@ it.live(
           authorizationScope: ArtworkAuthorizationScope.PUBLIC,
           headers: [],
           mimeType: "image/jpeg",
-          url: `${jellyfin.baseUrl}/Items/${MOVIE_ID}/Images/Primary/0?tag=${CACHE_TAG}&maxWidth=${MAXIMUM_WIDTH}&maxHeight=${MAXIMUM_HEIGHT}`,
+          url: `${jellyfin.baseUrl}/Items/${PUBLIC_MOVIE_ID}/Images/Primary/0?maxWidth=${MAXIMUM_WIDTH}&maxHeight=${MAXIMUM_HEIGHT}`,
         });
         const backdropReference =
           itemResponse.item?.artwork[BACKDROP_ARTWORK_INDEX]?.artworkReference;
@@ -320,7 +321,7 @@ it.live(
           authorizationScope: ArtworkAuthorizationScope.PUBLIC,
           headers: [],
           mimeType: "image/png",
-          url: `${jellyfin.baseUrl}/Items/${MOVIE_ID}/Images/Backdrop/0?tag=${BACKDROP_CACHE_TAG}`,
+          url: `${jellyfin.baseUrl}/Items/${PUBLIC_MOVIE_ID}/Images/Backdrop/0`,
         });
         expect(backdrop.lease?.accessExpiresAt).toBeUndefined();
         expect(artwork.lease?.accessExpiresAt).toBeUndefined();
@@ -338,17 +339,22 @@ it.live(
           {
             authorization: `MediaBrowser Token="${API_KEY}"`,
             method: "GET",
+            url: "/jellyfin/Nama/v1/handshake",
+          },
+          {
+            authorization: `MediaBrowser Token="${API_KEY}"`,
+            method: "GET",
             url: `/jellyfin/Items/${MOVIE_ID}?userId=${USER_ID}`,
           },
           {
             authorization: undefined,
             method: "HEAD",
-            url: `/jellyfin/Items/${MOVIE_ID}/Images/Primary/0?tag=${CACHE_TAG}&maxWidth=${MAXIMUM_WIDTH}&maxHeight=${MAXIMUM_HEIGHT}`,
+            url: `/jellyfin/Items/${PUBLIC_MOVIE_ID}/Images/Primary/0?maxWidth=${MAXIMUM_WIDTH}&maxHeight=${MAXIMUM_HEIGHT}`,
           },
           {
             authorization: undefined,
             method: "HEAD",
-            url: `/jellyfin/Items/${MOVIE_ID}/Images/Backdrop/0?tag=${BACKDROP_CACHE_TAG}`,
+            url: `/jellyfin/Items/${PUBLIC_MOVIE_ID}/Images/Backdrop/0`,
           },
         ]);
       }).pipe(Effect.provide(PluginSupervisor.layer())),

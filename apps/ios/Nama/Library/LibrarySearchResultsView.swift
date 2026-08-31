@@ -62,6 +62,10 @@ struct LibrarySearchLoadingView: View {
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("Searching Library")
+    #if os(tvOS) || os(macOS)
+      .focusable()
+      .focusEffectDisabled()
+    #endif
   }
 }
 
@@ -109,7 +113,7 @@ private struct LibrarySearchResultRow: View {
           Text(verbatim: item.title)
             .font(.headline)
             .multilineTextAlignment(.leading)
-          Text(verbatim: librarySearchKindAndYear(item))
+          LibrarySearchKindAndYear(item: item)
             .font(.subheadline)
             .foregroundStyle(.secondary)
           if let position = item.episodePosition {
@@ -315,7 +319,7 @@ func librarySearchCanRefresh(_ state: LibrarySearchState) -> Bool {
   case .content, .refreshing, .refreshFailed, .loadingMore, .pageFailed:
     true
 
-  case .idle, .loading, .noResults, .failed:
+  case .idle, .loading, .catalogNotReady, .noResults, .failed:
     false
   }
 }
@@ -349,27 +353,6 @@ private func librarySearchFailureMessage(
   case .incompatible:
     "This version of Nama cannot read the Search response."
   }
-}
-
-private func librarySearchKindAndYear(_ item: MediaSummary) -> String {
-  let kind =
-    switch item.kind {
-    case .movie:
-      "Movie"
-
-    case .show:
-      "Show"
-
-    case .season:
-      "Season"
-
-    case .episode:
-      "Episode"
-    }
-  guard let releaseYear = item.releaseYear else {
-    return kind
-  }
-  return "\(kind) · \(releaseYear)"
 }
 
 private enum LibrarySearchLayout {

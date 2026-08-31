@@ -8,15 +8,88 @@ choice, completion, safe failure, and return-to-Details recovery visible through
 touch, pointer, keyboard, and Apple TV focus. Automated macOS-host verification
 loads, renders, controls, and stops controlled media and drives adversarial
 origin, redirect, nested HLS, external-subtitle, replacement, expiry, and
-surface-lifecycle cases through the real adapter. Public planning, opening,
-reporting, closing, and the Details-to-playback coordinator remain target
-architecture.
+surface-lifecycle cases through the real adapter. The provider-side
+direct-progressive plan, open, report, and close lifecycle is implemented
+through the first-party Jellyfin extension. Public lifecycle coordination and
+the Details-to-playback coordinator remain target architecture.
 
-The target Apple application reports a Nama-defined capability profile for the
-current device, and the Jellyfin plugin translates it into provider playback
-negotiation, preferring direct play, then stream-copy/remux, and transcoding
-only when the media/device combination requires it or the user explicitly
-asks.
+The target Apple application reports a Nama-defined playback capability profile
+for the current player, and the Jellyfin plugin translates that profile into
+provider playback negotiation. The profile is a conservative pre-plan input-
+consumption promise rather than an inventory of every AetherEngine decoder, an
+output-fidelity claim, or a guarantee that every matching Source will load or
+perform acceptably. Playback prefers direct delivery, then provider remux,
+provider audio conversion with copied video, and provider video conversion only
+when the media/player combination requires it or the person explicitly selects
+a bit-rate cap.
+
+### Capability profile and preferences
+
+`NamaPlayer` owns one synchronous, local, total capability-profile builder
+behind its concrete adapter seam. Each planning attempt receives a fresh
+profile. Building it opens no Source, contacts no provider, performs no network
+I/O, and persists nothing. A reliable runtime fact may remove a capability; an
+unavailable or indeterminate optional fact removes that optional claim rather
+than failing planning or broadening support. Output tone mapping or downmixing
+does not make an input unsupported.
+
+The initial Apple profile is deliberately narrower than AetherEngine `6.21.0`:
+
+- HTTP progressive and HLS delivery;
+- at most 3,840 by 2,160 pixels, 10-bit video, and eight audio channels;
+- SDR, HDR10, and Dolby Vision inputs;
+- MP4 with H.264 or HEVC video and AAC, AC-3, or E-AC-3 audio;
+- MKV with H.264 or HEVC video and AAC, AC-3, E-AC-3, or FLAC audio;
+- SRT, ASS, and WebVTT subtitles as embedded or external Tracks; and
+- embedded PGS image subtitles, with provider burn-in available when a declared
+  subtitle format cannot otherwise accompany the selected delivery.
+
+Capability strings use the exact lowercase Nama tokens `mp4`, `mkv`, `h264`,
+`hevc`, `aac`, `ac3`, `eac3`, `flac`, `srt`, `ass`, `vtt`, and `pgs`.
+Additional engine formats do not become Nama capabilities until a focused
+planning fixture and physical Apple playback evidence support them.
+
+The Apple app sends `AUTO` with no implicit bit-rate cap for ordinary Play.
+Playback Options is scene-local and per-play; it offers Auto or explicit 4, 8,
+20, and 40 Mbps caps without resolution labels. A new Details destination
+starts at Auto and leaving it discards the choice. The Apple app does not expose
+`ORIGINAL` until that value has behavior distinct from uncapped compatibility
+fallback. It sends empty preferred-language lists and `AUTO` subtitle
+preference, leaving initial selection to provider/container defaults including
+eligible forced subtitles.
+
+### Negotiation and fallback
+
+A Playback strategy describes provider-side delivery transformation, not
+AetherEngine's local demuxing, decoding, audio bridging, tone mapping, or
+downmixing:
+
+- `DIRECT` leaves provider media unchanged;
+- `REMUX` changes only provider carriage/container while audio and video copy;
+- `TRANSCODE_AUDIO` copies video while converting selected audio; and
+- `TRANSCODE_VIDEO` converts video and may also convert audio or burn subtitles.
+
+Per-Track actions retain the finer `COPY`, `TRANSCODE`, `BURN`, `EXTERNAL`, and
+`OMIT` evidence. The core validates the plugin plan against the exact selected
+Source, submitted profile and preferences, strategy, expected output, Track
+actions and defaults, expiry, and newly mapped public Track identities. It
+never repairs, reclassifies, changes Source, or tries another provider after an
+inconsistent response; invalid plugin evidence fails
+`INTERNAL/PLUGIN_RESPONSE_INVALID`.
+
+Provider negotiation chooses one least-destructive compatible result. An
+AetherEngine load failure is visible and does not trigger an automatic,
+increasingly destructive replan. `PlanPlayback` follows the documented safe
+retry rules; one still-active Play attempt may replan once after plan expiry.
+Every `OpenPlayback` attempt retains one operation ID and identical request
+across retries. Primary Play opens the plan defaults. Session Tracks that cannot
+switch without reopening remain visible but disabled until the ordered
+replacement lifecycle implements that behavior.
+
+Issue #233 is the production prerequisite for truthful Jellyfin planning,
+fallback, Track evidence, and the complete opaque media graph. It follows the
+extension runtime and direct-progressive foundation in issue #232; umbrella
+issue #231 owns the accepted extension boundary.
 
 [ADR-0012](../adr/0012-single-playback-engine-adapter.md) confines the selected
 engine behind one Nama-owned adapter with app-owned request, state, clock,
@@ -40,6 +113,35 @@ the initial and redirected origin, rewrites HLS child references, and reapplies
 headers only within the request's core-validated allowlist. The bridge is part
 of the concrete adapter, not a second playback engine or public media relay.
 
+[ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md) requires a
+manually installed first-party Jellyfin server extension for Jellyfin playback
+and coherent progress. The extension validates its own host and exposes one
+versioned private JSON/HTTP protocol to the supervised Jellyfin provider plugin;
+Nama does not inspect Jellyfin versions directly. Missing, unhealthy, or
+incompatible extensions advertise none of the extension-backed capabilities.
+Private control endpoints accept only a real Jellyfin API key, and the optional
+handshake probe has its own short deadline so a stalled extension cannot erase
+an already-verified stock connection.
+
+The implemented direct-progressive slice mints purpose-separated,
+self-contained leases from a protected key ring. It returns an opaque extension
+URL plus one scoped request header, accepts exact `GET` and `HEAD`, and never
+returns a stock path, provider identifier, or configured Jellyfin credential.
+Plan identifiers are purpose-protected references of at most 256 characters to
+five-minute in-memory plan records. The direct-only plan advertises only the
+default audio track that open can materialize. Opened sessions expire after the
+complete expected runtime plus 30 minutes, with a hard 24-hour maximum; longer
+media is unsupported rather than receiving broader authorization. Provider-plugin
+replacement retains the opaque session context. A Jellyfin restart retains
+lease verification through the stable key ring while lost in-memory session
+resources fail safely.
+
+Issue #233 still owns HLS and external-resource coverage. That slice must keep
+every playlist, segment, key, and subtitle child in the opaque namespace and
+rewrite bounded control documents before those capabilities broaden. Stock
+Jellyfin routes retain their existing behavior; Nama's guarantee covers only
+access conferred through its opaque namespace.
+
 [ADR-0014](../adr/0014-four-stage-playback-lifecycle.md) defines the
 plan, open, report, and close lifecycle for the target public and plugin
 contracts.
@@ -59,6 +161,15 @@ that transaction. The public contract owns exact replay, retention, transaction,
 and terminal-race behavior; the Apple note owns coalescing, bounded retry,
 replacement ordering, lifecycle, and safe failure presentation.
 
+For Jellyfin, the implemented direct-progressive telemetry path is the only
+provider writer for state produced by that Nama playback session. It invokes
+Jellyfin start, ordered progress, and stop exactly once per accepted event;
+provider response loss remains ambiguous and the plugin never blindly replays
+it. Coherent progress export in issue #234 handles other Activity origins and
+must never write the same canonical version. Its target extension operation
+saves watched state and position together, validates optional duration against
+the current Jellyfin item runtime, and reads the provider result back.
+
 The integration pins AetherEngine's exact source revision and complete resolved
 dependency closure and confines its rendering and control types to
 `NamaPlayer`. The [distribution record](aetherengine-distribution.md) owns the
@@ -69,6 +180,28 @@ local routes to the engine, validates every remote destination against the
 request's exact normalized origin set, and rewrites allowed redirects and HLS
 references back through that broker. Automated macOS-host tests cover its
 security and lifecycle behavior while recording the accepted allowed-origin
-header replay. Issue #38 still owns representative physical iPhone or iPad,
-Apple TV, and Mac playback evidence; capability negotiation and the full media
-and interaction matrix remain with issues #39 and #40.
+header replay. Issue #38 retains its representative physical adapter evidence;
+issue #40 delivered the player presentation baseline. Issue #39 owns the
+end-to-end capability and fallback matrix through pinned Jellyfin and
+representative physical iPhone or iPad, Apple TV, and Mac:
+
+- MP4/H.264/AAC SDR, MKV/HEVC/E-AC-3 HDR10, Dolby Vision, declared text
+  subtitles, and PGS image subtitles exercise direct delivery;
+- an incompatible container exercises remux with copied audio and video;
+- TrueHD or DTS-family audio outside the initial profile exercises audio
+  conversion with copied video;
+- VP9 or AV1 outside the initial profile exercises video conversion;
+- a selected DVD/DVB subtitle outside the initial profile exercises burn-in;
+- a direct-compatible high-bit-rate Source exercises an explicit cap; and
+- the absence of any safe compatible result exercises
+  `FAILED_PRECONDITION/PLAYBACK_UNSUPPORTED`.
+
+Every successful row records the public strategy, expected output, Track
+actions, exact Source, actual device/display result where applicable, and proof
+that media travels from Jellyfin to the Apple client rather than through the
+core. Unrun or incapable hardware/display rows remain explicit instead of
+passing by inference.
+
+Provider-side implementation is tracked by umbrella issue #231: issue #232 owns
+the extension runtime and direct-progressive tracer, issue #233 owns complete
+HLS, fallback, and Track delivery, and issue #234 owns coherent progress.

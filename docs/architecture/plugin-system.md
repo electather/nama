@@ -171,8 +171,35 @@ forbidden, retryable, permanent, ambiguous, malformed, oversized, and cancelled
 paths retain sanitized generated-RPC outcomes without exposing provider bodies,
 identifiers, or authorization.
 
-Windows transport and persistent or background native-media plugins remain
-deferred until a real plugin requires them. Core-owned synchronization
-execution remains in issue #30. Production playback belongs to issue #96,
-coherent exact progress export belongs to issue #97, and container packaging
-belongs to issue #32.
+## Jellyfin server extension
+
+The first-party Jellyfin server extension accepted by
+[ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md) is distinct
+from the supervised Jellyfin provider plugin. An Administrator installs its
+exact-versioned .NET artifact into Jellyfin and restarts that server. The
+extension validates its own host, owns a purpose-separated protected key ring,
+and exposes one bounded private JSON/HTTP protocol authenticated by the
+configured Jellyfin API key. The provider plugin alone translates that
+Jellyfin-specific protocol into `nama.plugin.v1`.
+
+Successful configured connections advertise the implemented direct-progressive
+plan, open, report, and provider-user-state telemetry capabilities only after a
+compatible handshake. The provider plugin keeps the private protocol bounded,
+rejects malformed or overlong leases, retains response loss as ambiguity, and
+never exposes a private response body. The extension dispatches an opaque
+progressive resource through Jellyfin under one scoped header; provider-plugin
+replacement preserves the opaque context, while a Jellyfin restart preserves
+lease verification but safely loses in-memory session resources.
+
+Issue #233 still owns opaque HLS, bounded control-document rewriting, fallback,
+and Track delivery. Issue #234 still owns coherent progress that saves watched
+state and position together, validates duration against item runtime, and
+returns readback without claiming provider-native idempotency. The extension
+owns neither a media database nor durable user state.
+
+Windows transport and persistent or background native-media provider plugins
+remain deferred until a real plugin requires them. Core-owned synchronization
+execution remains in issue #45. The server-extension umbrella is issue #231:
+issue #232 owns the runtime and direct-progressive tracer, issue #233 owns
+complete HLS, negotiation, and Track delivery, and issue #234 owns coherent
+progress. Container packaging remains in issue #32.

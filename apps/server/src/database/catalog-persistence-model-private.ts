@@ -89,8 +89,14 @@ interface CatalogMediaSourceObservation {
   readonly sourceReference: string;
 }
 
+interface CatalogArtworkAsset {
+  readonly bytes: Buffer;
+  readonly mimeType: string;
+}
+
 interface CatalogArtworkObservation {
   readonly artworkReference: string;
+  readonly asset?: CatalogArtworkAsset | undefined;
   readonly height?: number | undefined;
   readonly locale?: string | undefined;
   readonly role: CatalogArtworkRole;
@@ -100,6 +106,7 @@ interface CatalogArtworkObservation {
 
 interface CatalogProviderArtworkReference {
   readonly artworkReference: string;
+  readonly asset?: CatalogArtworkAsset | undefined;
   readonly itemReference: string;
 }
 
@@ -254,6 +261,7 @@ type CatalogPersistenceFailure = InstanceType<typeof CatalogPersistenceError>;
 const catalogPersistenceFailure = (): CatalogPersistenceFailure => new CatalogPersistenceError({});
 
 export {
+  type CatalogArtworkAsset,
   type CatalogArtworkObservation,
   type CatalogArtworkRole,
   type CatalogArtworkTextPresence,

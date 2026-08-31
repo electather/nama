@@ -255,3 +255,67 @@ nonisolated func mediaChildrenTelevisionAction(
     nil
   }
 }
+
+nonisolated func mediaChildrenTelevisionFocusIdentity(
+  current: MediaIdentity?,
+  retainedPosition: Int?,
+  available: [MediaIdentity],
+  refreshRecoveryIsActive: Bool
+) -> MediaIdentity? {
+  guard !refreshRecoveryIsActive else {
+    return nil
+  }
+  guard let current else {
+    return available.first
+  }
+  if available.contains(current) {
+    return current
+  }
+  guard let retainedPosition else {
+    return available.first
+  }
+  if available.indices.contains(retainedPosition) {
+    return available[retainedPosition]
+  }
+  return available.last
+}
+
+nonisolated enum MediaDetailsTelevisionRefreshAction: Equatable, Sendable {
+  case enabled
+  case disabled
+}
+
+nonisolated func mediaDetailsTelevisionRefreshAction(
+  canRefresh: Bool,
+  isRefreshing: Bool
+) -> MediaDetailsTelevisionRefreshAction? {
+  guard canRefresh else {
+    return nil
+  }
+  return isRefreshing ? .disabled : .enabled
+}
+
+nonisolated enum MediaDetailsTelevisionFocusAction: Equatable, Hashable, Sendable {
+  case refreshRecovery
+  case play
+  case retry
+  case sources
+}
+
+nonisolated func mediaDetailsTelevisionFocusAction(
+  playability: MediaPlayability,
+  hasSources: Bool,
+  retryIsEnabled: Bool,
+  refreshRecoveryIsActive: Bool
+) -> MediaDetailsTelevisionFocusAction? {
+  guard !refreshRecoveryIsActive else {
+    return nil
+  }
+  if playability == .playable {
+    return .play
+  }
+  if playability == .temporarilyUnavailable, retryIsEnabled {
+    return .retry
+  }
+  return hasSources ? .sources : nil
+}

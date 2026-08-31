@@ -32,7 +32,7 @@ const jellyfinConfigurationSchema = {
   type: "object",
 };
 
-const jellyfinCapabilities = [
+const jellyfinStockCapabilities = [
   ProviderCapability.LIBRARY_READ,
   ProviderCapability.ARTWORK_RESOLVE,
   ProviderCapability.WATCH_STATE_READ,
@@ -41,7 +41,7 @@ const jellyfinCapabilities = [
 
 const jellyfinPluginInfo = {
   buildVersion: "0.0.0-dev",
-  capabilities: jellyfinCapabilities,
+  capabilities: jellyfinStockCapabilities,
   configurationSchema: jellyfinConfigurationSchema,
   contractMajor: 1,
   description: "Connect Nama to a Jellyfin server.",
@@ -51,4 +51,4 @@ const jellyfinPluginInfo = {
   schemaRevision: "1",
 };
 
-export { jellyfinCapabilities, jellyfinConfigurationSchema, jellyfinPluginInfo };
+export { jellyfinConfigurationSchema, jellyfinPluginInfo, jellyfinStockCapabilities };

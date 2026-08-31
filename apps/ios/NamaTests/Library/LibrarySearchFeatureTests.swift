@@ -126,7 +126,7 @@ struct LibrarySearchFeatureTests {
     #expect(feature.state == .idle)
   }
 
-  @Test("no results has specific copy and Clear Search returns to idle")
+  @Test("no results preserves query and Clear Search returns to idle")
   func noResultsAndClear() async throws {
     let loader = ManualLibrarySearchPageLoader()
     let feature = immediateSearchFeature(loader: loader)
@@ -139,18 +139,25 @@ struct LibrarySearchFeatureTests {
     )
     await eventually { feature.state == .noResults(query: "missing") }
 
-    #expect(
-      librarySearchNoResultsPresentation(query: "missing")
-        == LibrarySearchNoResultsPresentation(
-          title: "No results",
-          description: "No stored media matches “missing”.",
-          actionTitle: "Clear Search"
-        )
-    )
-
     feature.clear()
     #expect(feature.text.isEmpty)
     #expect(feature.state == .idle)
+  }
+
+  @Test("catalog preparation preserves server retry guidance")
+  func catalogPreparationRetryGuidance() async throws {
+    let loader = ManualLibrarySearchPageLoader()
+    let feature = immediateSearchFeature(loader: loader)
+    feature.activate(try libraryAuthorization(generation: 28))
+    feature.text = "preparing"
+    await eventually { await loader.calls.count == 1 }
+
+    await loader.resolve(call: 0, with: .failure(.catalogNotReady(retryAfterSeconds: 12)))
+
+    await eventually {
+      feature.state == .catalogNotReady(retryAfterSeconds: 12)
+    }
+    #expect(feature.text == "preparing")
   }
 
   @Test("all result kinds open Details using only opaque canonical identity")

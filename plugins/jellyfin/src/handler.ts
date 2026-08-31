@@ -6,6 +6,7 @@ import { HealthService, ServingStatus } from "@nama/api/nama/plugin/v1/health_pb
 
 import type { LaunchDocument } from "./launch-document.ts";
 import { registerJellyfinLibraryService } from "./library-service.ts";
+import { registerJellyfinPlaybackService } from "./playback-service.ts";
 import { registerJellyfinPluginService } from "./plugin-service.ts";
 import { registerJellyfinWatchStateService } from "./watch-state-service.ts";
 
@@ -38,6 +39,7 @@ const makeJellyfinHandler = (launch: LaunchDocument) =>
       });
       registerJellyfinLibraryService(router, launch, requireAuthorization);
       registerJellyfinPluginService(router, launch, requireAuthorization);
+      registerJellyfinPlaybackService(router, launch, requireAuthorization);
       registerJellyfinWatchStateService(router, launch, requireAuthorization);
     },
   });

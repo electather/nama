@@ -31,11 +31,29 @@ The unlabeled fixture has run on iPhone 17 Pro and iPad Pro 13-inch (M5)
 simulators, an Apple TV 4K (3rd generation) simulator, and an Apple
 Development-signed sandboxed Mac build; simulated touch, Apple TV remote focus,
 Mac pointer, and Mac keyboard operation selected both distinct choices and
-retained their matching technical titles. Apple TV Load More focus interaction,
-compact iPad collapse, focus return after nested Details, the live
-OAuth-authorized stored-catalog hierarchy, successful artwork resolution,
-VoiceOver inspection, physical Apple hardware, expiry-driven actual-surface
-refresh, and the remaining Apple surfaces remain unverified.
+retained their matching technical titles. Issue #180 additionally rendered the
+OAuth-authorized production catalog on signed iPhone 17 Pro, iPad Pro 13-inch
+(M5), and Apple TV 4K 1080p simulators. Issue #235's follow-up exercised live
+touch and keyboard Search, decoded canonical artwork, every Details kind,
+canonical hierarchy, Episode Source inspection, and default and source-specific
+typed Play intents on signed iPhone and iPad simulators. Apple TV keyboard and
+remote input selected a live Search result, traversed Show → Season → Episode,
+focused Play, used explicit Back with Episode-row focus restoration, inspected
+the canonical Source, and focused and activated Play This Source. The temporary
+DEBUG-only token and forced-Source harness was removed. The pre-cleanup Mac
+production-catalog run exercised Home, both Library kinds, typed Search, every
+Details kind, hierarchy, and keyboard and pointer input, but its exact Source
+path depended on a temporary DEBUG-only ID route. After every harness was
+removed, the final tree built with an Apple Development authority and the
+expected sandbox, client-network, and loopback-server entitlements. Its launch
+under the current locked desktop graphical session created a Nama process with
+zero windows, so the complete permanent-artifact Mac flow remains unverified.
+The production-backed Apple TV run did not exercise Load More or Retry recovery.
+VoiceOver previously activated and captioned the live Home toolbar, but
+representative labels, reading order, action names, and focus order across Home,
+Library/Search, Details, and Sources remain unverified. Compact iPad collapse,
+physical Apple hardware, and expiry-driven actual-surface refresh also remain
+unverified.
 
 The controlled playback presentation rendered on iPhone 17 Pro and iPad Pro
 13-inch (M5) simulators, an Apple TV 4K (3rd generation) 1080p simulator, and an
@@ -277,6 +295,11 @@ device authorization:
   title fallbacks. Touch and pointer rows advance near the confirmed end; Apple
   TV retains one enabled, truthfully labelled, stable focusable Load More item
   while pages append.
+  On tvOS, bounded Details sections and child rows materialize eagerly; loaded
+  hierarchy, primary Play, and inspected-Source playback actions explicitly
+  receive actionable focus. Refresh remains a visible content action, and every
+  Details destination exposes explicit Back so returning from nested Details
+  restores the parent row instead of leaving focus in the top-level tabs.
 - One `MediaSourcesFeature` per Sources destination starts with confirmed
   source summaries and loads technical data only after deliberate selection.
   Replacement and deactivation cancel obsolete work; attempt identity rejects
@@ -352,18 +375,23 @@ application on iPhone 17 Pro, iPad Pro 13-inch, and Apple TV 4K simulators and a
 Apple Development-signed sandboxed Mac build. They confirmed adaptive bounds,
 kind-specific navigation titles and metadata, title-bearing artwork fallbacks,
 canonical parent context, Season and Episode child rows, and Episode Play. The
-Apple TV runs did not exercise Load More focus movement, and no run exercised
-focus return after nested Details.
+Apple TV fixture runs did not exercise Load More focus movement or focus return
+after nested Details; the production follow-up below covers nested return focus.
 
 Search fixtures rendered ranked Movie, Show, Season, and Episode rows with a
 long Episode title, kind, year, Episode position, playability, and
-missing-artwork fallbacks on iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV
-4K 1080p simulators. The iPad surface showed the native search field and
-no-results and terminal-failure recovery; the Apple TV surface showed the native
-search keyboard. The Apple Development-signed sandboxed Mac Search build carried
-the expected sandbox and network entitlements, but no accessible foreground
-window appeared. These runs did not exercise Search selection or recovery
-through simulated touch, remote, pointer, or keyboard input.
+missing-artwork fallbacks on iPhone 17 Pro, iPad Pro 13-inch (M5), Apple TV 4K
+1080p, and Apple Development-signed sandboxed Mac surfaces. Simulated touch
+selected the long Episode on iPhone, cleared the iPad no-results state, and
+activated catalog-preparation Retry with the server retry guidance intact until
+recovery. The Apple TV surface showed the native search keyboard; remote focus
+moved through results to Load More and Retry Page, activated both actions, and
+returned to the first result after recovery. Static loading surfaces remained
+onscreen on Apple TV and Mac without a visible focus effect. The signed Mac
+build carried the expected sandbox and network entitlements, opened a visible
+foreground window, and selected the long Episode through full
+keyboard access. Fixture runs did not exercise Apple TV result selection or Mac
+pointer selection; the production follow-up below covers Apple TV result selection.
 
 The unlabeled Sources fixture ran in the Debug application on iPhone 17 Pro and
 iPad Pro 13-inch (M5) simulators, an Apple TV 4K (3rd generation) simulator, and
@@ -372,8 +400,83 @@ an Apple Development-signed sandboxed Mac build. Simulated touch selected Source
 actions and selected each. Mac pointer input selected Source 2, while full
 keyboard access focused Source 1 and activated it with Space. Every selected
 technical section retained the matching positional title. These fixture
-surfaces do not prove the live OAuth-authorized stored-catalog hierarchy,
-successful artwork resolution, VoiceOver output, or physical-device input.
+surfaces do not prove successful decoded artwork, VoiceOver output, or
+physical-device input.
+
+Issue #180's production acceptance provisioned PostgreSQL, the production
+listener, a supervised production Jellyfin plugin, an enabled instance, and a
+disposable Jellyfin 10.11.11 server, then waited for the complete canonical
+import. A fresh fixed-client device grant supplied the endpoint-bound bundle
+installed by a temporary DEBUG-only harness into signed iPhone 17 Pro, iPad Pro
+13-inch (M5), and Apple TV 4K simulator builds. Termination and relaunch
+restored the authorized production Home before the harness was removed.
+The original actual-surface run showed iPhone Home, Movie Library, and Movie
+Details; iPad Home plus Show and Season Details with canonical Season and
+Episode rows; and Apple TV Home, Library after a remote focus move, and Episode
+Details.
+
+The follow-up acceptance drove `GetHome`, `ListLibrary`, `Search`, `GetMedia`,
+`ListChildren`, `GetMediaSource`, and `ResolveArtwork` from the app process
+through `NamaLibraryClient` and the generated Swift public client. It covered
+both Library kinds, all three sorts, a continuation page, all-kind Search, all
+four Details kinds, both hierarchy levels, and Movie and Episode Sources. That
+run exposed and corrected the adapter's prior optional-binding rejection of an
+intentionally absent credential-free locator expiry. ADR-0035 subsequently
+moved public artwork delivery to bounded canonical assets stored during import;
+the same Apple adapter now receives signed Nama-owned locators with no provider
+identifier, URL, header, or credential.
+The same ordered native flow mapped Movie and Episode Details, inspected the
+Episode Source through `MediaSourcesFeature`, resolved and decoded the poster,
+and emitted a source-specific typed Play intent. Neither the flow nor the
+Details composition has a playback-planning or opening dependency.
+
+The iPhone production Home was captured at the largest accessibility text size
+with increased contrast and with the simulator's reduced-motion preference
+enabled and read back as active. Existing fixture runs retain loading, catalog
+preparation, legitimate empty, long content, no-results, later-page failure,
+unavailable-source, missing-artwork, touch, pointer, keyboard, and broader
+Apple TV focus evidence.
+
+Issue #235's production follow-up created another fresh device grant and reused
+the same production listener, PostgreSQL catalog, supervised Jellyfin plugin,
+and signed iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV 4K (3rd
+generation) simulator surfaces. Touch and keyboard input exercised Home, both
+Library kinds, all-kind Search, decoded canonical artwork, every Details kind,
+canonical Show → Season → Episode children, and default Play. A temporary
+DEBUG-only ID route reused `NamaLibraryClient`, `MediaSourcesFeature`, and the
+real Sources presentation to inspect the exact imported Episode Source and
+visibly confirm source-specific typed Play intent emission without planning or
+opening playback.
+
+Apple TV keyboard and remote input entered Library, typed Search, selected the
+Show result, traversed Season and Episode Details, focused and activated Play,
+used an explicit Details Back action, and returned focus to the Episode row.
+The initial run exposed that lazy Details/child materialization and toolbar-only
+Refresh left the remote focus engine without an onscreen content target. The
+corrected run eagerly materialized the bounded tvOS actions, focused the first
+child, primary Play, and inspected-Source Play action, and retained an in-flow
+Refresh. Apple TV then inspected the imported Episode Source, focused Play This
+Source, and emitted the source-specific intent. The temporary token and
+forced-Source harness was removed before repository verification. This
+production-backed run did not exercise Load More or Retry recovery.
+
+The pre-cleanup Mac production-catalog run exercised Home, both Library kinds,
+typed Search, every Details kind, hierarchy, and keyboard and pointer input, but
+its exact Source route depended on the temporary DEBUG-only ID route. It is
+supporting evidence rather than final-artifact acceptance. After every harness
+was removed, the final tree was rebuilt with an Apple Development authority; its
+sandbox, client-network, and loopback-server entitlements were verified. During
+the final launch attempt, the locked desktop graphical session stayed black
+after an explicit wake and the Nama process exposed zero windows. The complete
+permanent-artifact Mac flow therefore could not be observed.
+
+VoiceOver previously activated on the live Home window and captioned its toolbar
+focus. The locked graphical session prevented a representative inspection of
+labels, reading order, action names, and focus order across Home, Library/Search,
+Details, and Sources. Those rows, production-backed Apple TV Load More or Retry
+recovery, compact iPad collapse, physical Apple hardware, and expiry-driven
+actual-surface refresh remain explicitly unverified rather than inferred from
+simulator, accessibility-tree, fixture, build, or pre-cleanup harness evidence.
 `check:ios` lints Swift formatting, runs the test target through its macOS host,
 inspects the built ATS shape, and performs signing-disabled iOS, tvOS, and macOS
 builds. The real-player tests prove controlled SDR HLS rendering and control
@@ -744,11 +847,12 @@ local-HTTP state presents the non-color-only warning “HTTP connection —
 traffic is not encrypted.”
 
 Every control-plane adapter derives its transport from a `NamaEndpoint` and
-inherits this policy; provider-issued artwork and media locators retain their
-separate origin and redirect contract. Local HTTP bypasses configured proxies,
-while HTTPS retains normal system proxy behavior. Nama endpoint traffic refuses
-every redirect before contacting its target and reports the response as
-incompatible without exposing or logging the redirect location.
+inherits this policy. Signed artwork locators use that canonical Nama origin,
+while provider-issued playable-media locators retain their separate origin and
+redirect contract. Local HTTP bypasses configured proxies, while HTTPS retains
+normal system proxy behavior. Nama endpoint traffic refuses every redirect
+before contacting its target and reports the response as incompatible without
+exposing or logging the redirect location.
 
 Verification makes one cancellable, ten-second `SetupService.GetStatus` call
 with platform TLS trust and no certificate bypass. `initialized=true` means the
@@ -1054,6 +1158,58 @@ old playback session, replans and opens at the current clamped position, and
 supplies one complete replacement request; the newer load owns all locator,
 header, redirect, track, and rendering state.
 
+### Planning and launch
+
+Playback owns one deep launch module whose interface accepts a typed
+`MediaPlayIntent` and scene-local playback preferences and yields either one
+complete `NamaPlayerRequest` or one closed safe failure. Generated
+`PlaybackService` messages, Connect metadata and errors, capability wire
+messages, Locator material, provider details, and Track-reference mapping stay
+inside its concrete networking adapter. `PlaybackView` continues to accept only
+a complete player request; no partially planned or opened state enters the
+player interface.
+
+Primary Details Play uses the default Source and `AUTO` quality without an
+extra confirmation. A visible Playback Options action presents Source choice
+plus Auto and explicit 4, 8, 20, and 40 Mbps caps without resolution labels,
+then emits the same typed intent. This choice belongs to the current Details
+destination, resets to Auto for a new destination, and is never persisted or
+derived from network conditions. The Apple app does not expose `ORIGINAL`
+while it has no behavior distinct from uncapped compatibility fallback. It
+sends empty audio/subtitle language lists and `AUTO` subtitle preference.
+
+The concrete `NamaPlayer` adapter owns the capability-profile builder described
+in [playback.md](playback.md). It builds one fresh, synchronous, local, total
+profile for every planning attempt after player initialization. It opens no
+media, contacts no provider, performs no network I/O, and persists nothing.
+Reliable runtime evidence may remove a capability; unavailable or indeterminate
+optional evidence removes only that optional claim. The initial exact profile
+and its lowercase tokens remain centralized in the adapter rather than copied
+through Details or views.
+
+Selecting Play navigates immediately to a launch destination that retains media
+identity, visible planning/opening progress, and Back. Back cancels the attempt
+and rejects stale completion before returning to confirmed Details. A complete
+opened session constructs `NamaPlayer` and enters the existing presentation.
+Retryable failures offer Retry and Back; `SOURCE_UNAVAILABLE` also offers
+Sources; `PLAYBACK_UNSUPPORTED` offers Sources and Back rather than a blind
+retry; authorization rejection returns through the existing Authorize Again
+path. Every message is provider-neutral and secret-free.
+
+One launch attempt owns one cancellable task. `PlanPlayback` follows the
+contract's safe retry rules and may replan once if its plan expires while the
+same attempt remains active. `OpenPlayback` uses one operation ID and an
+identical request across every retry; response loss never mints another
+logical Open. Cancellation that races a materialized lease relies on the
+core's late-lease and bounded abandoned-session cleanup until terminal close is
+implemented by the Watch-state playback sequence.
+
+Open uses the plan's default audio and subtitle selections. Session Tracks
+marked `switchable_without_reopen` remain locally selectable. Other Tracks stay
+visible but disabled with an accessibility-safe Restart Required explanation
+until the ordered replacement lifecycle can close, replan, and open without
+reordering Watch state.
+
 [ADR-0032](../adr/0032-aetherengine-mvp-security-exception.md) selects
 AetherEngine `6.21.0` and requires its exact source revision and complete
 resolved dependency closure to remain pinned. The adapter adds neither a
@@ -1062,9 +1218,10 @@ lowest-common-denominator player interface nor a multi-engine factory.
 ### Locator and logging invariants
 
 [ADR-0013](../adr/0013-origin-scoped-short-lived-locators.md) establishes the
-direct-delivery security boundary. Media travels directly from the provider to
-the client. The core is not a media relay, and an on-device loopback bridge used
-by a player does not change that boundary.
+direct-delivery security boundary for playable media. Playable media travels
+directly from the provider to the client; ADR-0035's bounded stored artwork is
+the explicit catalog-metadata exception. The core is not a playable-media relay,
+and an on-device loopback bridge used by a player does not change that boundary.
 
 The production adapter places every remote media and external-subtitle request behind one session-scoped loopback bridge. AetherEngine receives only opaque loopback locators and no upstream Locator headers. The bridge retains upstream Locator material in session memory, validates every destination, rewrites HLS child references, and ends with the load that owns it.
 
@@ -1118,9 +1275,9 @@ Before product playback depends on AetherEngine:
    test the complete Nama-owned request, state, clock, lifecycle, track,
    rendering, replacement-load, and failure mapping.
 3. Play one known-good SDR HLS fixture through `NamaPlayer` on representative
-   physical iPhone or iPad, Apple TV, and Mac hardware. Issue #39 owns
-   capability and fallback evidence; issue #40 owns the full media and
-   interaction matrix.
+   physical iPhone or iPad, Apple TV, and Mac hardware. Issue #39 owns the
+   capability and provider-fallback matrix; issue #40 delivered the player
+   interaction baseline.
 4. Inspect Release logs and network captures on every supported platform.
    Record the accepted local locator-URL logging and allowed-origin header
    replay, and verify there is no request to a non-allowlisted destination,

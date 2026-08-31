@@ -8,7 +8,10 @@ import { MediaKind, ProviderMediaItemSchema } from "@nama/api/nama/plugin/v1/med
 import { Clock, Deferred, Effect } from "effect";
 
 import { makeCatalogImport } from "../../src/catalog/catalog-import.ts";
-import type { CatalogImportService } from "../../src/catalog/catalog-import.ts";
+import type {
+  CatalogImportDependencies,
+  CatalogImportService,
+} from "../../src/catalog/catalog-import.ts";
 import { PluginRpcError } from "../../src/plugin/errors.ts";
 import { initializeCatalogDatabase, movieObservation } from "./catalog-persistence.test-support.ts";
 import { productionMigrations, useDatabase, withPool } from "./database.test-support.ts";
@@ -20,6 +23,10 @@ const CORE_RUN_ID = "catalog-import-core-run";
 const PROVIDER_DIGEST_BYTES = 32;
 const CATALOG_POLL_MILLISECONDS = 25;
 const CATALOG_WAIT_MILLISECONDS = 5000;
+const ARTWORK_FREE_IMPORT_DEPENDENCIES = {
+  loadArtworkAsset: () => Effect.succeed(undefined),
+  now: Date.now,
+} satisfies Pick<CatalogImportDependencies, "loadArtworkAsset" | "now">;
 
 const pluginItemReference = (itemId: string) => create(ProviderItemReferenceSchema, { itemId });
 
@@ -173,6 +180,7 @@ it.live("imports duplicate out-of-order pages into one published canonical hiera
       const requests: string[] = [];
       yield* useDatabase(databaseUrl, productionMigrations, (database) => {
         const importer = makeCatalogImport({
+          ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
           catalog: database.catalog,
           coreRunId: CORE_RUN_ID,
           listPage: (_provider, scan) => {
@@ -221,6 +229,7 @@ it.live("admits only one active scan for a provider across overlapping scheduler
       let calls = 0;
       yield* useDatabase(databaseUrl, productionMigrations, (database) => {
         const importer = makeCatalogImport({
+          ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
           catalog: database.catalog,
           coreRunId: CORE_RUN_ID,
           listPage: () =>
@@ -277,6 +286,7 @@ it.live(
         const requests: string[] = [];
         yield* useDatabase(databaseUrl, productionMigrations, (database) => {
           const importer = makeCatalogImport({
+            ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
             catalog: database.catalog,
             coreRunId: CORE_RUN_ID,
             listPage: (_provider, scan) => {
@@ -312,6 +322,7 @@ it.live("persists RetryInfo-bounded backoff and permanent safe failure classes",
       const beforeRetry = Date.now();
       yield* useDatabase(databaseUrl, productionMigrations, (database) => {
         const importer = makeCatalogImport({
+          ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
           catalog: database.catalog,
           coreRunId: CORE_RUN_ID,
           listPage: () =>
@@ -350,6 +361,7 @@ it.live("persists RetryInfo-bounded backoff and permanent safe failure classes",
       );
       yield* useDatabase(databaseUrl, productionMigrations, (database) => {
         const importer = makeCatalogImport({
+          ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
           catalog: database.catalog,
           coreRunId: "permanent-failure-core-run",
           listPage: () => Effect.fail(new PluginRpcError({ code: Code.PermissionDenied })),
@@ -381,6 +393,7 @@ it.live("resets the running scan backoff after an accepted page", () =>
       yield* initializeCatalogDatabase(databaseUrl, [{ id: PROVIDER_INSTANCE_ID, priority: 1 }]);
       yield* useDatabase(databaseUrl, productionMigrations, (database) => {
         const importer = makeCatalogImport({
+          ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
           catalog: database.catalog,
           coreRunId: CORE_RUN_ID,
           listPage: () => Effect.fail(new PluginRpcError({ code: Code.Unavailable })),
@@ -411,6 +424,7 @@ it.live("resets the running scan backoff after an accepted page", () =>
       const beforeRetry = Date.now();
       yield* useDatabase(databaseUrl, productionMigrations, (database) => {
         const importer = makeCatalogImport({
+          ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
           catalog: database.catalog,
           coreRunId: "resumed-core-run",
           listPage: (_provider, scan) => {
@@ -458,6 +472,7 @@ it.live("discovers provider instances created after importer construction", () =
       const firstPoll = yield* Deferred.make<void>();
       yield* useDatabase(databaseUrl, productionMigrations, (database) => {
         const importer = makeCatalogImport({
+          ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
           catalog: {
             ...database.catalog,
             listScanCandidates: database.catalog.listScanCandidates.pipe(
@@ -506,6 +521,7 @@ it.live("propagates catalog scan interruption without persisting a false failure
       const canceled = yield* Deferred.make<void>();
       yield* useDatabase(databaseUrl, productionMigrations, (database) => {
         const importer = makeCatalogImport({
+          ...ARTWORK_FREE_IMPORT_DEPENDENCIES,
           catalog: database.catalog,
           coreRunId: CORE_RUN_ID,
           listPage: () =>

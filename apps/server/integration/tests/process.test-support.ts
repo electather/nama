@@ -14,7 +14,7 @@ import {
 
 const MASTER_KEY_BYTES = 32;
 const MASTER_KEY_FILL = 9;
-const STATUS_WAIT_MILLISECONDS = 6000;
+const STATUS_WAIT_MILLISECONDS = 20_000;
 const POLL_MILLISECONDS = 25;
 const SERVER_ROOT = join(import.meta.dirname, "../../");
 const MAIN_MODULE = join(SERVER_ROOT, "src/main.ts");

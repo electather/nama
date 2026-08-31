@@ -23,7 +23,6 @@ import {
   SourceUnavailable,
 } from "./catalog-query-model.ts";
 import type {
-  CatalogArtworkLeaseResolver,
   CatalogQueryDependencies,
   CatalogQueryPersistenceFailure,
   CatalogQueryService,
@@ -141,4 +140,4 @@ const makeCatalogQuery = (dependencies: CatalogQueryDependencies) =>
   );
 
 export { makeCatalogQuery };
-export type { CatalogArtworkLeaseResolver, CatalogQueryDependencies };
+export type { CatalogQueryDependencies };

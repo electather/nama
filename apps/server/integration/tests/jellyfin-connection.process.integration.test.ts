@@ -247,6 +247,10 @@ it.live(
             authorization: `MediaBrowser Token="${API_KEY}"`,
             url: `/jellyfin/Users/${USER_ID}`,
           },
+          {
+            authorization: `MediaBrowser Token="${API_KEY}"`,
+            url: "/jellyfin/Nama/v1/handshake",
+          },
         ]);
       }).pipe(Effect.provide(PluginSupervisor.layer())),
     ),

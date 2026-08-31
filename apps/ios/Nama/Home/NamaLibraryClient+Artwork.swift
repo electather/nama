@@ -37,14 +37,14 @@ nonisolated extension NamaLibraryClient: HomeArtworkResolving {
     let locator = message.locator
     guard
       locator.hasRefreshAt,
-      let refreshAt = Self.date(locator.refreshAt),
-      let accessExpiresAt = try Self.optionalDate(
-        isPresent: locator.hasAccessExpiresAt,
-        timestamp: locator.accessExpiresAt
-      )
+      let refreshAt = Self.date(locator.refreshAt)
     else {
       throw HomeArtworkResolutionError.invalid
     }
+    let accessExpiresAt = try Self.optionalDate(
+      isPresent: locator.hasAccessExpiresAt,
+      timestamp: locator.accessExpiresAt
+    )
     return HomeArtworkResolvedLocator(
       url: locator.url,
       headers: locator.headers.map { header in

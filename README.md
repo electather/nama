@@ -79,6 +79,17 @@ Read the one-time bootstrap token from `docker compose logs nama` and enter it
 only at the CLI prompt. The CLI also prompts for the Administrator password
 without echoing it. A later session uses `bin/nama auth login --profile local`.
 
+Jellyfin playback additionally requires the manually installed first-party
+server extension. Build its exact-versioned archive with
+`mise run check:jellyfin-extension`, extract the archive into a dedicated
+subdirectory of Jellyfin's plugin directory, and restart Jellyfin. Preserve the
+extension's `nama/playback-keys-v1` directory under Jellyfin program data across
+restarts and upgrades; its contents are secret backup material and do not
+belong in ordinary plugin configuration. A provider connection test after the
+restart verifies the authenticated protocol handshake. Missing, unhealthy, or
+incompatible extension code leaves the existing library and watched-state
+capabilities available but does not enable playback.
+
 Configure an existing Jellyfin deployment without calling private RPCs:
 
 ```bash

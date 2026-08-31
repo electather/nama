@@ -3,6 +3,7 @@ import {
   bigint,
   check,
   foreignKey,
+  customType,
   integer,
   pgTable,
   primaryKey,
@@ -13,6 +14,10 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { canonicalItem, providerItemMapping } from "./catalog-item-schema.ts";
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
 
 const providerArtworkMapping = pgTable(
   "provider_artwork_mapping",
@@ -71,6 +76,8 @@ const canonicalArtwork = pgTable(
   "canonical_artwork",
   {
     artworkReference: text("artwork_reference").notNull(),
+    assetBytes: bytea("asset_bytes"),
+    assetMimeType: text("asset_mime_type"),
     canonicalItemId: uuid("canonical_item_id")
       .notNull()
       .references(() => canonicalItem.id, { onDelete: "cascade" }),
@@ -107,6 +114,10 @@ const canonicalArtwork = pgTable(
     })
       .onDelete("cascade")
       .onUpdate("cascade"),
+    check(
+      "canonical_artwork_asset_check",
+      sql`(${table.assetBytes} is null and ${table.assetMimeType} is null) or (${table.assetBytes} is not null and octet_length(${table.assetBytes}) between 1 and 20971520 and ${table.assetMimeType} ~ '^image/[A-Za-z0-9.+-]+$' and char_length(${table.assetMimeType}) <= 256)`,
+    ),
     check("canonical_artwork_order_check", sql`${table.displayOrder} >= 0`),
     check(
       "canonical_artwork_role_check",

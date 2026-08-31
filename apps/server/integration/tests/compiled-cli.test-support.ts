@@ -16,6 +16,10 @@ interface NamaResult {
   readonly stderr: string;
   readonly stdout: string;
 }
+type NamaRunner = (
+  arguments_: readonly string[],
+  input?: string,
+) => Effect.Effect<NamaResult, Error>;
 
 const withNamaBinary = <Success, Failure, Requirements>(
   use: (
@@ -49,8 +53,8 @@ const cliEnvironment = (home: string, token: string): NodeJS.ProcessEnv => {
 };
 
 const createNamaRunner =
-  (binary: string, environment: NodeJS.ProcessEnv) =>
-  (arguments_: readonly string[], input?: string): Effect.Effect<NamaResult, Error> =>
+  (binary: string, environment: NodeJS.ProcessEnv): NamaRunner =>
+  (arguments_, input) =>
     Effect.callback<NamaResult, Error>((resume) => {
       const child = spawn(binary, arguments_, {
         cwd: REPOSITORY_ROOT,
@@ -114,4 +118,4 @@ const providerInstanceFromNama = (result: NamaResult): Readonly<Record<string, u
 };
 
 export { cliEnvironment, createNamaRunner, dataFromNama, providerInstanceFromNama, withNamaBinary };
-export type { NamaResult };
+export type { NamaResult, NamaRunner };
