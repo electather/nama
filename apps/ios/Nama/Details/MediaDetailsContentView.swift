@@ -8,8 +8,8 @@ struct MediaDetailsContentView: View {
   let details: MediaDetails
   let childrenState: MediaChildrenState
   let isRefreshing: Bool
-  let refreshFailure: MediaDetailsFailure?
   let canRefresh: Bool
+  let refreshFailure: MediaDetailsFailure?
   let refresh: @MainActor () -> Void
   let play: @MainActor () -> Void
   let loadMoreChildren: @MainActor () -> Void
@@ -25,8 +25,8 @@ struct MediaDetailsContentView: View {
         details: details,
         childrenState: childrenState,
         isRefreshing: isRefreshing,
-        refreshFailure: refreshFailure,
         canRefresh: canRefresh,
+        refreshFailure: refreshFailure,
         refresh: refresh,
         play: play,
         loadMoreChildren: loadMoreChildren,
@@ -46,8 +46,8 @@ private struct MediaDetailsContentSections: View {
   let details: MediaDetails
   let childrenState: MediaChildrenState
   let isRefreshing: Bool
-  let refreshFailure: MediaDetailsFailure?
   let canRefresh: Bool
+  let refreshFailure: MediaDetailsFailure?
   let refresh: @MainActor () -> Void
   let play: @MainActor () -> Void
   let loadMoreChildren: @MainActor () -> Void
@@ -58,35 +58,49 @@ private struct MediaDetailsContentSections: View {
   let creditArtwork: MediaCreditArtworkAccess
 
   var body: some View {
-    VStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
-      MediaDetailsRefreshStatusView(
-        isRefreshing: isRefreshing,
-        failure: refreshFailure,
-        retry: refresh,
-        reauthorize: reauthorize
-      )
-      MediaDetailsHeroView(details: details, artwork: artwork)
-      MediaDetailsPrimaryActionView(
-        details: details,
-        childrenState: childrenState,
-        isRefreshing: isRefreshing,
-        refreshFailure: refreshFailure,
-        refresh: refresh,
-        play: play,
-        loadMoreChildren: loadMoreChildren,
-        childDidAppear: childDidAppear,
-        reauthorize: reauthorize,
-        childArtwork: childArtwork
-      )
-      MediaDetailsSupportingContentView(details: details, creditArtwork: creditArtwork)
-      #if os(tvOS)
-        if canRefresh {
-          Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
-            .buttonStyle(.bordered)
-            .disabled(isRefreshing)
-        }
-      #endif
-    }
+    #if os(tvOS)
+      VStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
+        sections
+      }
+    #else
+      LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
+        sections
+      }
+    #endif
+  }
+
+  @ViewBuilder
+  private var sections: some View {
+    MediaDetailsRefreshStatusView(
+      isRefreshing: isRefreshing,
+      failure: refreshFailure,
+      retry: refresh,
+      reauthorize: reauthorize
+    )
+    MediaDetailsHeroView(details: details, artwork: artwork)
+    MediaDetailsPrimaryActionView(
+      details: details,
+      childrenState: childrenState,
+      isRefreshing: isRefreshing,
+      refreshFailure: refreshFailure,
+      refresh: refresh,
+      play: play,
+      loadMoreChildren: loadMoreChildren,
+      childDidAppear: childDidAppear,
+      reauthorize: reauthorize,
+      childArtwork: childArtwork
+    )
+    MediaDetailsSupportingContentView(details: details, creditArtwork: creditArtwork)
+    #if os(tvOS)
+      if let refreshAction = mediaDetailsTelevisionRefreshAction(
+        canRefresh: canRefresh,
+        isRefreshing: isRefreshing
+      ) {
+        Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
+          .buttonStyle(.bordered)
+          .disabled(refreshAction == .disabled)
+      }
+    #endif
   }
 }
 
@@ -110,6 +124,7 @@ private struct MediaDetailsPrimaryActionView: View {
         playability: details.playability,
         sourcesSelection: details.sourcesSelection,
         isRefreshing: isRefreshing,
+        refreshRecoveryIsActive: refreshFailure != nil,
         canRetryUnavailableSource: mediaDetailsCanRetryUnavailableSource(after: refreshFailure),
         play: play,
         retry: refresh
@@ -119,6 +134,7 @@ private struct MediaDetailsPrimaryActionView: View {
       MediaDetailsChildrenView(
         parentKind: details.kindDetails.mediaKind,
         state: childrenState,
+        refreshRecoveryIsActive: refreshFailure != nil,
         loadMore: loadMoreChildren,
         childDidAppear: childDidAppear,
         reauthorize: reauthorize,

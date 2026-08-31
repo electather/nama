@@ -10,6 +10,7 @@ interface JellyfinRequestOptions {
   readonly signal: AbortSignal;
 }
 interface JellyfinMutationRequestOptions extends JellyfinRequestOptions {
+  readonly body?: Readonly<Record<string, unknown>>;
   readonly cancellationSignal: AbortSignal;
   readonly method: "DELETE" | "POST";
 }
@@ -36,10 +37,12 @@ interface JellyfinFetchRequest {
   readonly endpoint: URL;
   readonly headers: Readonly<Record<string, string>>;
   readonly method: "DELETE" | "GET" | "HEAD" | "POST";
+  readonly body?: string;
   readonly signal: AbortSignal;
 }
 interface JellyfinRequest {
   readonly origin: string;
+  readonly resourceUrl: (pathSegments: readonly string[]) => string | undefined;
   readonly probePublicArtwork: (
     pathSegments: readonly string[],
     options: JellyfinArtworkProbeOptions,

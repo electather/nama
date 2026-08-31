@@ -63,6 +63,18 @@ _Avoid_: Playback session, stream
 The active Nama-owned playback identity created when a playback plan is opened, with its locator, selected tracks, telemetry order, and cleanup lifecycle.
 _Avoid_: Provider session, playback plan
 
+**Playback capability profile**:
+A conservative pre-plan declaration of the media combinations the current client player commits to consuming, narrowed by reliable runtime facts when available. It is not a guarantee that every matching source will load or perform acceptably. Output tone mapping or downmixing does not make an input unsupported.
+_Avoid_: Device capabilities, codec list
+
+**Playback strategy**:
+The provider-side delivery transformation selected by a playback plan, independent of demuxing, decoding, or other processing performed by the client player.
+_Avoid_: Player strategy, client processing
+
+**Playback preference**:
+A person's playback choice within the current player's hard capabilities, including quality, language, and subtitle choices. A quality cap is explicit; conversion required for compatibility may still occur without one.
+_Avoid_: Capability
+
 **Watch state**:
 Nama's per-person record of whether one playable canonical item is watched and, when present, its resumable position, duration, and last known playback Source. Its absence means Nama has accepted no watch-state evidence, not that the item is unwatched.
 _Avoid_: Playback state, progress

@@ -20,7 +20,8 @@ struct MediaDetailsRefreshFailureView: View {
       MediaDetailsFailureRecoveryButton(
         failure: failure,
         retry: retry,
-        reauthorize: reauthorize
+        reauthorize: reauthorize,
+        requestsTelevisionFocus: true
       )
     }
     .padding()
@@ -59,7 +60,8 @@ struct MediaDetailsFailureView: View {
       MediaDetailsFailureRecoveryButton(
         failure: failure,
         retry: retry,
-        reauthorize: reauthorize
+        reauthorize: reauthorize,
+        requestsTelevisionFocus: false
       )
     }
   }
@@ -86,22 +88,42 @@ struct MediaDetailsRetryGuidance: View {
 }
 
 private struct MediaDetailsFailureRecoveryButton: View {
+  #if os(tvOS)
+    @FocusState private var focusedAction: MediaDetailsTelevisionFocusAction?
+  #endif
+
   let failure: MediaDetailsFailure
   let retry: @MainActor () -> Void
   let reauthorize: @MainActor () async -> Void
+  let requestsTelevisionFocus: Bool
 
   var body: some View {
-    if failure == .authorizationUnavailable {
-      Button("Authorize Again") {
-        Task {
-          await reauthorize()
+    Group {
+      if failure == .authorizationUnavailable {
+        Button("Authorize Again") {
+          Task {
+            await reauthorize()
+          }
+        }
+        .buttonStyle(.borderedProminent)
+        #if os(tvOS)
+          .focused($focusedAction, equals: .refreshRecovery)
+        #endif
+      } else {
+        Button("Try Again", action: retry)
+          .buttonStyle(.borderedProminent)
+          #if os(tvOS)
+            .focused($focusedAction, equals: .refreshRecovery)
+          #endif
+      }
+    }
+    #if os(tvOS)
+      .task(id: failure) {
+        if requestsTelevisionFocus {
+          focusedAction = .refreshRecovery
         }
       }
-      .buttonStyle(.borderedProminent)
-    } else {
-      Button("Try Again", action: retry)
-        .buttonStyle(.borderedProminent)
-    }
+    #endif
   }
 }
 

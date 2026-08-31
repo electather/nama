@@ -27,6 +27,8 @@ jobs:
           git diff --exit-code -- go.mod go.sum
       - name: Check contracts
         run: mise run check:contracts
+      - name: Check Jellyfin server extension
+        run: mise run check:jellyfin-extension
       - name: Check TypeScript
         run: mise run check:ts
       - name: Check Go

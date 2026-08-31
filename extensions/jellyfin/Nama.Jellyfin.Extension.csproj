@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>Nama.Jellyfin.Extension</AssemblyName>
+    <RootNamespace>Nama.Jellyfin.Extension</RootNamespace>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.11" PrivateAssets="all" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="10.11.11" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <Target Name="PackageExtension" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <ExtensionPackageDirectory>$(IntermediateOutputPath)extension-package</ExtensionPackageDirectory>
+      <ExtensionArtifact>$(MSBuildProjectDirectory)/artifacts/$(AssemblyName)-$(Version)-jellyfin-10.11.11.zip</ExtensionArtifact>
+      <ExtensionFixtureDirectory>$(MSBuildProjectDirectory)/artifacts/fixture</ExtensionFixtureDirectory>
+    </PropertyGroup>
+    <RemoveDir Directories="$(ExtensionPackageDirectory)" />
+    <MakeDir Directories="$(ExtensionPackageDirectory);$([System.IO.Path]::GetDirectoryName('$(ExtensionArtifact)'))" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ExtensionPackageDirectory)" />
+    <Delete Files="$(ExtensionArtifact)" />
+    <ZipDirectory SourceDirectory="$(ExtensionPackageDirectory)" DestinationFile="$(ExtensionArtifact)" />
+    <RemoveDir Directories="$(ExtensionFixtureDirectory)" />
+    <MakeDir Directories="$(ExtensionFixtureDirectory)" />
+    <Unzip SourceFiles="$(ExtensionArtifact)" DestinationFolder="$(ExtensionFixtureDirectory)" />
+  </Target>
+</Project>

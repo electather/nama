@@ -73,27 +73,43 @@ struct MediaSourcesPresentationView: View {
 
   var body: some View {
     ScrollView {
-      LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
-        VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
-          Text(selection.mediaTitle)
-            .font(.largeTitle.bold())
-            .accessibilityAddTraits(.isHeader)
-          Text("Choose a source to inspect its technical details.")
-            .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: MediaDetailsLayout.proseMaximumWidth, alignment: .leading)
-
-        MediaSourceChoicesView(
-          summaries: selection.sourceSummaries,
-          loadingIdentity: loadingIdentity,
-          inspect: inspect
-        )
-
-        stateContent
-      }
-      .frame(maxWidth: MediaDetailsLayout.contentMaximumWidth, alignment: .leading)
-      .padding(MediaDetailsLayout.contentPadding)
+      contentStack
+        .frame(maxWidth: MediaDetailsLayout.contentMaximumWidth, alignment: .leading)
+        .padding(MediaDetailsLayout.contentPadding)
     }
+  }
+
+  @ViewBuilder
+  private var contentStack: some View {
+    #if os(tvOS)
+      VStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
+        content
+      }
+    #else
+      LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.sectionSpacing) {
+        content
+      }
+    #endif
+  }
+
+  @ViewBuilder
+  private var content: some View {
+    VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
+      Text(selection.mediaTitle)
+        .font(.largeTitle.bold())
+        .accessibilityAddTraits(.isHeader)
+      Text("Choose a source to inspect its technical details.")
+        .foregroundStyle(.secondary)
+    }
+    .frame(maxWidth: MediaDetailsLayout.proseMaximumWidth, alignment: .leading)
+
+    MediaSourceChoicesView(
+      summaries: selection.sourceSummaries,
+      loadingIdentity: loadingIdentity,
+      inspect: inspect
+    )
+
+    stateContent
   }
 
   @ViewBuilder

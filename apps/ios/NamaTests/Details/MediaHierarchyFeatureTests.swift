@@ -282,6 +282,7 @@ struct MediaHierarchyFeatureTests {
             MediaDetailsChildrenView(
               parentKind: .season,
               state: .content(items: children, nextPageToken: "more"),
+              refreshRecoveryIsActive: false,
               loadMore: {
                 Issue.record("An unscrolled hierarchy must not request another page")
               },

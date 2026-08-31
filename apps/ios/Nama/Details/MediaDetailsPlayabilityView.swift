@@ -1,40 +1,14 @@
 import SwiftUI
 
-nonisolated enum MediaDetailsFocusAction: Equatable {
-  case play
-  case retry
-  case sources
-}
-
-nonisolated func mediaDetailsDefaultFocusAction(
-  playability: MediaPlayability,
-  hasSources: Bool,
-  isRefreshing: Bool,
-  canRetryUnavailableSource: Bool
-) -> MediaDetailsFocusAction? {
-  if playability == .playable {
-    return .play
-  }
-  if playability == .temporarilyUnavailable,
-    canRetryUnavailableSource,
-    !isRefreshing
-  {
-    return .retry
-  }
-  if hasSources {
-    return .sources
-  }
-  return nil
-}
-
 struct MediaDetailsPlayabilityView: View {
   #if os(tvOS)
-    @FocusState private var focusedAction: MediaDetailsFocusAction?
+    @FocusState private var focusedAction: MediaDetailsTelevisionFocusAction?
   #endif
 
   let playability: MediaPlayability
   let sourcesSelection: MediaSourcesSelection?
   let isRefreshing: Bool
+  let refreshRecoveryIsActive: Bool
   let canRetryUnavailableSource: Bool
   let play: @MainActor () -> Void
   let retry: @MainActor () -> Void
@@ -54,7 +28,9 @@ struct MediaDetailsPlayabilityView: View {
     }
     #if os(tvOS)
       .task(id: defaultFocusAction) {
-        focusedAction = defaultFocusAction
+        if let defaultFocusAction {
+          focusedAction = defaultFocusAction
+        }
       }
     #endif
   }
@@ -94,13 +70,12 @@ struct MediaDetailsPlayabilityView: View {
   }
 
   #if os(tvOS)
-
-    private var defaultFocusAction: MediaDetailsFocusAction? {
-      mediaDetailsDefaultFocusAction(
+    private var defaultFocusAction: MediaDetailsTelevisionFocusAction? {
+      mediaDetailsTelevisionFocusAction(
         playability: playability,
         hasSources: sourcesSelection != nil,
-        isRefreshing: isRefreshing,
-        canRetryUnavailableSource: canRetryUnavailableSource
+        retryIsEnabled: canRetryUnavailableSource && !isRefreshing,
+        refreshRecoveryIsActive: refreshRecoveryIsActive
       )
     }
   #endif

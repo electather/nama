@@ -36,7 +36,7 @@ const BACKDROP_CACHE_TAG = "backdrop-cache-tag";
 const CACHE_TAG = "poster-cache-tag";
 const MAXIMUM_WIDTH = 600;
 const MAXIMUM_HEIGHT = 900;
-const ARTWORK_CAPABILITIES = [
+const STOCK_CAPABILITIES = [
   ProviderCapability.LIBRARY_READ,
   ProviderCapability.ARTWORK_RESOLVE,
   ProviderCapability.WATCH_STATE_READ,
@@ -264,7 +264,7 @@ it.live(
           {},
           CALL_DEADLINE_MILLISECONDS,
         );
-        expect(info.pluginInfo?.capabilities).toEqual(ARTWORK_CAPABILITIES);
+        expect(info.pluginInfo?.capabilities).toEqual(STOCK_CAPABILITIES);
 
         const connection = yield* plugin.call(
           PluginService.method.getConnection,
@@ -272,7 +272,7 @@ it.live(
           CALL_DEADLINE_MILLISECONDS,
         );
         expect(connection.connection).toMatchObject({
-          capabilities: ARTWORK_CAPABILITIES,
+          capabilities: STOCK_CAPABILITIES,
           status: PluginConnectionStatus.CONNECTED,
         });
 
@@ -335,6 +335,11 @@ it.live(
             authorization: `MediaBrowser Token="${API_KEY}"`,
             method: "GET",
             url: `/jellyfin/Users/${USER_ID}`,
+          },
+          {
+            authorization: `MediaBrowser Token="${API_KEY}"`,
+            method: "GET",
+            url: "/jellyfin/Nama/v1/handshake",
           },
           {
             authorization: `MediaBrowser Token="${API_KEY}"`,

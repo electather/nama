@@ -165,11 +165,13 @@ private struct MediaCalendarDateText: View {
 
 struct MediaDetailsChildrenView: View {
   #if os(tvOS)
+    @State private var retainedChildFocus: (identity: MediaIdentity?, position: Int?) = (nil, nil)
     @FocusState private var focusedChildIdentity: MediaIdentity?
   #endif
 
   let parentKind: MediaKind
   let state: MediaChildrenState
+  let refreshRecoveryIsActive: Bool
   let loadMore: @MainActor () -> Void
   let childDidAppear: @MainActor (MediaIdentity) -> Void
   let reauthorize: @MainActor () async -> Void
@@ -185,27 +187,35 @@ struct MediaDetailsChildrenView: View {
       } else {
         #if os(tvOS)
           VStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
-            confirmedChildren
+            childRows
           }
         #else
           LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
-            confirmedChildren
+            childRows
           }
         #endif
       }
     }
     #if os(tvOS)
-      .task(id: firstChildIdentity) {
-        guard let firstChildIdentity else {
-          return
+      .task(id: state.confirmedItems.map(\.identity)) {
+        requestInitialFocus()
+      }
+      .onChange(of: refreshRecoveryIsActive) { _, isActive in
+        if !isActive {
+          requestInitialFocus()
         }
-        focusedChildIdentity = firstChildIdentity
+      }
+      .onChange(of: focusedChildIdentity) { _, identity in
+        if let identity {
+          retainedChildFocus.identity = identity
+          retainedChildFocus.position = state.confirmedItems.firstIndex { $0.identity == identity }
+        }
       }
     #endif
   }
 
   @ViewBuilder
-  private var confirmedChildren: some View {
+  private var childRows: some View {
     ForEach(state.confirmedItems) { item in
       MediaChildRow(
         item: item,
@@ -220,8 +230,18 @@ struct MediaDetailsChildrenView: View {
   }
 
   #if os(tvOS)
-    private var firstChildIdentity: MediaIdentity? {
-      state.confirmedItems.first?.identity
+    private func requestInitialFocus() {
+      let available = state.confirmedItems.map(\.identity)
+      if let target = mediaChildrenTelevisionFocusIdentity(
+        current: retainedChildFocus.identity,
+        retainedPosition: retainedChildFocus.position,
+        available: available,
+        refreshRecoveryIsActive: refreshRecoveryIsActive
+      ) {
+        retainedChildFocus.identity = target
+        retainedChildFocus.position = available.firstIndex(of: target)
+        focusedChildIdentity = target
+      }
     }
   #endif
 
@@ -334,9 +354,7 @@ struct MediaDetailsChildrenView: View {
       }
     }
 
-    private func televisionPageActionTitle(
-      _ action: MediaChildrenTelevisionAction
-    ) -> LocalizedStringKey {
+    private func televisionPageActionTitle(_ action: MediaChildrenTelevisionAction) -> LocalizedStringKey {
       switch action {
       case .loadMore:
         "Load More"

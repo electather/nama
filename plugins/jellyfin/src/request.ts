@@ -1,9 +1,9 @@
 // oxlint-disable eslint/max-statements, eslint/no-magic-numbers, eslint/no-ternary -- Private-network and HTTP-status policy stays literal and sequential so the request trust boundary is auditable.
 
-import { MIMEType } from "node:util";
-
 import { Code, ConnectError } from "@connectrpc/connect";
 
+import { normalizedImageMimeType } from "./artwork-mime.ts";
+import { INVALID_MUTATION_BODY, NO_MUTATION_BODY, serializedMutationBody } from "./request-body.ts";
 import { readJellyfinFailureResponse } from "./request-failure.ts";
 import { confinedEndpoint, INVALID_REQUEST_TARGET, normalizedBaseUrl } from "./request-target.ts";
 import type {
@@ -25,7 +25,6 @@ const EMPTY_LENGTH = 0;
 const BACKSLASH = "\\";
 const ESCAPED_BACKSLASH = BACKSLASH.repeat(2);
 const FAILURE_SENTINEL = Symbol("failure");
-const MAXIMUM_MIME_TYPE_LENGTH = 256;
 const HTTP_OK = 200;
 
 const parseJsonRecord = (bytes: Uint8Array[], length: number) => {
@@ -89,13 +88,15 @@ const readBoundedJson = async (
 };
 
 const fetchResponse = async ({
+  body,
   endpoint,
   headers,
   method,
   signal,
 }: JellyfinFetchRequest): Promise<Response | typeof FAILURE_SENTINEL> => {
   try {
-    return await fetch(endpoint, { headers, method, redirect: "manual", signal });
+    const request = { headers, method, redirect: "manual" as const, signal };
+    return await fetch(endpoint, body === undefined ? request : { ...request, body });
   } catch {
     return FAILURE_SENTINEL;
   }
@@ -154,27 +155,11 @@ const sendJsonRequest = async (
   }
   return readBoundedJson(response, options.maximumResponseBytes, cancellationSignal);
 };
-const sendMutationRequest = async (
-  target: JellyfinRequestTarget,
-  pathSegments: readonly string[],
+
+const readMutationResponse = async (
+  response: Response,
   options: JellyfinMutationRequestOptions,
 ): Promise<JellyfinMutationResponse> => {
-  const prepared = prepareRequest(target, pathSegments, options);
-  if (prepared === FAILURE_SENTINEL) {
-    return { kind: "incompatible" };
-  }
-  const response = await fetchResponse({
-    endpoint: prepared.endpoint,
-    headers: prepared.headers,
-    method: options.method,
-    signal: options.signal,
-  });
-  if (response === FAILURE_SENTINEL) {
-    if (options.cancellationSignal.aborted) {
-      throw new ConnectError("request cancelled", Code.Canceled);
-    }
-    return { kind: "ambiguous" };
-  }
   try {
     const failureResponse = await readJellyfinFailureResponse(
       response,
@@ -184,12 +169,12 @@ const sendMutationRequest = async (
     if (failureResponse !== undefined) {
       return failureResponse;
     }
-    const body = await readBoundedJson(
+    const responseBody = await readBoundedJson(
       response,
       options.maximumResponseBytes,
       options.cancellationSignal,
     );
-    return body.kind === "success" ? body : { kind: "ambiguous" };
+    return responseBody.kind === "success" ? responseBody : { kind: "ambiguous" };
   } catch (error) {
     if (
       !options.cancellationSignal.aborted &&
@@ -203,19 +188,33 @@ const sendMutationRequest = async (
   }
 };
 
-const normalizedImageMimeType = (value: string | null): string | undefined => {
-  if (value === null || Buffer.byteLength(value, "utf8") > MAXIMUM_MIME_TYPE_LENGTH) {
-    return undefined;
+const sendMutationRequest = async (
+  target: JellyfinRequestTarget,
+  pathSegments: readonly string[],
+  options: JellyfinMutationRequestOptions,
+): Promise<JellyfinMutationResponse> => {
+  const prepared = prepareRequest(target, pathSegments, options);
+  const body = serializedMutationBody(options.body);
+  if (prepared === FAILURE_SENTINEL || body === INVALID_MUTATION_BODY) {
+    return { kind: "incompatible" };
   }
-  try {
-    const mimeType = new MIMEType(value);
-    if (mimeType.type !== "image") {
-      return undefined;
+  const response = await fetchResponse({
+    ...(body === NO_MUTATION_BODY ? {} : { body }),
+    endpoint: prepared.endpoint,
+    headers:
+      body === NO_MUTATION_BODY
+        ? prepared.headers
+        : { ...prepared.headers, "content-type": "application/json" },
+    method: options.method,
+    signal: options.signal,
+  });
+  if (response === FAILURE_SENTINEL) {
+    if (options.cancellationSignal.aborted) {
+      throw new ConnectError("request cancelled", Code.Canceled);
     }
-    return mimeType.essence;
-  } catch {
-    return undefined;
+    return { kind: "ambiguous" };
   }
+  return readMutationResponse(response, options);
 };
 
 const sendArtworkProbe = async (
@@ -273,6 +272,13 @@ const createJellyfinRequest = (context: JellyfinRequestContext): JellyfinRequest
       pathSegments: readonly string[],
       options: JellyfinMutationRequestOptions,
     ) => sendMutationRequest(target, pathSegments, options),
+    resourceUrl: (pathSegments: readonly string[]) => {
+      const endpoint = confinedEndpoint(baseUrl, pathSegments);
+      if (endpoint === INVALID_REQUEST_TARGET) {
+        return void 0;
+      }
+      return endpoint.href;
+    },
   };
 };
 
