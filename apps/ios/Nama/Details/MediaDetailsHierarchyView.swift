@@ -343,7 +343,7 @@ struct MediaDetailsChildrenView: View {
     @ViewBuilder
     private var televisionPageFooter: some View {
       if let action = mediaChildrenTelevisionAction(for: state) {
-        Button(televisionPageActionTitle(action)) {
+        Button(pageActionTitle(action)) {
           if action == .reauthorize {
             Task { await reauthorize() }
           } else {
@@ -354,7 +354,7 @@ struct MediaDetailsChildrenView: View {
       }
     }
 
-    private func televisionPageActionTitle(_ action: MediaChildrenTelevisionAction) -> LocalizedStringKey {
+    private func pageActionTitle(_ action: MediaChildrenTelevisionAction) -> LocalizedStringKey {
       switch action {
       case .loadMore:
         "Load More"

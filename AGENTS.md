@@ -94,7 +94,8 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
   has another type.
 - On macOS, do not cancel Home from `HomeView.onDisappear`; SwiftUI can remove
   that view transiently while the same visible window still owns its initial
-  load.
+  load. Cancel Home from scene-phase, authorization, and semantic top-level
+  transitions instead.
 - After collapsing a custom SwiftUI button with
   `.accessibilityElement(children: .ignore)`, restore `.isButton`; otherwise
   assistive technologies expose the action as a non-actionable element.
