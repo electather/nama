@@ -39,9 +39,13 @@ canonical values and copied activity evidence.
 Production core synchronization remains unimplemented: scheduling, checkpoint
 persistence, reconciliation, bounded fingerprint retention, and retry execution
 remain target work.
-The Jellyfin adapter implements resumable best-effort full movie and episode scans, bounded targeted
-reads for repair and confirmation, and explicit watched/unwatched writes with
-bounded ambiguity readback. It advertises `WATCH_STATE_READ` and
-`WATCHED_WRITE`. The contract supports one or more configured Jellyfin
-instances without adding a queue or provider-owned durable state; later
-provider types reuse that contract.
+The Jellyfin adapter implements resumable best-effort full movie and episode
+scans, bounded targeted reads for repair and confirmation, explicit
+watched/unwatched writes with bounded ambiguity readback, and coherent progress
+writes through the compatible first-party extension. Stock connections
+advertise `WATCH_STATE_READ` and `WATCHED_WRITE`; compatible coherent-progress
+handshakes additionally advertise `PROGRESS_WRITE`. Equal progress targets
+avoid a provider save, stale duration causes no mutation, and a lost response
+or retryable mutation failure receives one readback without replay. The
+contract supports one or more configured Jellyfin instances without adding a
+queue or provider-owned durable state; later provider types reuse that contract.

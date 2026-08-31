@@ -24,7 +24,13 @@ run_dotnet sh -c \
    dotnet build Nama.Jellyfin.Extension.csproj \
      --configuration Release \
      --no-restore \
-     --property:ContinuousIntegrationBuild=true"
+     --property:ContinuousIntegrationBuild=true &&
+   dotnet build Nama.Jellyfin.Extension.csproj \
+     --configuration Debug \
+     --no-restore \
+     --property:DefineConstants=NAMA_TEST_FAULTS \
+     --output artifacts/fixture"
+
 
 run_dotnet sh -c \
   "dotnet restore tests/Nama.Jellyfin.Extension.Tests.csproj &&

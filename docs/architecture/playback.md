@@ -183,10 +183,11 @@ For Jellyfin, the implemented playback telemetry path is the only
 provider writer for state produced by that Nama playback session. It invokes
 Jellyfin start, ordered progress, and stop exactly once per accepted event;
 provider response loss remains ambiguous and the plugin never blindly replays
-it. Coherent progress export in issue #234 handles other Activity origins and
-must never write the same canonical version. Its target extension operation
-saves watched state and position together, validates optional duration against
-the current Jellyfin item runtime, and reads the provider result back.
+it. The implemented coherent progress operation handles other Activity origins;
+the future core export scheduler must never route a playback-originated
+canonical version through it. The extension saves watched state and position
+together, validates optional duration against current Jellyfin item runtime,
+and reads the provider result back.
 
 The integration pins AetherEngine's exact source revision and complete resolved
 dependency closure and confines its rendering and control types to
@@ -223,4 +224,4 @@ passing by inference.
 Provider-side implementation is tracked by umbrella issue #231: issue #232
 delivered the extension runtime and direct-progressive tracer, issue #233
 delivered complete HLS, fallback negotiation, and Track delivery, and issue
-#234 owns coherent progress.
+#234 delivered coherent progress.

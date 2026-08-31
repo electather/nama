@@ -8,12 +8,18 @@ import { forEachBounded } from "./bounded-concurrency.ts";
 import { jellyfinFailureCategory } from "./request-failure.ts";
 import type { JellyfinFailureKind } from "./request-failure.ts";
 import { createJellyfinRequest } from "./request.ts";
-import type { JellyfinMutationResponse, JellyfinRequest } from "./request.ts";
+import type { JellyfinMutationResponse } from "./request.ts";
+import {
+  boundedProviderResponseSignal,
+  readBackAmbiguousMutation,
+} from "./watch-state-mutation-execution.ts";
+import type { MutationExecution } from "./watch-state-mutation-execution.ts";
 import { classifyMutations, mutationResult } from "./watch-state-mutation-validation.ts";
 import type {
   NormalizedMutationResult,
   PendingWatchedMutation,
 } from "./watch-state-mutation-validation.ts";
+import { executeProgressMutations } from "./watch-state-progress-mutation.ts";
 import {
   ABSENT_VALUE,
   normalizeJellyfinMutationWatchState,
@@ -24,19 +30,10 @@ import type { JellyfinWatchStateContext, NormalizedReadResult } from "./watch-st
 
 const MAXIMUM_MEDIA_RESPONSE_BYTES = 16_777_216;
 const MAXIMUM_CONCURRENT_MUTATIONS = 4;
-const MINIMUM_RESPONSE_TIMEOUT_MILLISECONDS = 1;
-const RESPONSE_TIMEOUT_DIVISOR = 2;
 
 interface JellyfinWatchStateMutationCall {
   readonly context: JellyfinWatchStateContext;
   readonly mutations: readonly WatchStateMutation[];
-  readonly signal: AbortSignal;
-  readonly timeoutMs: () => number | undefined;
-}
-interface MutationExecution {
-  readonly context: JellyfinWatchStateContext;
-  readonly request: JellyfinRequest | undefined;
-  readonly resultsByIndex: Map<number, NormalizedMutationResult>;
   readonly signal: AbortSignal;
   readonly timeoutMs: () => number | undefined;
 }
@@ -58,28 +55,6 @@ const mutationStatusForRead = (result: NormalizedReadResult): WatchStateMutation
   return WatchStateMutationStatus.PERMANENT_FAILURE;
 };
 
-const readBackAmbiguousMutation = async (
-  execution: MutationExecution,
-  pending: PendingWatchedMutation,
-): Promise<NormalizedMutationResult> => {
-  const readback = await getJellyfinWatchStates(execution.context, [pending.itemReference], {
-    cancellation: execution.signal,
-    request: execution.signal,
-  });
-  const [result] = readback.results;
-  if (result?.status !== WatchStateReadStatus.FOUND || result.state === undefined) {
-    return mutationResult(pending.mutation, WatchStateMutationStatus.RETRYABLE_AMBIGUOUS);
-  }
-  if (result.state.watched === pending.watched) {
-    return mutationResult(pending.mutation, WatchStateMutationStatus.APPLIED, result.state);
-  }
-  return mutationResult(
-    pending.mutation,
-    WatchStateMutationStatus.RETRYABLE_AMBIGUOUS,
-    result.state,
-  );
-};
-
 const failedMutationResponseResult = (
   pending: PendingWatchedMutation,
   kind: JellyfinFailureKind,
@@ -94,7 +69,11 @@ const mutationResponseResult = (
   response: JellyfinMutationResponse,
 ): Promise<NormalizedMutationResult> => {
   if (response.kind === "ambiguous") {
-    return readBackAmbiguousMutation(execution, pending);
+    return readBackAmbiguousMutation(
+      execution,
+      pending,
+      (state) => state.watched === pending.watched,
+    );
   }
   if (response.kind !== "success") {
     return failedMutationResponseResult(pending, response.kind);
@@ -105,7 +84,11 @@ const mutationResponseResult = (
     timestampFromMilliseconds(Date.now()),
   );
   if (observedState === ABSENT_VALUE) {
-    return readBackAmbiguousMutation(execution, pending);
+    return readBackAmbiguousMutation(
+      execution,
+      pending,
+      (state) => state.watched === pending.watched,
+    );
   }
   if (observedState.watched === pending.watched) {
     return Promise.resolve(
@@ -115,18 +98,6 @@ const mutationResponseResult = (
   return Promise.resolve(
     mutationResult(pending.mutation, WatchStateMutationStatus.RETRYABLE_AMBIGUOUS, observedState),
   );
-};
-
-const boundedProviderResponseSignal = (execution: MutationExecution): AbortSignal => {
-  const remainingMilliseconds = execution.timeoutMs();
-  if (remainingMilliseconds === undefined || !Number.isFinite(remainingMilliseconds)) {
-    return execution.signal;
-  }
-  const responseTimeoutMilliseconds = Math.max(
-    MINIMUM_RESPONSE_TIMEOUT_MILLISECONDS,
-    Math.floor(remainingMilliseconds / RESPONSE_TIMEOUT_DIVISOR),
-  );
-  return AbortSignal.any([execution.signal, AbortSignal.timeout(responseTimeoutMilliseconds)]);
 };
 
 const applyWatchedMutation = async (
@@ -253,6 +224,7 @@ const pushJellyfinWatchStates = async ({
     classification.watchedMutations,
   );
   await executeWatchedMutations(execution, pendingMutations);
+  await executeProgressMutations(execution, classification.progressMutations);
   return { results: orderedMutationResults(mutations, execution.resultsByIndex) };
 };
 

@@ -11,7 +11,8 @@ namespace Nama.Jellyfin.Extension;
 [Route("Nama/v1")]
 public sealed class HandshakeController : ControllerBase
 {
-  private static readonly string[] Capabilities = ["direct_progressive", "playback_telemetry"];
+  private static readonly string[] Capabilities =
+      ["coherent_progress", "direct_progressive", "playback_telemetry"];
   private readonly ExtensionHostCompatibility _compatibility;
   private readonly IAuthService _authService;
 

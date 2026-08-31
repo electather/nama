@@ -36,12 +36,16 @@ const STOCK_CAPABILITIES = [
   ProviderCapability.WATCH_STATE_READ,
   ProviderCapability.WATCHED_WRITE,
 ];
-const EXTENSION_CAPABILITIES = [
+const PLAYBACK_EXTENSION_CAPABILITIES = [
   ProviderCapability.PLAYBACK_PLAN,
   ProviderCapability.PLAYBACK_OPEN,
   ProviderCapability.PLAYBACK_REPORT,
   ProviderCapability.PLAYBACK_REPORTS_USER_STATE,
-];
+] as const;
+const COHERENT_PROGRESS_CAPABILITIES = [
+  ...PLAYBACK_EXTENSION_CAPABILITIES,
+  ProviderCapability.PROGRESS_WRITE,
+] as const;
 const MEDIA_ITEM_ID = "0123456789abcdef0123456789abcdef";
 const MEDIA_SOURCE_ID = "source-1";
 const AUDIO_TRACK_ID = "1";
@@ -221,6 +225,14 @@ it.live("derives playback capabilities only from a compatible extension handshak
     Effect.gen(function* compatibleExtensionScenario() {
       const compatible = yield* controlledJellyfin(
         connectionHandler({
+          capabilities: ["direct_progressive", "playback_telemetry", "coherent_progress"],
+          extension_version: "1.0.0",
+          protocol: "nama.jellyfin.extension",
+          protocol_version: 1,
+        }),
+      );
+      const playbackOnly = yield* controlledJellyfin(
+        connectionHandler({
           capabilities: ["direct_progressive", "playback_telemetry"],
           extension_version: "1.0.0",
           protocol: "nama.jellyfin.extension",
@@ -239,6 +251,9 @@ it.live("derives playback capabilities only from a compatible extension handshak
       const supervisor = yield* PluginSupervisor;
       const compatiblePlugin = yield* superviseJellyfin(supervisor, compatible, {
         providerInstanceId: "compatible-extension",
+      });
+      const playbackOnlyPlugin = yield* superviseJellyfin(supervisor, playbackOnly, {
+        providerInstanceId: "playback-only-extension",
       });
       const absentPlugin = yield* superviseJellyfin(supervisor, absent, {
         providerInstanceId: "absent-extension",
@@ -259,6 +274,11 @@ it.live("derives playback capabilities only from a compatible extension handshak
         {},
         CALL_DEADLINE_MILLISECONDS,
       );
+      const playbackOnlyConnection = yield* playbackOnlyPlugin.call(
+        PluginService.method.getConnection,
+        {},
+        CALL_DEADLINE_MILLISECONDS,
+      );
       const absentConnection = yield* absentPlugin.call(
         PluginService.method.getConnection,
         {},
@@ -272,7 +292,11 @@ it.live("derives playback capabilities only from a compatible extension handshak
 
       expect(compatibleConnection.connection?.capabilities).toEqual([
         ...STOCK_CAPABILITIES,
-        ...EXTENSION_CAPABILITIES,
+        ...COHERENT_PROGRESS_CAPABILITIES,
+      ]);
+      expect(playbackOnlyConnection.connection?.capabilities).toEqual([
+        ...STOCK_CAPABILITIES,
+        ...PLAYBACK_EXTENSION_CAPABILITIES,
       ]);
       expect(absentConnection.connection?.capabilities).toEqual(STOCK_CAPABILITIES);
       expect(incompatibleConnection.connection?.capabilities).toEqual(STOCK_CAPABILITIES);

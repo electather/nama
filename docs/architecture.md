@@ -52,19 +52,25 @@ instance launches. Successful configured stock connections advertise `LIBRARY_RE
 
 The manually installed first-party Jellyfin server extension accepted by
 [ADR-0036](adr/0036-first-party-jellyfin-server-extension.md) now implements
-issues #232 and #233's complete provider playback profile. It validates the
-exact Jellyfin host, owns purpose-separated persisted lease protection, and
-exposes one bounded private JSON/HTTP protocol to the existing provider plugin.
-A compatible handshake adds `PLAYBACK_PLAN`, `PLAYBACK_OPEN`,
-`PLAYBACK_REPORT`, and `PLAYBACK_REPORTS_USER_STATE`; exact-tag Jellyfin
-negotiation translates every submitted capability and preference into truthful
-direct, remux, audio-transcode, or video-transcode evidence and selected Track
-actions. Progressive media and rewritten HLS playlists, variants, segments,
-keys, and subtitle children stay behind self-contained opaque extension
-resources plus one exact session lease while media bytes remain in Jellyfin's
-delivery path. Missing, unhealthy, or incompatible extensions add none of
-those capabilities, so the stock profile above remains available. Issue #234
-still owns coherent progress.
+issues #232 and #233's complete provider playback profile plus issue #234's
+coherent progress write. It validates the exact Jellyfin host, owns
+purpose-separated persisted lease protection, and exposes one bounded private
+JSON/HTTP protocol to the existing provider plugin. A compatible playback
+handshake adds `PLAYBACK_PLAN`, `PLAYBACK_OPEN`, `PLAYBACK_REPORT`, and
+`PLAYBACK_REPORTS_USER_STATE`; coherent progress support independently adds
+`PROGRESS_WRITE`. Exact-tag Jellyfin negotiation translates every submitted
+capability and preference into truthful direct, remux, audio-transcode, or
+video-transcode evidence and selected Track actions. Progressive media and
+rewritten HLS playlists, variants, segments, keys, and subtitle children stay
+behind self-contained opaque extension resources plus one exact session lease
+while media bytes remain in Jellyfin's delivery path. The progress operation
+resolves the configured principal and exact playable item, validates optional
+duration evidence, commits watched state and position through one Jellyfin
+user-data transaction, and returns authoritative readback. Equal targets avoid
+another save; a lost response receives one targeted readback, while a differing
+or unresolved result remains retryable ambiguity without blind replay. Missing,
+unhealthy, or incompatible extensions add none of those capabilities, so the
+stock profile above remains available.
 
 The provider-management verification gate drives a compiled `nama` binary
 through the production listener, migrations, PostgreSQL boundary, supervisor,

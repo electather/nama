@@ -16,6 +16,7 @@ const EXTENSION_HANDSHAKE_TIMEOUT_MILLISECONDS = 1000;
 const EXTENSION_PROTOCOL_VERSION = 2;
 const DIRECT_PROGRESSIVE_CAPABILITY = "direct_progressive";
 const PLAYBACK_TELEMETRY_CAPABILITY = "playback_telemetry";
+const COHERENT_PROGRESS_CAPABILITY = "coherent_progress";
 const EXTENSION_PLAYBACK_CAPABILITIES = [
   ProviderCapability.PLAYBACK_PLAN,
   ProviderCapability.PLAYBACK_OPEN,
@@ -51,7 +52,9 @@ const principalReference = (serverId: string, userId: string): string => {
     .digest("base64url");
   return `jellyfin/v1:${digest}`;
 };
-const compatibleExtensionCapabilities = (value: Readonly<Record<string, unknown>>) => {
+const compatibleExtensionCapabilities = (
+  value: Readonly<Record<string, unknown>>,
+): ProviderCapability[] => {
   const { capabilities } = value;
   if (
     value["protocol"] !== EXTENSION_PROTOCOL ||
@@ -59,16 +62,24 @@ const compatibleExtensionCapabilities = (value: Readonly<Record<string, unknown>
     typeof value["extension_version"] !== "string" ||
     value["extension_version"].length === EMPTY_LENGTH ||
     !Array.isArray(capabilities) ||
-    !capabilities.includes(DIRECT_PROGRESSIVE_CAPABILITY) ||
-    !capabilities.includes(PLAYBACK_TELEMETRY_CAPABILITY) ||
     capabilities.some((capability) => typeof capability !== "string")
   ) {
     return [];
   }
-  return EXTENSION_PLAYBACK_CAPABILITIES;
+  const supported: ProviderCapability[] = [];
+  if (
+    capabilities.includes(DIRECT_PROGRESSIVE_CAPABILITY) &&
+    capabilities.includes(PLAYBACK_TELEMETRY_CAPABILITY)
+  ) {
+    supported.push(...EXTENSION_PLAYBACK_CAPABILITIES);
+  }
+  if (capabilities.includes(COHERENT_PROGRESS_CAPABILITY)) {
+    supported.push(ProviderCapability.PROGRESS_WRITE);
+  }
+  return supported;
 };
 
-const extensionPlaybackCapabilities = async (request: JellyfinRequest, signal: AbortSignal) => {
+const extensionCapabilities = async (request: JellyfinRequest, signal: AbortSignal) => {
   const response = await request.requestJson(["Nama", "v1", "handshake"], {
     authentication: "api_key",
     cancellationSignal: signal,
@@ -83,6 +94,17 @@ const extensionPlaybackCapabilities = async (request: JellyfinRequest, signal: A
   }
   return compatibleExtensionCapabilities(response.body);
 };
+const jellyfinExtensionSupportsProgress = async (
+  context: JellyfinExtensionContext,
+  signal: AbortSignal,
+): Promise<boolean> => {
+  const request = createJellyfinRequest(context);
+  if (request === undefined) {
+    return false;
+  }
+  const capabilities = await extensionCapabilities(request, signal);
+  return capabilities.includes(ProviderCapability.PROGRESS_WRITE);
+};
 
 const requireJellyfinExtensionPlayback = async (
   context: JellyfinExtensionContext,
@@ -92,8 +114,8 @@ const requireJellyfinExtensionPlayback = async (
   if (request === undefined) {
     throw new ConnectError("Jellyfin extension playback is unavailable", Code.Unimplemented);
   }
-  const capabilities = await extensionPlaybackCapabilities(request, signal);
-  if (capabilities.length === EMPTY_LENGTH) {
+  const capabilities = await extensionCapabilities(request, signal);
+  if (!capabilities.includes(ProviderCapability.PLAYBACK_PLAN)) {
     throw new ConnectError("Jellyfin extension playback is unavailable", Code.Unimplemented);
   }
 };
@@ -201,12 +223,13 @@ const getJellyfinConnection = async (context: JellyfinConnectionContext, signal:
   }
   return {
     ...connection,
-    capabilities: [
-      ...connection.capabilities,
-      ...(await extensionPlaybackCapabilities(request, signal)),
-    ],
+    capabilities: [...connection.capabilities, ...(await extensionCapabilities(request, signal))],
   };
 };
 
-export { getJellyfinConnection, requireJellyfinExtensionPlayback };
+export {
+  getJellyfinConnection,
+  jellyfinExtensionSupportsProgress,
+  requireJellyfinExtensionPlayback,
+};
 export type { JellyfinConnectionContext };

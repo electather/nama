@@ -14,6 +14,7 @@ const ZERO_DURATION_SECONDS = 0n;
 const ZERO_DURATION_NANOS = 0;
 const MAXIMUM_DURATION_SECONDS = 315_576_000_000n;
 const MAXIMUM_DURATION_NANOS = 999_999_999;
+const NANOSECONDS_PER_JELLYFIN_TICK = 100;
 
 interface NormalizedMutationResult {
   readonly mutationId: string;
@@ -30,7 +31,16 @@ interface PendingWatchedMutation {
   readonly mutation: WatchStateMutation;
   readonly watched: boolean;
 }
+interface PendingProgressMutation {
+  readonly duration?: Readonly<{ nanos: number; seconds: bigint }> | undefined;
+  readonly index: number;
+  readonly itemReference: ProviderItemReference;
+  readonly mutation: WatchStateMutation;
+  readonly position: Readonly<{ nanos: number; seconds: bigint }>;
+  readonly watched: boolean;
+}
 interface MutationClassification {
+  readonly progressMutations: PendingProgressMutation[];
   readonly resultsByIndex: Map<number, NormalizedMutationResult>;
   readonly watchedMutations: PendingWatchedMutation[];
 }
@@ -77,7 +87,10 @@ const durationIsValidTarget = (
   ) {
     return false;
   }
-  return duration.seconds !== MAXIMUM_DURATION_SECONDS || duration.nanos === ZERO_DURATION_NANOS;
+  return (
+    (duration.seconds !== MAXIMUM_DURATION_SECONDS || duration.nanos === ZERO_DURATION_NANOS) &&
+    duration.nanos % NANOSECONDS_PER_JELLYFIN_TICK === ZERO_DURATION_NANOS
+  );
 };
 
 const progressTargetIsValid = (mutation: WatchStateMutation): boolean => {
@@ -140,6 +153,32 @@ const addWatchedMutation = (
     watched: target.value.watched,
   });
 };
+const addProgressMutation = (
+  mutation: WatchStateMutation,
+  index: number,
+  classification: MutableMutationClassification,
+): void => {
+  const { itemReference, target } = mutation;
+  if (
+    itemReference === undefined ||
+    target.case !== "setProgress" ||
+    target.value.position === undefined
+  ) {
+    classification.resultsByIndex.set(
+      index,
+      mutationResult(mutation, WatchStateMutationStatus.INVALID),
+    );
+    return;
+  }
+  classification.progressMutations.push({
+    duration: target.value.duration,
+    index,
+    itemReference,
+    mutation,
+    position: target.value.position,
+    watched: target.value.watched,
+  });
+};
 
 const classifyMutation = (
   mutation: WatchStateMutation,
@@ -154,10 +193,7 @@ const classifyMutation = (
     return;
   }
   if (mutation.target.case === "setProgress") {
-    classification.resultsByIndex.set(
-      index,
-      mutationResult(mutation, WatchStateMutationStatus.UNSUPPORTED),
-    );
+    addProgressMutation(mutation, index, classification);
     return;
   }
   addWatchedMutation(mutation, index, classification);
@@ -166,6 +202,7 @@ const classifyMutation = (
 const classifyMutations = (mutations: readonly WatchStateMutation[]): MutationClassification => {
   const classification: MutableMutationClassification = {
     counts: mutationConflictCounts(mutations),
+    progressMutations: [],
     resultsByIndex: new Map(),
     watchedMutations: [],
   };
@@ -176,4 +213,4 @@ const classifyMutations = (mutations: readonly WatchStateMutation[]): MutationCl
 };
 
 export { classifyMutations, mutationResult };
-export type { NormalizedMutationResult, PendingWatchedMutation };
+export type { NormalizedMutationResult, PendingProgressMutation, PendingWatchedMutation };

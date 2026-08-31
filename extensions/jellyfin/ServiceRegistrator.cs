@@ -46,6 +46,7 @@ public sealed class ServiceRegistrator : IPluginServiceRegistrator
     serviceCollection.AddSingleton<PlaybackSessionStore>();
     serviceCollection.AddSingleton<PlaybackNegotiationService>();
     serviceCollection.AddSingleton<PlaybackRuntimeService>();
+    serviceCollection.AddSingleton<ProgressRuntimeService>();
     serviceCollection.AddTransient<IStartupFilter, PlaybackStartupFilter>();
   }
 }
