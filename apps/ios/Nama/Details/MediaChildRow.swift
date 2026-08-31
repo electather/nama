@@ -10,10 +10,12 @@ struct MediaChildRow: View {
 
   var body: some View {
     NavigationLink(
-      value: MediaDetailsSelection(
-        identity: item.identity,
-        kind: item.kind,
-        title: item.title
+      value: ConsumerNavigationDestination.details(
+        MediaDetailsSelection(
+          identity: item.identity,
+          kind: item.kind,
+          title: item.title
+        )
       )
     ) {
       HStack(alignment: .top, spacing: MediaDetailsLayout.metadataSpacing) {

@@ -1,8 +1,35 @@
 import SwiftUI
 
+nonisolated enum MediaDetailsFocusAction: Equatable {
+  case play
+  case retry
+  case sources
+}
+
+nonisolated func mediaDetailsDefaultFocusAction(
+  playability: MediaPlayability,
+  hasSources: Bool,
+  isRefreshing: Bool,
+  canRetryUnavailableSource: Bool
+) -> MediaDetailsFocusAction? {
+  if playability == .playable {
+    return .play
+  }
+  if playability == .temporarilyUnavailable,
+    canRetryUnavailableSource,
+    !isRefreshing
+  {
+    return .retry
+  }
+  if hasSources {
+    return .sources
+  }
+  return nil
+}
+
 struct MediaDetailsPlayabilityView: View {
   #if os(tvOS)
-    @FocusState private var focusedAction: FocusAction?
+    @FocusState private var focusedAction: MediaDetailsFocusAction?
   #endif
 
   let playability: MediaPlayability
@@ -16,7 +43,7 @@ struct MediaDetailsPlayabilityView: View {
     VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
       playabilityContent
       if let sourcesSelection {
-        NavigationLink(value: sourcesSelection) {
+        NavigationLink(value: ConsumerNavigationDestination.sources(sourcesSelection)) {
           Label("Sources", systemImage: "rectangle.stack")
         }
         .buttonStyle(.bordered)
@@ -67,23 +94,14 @@ struct MediaDetailsPlayabilityView: View {
   }
 
   #if os(tvOS)
-    private enum FocusAction: Hashable {
-      case play
-      case retry
-      case sources
-    }
 
-    private var defaultFocusAction: FocusAction? {
-      if playability == .playable {
-        return .play
-      }
-      if sourcesSelection != nil {
-        return .sources
-      }
-      if playability == .temporarilyUnavailable, canRetryUnavailableSource {
-        return .retry
-      }
-      return nil
+    private var defaultFocusAction: MediaDetailsFocusAction? {
+      mediaDetailsDefaultFocusAction(
+        playability: playability,
+        hasSources: sourcesSelection != nil,
+        isRefreshing: isRefreshing,
+        canRetryUnavailableSource: canRetryUnavailableSource
+      )
     }
   #endif
 }

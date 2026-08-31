@@ -3,6 +3,11 @@ import Testing
 
 @testable import Nama
 
+#if os(macOS)
+  import AppKit
+  import SwiftUI
+#endif
+
 private enum HomeFeatureFixture {
   static let tokenExpiry: TimeInterval = 4_600
 }
@@ -202,6 +207,49 @@ struct HomeFeatureTests {
     #expect(replacement == nil)
     #expect(pending == nil)
   }
+
+  #if os(macOS)
+    @Test("a transient Mac Home disappearance keeps its initial load alive")
+    func transientMacHomeDisappearanceKeepsLoad() async throws {
+      let loader = ManualHomeLoader()
+      let feature = HomeFeature(
+        loader: loader,
+        artworkLoader: IgnoringHomeArtworkLoader()
+      )
+      let controller = NSHostingController(
+        rootView: HomeView(
+          feature: feature,
+          authorization: try homeAuthorization(generation: 9),
+          changeEndpoint: {
+            Issue.record("A loading Home must not request an endpoint change")
+          },
+          reauthorize: {
+            Issue.record("A loading Home must not request authorization")
+          },
+          selectMedia: { _ in
+            Issue.record("A loading Home must not select media")
+          },
+          seeAll: { _ in
+            Issue.record("A loading Home must not open a Library shelf")
+          }
+        )
+        .environment(\.scenePhase, .active)
+      )
+      let window = NSWindow(contentViewController: controller)
+      defer { window.close() }
+
+      window.orderFrontRegardless()
+      controller.view.layoutSubtreeIfNeeded()
+      await eventually { await loader.callCount == 1 }
+
+      window.contentViewController = NSHostingController(rootView: EmptyView())
+      await Task.yield()
+      let snapshot = homeSnapshot(movieTitle: "Completed after disappearance")
+      await loader.resolve(call: 0, with: .success(snapshot))
+
+      await eventually { feature.state == .content(snapshot) }
+    }
+  #endif
 }
 
 private actor ImmediateHomeLoader: HomeLoading {

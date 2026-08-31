@@ -9,6 +9,7 @@ struct MediaDetailsContentView: View {
   let childrenState: MediaChildrenState
   let isRefreshing: Bool
   let refreshFailure: MediaDetailsFailure?
+  let canRefresh: Bool
   let refresh: @MainActor () -> Void
   let play: @MainActor () -> Void
   let loadMoreChildren: @MainActor () -> Void
@@ -25,6 +26,7 @@ struct MediaDetailsContentView: View {
         childrenState: childrenState,
         isRefreshing: isRefreshing,
         refreshFailure: refreshFailure,
+        canRefresh: canRefresh,
         refresh: refresh,
         play: play,
         loadMoreChildren: loadMoreChildren,
@@ -45,6 +47,7 @@ private struct MediaDetailsContentSections: View {
   let childrenState: MediaChildrenState
   let isRefreshing: Bool
   let refreshFailure: MediaDetailsFailure?
+  let canRefresh: Bool
   let refresh: @MainActor () -> Void
   let play: @MainActor () -> Void
   let loadMoreChildren: @MainActor () -> Void
@@ -77,9 +80,11 @@ private struct MediaDetailsContentSections: View {
       )
       MediaDetailsSupportingContentView(details: details, creditArtwork: creditArtwork)
       #if os(tvOS)
-        Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
-          .buttonStyle(.bordered)
-          .disabled(isRefreshing)
+        if canRefresh {
+          Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
+            .buttonStyle(.bordered)
+            .disabled(isRefreshing)
+        }
       #endif
     }
   }

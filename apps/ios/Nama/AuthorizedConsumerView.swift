@@ -204,24 +204,27 @@ struct AuthorizedTopLevelView: View {
   ) -> some View {
     NavigationStack(path: pathBinding(for: destination)) {
       destinationContent(destination)
-        .navigationDestination(for: MediaDetailsSelection.self) { selection in
-          MediaDetailsDestination(
-            selection: selection,
-            authorization: authorization,
-            loader: detailsLoader,
-            artworkLoader: artworkLoader,
-            emitPlayIntent: emitPlayIntent,
-            reauthorize: reauthorize
-          )
-        }
-        .navigationDestination(for: MediaSourcesSelection.self) { selection in
-          MediaSourcesDestination(
-            selection: selection,
-            authorization: authorization,
-            loader: detailsLoader,
-            emitPlayIntent: emitPlayIntent,
-            reauthorize: reauthorize
-          )
+        .navigationDestination(for: ConsumerNavigationDestination.self) { destination in
+          switch destination {
+          case .details(let selection):
+            MediaDetailsDestination(
+              selection: selection,
+              authorization: authorization,
+              loader: detailsLoader,
+              artworkLoader: artworkLoader,
+              emitPlayIntent: emitPlayIntent,
+              reauthorize: reauthorize
+            )
+
+          case .sources(let selection):
+            MediaSourcesDestination(
+              selection: selection,
+              authorization: authorization,
+              loader: detailsLoader,
+              emitPlayIntent: emitPlayIntent,
+              reauthorize: reauthorize
+            )
+          }
         }
     }
   }
@@ -278,7 +281,7 @@ struct AuthorizedTopLevelView: View {
 
   private func pathBinding(
     for destination: ConsumerTopLevelDestination
-  ) -> Binding<[MediaDetailsSelection]> {
+  ) -> Binding<[ConsumerNavigationDestination]> {
     switch destination {
     case .home:
       Binding(

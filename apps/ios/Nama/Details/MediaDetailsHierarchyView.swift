@@ -10,10 +10,12 @@ struct MediaDetailsParentNavigationView: View {
         HStack(spacing: MediaDetailsLayout.metadataSpacing) {
           ForEach(parents, id: \.identity) { parent in
             NavigationLink(
-              value: MediaDetailsSelection(
-                identity: parent.identity,
-                kind: parent.kind,
-                title: parent.title
+              value: ConsumerNavigationDestination.details(
+                MediaDetailsSelection(
+                  identity: parent.identity,
+                  kind: parent.kind,
+                  title: parent.title
+                )
               )
             ) {
               Label(parent.title, systemImage: parent.kind.detailsSystemImage)
@@ -181,19 +183,15 @@ struct MediaDetailsChildrenView: View {
       if state.confirmedItems.isEmpty {
         emptyOrLoadingContent
       } else {
-        VStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
-          ForEach(state.confirmedItems) { item in
-            MediaChildRow(
-              item: item,
-              childDidAppear: childDidAppear,
-              artwork: artwork
-            )
-            #if os(tvOS)
-              .focused($focusedChildIdentity, equals: item.identity)
-            #endif
+        #if os(tvOS)
+          VStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
+            confirmedChildren
           }
-          pageFooter
-        }
+        #else
+          LazyVStack(alignment: .leading, spacing: MediaDetailsLayout.creditSpacing) {
+            confirmedChildren
+          }
+        #endif
       }
     }
     #if os(tvOS)
@@ -204,6 +202,21 @@ struct MediaDetailsChildrenView: View {
         focusedChildIdentity = firstChildIdentity
       }
     #endif
+  }
+
+  @ViewBuilder
+  private var confirmedChildren: some View {
+    ForEach(state.confirmedItems) { item in
+      MediaChildRow(
+        item: item,
+        childDidAppear: childDidAppear,
+        artwork: artwork
+      )
+      #if os(tvOS)
+        .focused($focusedChildIdentity, equals: item.identity)
+      #endif
+    }
+    pageFooter
   }
 
   #if os(tvOS)

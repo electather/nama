@@ -30,6 +30,9 @@ struct OAuthTokenStoreTests {
         == (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String)
     )
     #expect(attributes[kSecAttrSynchronizable] as? Bool == false)
+    #if os(macOS)
+      #expect(attributes[kSecUseDataProtectionKeychain] as? Bool == true)
+    #endif
     _ = try #require(attributes[kSecValueData] as? Data)
   }
 
@@ -94,9 +97,14 @@ struct OAuthTokenStoreTests {
     try await store.quarantine(damaged)
 
     let events = recorder.events
-    #expect(events.map(\.name) == ["add", "delete"])
-    #expect(events.first?.attributes[kSecValueData] as? Data == damaged)
-    #expect(events.first?.attributes[kSecAttrSynchronizable] as? Bool == false)
+    #expect(events.map(\.name) == ["load", "add", "delete"])
+    #expect(events[1].attributes[kSecValueData] as? Data == damaged)
+    #expect(events[1].attributes[kSecAttrSynchronizable] as? Bool == false)
+    #if os(macOS)
+      #expect(
+        events.allSatisfy { $0.attributes[kSecUseDataProtectionKeychain] as? Bool == true }
+      )
+    #endif
   }
 }
 
@@ -125,7 +133,10 @@ nonisolated private final class OAuthKeychainRecorder: @unchecked Sendable {
 
   var access: OAuthKeychainAccess {
     OAuthKeychainAccess(
-      load: { [weak self] _ in self?.loadResult ?? (errSecNotAvailable, nil) },
+      load: { [weak self] attributes in
+        self?.record("load", attributes: attributes)
+        return self?.loadResult ?? (errSecNotAvailable, nil)
+      },
       add: { [weak self] attributes in
         self?.record("add", attributes: attributes)
         return errSecSuccess
