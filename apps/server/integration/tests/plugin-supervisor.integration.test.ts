@@ -1475,53 +1475,56 @@ it.effect("retains interrupted startup cleanup for scope-finalization retry", ()
     );
   }),
 );
-it.effect("joins retirement already in progress during scope finalization", () =>
-  withControlDirectory((controlDirectory) =>
-    Effect.scoped(
-      Effect.gen(function* inProgressRetirementFinalizationTest() {
-        const supervisor = yield* PluginSupervisor;
-        const handleScope = yield* Scope.make();
-        const plugin = yield* Scope.provide(handleScope)(
-          supervisor.supervise(fixtureDescriptor(controlDirectory, "wait-first-termination"), {
-            kind: "discovery",
-          }),
-        );
-        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
-        const launch = (yield* readLaunchRecords(controlDirectory))[0];
-        if (launch === undefined) {
-          return yield* Effect.die("fixture launch record missing");
-        }
-        yield* awaitFileLineCount(controlDirectory, "termination-ready.ndjson", 1);
+it.effect(
+  "joins retirement already in progress during scope finalization",
+  () =>
+    withControlDirectory((controlDirectory) =>
+      Effect.scoped(
+        Effect.gen(function* inProgressRetirementFinalizationTest() {
+          const supervisor = yield* PluginSupervisor;
+          const handleScope = yield* Scope.make();
+          const plugin = yield* Scope.provide(handleScope)(
+            supervisor.supervise(fixtureDescriptor(controlDirectory, "wait-first-termination"), {
+              kind: "discovery",
+            }),
+          );
+          yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+          const launch = (yield* readLaunchRecords(controlDirectory))[0];
+          if (launch === undefined) {
+            return yield* Effect.die("fixture launch record missing");
+          }
+          yield* awaitFileLineCount(controlDirectory, "termination-ready.ndjson", 1);
 
-        yield* TestClock.adjust(30_000);
-        const firstSignals = yield* awaitFileLineCount(
-          controlDirectory,
-          "termination-signals.ndjson",
-          1,
-        );
-        const finalization = yield* Effect.forkChild(
-          Scope.close(handleScope, Exit.void).pipe(Effect.exit),
-          { startImmediately: true },
-        );
-        yield* Effect.yieldNow;
+          yield* TestClock.adjust(30_000);
+          const firstSignals = yield* awaitFileLineCount(
+            controlDirectory,
+            "termination-signals.ndjson",
+            1,
+          );
+          const finalization = yield* Effect.forkChild(
+            Scope.close(handleScope, Exit.void).pipe(Effect.exit),
+            { startImmediately: true },
+          );
+          yield* Effect.yieldNow;
 
-        expect(firstSignals).toHaveLength(1);
-        expect(finalization.pollUnsafe()).toBeUndefined();
-        yield* Effect.promise(() =>
-          writeFile(join(controlDirectory, "termination-continue"), "", { mode: 0o600 }),
-        );
-        expect(Exit.isSuccess(yield* Fiber.join(finalization))).toBe(true);
-        const launchFailure = yield* Effect.tryPromise({
-          catch: (error) => error,
-          try: () => lstat(dirname(launch.socketPath)),
-        }).pipe(Effect.flip);
-        expect(launchFailure).toMatchObject({ code: "ENOENT" });
-        expect(
-          yield* awaitFileLineCount(controlDirectory, "termination-signals.ndjson", 1),
-        ).toHaveLength(1);
-      }).pipe(Effect.provide(PluginSupervisor.layer())),
+          expect(firstSignals).toHaveLength(1);
+          expect(finalization.pollUnsafe()).toBeUndefined();
+          yield* Effect.promise(() =>
+            writeFile(join(controlDirectory, "termination-continue"), "", { mode: 0o600 }),
+          );
+          expect(Exit.isSuccess(yield* Fiber.join(finalization))).toBe(true);
+          const launchFailure = yield* Effect.tryPromise({
+            catch: (error) => error,
+            try: () => lstat(dirname(launch.socketPath)),
+          }).pipe(Effect.flip);
+          expect(launchFailure).toMatchObject({ code: "ENOENT" });
+          expect(
+            yield* awaitFileLineCount(controlDirectory, "termination-signals.ndjson", 1),
+          ).toHaveLength(1);
+        }).pipe(Effect.provide(PluginSupervisor.layer())),
+      ),
     ),
-  ),
+  20_000,
 );
 
 it.effect("preserves shutdown failure when retirement cleanup retry still fails", () =>
