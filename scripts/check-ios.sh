@@ -70,4 +70,10 @@ do
   fi
 done
 
+keychain_group="$(plutil -extract 'keychain-access-groups.0' raw "$entitlements")"
+if test "$keychain_group" != '$(AppIdentifierPrefix)com.electather.nama'; then
+  echo "$entitlements does not use the app-scoped Keychain access group" >&2
+  exit 1
+fi
+
 test "$lock_state" = "$(cksum "$resolved")"

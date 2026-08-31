@@ -96,6 +96,16 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
   assign initial focus to the first actionable row or button, and keep explicit
   Back and in-flow Refresh controls; lazy offscreen rows plus toolbar-only
   actions can trap focus in the top-level tabs.
+- Wrap heterogeneous Nama `NavigationLink` values in one compatible navigation
+  destination type; a homogeneous typed path silently ignores links whose value
+  has another type.
+- On macOS, do not cancel Home from `HomeView.onDisappear`; SwiftUI can remove
+  that view transiently while the same visible window still owns its initial
+  load. Cancel Home from scene-phase, authorization, and semantic top-level
+  transitions instead.
+- After collapsing a custom SwiftUI button with
+  `.accessibilityElement(children: .ignore)`, restore `.isButton`; otherwise
+  assistive technologies expose the action as a non-actionable element.
 - On tvOS Details, make refresh recovery focus win over Play, Retry, Sources,
   and child initial-focus requests; when a focused child disappears, restore its
   exact opaque identity if it survives, otherwise choose the row at its retained

@@ -17,7 +17,7 @@ struct MediaDetailsPlayabilityView: View {
     VStack(alignment: .leading, spacing: MediaDetailsLayout.metadataSpacing) {
       playabilityContent
       if let sourcesSelection {
-        NavigationLink(value: sourcesSelection) {
+        NavigationLink(value: ConsumerNavigationDestination.sources(sourcesSelection)) {
           Label("Sources", systemImage: "rectangle.stack")
         }
         .buttonStyle(.bordered)

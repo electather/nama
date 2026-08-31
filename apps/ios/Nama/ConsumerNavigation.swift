@@ -5,6 +5,18 @@ nonisolated enum ConsumerTopLevelDestination: String, CaseIterable, Equatable, H
   case library = "consumer.library"
 }
 
+nonisolated enum ConsumerNavigationDestination: Equatable, Hashable, Sendable {
+  case details(MediaDetailsSelection)
+  case sources(MediaSourcesSelection)
+
+  var detailsSelection: MediaDetailsSelection? {
+    guard case .details(let selection) = self else {
+      return nil
+    }
+    return selection
+  }
+}
+
 nonisolated enum ConsumerPlatformFamily: Equatable, Sendable {
   case phone
   case pad
@@ -94,15 +106,15 @@ nonisolated struct ConsumerSceneRestoration: Equatable, Sendable {
 final class ConsumerSceneNavigation {
   var topLevel: ConsumerTopLevelDestination
   private(set) var libraryQuery: LibraryQuery
-  var homePath: [MediaDetailsSelection]
-  var libraryPath: [MediaDetailsSelection]
+  var homePath: [ConsumerNavigationDestination]
+  var libraryPath: [ConsumerNavigationDestination]
 
   init(restoration: ConsumerSceneRestoration) {
     topLevel = restoration.topLevel
     libraryQuery = restoration.libraryQuery
-    let restoredPath =
+    let restoredPath: [ConsumerNavigationDestination] =
       restoration.selectedMediaID.map { mediaID in
-        [MediaDetailsSelection(restoredIdentity: MediaIdentity(mediaID))]
+        [.details(MediaDetailsSelection(restoredIdentity: MediaIdentity(mediaID)))]
       } ?? []
     switch restoration.topLevel {
     case .home:
@@ -123,7 +135,9 @@ final class ConsumerSceneNavigation {
     guard let mediaID = restoration.selectedMediaID else {
       return
     }
-    let selection = MediaDetailsSelection(restoredIdentity: MediaIdentity(mediaID))
+    let selection = ConsumerNavigationDestination.details(
+      MediaDetailsSelection(restoredIdentity: MediaIdentity(mediaID))
+    )
     switch restoration.topLevel {
     case .home:
       homePath = [selection]
@@ -164,10 +178,10 @@ final class ConsumerSceneNavigation {
   ) {
     switch destination {
     case .home:
-      homePath.append(selection)
+      homePath.append(.details(selection))
 
     case .library:
-      libraryPath.append(selection)
+      libraryPath.append(.details(selection))
     }
   }
 
@@ -184,7 +198,8 @@ final class ConsumerSceneNavigation {
       topLevelRawValue: topLevel.rawValue,
       libraryKindRawValue: libraryQuery.kind.rawValue,
       librarySortRawValue: libraryQuery.sort.rawValue,
-      selectedMediaID: activePath.last?.identity.rawValue
+      selectedMediaID: activePath.lazy.reversed().compactMap(\.detailsSelection).first?.identity
+        .rawValue
     )
   }
 }

@@ -61,19 +61,21 @@ struct AuthorizedConsumerRootView: View {
     }
     .onChange(of: scenePhase) { _, phase in
       guard phase == .active else {
+        home.deactivate()
         library.deactivate()
         search.deactivate()
         return
       }
-      activateLibraryFeaturesIfVisible()
+      activateBrowseFeaturesIfVisible()
     }
     .onChange(of: homeAuthorization) { oldAuthorization, newAuthorization in
       guard oldAuthorization != newAuthorization else {
         return
       }
+      home.deactivate()
       library.deactivate()
       search.deactivate()
-      activateLibraryFeaturesIfVisible(identity: newAuthorization)
+      activateBrowseFeaturesIfVisible(identity: newAuthorization)
     }
     .task(
       id: OAuthAuthorizationTaskID(
@@ -111,19 +113,24 @@ struct AuthorizedConsumerRootView: View {
     storedSelectedMediaID = restoration.selectedMediaID ?? ""
   }
 
-  private func activateLibraryFeaturesIfVisible(
+  private func activateBrowseFeaturesIfVisible(
     identity: HomeAuthorizationIdentity? = nil
   ) {
     guard
       scenePhase == .active,
-      navigation.topLevel == .library,
       let activeAuthorization = identity ?? homeAuthorization
     else {
       return
     }
-    library.updateQuery(navigation.libraryQuery)
-    library.activate(activeAuthorization)
-    search.activate(activeAuthorization)
+    switch navigation.topLevel {
+    case .home:
+      home.activate(activeAuthorization)
+
+    case .library:
+      library.updateQuery(navigation.libraryQuery)
+      library.activate(activeAuthorization)
+      search.activate(activeAuthorization)
+    }
   }
 
   private func discardRejectedAuthorization(
@@ -170,31 +177,47 @@ struct AuthorizedTopLevelView: View {
 
   @ViewBuilder
   var body: some View {
-    switch consumerNavigationLayout(for: currentPlatformFamily) {
-    case .tabs:
-      TabView(selection: topLevelBinding) {
-        Tab("Home", systemImage: "house", value: ConsumerTopLevelDestination.home) {
-          destinationStack(.home)
-        }
-        Tab("Library", systemImage: "rectangle.stack", value: ConsumerTopLevelDestination.library) {
-          destinationStack(.library)
-        }
-      }
-
-    case .split:
-      NavigationSplitView {
-        List(selection: optionalTopLevelBinding) {
-          ForEach(ConsumerTopLevelDestination.allCases, id: \.self) { destination in
-            Label(destination.title, systemImage: destination.systemImage)
-              .tag(destination)
+    Group {
+      switch consumerNavigationLayout(for: currentPlatformFamily) {
+      case .tabs:
+        TabView(selection: topLevelBinding) {
+          Tab("Home", systemImage: "house", value: ConsumerTopLevelDestination.home) {
+            destinationStack(.home)
+          }
+          Tab(
+            "Library",
+            systemImage: "rectangle.stack",
+            value: ConsumerTopLevelDestination.library
+          ) {
+            destinationStack(.library)
           }
         }
-        #if !os(tvOS)
-          .listStyle(.sidebar)
-        #endif
-        .navigationTitle("Nama")
-      } detail: {
-        destinationStack(navigation.topLevel)
+
+      case .split:
+        NavigationSplitView {
+          List(selection: optionalTopLevelBinding) {
+            ForEach(ConsumerTopLevelDestination.allCases, id: \.self) { destination in
+              Label(destination.title, systemImage: destination.systemImage)
+                .tag(destination)
+            }
+          }
+          #if !os(tvOS)
+            .listStyle(.sidebar)
+          #endif
+          .navigationTitle("Nama")
+        } detail: {
+          destinationStack(navigation.topLevel)
+        }
+      }
+    }
+    .onChange(of: navigation.topLevel) { previous, _ in
+      switch previous {
+      case .home:
+        home.deactivate()
+
+      case .library:
+        library.deactivate()
+        search.deactivate()
       }
     }
   }
@@ -204,24 +227,27 @@ struct AuthorizedTopLevelView: View {
   ) -> some View {
     NavigationStack(path: pathBinding(for: destination)) {
       destinationContent(destination)
-        .navigationDestination(for: MediaDetailsSelection.self) { selection in
-          MediaDetailsDestination(
-            selection: selection,
-            authorization: authorization,
-            loader: detailsLoader,
-            artworkLoader: artworkLoader,
-            emitPlayIntent: emitPlayIntent,
-            reauthorize: reauthorize
-          )
-        }
-        .navigationDestination(for: MediaSourcesSelection.self) { selection in
-          MediaSourcesDestination(
-            selection: selection,
-            authorization: authorization,
-            loader: detailsLoader,
-            emitPlayIntent: emitPlayIntent,
-            reauthorize: reauthorize
-          )
+        .navigationDestination(for: ConsumerNavigationDestination.self) { destination in
+          switch destination {
+          case .details(let selection):
+            MediaDetailsDestination(
+              selection: selection,
+              authorization: authorization,
+              loader: detailsLoader,
+              artworkLoader: artworkLoader,
+              emitPlayIntent: emitPlayIntent,
+              reauthorize: reauthorize
+            )
+
+          case .sources(let selection):
+            MediaSourcesDestination(
+              selection: selection,
+              authorization: authorization,
+              loader: detailsLoader,
+              emitPlayIntent: emitPlayIntent,
+              reauthorize: reauthorize
+            )
+          }
         }
     }
   }
@@ -278,7 +304,7 @@ struct AuthorizedTopLevelView: View {
 
   private func pathBinding(
     for destination: ConsumerTopLevelDestination
-  ) -> Binding<[MediaDetailsSelection]> {
+  ) -> Binding<[ConsumerNavigationDestination]> {
     switch destination {
     case .home:
       Binding(

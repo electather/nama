@@ -3,6 +3,11 @@ import Testing
 
 @testable import Nama
 
+#if os(macOS)
+  import AppKit
+  import SwiftUI
+#endif
+
 @Suite("Show, Season, and Episode Details feature")
 @MainActor
 struct MediaHierarchyFeatureTests {
@@ -254,3 +259,53 @@ struct MediaHierarchyFeatureTests {
     }
   }
 }
+
+#if os(macOS)
+  @Suite("Mac hierarchy materialization")
+  @MainActor
+  struct MediaHierarchyMaterializationTests {
+    @Test("an unscrolled pointer hierarchy does not approach its final child")
+    func unscrolledPointerHierarchyKeepsLaterPagesLazy() async throws {
+      let children = (1...40).map { number in
+        hierarchyChild(
+          "episode-\(number)",
+          kind: .episode,
+          title: "Episode \(number)",
+          season: 1,
+          episode: UInt32(number)
+        )
+      }
+      var appearedIdentities: [MediaIdentity] = []
+      let controller = NSHostingController(
+        rootView: NavigationStack {
+          ScrollView {
+            MediaDetailsChildrenView(
+              parentKind: .season,
+              state: .content(items: children, nextPageToken: "more"),
+              refreshRecoveryIsActive: false,
+              loadMore: {
+                Issue.record("An unscrolled hierarchy must not request another page")
+              },
+              childDidAppear: { appearedIdentities.append($0) },
+              reauthorize: {
+                Issue.record("An available hierarchy must not request authorization")
+              },
+              artwork: .empty
+            )
+          }
+          .frame(width: 640, height: 240)
+        }
+      )
+      let window = NSWindow(contentViewController: controller)
+      defer { window.close() }
+
+      window.setContentSize(NSSize(width: 640, height: 240))
+      window.orderFrontRegardless()
+      controller.view.layoutSubtreeIfNeeded()
+      await Task.yield()
+
+      #expect(appearedIdentities.contains(children[0].identity))
+      #expect(!appearedIdentities.contains(try #require(children.last).identity))
+    }
+  }
+#endif

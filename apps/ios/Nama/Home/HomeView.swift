@@ -60,9 +60,11 @@ struct HomeView: View {
         feature.deactivate()
       }
     }
-    .onDisappear {
-      feature.deactivate()
-    }
+    #if !os(macOS)
+      .onDisappear {
+        feature.deactivate()
+      }
+    #endif
   }
 }
 

@@ -169,31 +169,35 @@ access selected the long Episode on Mac. Source inspection has self-contained
 choosing, technical, unavailable, distinct-unlabeled-choice, and stale-response
 previews. Issue #180 additionally rendered the OAuth-authorized production
 catalog on signed iPhone 17 Pro, iPad Pro 13-inch (M5), and Apple TV 4K 1080p
-simulators. Issue #235's follow-up then exercised live touch and keyboard Search,
-decoded canonical artwork, every Details kind, canonical children, Episode
-Source inspection, and default and source-specific typed Play intents on signed
-iPhone and iPad simulators. Apple TV keyboard and remote input selected a live
-Search result, traversed Show → Season → Episode, focused Play, used an explicit
-Details Back action with Episode-row focus restoration, inspected the canonical
-Source, and focused and activated Play This Source. That run exposed and fixed
-offscreen lazy child/action focus and toolbar-only Refresh: tvOS Details now
-eagerly materializes its bounded actions, assigns the first actionable focus,
-keeps Refresh in the content flow, and provides explicit Back. Temporary
-DEBUG-only token and forced-Source routing was removed before verification.
-The pre-cleanup Mac production-catalog run exercised Home, both Library kinds,
-typed Search, every Details kind, hierarchy, and keyboard and pointer input, but
-its exact Source path depended on a temporary DEBUG-only ID route. It therefore
-does not prove the required permanent artifact. After every harness was removed,
-the final tree built with an Apple Development authority and the expected
-sandbox, client-network, and loopback-server entitlements. Its launch under the
-current locked desktop graphical session created a Nama process with zero
-windows, leaving the complete final-artifact Mac flow unverified. The
-production-backed Apple TV run did not exercise Load More or Retry recovery.
-VoiceOver previously activated and captioned the live Home toolbar, but
-representative labels, reading order, action names, and focus order across Home,
-Library/Search, Details, and Sources remain unverified. Compact iPad collapse,
-physical Apple hardware, and expiry-driven actual-surface refresh also remain
-unverified.
+simulators. Issue #235 completed the missing actual-surface pass on signed iOS
+26.5 and tvOS 26.5 simulators and an Apple Development-signed sandboxed arm64
+Mac app. Touch, keyboard, remote, and pointer input exercised Home, both Library
+kinds, typed Search and result selection, every Details kind, Show → Season →
+Episode children, decoded canonical artwork or its title-bearing fallback,
+Source choice and inspection, and default and source-specific typed Play
+intents. The selected Source and its technical fields came from the completed
+Jellyfin import; an isolated nonselected canonical Source exposed the two-choice
+presentation, so provider-imported multi-version media remains unverified.
+
+Apple TV focus traversed the nested hierarchy and playback actions; Back
+restored Sources, Episode, and Season focus. A production-server interruption
+retained Home with Try Again and remote retry recovered after server resume.
+The pass exposed and fixed lazy offscreen tvOS child/action materialization,
+toolbar-only Refresh, Retry ordering, heterogeneous navigation values, lost
+custom-button accessibility semantics, macOS Keychain policy, and transient
+macOS Home cancellation. The signed Mac window completed the same flow with
+native Back and return-position restoration while retaining the required
+sandbox and network entitlements.
+
+VoiceOver's visible cursor and caption panel confirmed spoken guidance on the
+signed Mac window; actual accessibility trees recorded representative
+Home, Library/Search, Details, and Sources labels, reading order, button action
+names, and nested focus restoration. The complete iPhone flow also remained
+usable at the largest tested accessibility text size with increased contrast
+and reduced motion enabled. Temporary authorization, catalog data, UI harness,
+diagnostics, and signed acceptance artifacts were removed. Physical iPhone,
+iPad, and Apple TV hardware, provider-imported multi-version media, and
+expiry-driven actual-surface refresh remain unverified.
 
 ## Architectural decision records
 
