@@ -12,6 +12,7 @@ internal sealed record PlaybackOpenRequest(
     string OperationId,
     string PlanId,
     int? AudioTrackIndex,
+    bool SubtitleDisabled,
     int? SubtitleTrackIndex);
 
 internal sealed class PlaybackSessionState
@@ -109,12 +110,6 @@ internal sealed class PlaybackSessionStore
       {
         throw new PlaybackRequestException(StatusCodes.Status409Conflict);
       }
-      var selectedAudioTrackIndex = request.AudioTrackIndex ?? plan.DefaultAudioTrackIndex;
-      if (selectedAudioTrackIndex != plan.DefaultAudioTrackIndex
-          || request.SubtitleTrackIndex is not null)
-      {
-        throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
-      }
 
       var created = await create(plan).ConfigureAwait(false);
       if (!_sessionsByPlanNonce.TryAdd(plan.Nonce, created))
@@ -187,11 +182,10 @@ internal sealed class PlaybackSessionStore
   {
     var selectedAudioTrackIndex =
         request.AudioTrackIndex ?? replay.Output.SelectedAudioTrackIndex;
-    var selectedSubtitleTrackIndex =
-        request.SubtitleTrackIndex ?? replay.Output.SelectedSubtitleTrackIndex;
     if (!string.Equals(replay.OpenRequest.PlanId, request.PlanId, StringComparison.Ordinal)
         || selectedAudioTrackIndex != replay.Output.SelectedAudioTrackIndex
-        || selectedSubtitleTrackIndex != replay.Output.SelectedSubtitleTrackIndex)
+        || replay.OpenRequest.SubtitleDisabled != request.SubtitleDisabled
+        || replay.OpenRequest.SubtitleTrackIndex != request.SubtitleTrackIndex)
     {
       throw new PlaybackRequestException(StatusCodes.Status409Conflict);
     }

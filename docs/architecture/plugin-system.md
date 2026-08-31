@@ -182,24 +182,29 @@ and exposes one bounded private JSON/HTTP protocol authenticated by the
 configured Jellyfin API key. The provider plugin alone translates that
 Jellyfin-specific protocol into `nama.plugin.v1`.
 
-Successful configured connections advertise the implemented direct-progressive
+Successful configured connections advertise the complete implemented playback
 plan, open, report, and provider-user-state telemetry capabilities only after a
-compatible handshake. The provider plugin keeps the private protocol bounded,
-rejects malformed or overlong leases, retains response loss as ambiguity, and
-never exposes a private response body. The extension dispatches an opaque
-progressive resource through Jellyfin under one scoped header; provider-plugin
-replacement preserves the opaque context, while a Jellyfin restart preserves
-lease verification but safely loses in-memory session resources.
+compatible handshake. The provider plugin translates every private
+capability/preference field and validates strategy, protocol, expected output,
+audio/subtitle Track evidence, actions, external locators, lease expiry, and
+bounded opaque identifiers before returning `nama.plugin.v1`. It retains lost
+telemetry responses as ambiguity and never exposes a private response body.
 
-Issue #233 still owns opaque HLS, bounded control-document rewriting, fallback,
-and Track delivery. Issue #234 still owns coherent progress that saves watched
-state and position together, validates duration against item runtime, and
-returns readback without claiming provider-native idempotency. The extension
-owns neither a media database nor durable user state.
+The extension uses Jellyfin's exact-tag negotiation classes rather than
+inferring compatibility from a stock URL. Progressive and HLS resources carry
+one exact session lease plus a separately protected opaque resource. Bounded
+playlist rewriting recursively replaces stock variants, media playlists,
+segments, keys, and subtitle children while stripping generated credential
+queries. Provider-plugin replacement preserves the self-contained resource and
+opaque context. A Jellyfin restart preserves key-ring verification; lost
+provider resources fail safely. Issue #234 still owns coherent progress that
+saves watched state and position together, validates duration against item
+runtime, and returns readback without claiming provider-native idempotency. The
+extension owns neither a media database nor durable user state.
 
 Windows transport and persistent or background native-media provider plugins
 remain deferred until a real plugin requires them. Core-owned synchronization
 execution remains in issue #45. The server-extension umbrella is issue #231:
-issue #232 owns the runtime and direct-progressive tracer, issue #233 owns
-complete HLS, negotiation, and Track delivery, and issue #234 owns coherent
-progress. Container packaging remains in issue #32.
+issue #232 delivered the runtime and direct-progressive tracer, issue #233
+delivered complete HLS, negotiation, and Track delivery, and issue #234 owns
+coherent progress. Container packaging remains in issue #32.

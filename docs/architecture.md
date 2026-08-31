@@ -52,15 +52,19 @@ instance launches. Successful configured stock connections advertise `LIBRARY_RE
 
 The manually installed first-party Jellyfin server extension accepted by
 [ADR-0036](adr/0036-first-party-jellyfin-server-extension.md) now implements
-issue #232's direct-progressive slice. It validates the exact Jellyfin host,
-owns purpose-separated persisted lease protection, and exposes one bounded
-private JSON/HTTP protocol to the existing provider plugin. A compatible
-handshake adds `PLAYBACK_PLAN`, `PLAYBACK_OPEN`, `PLAYBACK_REPORT`, and
-`PLAYBACK_REPORTS_USER_STATE`; media stays in Jellyfin's delivery path behind
-an opaque expiring resource and scoped header. Missing, unhealthy, or
-incompatible extensions add none of those capabilities, so the stock profile
-above remains available. Issue #233 still owns HLS, fallback, and Track
-delivery; issue #234 owns coherent progress.
+issues #232 and #233's complete provider playback profile. It validates the
+exact Jellyfin host, owns purpose-separated persisted lease protection, and
+exposes one bounded private JSON/HTTP protocol to the existing provider plugin.
+A compatible handshake adds `PLAYBACK_PLAN`, `PLAYBACK_OPEN`,
+`PLAYBACK_REPORT`, and `PLAYBACK_REPORTS_USER_STATE`; exact-tag Jellyfin
+negotiation translates every submitted capability and preference into truthful
+direct, remux, audio-transcode, or video-transcode evidence and selected Track
+actions. Progressive media and rewritten HLS playlists, variants, segments,
+keys, and subtitle children stay behind self-contained opaque extension
+resources plus one exact session lease while media bytes remain in Jellyfin's
+delivery path. Missing, unhealthy, or incompatible extensions add none of
+those capabilities, so the stock profile above remains available. Issue #234
+still owns coherent progress.
 
 The provider-management verification gate drives a compiled `nama` binary
 through the production listener, migrations, PostgreSQL boundary, supervisor,
