@@ -40,6 +40,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Do not use TypeScript parameter properties in Node 24 strip-only executable paths.
 - Keep the committed Drizzle compatibility patch declaration-only; never change its runtime JavaScript or weaken strict TypeScript, including through `skipLibCheck`.
 - In Drizzle raw catalog subqueries, interpolate physical tables in `from` clauses and qualify correlated outer columns explicitly; interpolating `alias(...)` there emits the alias as a nonexistent relation.
+- In Drizzle nested selections over left-joined catalog artwork, select `canonicalArtwork.id` before nullable artwork columns; otherwise a portrait without dimensions is mapped as a null joined object.
 - When a generated Drizzle migration adds required columns to populated tables or rebuilds referenced uniqueness, drop dependent foreign keys first, add nullable columns, backfill, enforce `NOT NULL`, create referenced uniqueness, and only then restore foreign keys.
 - When moving a Drizzle check constraint between modules, preserve its exact SQL template whitespace or regenerate the owning unreleased migration; rendered whitespace is snapshot-significant and otherwise creates a spurious drop-and-recreate migration.
 - Do not claim a server, plugin runtime, authentication, or Jellyfin integration exists because generated clients and contract tests compile. Verify an executable entrypoint, handlers, persistence, and startup behavior.
@@ -153,6 +154,11 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Convert every extension post-save progress readback failure to a retryable
   response so the plugin performs one ordinary readback; never emit a
   definitive 4xx result after a possible commit.
+- Treat Go build-info versions ending in `+dirty` as development versions; otherwise uncommitted Nama source builds can advertise a pseudo-release and fail the CLI process contract.
+- Exclude plugin-local test directories in the owning `.npmignore`; `pnpm deploy` otherwise copies `src/tests` into the production image and violates the Docker packaging boundary.
+- Bound database-owned timestamps with before/after reads from the same PostgreSQL clock; comparing `transaction_timestamp()` with a Node process wall clock flakes under parallel load.
+- Skip Linux `/proc` resource-measurement tests on non-Linux hosts; the measurement wrapper intentionally rejects platforms without that process-accounting boundary.
+- Keep strict-mode Bash argument arrays non-empty before expanding them; Darwin's Bash 3.2 treats `"${empty_array[@]}"` as unbound under `set -u`.
 
 ## The loop
 

@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check:test": "vitest run",
     "check:type": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -11,6 +12,7 @@
     "@nama/api": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "24.13.3"
+    "@types/node": "24.13.3",
+    "vitest": "4.1.10"
   }
 }

@@ -22,6 +22,7 @@ const artworkSelection = sql<readonly StoredArtworkJson[]>`
     )
     from ${canonicalArtwork} as stored_artwork
     where stored_artwork.canonical_item_id = ${canonicalItem.id}
+      and stored_artwork.target_item_reference = stored_artwork.item_reference
   ), '[]'::jsonb)
 `.as("artwork");
 

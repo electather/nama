@@ -223,6 +223,9 @@ nonisolated struct MediaSummary: Equatable, Identifiable, Sendable {
     artwork.first { reference in
       reference.role == .poster && reference.textPresence == .textless
     }
+      ?? artwork.first { reference in
+        reference.role == .poster && reference.textPresence == .unknown
+      }
   }
 
   var id: MediaIdentity {

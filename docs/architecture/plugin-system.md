@@ -62,10 +62,10 @@ the non-recoverable binding digest required by
 [ADR-0021](../adr/0021-immutable-provider-principal-binding.md) and
 [ADR-0028](../adr/0028-domain-separated-provider-protection.md).
 
-Jellyfin base URLs accept HTTP or HTTPS private, link-local, loopback, local,
-or single-label destinations with at most one path prefix. They reject
-credentials, query strings, fragments, public destinations, and additional
-path segments.
+Jellyfin base URLs accept public and private hostnames or address literals over
+HTTPS. HTTP remains limited to private, link-local, loopback, local, or
+single-label destinations. Both schemes admit at most one path prefix and
+reject credentials, query strings, fragments, and additional path segments.
 
 One concrete Jellyfin request module builds endpoints from encoded path
 segments and code-owned query names, confines them to the configured origin
@@ -92,7 +92,11 @@ normalize every media source through the same source, part, and track rules as
 movies. When Jellyfin omits runtime on one media source, the adapter inherits
 the playable item's runtime for that source and its single normalized part; an
 absent playable-item runtime remains invalid rather than becoming a guessed
-duration. Season-zero specials are deliberately unsupported. Filesystem paths,
+duration. Each source retains the first 100 supported video, audio, or subtitle
+streams in provider order after discarding unsupported stream families;
+additional supported streams are truncated to the private wire bound rather
+than rejecting the entire canonical item. Season-zero specials are deliberately
+unsupported. Filesystem paths,
 provider objects, authorized URLs, and arbitrary identifier namespaces are
 discarded. Missing, forbidden, unavailable, oversized, malformed, and
 cancelled reads return only sanitized Connect outcomes.

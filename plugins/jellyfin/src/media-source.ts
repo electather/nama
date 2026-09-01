@@ -176,17 +176,32 @@ const normalizedTrack = (value: Readonly<Record<string, unknown>>, context: Trac
   };
 };
 
+const normalizedUniqueTrack = (
+  stream: Readonly<Record<string, unknown>>,
+  context: TrackContext,
+  trackIds: Set<string>,
+) => {
+  const track = normalizedTrack(stream, context);
+  const { trackId } = track.trackReference;
+  if (trackIds.has(trackId)) {
+    invalidMedia();
+  }
+  trackIds.add(trackId);
+  return track;
+};
+
 const normalizedTracks = (value: unknown, itemId: string, sourceId: string) => {
-  if (!Array.isArray(value) || value.length > MAXIMUM_TRACKS) {
+  if (!Array.isArray(value)) {
     return invalidMedia();
   }
-  const streams = value.filter((stream) => isSupportedStream(stream));
-  const tracks = streams.map((stream, order) =>
-    normalizedTrack(stream, { itemId, order, sourceId }),
-  );
-  const trackIds = tracks.map((track) => track.trackReference.trackId);
-  if (new Set(trackIds).size !== trackIds.length) {
-    return invalidMedia();
+  const tracks = [];
+  const trackIds = new Set<string>();
+  for (const stream of value) {
+    if (isSupportedStream(stream) && tracks.length < MAXIMUM_TRACKS) {
+      tracks.push(
+        normalizedUniqueTrack(stream, { itemId, order: tracks.length, sourceId }, trackIds),
+      );
+    }
   }
   return tracks;
 };
