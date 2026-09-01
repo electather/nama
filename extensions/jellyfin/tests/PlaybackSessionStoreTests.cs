@@ -97,6 +97,191 @@ public sealed class PlaybackSessionStoreTests
   }
 
   [TestMethod]
+  public async Task OpenProviderFailureRetainsAmbiguityIdentity()
+  {
+    var store = new PlaybackSessionStore();
+    var plan = CreatePlan("ambiguous-open");
+    var request = CreateOpenRequest("ambiguous-open");
+    var providerInvocations = 0;
+    Task<PlaybackSessionState> CommitThenThrow(PlaybackPlan _)
+    {
+      providerInvocations++;
+      return Task.FromException<PlaybackSessionState>(
+          new InvalidOperationException("provider committed before response failure"));
+    }
+
+    var first = await Assert.ThrowsExactlyAsync<PlaybackRequestException>(
+        async () => await store.OpenAsync(request, () => plan, CommitThenThrow));
+    var replay = await Assert.ThrowsExactlyAsync<PlaybackRequestException>(
+        async () => await store.OpenAsync(request, () => plan, CommitThenThrow));
+
+    Assert.AreEqual(StatusCodes.Status503ServiceUnavailable, first.StatusCode);
+    Assert.AreEqual("PLAYBACK_MUTATION_AMBIGUOUS", first.Reason);
+    Assert.AreEqual(StatusCodes.Status503ServiceUnavailable, replay.StatusCode);
+    Assert.AreEqual("PLAYBACK_MUTATION_AMBIGUOUS", replay.Reason);
+    Assert.AreEqual(1, providerInvocations);
+  }
+
+  [TestMethod]
+  public async Task OpenProviderFailureReplaysEquivalentDefaultSelection()
+  {
+    var store = new PlaybackSessionStore();
+    var plan = CreatePlan("ambiguous-default-open") with
+    {
+      Tracks =
+      [
+        new PlaybackTrackModel(0, "audio", "aac", 2, true, false, null, null, null)
+      ]
+    };
+    var request = new PlaybackOpenRequest(
+        "ambiguous-default-open",
+        "ambiguous-default-plan",
+        0,
+        true,
+        null);
+    var providerInvocations = 0;
+    Task<PlaybackSessionState> CommitThenThrow(PlaybackPlan _)
+    {
+      providerInvocations++;
+      return Task.FromException<PlaybackSessionState>(
+          new InvalidOperationException("provider committed before response failure"));
+    }
+    var first = await Assert.ThrowsExactlyAsync<PlaybackRequestException>(
+        async () => await store.OpenAsync(request, () => plan, CommitThenThrow));
+
+    var replay = await Assert.ThrowsExactlyAsync<PlaybackRequestException>(
+        async () => await store.OpenAsync(
+            request with { AudioTrackIndex = null },
+            () => throw new AssertFailedException("ambiguous Open replay resolved its plan"),
+            _ => throw new AssertFailedException("ambiguous Open replay re-entered the provider")));
+
+    Assert.AreEqual(StatusCodes.Status503ServiceUnavailable, first.StatusCode);
+    Assert.AreEqual(StatusCodes.Status503ServiceUnavailable, replay.StatusCode);
+    Assert.AreEqual(1, providerInvocations);
+  }
+
+  [TestMethod]
+  public async Task ReportProviderFailureRetainsAmbiguityIdentity()
+  {
+    var store = new PlaybackSessionStore();
+    var session = await OpenSessionAsync(store, 0, DateTimeOffset.UtcNow.AddHours(1));
+    var providerInvocations = 0;
+    Task CommitThenThrow(PlaybackSessionState _)
+    {
+      providerInvocations++;
+      return Task.FromException(
+          new InvalidOperationException("provider committed before response failure"));
+    }
+
+    var first = await Assert.ThrowsExactlyAsync<PlaybackRequestException>(
+        async () => await store.ReportAsync(
+            session.Output.SessionId,
+            "ambiguous-report",
+            "ambiguous-report-signature",
+            1,
+            CommitThenThrow,
+            CancellationToken.None));
+    var replay = await Assert.ThrowsExactlyAsync<PlaybackRequestException>(
+        async () => await store.ReportAsync(
+            session.Output.SessionId,
+            "ambiguous-report",
+            "ambiguous-report-signature",
+            1,
+            CommitThenThrow,
+            CancellationToken.None));
+
+    Assert.AreEqual(StatusCodes.Status503ServiceUnavailable, first.StatusCode);
+    Assert.AreEqual("PLAYBACK_MUTATION_AMBIGUOUS", first.Reason);
+    Assert.AreEqual(StatusCodes.Status503ServiceUnavailable, replay.StatusCode);
+    Assert.AreEqual("PLAYBACK_MUTATION_AMBIGUOUS", replay.Reason);
+    Assert.AreEqual(1, providerInvocations);
+  }
+
+  [TestMethod]
+  public async Task ReportProviderFailureRetainsAdmittedState()
+  {
+    var store = new PlaybackSessionStore();
+    var session = await OpenSessionAsync(store, 0, DateTimeOffset.UtcNow.AddHours(1));
+    var providerInvocations = 0;
+    var first = await Assert.ThrowsExactlyAsync<PlaybackRequestException>(
+        async () => await store.ReportAsync(
+            session.Output.SessionId,
+            "ambiguous-state-report",
+            "ambiguous-state-signature",
+            1,
+            _ =>
+            {
+              providerInvocations++;
+              return Task.FromException(
+                  new InvalidOperationException("provider committed before response failure"));
+            },
+            CancellationToken.None));
+    Assert.AreEqual(StatusCodes.Status503ServiceUnavailable, first.StatusCode);
+
+    await store.ReportAsync(
+        session.Output.SessionId,
+        "same-sequence-after-ambiguity",
+        "same-sequence-after-ambiguity-signature",
+        1,
+        _ =>
+        {
+          providerInvocations++;
+          return Task.CompletedTask;
+        },
+        CancellationToken.None);
+    var playbackWasStarted = false;
+    await store.ReportAsync(
+        session.Output.SessionId,
+        "later-sequence-after-ambiguity",
+        "later-sequence-after-ambiguity-signature",
+        2,
+        state =>
+        {
+          playbackWasStarted = state.PlaybackStarted;
+          return Task.CompletedTask;
+        },
+        CancellationToken.None);
+
+    Assert.AreEqual(1, providerInvocations);
+    Assert.IsTrue(playbackWasStarted);
+  }
+
+  [TestMethod]
+  public async Task CloseProviderFailureRetainsAmbiguityIdentity()
+  {
+    var store = new PlaybackSessionStore();
+    var session = await OpenSessionAsync(store, 0, DateTimeOffset.UtcNow.AddHours(1));
+    var providerInvocations = 0;
+    Task CommitThenThrow(PlaybackSessionState _)
+    {
+      providerInvocations++;
+      return Task.FromException(
+          new InvalidOperationException("provider committed before response failure"));
+    }
+
+    var first = await Assert.ThrowsExactlyAsync<PlaybackRequestException>(
+        async () => await store.CloseAsync(
+            session.Output.SessionId,
+            "ambiguous-close",
+            "ambiguous-close-signature",
+            CommitThenThrow,
+            CancellationToken.None));
+    var replay = await Assert.ThrowsExactlyAsync<PlaybackRequestException>(
+        async () => await store.CloseAsync(
+            session.Output.SessionId,
+            "ambiguous-close",
+            "ambiguous-close-signature",
+            CommitThenThrow,
+            CancellationToken.None));
+
+    Assert.AreEqual(StatusCodes.Status503ServiceUnavailable, first.StatusCode);
+    Assert.AreEqual("PLAYBACK_MUTATION_AMBIGUOUS", first.Reason);
+    Assert.AreEqual(StatusCodes.Status503ServiceUnavailable, replay.StatusCode);
+    Assert.AreEqual("PLAYBACK_MUTATION_AMBIGUOUS", replay.Reason);
+    Assert.AreEqual(1, providerInvocations);
+  }
+
+  [TestMethod]
   public async Task ReportRejectsFirstNewEventBeyondDurationDerivedLimitBeforeMutation()
   {
     var store = new PlaybackSessionStore();

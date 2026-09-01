@@ -14,11 +14,18 @@ compose=(docker compose --project-name "${project}" --file "${compose_file}")
 export NAMA_TEST_JELLYFIN_COMPOSE_FILE="${compose_file}"
 export NAMA_TEST_JELLYFIN_COMPOSE_PROJECT="${project}"
 export NAMA_TEST_RUN_ID="${NAMA_TEST_RUN_ID:-${project}}"
+needs_release_jellyfin=0
+needs_standard_jellyfin=0
 selected_tests=()
 for test_path in "$@"; do
   case "${test_path}" in
     integration/tests/*.test.ts)
       selected_tests+=("${test_path}")
+      if test "${test_path}" = "integration/tests/jellyfin-extension-release.process.integration.test.ts"; then
+        needs_release_jellyfin=1
+      else
+        needs_standard_jellyfin=1
+      fi
       ;;
     *)
       printf '%s\n' "server test filters must be exact integration test paths" >&2
@@ -26,7 +33,10 @@ for test_path in "$@"; do
       ;;
   esac
 done
-
+if test "${#selected_tests[@]}" -eq 0; then
+  needs_release_jellyfin=1
+  needs_standard_jellyfin=1
+fi
 
 cleanup() {
   "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
@@ -45,12 +55,21 @@ published_address="$("${compose[@]}" port postgres 5432)"
 published_port="${published_address##*:}"
 export NAMA_TEST_DATABASE_URL="postgres://nama:nama@127.0.0.1:${published_port}/nama"
 unset NAMA_TEST_JELLYFIN_URL
-if "${compose[@]}" up --detach --wait jellyfin; then
-  jellyfin_published_address="$("${compose[@]}" port jellyfin 8096)"
-  jellyfin_published_port="${jellyfin_published_address##*:}"
-  export NAMA_TEST_JELLYFIN_URL="http://127.0.0.1:${jellyfin_published_port}/"
-else
-  printf '%s\n' "Jellyfin unavailable; real-provider proof will be reported as skipped" >&2
+if test "${needs_standard_jellyfin}" = "1"; then
+  if "${compose[@]}" up --detach --wait jellyfin; then
+    jellyfin_published_address="$("${compose[@]}" port jellyfin 8096)"
+    jellyfin_published_port="${jellyfin_published_address##*:}"
+    export NAMA_TEST_JELLYFIN_URL="http://127.0.0.1:${jellyfin_published_port}/"
+  else
+    printf '%s\n' "Jellyfin unavailable; real-provider proof will be reported as skipped" >&2
+  fi
+fi
+unset NAMA_TEST_JELLYFIN_RELEASE_URL
+if test "${needs_release_jellyfin}" = "1"; then
+  "${compose[@]}" up --detach --wait jellyfin-release
+  jellyfin_release_address="$("${compose[@]}" port jellyfin-release 8096)"
+  jellyfin_release_port="${jellyfin_release_address##*:}"
+  export NAMA_TEST_JELLYFIN_RELEASE_URL="http://127.0.0.1:${jellyfin_release_port}/"
 fi
 
 vitest=(

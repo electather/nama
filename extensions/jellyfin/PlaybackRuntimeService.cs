@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
+using Jellyfin.Data;
 using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
@@ -59,6 +61,10 @@ internal sealed class PlaybackRuntimeService
     var sourceId = RequiredText(input.SourceId, MaximumIdentifierLength);
     var user = _userManager.GetUserById(userId)
         ?? throw new PlaybackRequestException(StatusCodes.Status404NotFound);
+    if (user.HasPermission(PermissionKind.IsDisabled))
+    {
+      throw new PlaybackRequestException(StatusCodes.Status403Forbidden);
+    }
     var item = _libraryManager.GetItemById<BaseItem>(itemId, user);
     if (item is not Movie && item is not Episode)
     {
@@ -81,7 +87,8 @@ internal sealed class PlaybackRuntimeService
   public async Task<OpenPlaybackOutput> OpenAsync(
       JsonElement body,
       StringValues authorizationHeaders,
-      CancellationToken cancellationToken)
+      CancellationToken cancellationToken,
+      string? testSourceChange = null)
   {
     RequireCompatibleHost();
     var input = Deserialize<OpenPlaybackInput>(body);
@@ -105,7 +112,11 @@ internal sealed class PlaybackRuntimeService
           var planNonce = _tokens.UnprotectPlan(openRequest.PlanId, out _);
           return _sessions.GetPlan(planNonce);
         },
-        async plan => await CreateSessionAsync(plan, openRequest, apiKey).ConfigureAwait(false),
+        async plan => await CreateSessionAsync(
+            plan,
+            openRequest,
+            apiKey,
+            testSourceChange).ConfigureAwait(false),
         cancellationToken).ConfigureAwait(false);
     return state.Output;
   }
@@ -197,34 +208,10 @@ internal sealed class PlaybackRuntimeService
       Guid userId,
       MediaSourceInfo source)
   {
-    if (source.RequiresOpening || source.RequiresClosing)
-    {
-      throw new PlaybackRequestException(
-          StatusCodes.Status412PreconditionFailed,
-          "SOURCE_REQUIRES_OPEN_OR_CLOSE");
-    }
-    if (source.Protocol != MediaProtocol.File)
-    {
-      throw new PlaybackRequestException(
-          StatusCodes.Status412PreconditionFailed,
-          "SOURCE_PROTOCOL_UNSUPPORTED");
-    }
-    if (source.RunTimeTicks is not > 0)
-    {
-      throw new PlaybackRequestException(
-          StatusCodes.Status412PreconditionFailed,
-          "SOURCE_RUNTIME_MISSING");
-    }
-    var runtime = TimeSpan.FromTicks(source.RunTimeTicks.Value);
-    if (runtime + PlaybackConstants.SessionGrace > PlaybackConstants.MaximumSessionLifetime)
-    {
-      throw new PlaybackRequestException(
-          StatusCodes.Status412PreconditionFailed,
-          "RUNTIME_UNSUPPORTED");
-    }
+    var runtimeTicks = RequireSupportedSource(source);
     var startPosition = input.StartPosition is null
         ? 0
-        : DurationTicks(input.StartPosition, source.RunTimeTicks.Value);
+        : DurationTicks(input.StartPosition, runtimeTicks);
     var initialNegotiation = _negotiation.Negotiate(input, itemId, source);
     var tracks = MaterializableTracks(
         input,
@@ -247,7 +234,7 @@ internal sealed class PlaybackRuntimeService
         itemId,
         sourceId,
         userId,
-        source.RunTimeTicks.Value,
+        runtimeTicks,
         startPosition,
         input,
         negotiation,
@@ -269,13 +256,80 @@ internal sealed class PlaybackRuntimeService
         negotiation.Actions);
   }
 
+#if NAMA_TEST_FAULTS
+  private static MediaSourceInfo ApplyOpenSourceChangeForTest(
+      MediaSourceInfo source,
+      string? sourceChange)
+  {
+    if (string.IsNullOrEmpty(sourceChange))
+    {
+      return source;
+    }
+    var changed = PlaybackNegotiationService.CloneMediaSource(source);
+    switch (sourceChange)
+    {
+      case "runtime":
+        changed.RunTimeTicks = checked((changed.RunTimeTicks ?? 0) + 1);
+        break;
+      case "protocol":
+        changed.Protocol = MediaProtocol.Http;
+        break;
+      case "requires_opening":
+        changed.RequiresOpening = true;
+        break;
+      case "requires_closing":
+        changed.RequiresClosing = true;
+        break;
+      default:
+        throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
+    }
+    return changed;
+  }
+#endif
+
+  private static long RequireSupportedSource(MediaSourceInfo source)
+  {
+    if (source.RequiresOpening || source.RequiresClosing)
+    {
+      throw new PlaybackRequestException(
+          StatusCodes.Status412PreconditionFailed,
+          "SOURCE_REQUIRES_OPEN_OR_CLOSE");
+    }
+    if (source.Protocol != MediaProtocol.File)
+    {
+      throw new PlaybackRequestException(
+          StatusCodes.Status412PreconditionFailed,
+          "SOURCE_PROTOCOL_UNSUPPORTED");
+    }
+    if (source.RunTimeTicks is not > 0)
+    {
+      throw new PlaybackRequestException(
+          StatusCodes.Status412PreconditionFailed,
+          "SOURCE_RUNTIME_MISSING");
+    }
+    var runtimeTicks = source.RunTimeTicks.Value;
+    if (TimeSpan.FromTicks(runtimeTicks) + PlaybackConstants.SessionGrace
+        > PlaybackConstants.MaximumSessionLifetime)
+    {
+      throw new PlaybackRequestException(
+          StatusCodes.Status412PreconditionFailed,
+          "RUNTIME_UNSUPPORTED");
+    }
+    return runtimeTicks;
+  }
+
   private async Task<PlaybackSessionState> CreateSessionAsync(
       PlaybackPlan plan,
       PlaybackOpenRequest openRequest,
-      string apiKey)
+      string apiKey,
+      string? testSourceChange)
   {
     var user = _userManager.GetUserById(plan.UserId)
         ?? throw new PlaybackRequestException(StatusCodes.Status404NotFound);
+    if (user.HasPermission(PermissionKind.IsDisabled))
+    {
+      throw new PlaybackRequestException(StatusCodes.Status403Forbidden);
+    }
     var item = _libraryManager.GetItemById<BaseItem>(plan.ItemId, user);
     if (item is not Movie && item is not Episode)
     {
@@ -288,6 +342,16 @@ internal sealed class PlaybackRuntimeService
             plan.SourceId,
             StringComparison.Ordinal))
         ?? throw new PlaybackRequestException(StatusCodes.Status404NotFound);
+#if NAMA_TEST_FAULTS
+    source = ApplyOpenSourceChangeForTest(source, testSourceChange);
+#endif
+    var runtimeTicks = RequireSupportedSource(source);
+    if (runtimeTicks != plan.RuntimeTicks)
+    {
+      throw new PlaybackRequestException(
+          StatusCodes.Status412PreconditionFailed,
+          "SOURCE_REQUIRES_REPLAN");
+    }
     var selectedAudioTrackIndex =
         openRequest.AudioTrackIndex ?? plan.Negotiation.AudioTrackIndex;
     var negotiation = _negotiation.Negotiate(
@@ -309,7 +373,7 @@ internal sealed class PlaybackRuntimeService
     negotiation.Stream.StartPositionTicks = plan.StartPositionTicks;
     var stockTarget = RequiredStockTarget(negotiation.Stream.ToUrl(null, null, null));
     var expiresAt = DateTimeOffset.UtcNow
-        + TimeSpan.FromTicks(plan.RuntimeTicks)
+        + TimeSpan.FromTicks(runtimeTicks)
         + PlaybackConstants.SessionGrace;
     var jellyfinSession = await _sessionManager.LogSessionActivity(
         "Nama",

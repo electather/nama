@@ -1,25 +1,23 @@
 # Jellyfin playback server extension feasibility (Jellyfin 10.11.11)
 
 Status: accepted under
-[ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md). Issues #232
-and #233 implement and verify the exact-host runtime, complete playback
-lifecycle, opaque HLS graph, fallback negotiation, and Track delivery. Coherent
-progress remains with issue #234.
+[ADR-0036](../adr/0036-first-party-jellyfin-server-extension.md). The exact-host
+extension runtime implements and verifies the complete playback lifecycle,
+opaque HLS graph, fallback negotiation, Track delivery, and coherent progress.
 
 ## Verdict
 
-**The complete playback profile is proved; coherent progress remains
-incomplete.**
+**The complete playback and coherent-progress profile is proved.**
 
-The production extension builds as an exact-versioned artifact, survives manual
-fixture installation and restart, validates the exact Jellyfin host, persists a
-purpose-separated ASP.NET Data Protection key ring, and completes an
-authenticated compatible handshake. Progressive and HLS delivery, exact-tag
+The packaged Release extension loads into the pinned Jellyfin fixture, survives
+restart, validates the exact Jellyfin host, persists a purpose-separated ASP.NET
+Data Protection key ring, and completes an authenticated compatible handshake.
+Progressive and HLS delivery, exact-tag
 direct/remux/audio-transcode/video-transcode negotiation, selected audio,
 embedded/external/burned subtitles, idempotent open/close, ordered report,
 provider-plugin replacement, wrong-resource and tampered-lease rejection,
-response-loss ambiguity, cancellation, malformed output, and redaction paths
-run against pinned or controlled fixtures.
+response-loss ambiguity, cancellation, malformed output, redaction, and
+coherent-progress paths run against pinned or controlled fixtures.
 
 The earlier spike remains evidence for the exact startup hook and the original
 blocking HLS-subtitle failure: stock output placed the configured broad
@@ -400,20 +398,21 @@ unsupported output, and non-switchable Tracks. The conservative
 `switchable_without_reopen=false` result remains truthful until a future
 provider observation proves a narrower live-switch case.
 
-The implemented extension serializes ordered telemetry and retains accepted
-event IDs for idempotent replay within one Jellyfin process. A focused provider
-adapter test withholds the response and proves one outbound attempt plus a
-redacted ambiguous result. The exact pinned fixture has not withheld a response
-after a confirmed Jellyfin commit, so that outcome remains unresolved rather
-than recorded as remote success or replayed. The restart proof likewise retains
-lease verification but treats lost in-memory session resources as safe failure.
+The implemented extension serializes ordered telemetry and retains exact
+success-or-ambiguity outcomes for admitted Open, Report, and Close mutations.
+Deterministic commit-then-throw seams prove that an identical retry returns the
+retained ambiguity without re-entering Jellyfin; conflicting identities remain
+conflicts. The pinned process proof separately withholds a committed outer
+response and observes one outbound attempt plus a redacted ambiguous result.
+The restart proof retains lease verification while lost in-memory session
+resources remain safe failures.
 
-**Revised verdict: complete playback implemented; coherent progress
-incomplete.** The exact-version extension loads, validates its host, owns stable
+**Revised verdict: complete playback and coherent progress implemented.** The
+exact-version packaged Release extension loads, validates its host, owns stable
 purpose-separated lease protection, enforces opaque progressive and HLS
 resources before stock authentication, rewrites every bounded control child,
-and returns provider-evidenced fallback and Track decisions. Issue #234's
-coherent-progress capability remains separately release-blocking.
+returns provider-evidenced fallback and Track decisions, and applies coherent
+progress through the exact configured principal and item.
 
 ## Decisive option matrix
 
@@ -421,11 +420,11 @@ coherent-progress capability remains separately release-blocking.
 | --- | --- | --- | --- |
 | Stock Jellyfin locator/token | **Infeasible.** | The core can still refuse playback capability. | Stock tokens have no item/route/expiry scope and generated playback/subtitle URLs put `ApiKey` in the client-visible query. |
 | Additive controller only | **Infeasible.** | None of the missing lease invariants become true. | A controller cannot interpose on a selected stock stream/segment action; redirects retain the stock credential problem. |
-| Middleware/auth-integrated Jellyfin server extension | **Accepted; complete playback implemented.** | Progressive and HLS media retain direct provider delivery, in-process authorization, bounded leases, recursive opaque control documents, exact-tag fallback/Track evidence, restart verification, and narrow capability advertisement. | Coherent progress remains with issue #234. |
+| Middleware/auth-integrated Jellyfin server extension | **Accepted; complete playback and coherent progress implemented.** | Progressive and HLS media retain direct provider delivery, in-process authorization, bounded leases, recursive opaque control documents, exact-tag fallback/Track evidence, restart verification, coherent progress, and narrow capability advertisement. | Requires the exact compatible Jellyfin host and manually installed first-party extension. |
 | Provider-side byte gateway | **Infeasible.** | It could enforce a narrow authorization boundary. | It relays media through a gateway, violating the no-Nama-media-proxy/direct-delivery constraint. |
 | Jellyfin core/fork change | **Feasible in principle; not a plugin result.** | A native scoped media authorization model and explicit negotiation/telemetry contracts could preserve every listed invariant. | It requires a separately accepted server distribution, security, and compatibility decision. |
 
-## Resolved and remaining evidence matrix
+## Resolved evidence matrix
 
 | Area | Exact-10.11.11 proof | Result |
 | --- | --- | --- |
@@ -433,8 +432,8 @@ coherent-progress capability remains separately release-blocking.
 | Route guard and control documents | Exercise progressive `GET`/`HEAD`, HLS master/variant/media/segment and HLS subtitle children, plus controlled key and URI-attribute documents with missing, wrong-session, tampered, and expired authorization. | Every extension resource requires its exact session lease; every child is opaque; credentials, stock paths, item/source identifiers, and cross-origin children do not escape. |
 | Negotiation truth | Run direct, HLS remux, isolated audio conversion, video conversion, explicit cap, preferred audio, embedded/external/burned subtitles, unavailable Source, and unsupported output through exact-tag `StreamBuilder`. | Strategy, protocol, output, selected Track, and action evidence comes from Jellyfin; unsupported results fail and all live switches remain conservatively false. |
 | HLS statelessness and restart | Retain protected HLS/main/subtitle resources across provider-plugin replacement and the persisted key ring across Jellyfin restart. | Caller-process replacement does not affect resources; retained stock resources resume and lost resources fail safely without fabricated cleanup. |
-| Telemetry ambiguity and sole writer | Make Jellyfin commit start/progress/stop while withholding the response; verify later export behavior. | Issue #234 retains this remaining coherent-progress proof; existing playback telemetry still makes one attempt and retains ambiguity without replay. |
+| Telemetry ambiguity and sole writer | Exercise committed start/progress/stop and coherent-progress writes across response loss, commit-then-throw, retry, replacement, and restart boundaries. | Playback telemetry retains exact ambiguous identities without provider re-entry; coherent progress performs one atomic write plus bounded readback and one ordinary adapter readback only when the extension result is ambiguous. |
 
-The implemented playback rows pass before the provider plugin advertises the
-extension-backed capabilities. The remaining telemetry row gates issue #234;
-the resulting operating and upgrade constraints remain part of acceptance.
+Every row passes before the provider plugin advertises its corresponding
+extension-backed capability. The resulting operating and upgrade constraints
+remain part of acceptance.

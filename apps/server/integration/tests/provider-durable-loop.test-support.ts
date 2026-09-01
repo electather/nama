@@ -234,6 +234,28 @@ const configuredJellyfinFixture = async (baseUrl: string): Promise<JellyfinFixtu
     replacementApiKey,
   };
 };
+const setJellyfinUserDisabled = (fixture: JellyfinFixture, userId: string, disabled: boolean) =>
+  Effect.tryPromise({
+    catch: (error) => error,
+    try: async (): Promise<void> => {
+      const authorization = jellyfinAuthorization("nama-primary", fixture.administratorAccessToken);
+      const user = await jsonResponse(
+        await fetch(new URL(`Users/${userId}`, fixture.baseUrl), {
+          headers: { authorization },
+        }),
+        HTTP_OK,
+      );
+      const policy = requiredObject(user, "Policy", "the primary-user policy");
+      expectResponseStatus(
+        await jellyfinPost(fixture.baseUrl, {
+          authorization,
+          body: { ...policy, IsDisabled: disabled },
+          path: `Users/${userId}/Policy`,
+        }),
+        HTTP_NO_CONTENT,
+      );
+    },
+  });
 
 const revokeJellyfinCredential = (fixture: JellyfinFixture) =>
   Effect.tryPromise({
@@ -250,17 +272,27 @@ const revokeJellyfinCredential = (fixture: JellyfinFixture) =>
     },
   });
 
-const provisionJellyfin = Effect.tryPromise({
-  catch: (error) => error,
-  try: async (): Promise<JellyfinFixture> => {
-    const baseUrl = process.env["NAMA_TEST_JELLYFIN_URL"];
-    if (baseUrl === undefined) {
-      throw new Error("NAMA_TEST_JELLYFIN_URL is required");
-    }
-    await completeJellyfinStartup(baseUrl);
-    return configuredJellyfinFixture(baseUrl);
-  },
-});
+const provisionJellyfinFrom = (environmentVariable: string) =>
+  Effect.tryPromise({
+    catch: (error) => error,
+    try: async (): Promise<JellyfinFixture> => {
+      const baseUrl = process.env[environmentVariable];
+      if (baseUrl === undefined) {
+        throw new Error(`${environmentVariable} is required`);
+      }
+      await completeJellyfinStartup(baseUrl);
+      return configuredJellyfinFixture(baseUrl);
+    },
+  });
 
-export { provisionJellyfin, requiredString, revokeJellyfinCredential };
+const provisionJellyfin = provisionJellyfinFrom("NAMA_TEST_JELLYFIN_URL");
+const provisionReleaseJellyfin = provisionJellyfinFrom("NAMA_TEST_JELLYFIN_RELEASE_URL");
+
+export {
+  provisionJellyfin,
+  provisionReleaseJellyfin,
+  requiredString,
+  revokeJellyfinCredential,
+  setJellyfinUserDisabled,
+};
 export type { JellyfinFixture };

@@ -677,7 +677,7 @@ internal sealed class PlaybackNegotiationService
     return values.Select(RequiredToken).ToArray();
   }
 
-  private static MediaSourceInfo CloneMediaSource(MediaSourceInfo source)
+  internal static MediaSourceInfo CloneMediaSource(MediaSourceInfo source)
   {
     return JsonSerializer.Deserialize<MediaSourceInfo>(
         JsonSerializer.SerializeToUtf8Bytes(source))

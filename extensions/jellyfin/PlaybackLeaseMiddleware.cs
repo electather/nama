@@ -218,9 +218,21 @@ internal sealed class PlaybackLeaseMiddleware
 
   private static void RejectRedirect(HttpResponse response)
   {
-    response.Headers.Remove("Location");
+    response.Headers.Clear();
     response.ContentLength = 0;
     response.StatusCode = StatusCodes.Status502BadGateway;
+  }
+
+  private static Uri RequestOrigin(HttpRequest request)
+  {
+    if (!request.Host.HasValue
+        || request.Scheme is not ("http" or "https"))
+    {
+      throw new PlaybackRequestException(StatusCodes.Status502BadGateway);
+    }
+    return new Uri(
+        $"{request.Scheme}://{request.Host.ToUriComponent()}",
+        UriKind.Absolute);
   }
 
   internal static void RewriteRedirect(
@@ -230,8 +242,19 @@ internal sealed class PlaybackLeaseMiddleware
       DateTimeOffset expiration,
       string publicPrefix)
   {
-    if (response.StatusCode == StatusCodes.Status304NotModified
-        || response.StatusCode is < 300 or >= 400)
+    if (response.StatusCode == StatusCodes.Status304NotModified)
+    {
+      response.Headers.Clear();
+      response.ContentLength = 0;
+      return;
+    }
+    if (response.StatusCode < StatusCodes.Status200OK
+        || response.StatusCode >= StatusCodes.Status400BadRequest)
+    {
+      RejectRedirect(response);
+      return;
+    }
+    if (response.StatusCode < StatusCodes.Status300MultipleChoices)
     {
       return;
     }
@@ -247,13 +270,16 @@ internal sealed class PlaybackLeaseMiddleware
       {
         throw new PlaybackRequestException(StatusCodes.Status502BadGateway);
       }
-      response.Headers.Location = rewriter.RewriteLocation(
+      var rewrittenLocation = rewriter.RewriteLocation(
           locations[0] ?? string.Empty,
           resource.StockTarget,
+          RequestOrigin(response.HttpContext.Request),
           publicPrefix,
           resource.SessionId,
           expiration,
           resource.RewritePlaylist);
+      response.Headers.Clear();
+      response.Headers.Location = rewrittenLocation;
       response.ContentLength = 0;
     }
     catch (PlaybackRequestException)
@@ -451,5 +477,5 @@ internal sealed class RedirectSuppressingStream : Stream
         : _inner.WriteAsync(buffer, cancellationToken);
   }
 
-  private bool Suppress => _suppress || _response.StatusCode is >= 300 and < 400;
+  private bool Suppress => _suppress || _response.StatusCode is >= 300;
 }

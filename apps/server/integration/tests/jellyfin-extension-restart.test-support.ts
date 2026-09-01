@@ -21,20 +21,20 @@ const executeDocker = (arguments_: readonly string[], timeout: number): Promise<
   return promise;
 };
 
-const restartJellyfin = async (): Promise<string> => {
+const restartJellyfin = async (serviceName = "jellyfin"): Promise<string> => {
   const composeFile = process.env["NAMA_TEST_JELLYFIN_COMPOSE_FILE"];
   const project = process.env["NAMA_TEST_JELLYFIN_COMPOSE_PROJECT"];
   if (composeFile === undefined || project === undefined) {
     throw new Error("Jellyfin Compose restart context is unavailable");
   }
   const commonArguments = ["compose", "--project-name", project, "--file", composeFile];
-  await executeDocker([...commonArguments, "restart", "jellyfin"], COMPOSE_TIMEOUT_MILLISECONDS);
+  await executeDocker([...commonArguments, "restart", serviceName], COMPOSE_TIMEOUT_MILLISECONDS);
   await executeDocker(
-    [...commonArguments, "up", "--detach", "--wait", "jellyfin"],
+    [...commonArguments, "up", "--detach", "--wait", serviceName],
     COMPOSE_TIMEOUT_MILLISECONDS,
   );
   const publishedAddress = await executeDocker(
-    [...commonArguments, "port", "jellyfin", "8096"],
+    [...commonArguments, "port", serviceName, "8096"],
     PORT_TIMEOUT_MILLISECONDS,
   );
   return `http://${publishedAddress.trim()}/`;

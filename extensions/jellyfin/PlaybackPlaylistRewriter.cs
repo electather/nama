@@ -6,6 +6,7 @@ namespace Nama.Jellyfin.Extension;
 
 internal sealed class PlaybackPlaylistRewriter
 {
+  private static readonly Uri SyntheticOrigin = new("http://nama.invalid", UriKind.Absolute);
   private readonly PlaybackTokenService _tokens;
 
   public PlaybackPlaylistRewriter(PlaybackTokenService tokens)
@@ -38,6 +39,7 @@ internal sealed class PlaybackPlaylistRewriter
           ? RewriteUriAttributes(
               line,
               stockTarget,
+              SyntheticOrigin,
               publicPrefix,
               sessionId,
               expiration,
@@ -45,6 +47,7 @@ internal sealed class PlaybackPlaylistRewriter
           : RewriteUri(
               line,
               stockTarget,
+              SyntheticOrigin,
               publicPrefix,
               sessionId,
               expiration,
@@ -56,6 +59,7 @@ internal sealed class PlaybackPlaylistRewriter
   public string RewriteLocation(
       string location,
       string stockTarget,
+      Uri stockOrigin,
       string publicPrefix,
       string sessionId,
       DateTimeOffset expiration,
@@ -64,6 +68,7 @@ internal sealed class PlaybackPlaylistRewriter
     return RewriteUri(
         location,
         stockTarget,
+        stockOrigin,
         publicPrefix,
         sessionId,
         expiration,
@@ -73,6 +78,7 @@ internal sealed class PlaybackPlaylistRewriter
   private string RewriteUriAttributes(
       string line,
       string stockTarget,
+      Uri stockOrigin,
       string publicPrefix,
       string sessionId,
       DateTimeOffset expiration,
@@ -99,6 +105,7 @@ internal sealed class PlaybackPlaylistRewriter
       rewritten.Append(RewriteUri(
           line[valueStart..valueEnd],
           stockTarget,
+          stockOrigin,
           publicPrefix,
           sessionId,
           expiration,
@@ -110,6 +117,7 @@ internal sealed class PlaybackPlaylistRewriter
   private string RewriteUri(
       string value,
       string stockTarget,
+      Uri stockOrigin,
       string publicPrefix,
       string sessionId,
       DateTimeOffset expiration,
@@ -119,12 +127,11 @@ internal sealed class PlaybackPlaylistRewriter
     {
       throw new PlaybackRequestException(StatusCodes.Status502BadGateway);
     }
-    var syntheticOrigin = new Uri("http://nama.invalid", UriKind.Absolute);
-    var stockUri = new Uri(syntheticOrigin, stockTarget);
+    var stockUri = new Uri(stockOrigin, stockTarget);
     if (!Uri.TryCreate(stockUri, value, out var child)
-        || !string.Equals(child.Scheme, syntheticOrigin.Scheme, StringComparison.OrdinalIgnoreCase)
-        || !string.Equals(child.Host, syntheticOrigin.Host, StringComparison.OrdinalIgnoreCase)
-        || child.Port != syntheticOrigin.Port
+        || !string.Equals(child.Scheme, stockOrigin.Scheme, StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(child.Host, stockOrigin.Host, StringComparison.OrdinalIgnoreCase)
+        || child.Port != stockOrigin.Port
         || !string.IsNullOrEmpty(child.UserInfo)
         || !string.IsNullOrEmpty(child.Fragment))
     {

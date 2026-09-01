@@ -15,6 +15,12 @@ internal sealed record PlaybackOpenRequest(
     bool SubtitleDisabled,
     int? SubtitleTrackIndex);
 
+internal sealed record AmbiguousPlaybackOpen(
+    PlaybackOpenRequest Request,
+    int? SelectedAudioTrackIndex,
+    string PlanNonce,
+    DateTimeOffset ExpiresAt);
+
 internal sealed class PlaybackSessionState
 {
   public PlaybackSessionState(
@@ -43,6 +49,7 @@ internal sealed class PlaybackSessionState
   public SemaphoreSlim Gate { get; } = new(1, 1);
 
   public Dictionary<string, string> AcceptedEvents { get; } = new(StringComparer.Ordinal);
+  public Dictionary<string, string> AmbiguousEvents { get; } = new(StringComparer.Ordinal);
 
   public int AcceptedEventCapacity { get; }
 
@@ -61,6 +68,7 @@ internal sealed class PlaybackSessionState
   public bool PlaybackStarted { get; set; }
 
   public bool Closed { get; set; }
+  public bool CloseAmbiguous { get; set; }
 
   public string? CloseOperationId { get; set; }
 
@@ -74,6 +82,9 @@ internal sealed class PlaybackSessionStore
   private readonly SemaphoreSlim _openGate = new(1, 1);
   private readonly Lock _planGate = new();
   private readonly ConcurrentDictionary<string, StoredPlaybackPlan> _plansByNonce = new(StringComparer.Ordinal);
+  private readonly ConcurrentDictionary<string, AmbiguousPlaybackOpen> _ambiguousOpensByOperationId = new(StringComparer.Ordinal);
+  private readonly ConcurrentDictionary<string, string> _ambiguousOpenOperationByPlanId = new(StringComparer.Ordinal);
+  private readonly ConcurrentDictionary<string, string> _ambiguousOpenOperationByPlanNonce = new(StringComparer.Ordinal);
   private readonly ConcurrentDictionary<string, PlaybackSessionState> _sessionsById = new(StringComparer.Ordinal);
   private readonly ConcurrentDictionary<string, PlaybackSessionState> _sessionsByPlanNonce = new(StringComparer.Ordinal);
   private readonly ConcurrentDictionary<string, PlaybackSessionState> _sessionsByPlanId = new(StringComparer.Ordinal);
@@ -135,6 +146,10 @@ internal sealed class PlaybackSessionStore
     try
     {
       await RemoveExpiredSessionsAsync(cancellationToken).ConfigureAwait(false);
+      if (_ambiguousOpensByOperationId.TryGetValue(request.OperationId, out var ambiguousReplay))
+      {
+        RequireMatchingAmbiguousOpen(ambiguousReplay, request);
+      }
       if (_sessionsByOperationId.TryGetValue(request.OperationId, out var replay))
       {
         return RequireMatchingReplay(replay, request);
@@ -143,7 +158,11 @@ internal sealed class PlaybackSessionStore
       {
         throw new PlaybackRequestException(StatusCodes.Status409Conflict);
       }
-      if (_sessionsById.Count >= MaximumStoredSessions)
+      if (_ambiguousOpenOperationByPlanId.ContainsKey(request.PlanId))
+      {
+        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+      }
+      if (_sessionsById.Count + _ambiguousOpensByOperationId.Count >= MaximumStoredSessions)
       {
         throw new PlaybackRequestException(
             StatusCodes.Status429TooManyRequests,
@@ -157,31 +176,23 @@ internal sealed class PlaybackSessionStore
       {
         throw new PlaybackRequestException(StatusCodes.Status409Conflict);
       }
+      if (_ambiguousOpenOperationByPlanNonce.ContainsKey(plan.Nonce))
+      {
+        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+      }
 
       cancellationToken.ThrowIfCancellationRequested();
-      var created = await create(plan).ConfigureAwait(false);
-      if (!_sessionsByPlanNonce.TryAdd(plan.Nonce, created))
+      PlaybackSessionState created;
+      try
       {
-        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+        created = await create(plan).ConfigureAwait(false);
       }
-      if (!_sessionsByPlanId.TryAdd(request.PlanId, created))
+      catch (Exception exception) when (exception is not PlaybackRequestException)
       {
-        _sessionsByPlanNonce.TryRemove(plan.Nonce, out _);
-        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+        RetainAmbiguousOpen(plan, request);
+        throw AmbiguousMutation();
       }
-      if (!_sessionsByOperationId.TryAdd(request.OperationId, created))
-      {
-        _sessionsByPlanId.TryRemove(request.PlanId, out _);
-        _sessionsByPlanNonce.TryRemove(plan.Nonce, out _);
-        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
-      }
-      if (!_sessionsById.TryAdd(created.Output.SessionId, created))
-      {
-        _sessionsByOperationId.TryRemove(request.OperationId, out _);
-        _sessionsByPlanId.TryRemove(request.PlanId, out _);
-        _sessionsByPlanNonce.TryRemove(plan.Nonce, out _);
-        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
-      }
+      CommitOpenedSession(plan, request, created);
       return created;
     }
     finally
@@ -224,11 +235,20 @@ internal sealed class PlaybackSessionStore
 
         return;
       }
+      if (state.AmbiguousEvents.TryGetValue(eventId, out var ambiguousSignature))
+      {
+        if (!string.Equals(ambiguousSignature, signature, StringComparison.Ordinal))
+        {
+          throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+        }
+        throw AmbiguousMutation();
+      }
       if (state.Closed)
       {
         throw new PlaybackRequestException(StatusCodes.Status409Conflict);
       }
-      if (state.AcceptedEvents.Count >= state.AcceptedEventCapacity)
+      if (state.AcceptedEvents.Count + state.AmbiguousEvents.Count
+          >= state.AcceptedEventCapacity)
       {
         throw new PlaybackRequestException(
             StatusCodes.Status429TooManyRequests,
@@ -240,7 +260,17 @@ internal sealed class PlaybackSessionStore
         return;
       }
 
-      await apply(state).ConfigureAwait(false);
+      try
+      {
+        await apply(state).ConfigureAwait(false);
+      }
+      catch (Exception exception) when (exception is not PlaybackRequestException)
+      {
+        state.PlaybackStarted = true;
+        state.HighestSequence = sequence;
+        state.AmbiguousEvents.Add(eventId, signature);
+        throw AmbiguousMutation();
+      }
       state.PlaybackStarted = true;
       state.HighestSequence = sequence;
       state.AcceptedEvents.Add(eventId, signature);
@@ -268,13 +298,28 @@ internal sealed class PlaybackSessionStore
         if (string.Equals(state.CloseOperationId, operationId, StringComparison.Ordinal)
             && string.Equals(state.CloseSignature, signature, StringComparison.Ordinal))
         {
+          if (state.CloseAmbiguous)
+          {
+            throw AmbiguousMutation();
+          }
           return;
         }
 
         throw new PlaybackRequestException(StatusCodes.Status409Conflict);
       }
 
-      await apply(state).ConfigureAwait(false);
+      try
+      {
+        await apply(state).ConfigureAwait(false);
+      }
+      catch (Exception exception) when (exception is not PlaybackRequestException)
+      {
+        state.Closed = true;
+        state.CloseAmbiguous = true;
+        state.CloseOperationId = operationId;
+        state.CloseSignature = signature;
+        throw AmbiguousMutation();
+      }
       state.Closed = true;
       state.CloseOperationId = operationId;
       state.CloseSignature = signature;
@@ -332,6 +377,14 @@ internal sealed class PlaybackSessionStore
         session.Gate.Release();
       }
     }
+    foreach (var ambiguous in _ambiguousOpensByOperationId
+        .Where(entry => entry.Value.ExpiresAt <= now)
+        .ToArray())
+    {
+      _ambiguousOpensByOperationId.TryRemove(ambiguous.Key, out _);
+      _ambiguousOpenOperationByPlanId.TryRemove(ambiguous.Value.Request.PlanId, out _);
+      _ambiguousOpenOperationByPlanNonce.TryRemove(ambiguous.Value.PlanNonce, out _);
+    }
   }
 
   private void RequireUnexpired(PlaybackSessionState state)
@@ -339,6 +392,89 @@ internal sealed class PlaybackSessionStore
     if (state.ExpiresAt <= _timeProvider.GetUtcNow())
     {
       throw new PlaybackRequestException(StatusCodes.Status404NotFound);
+    }
+  }
+
+  private void CommitOpenedSession(
+      PlaybackPlan plan,
+      PlaybackOpenRequest request,
+      PlaybackSessionState created)
+  {
+    if (!_sessionsByPlanNonce.TryAdd(plan.Nonce, created))
+    {
+      throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+    }
+    if (!_sessionsByPlanId.TryAdd(request.PlanId, created))
+    {
+      _sessionsByPlanNonce.TryRemove(plan.Nonce, out _);
+      throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+    }
+    if (!_sessionsByOperationId.TryAdd(request.OperationId, created))
+    {
+      _sessionsByPlanId.TryRemove(request.PlanId, out _);
+      _sessionsByPlanNonce.TryRemove(plan.Nonce, out _);
+      throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+    }
+    if (!_sessionsById.TryAdd(created.Output.SessionId, created))
+    {
+      _sessionsByOperationId.TryRemove(request.OperationId, out _);
+      _sessionsByPlanId.TryRemove(request.PlanId, out _);
+      _sessionsByPlanNonce.TryRemove(plan.Nonce, out _);
+      throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+    }
+  }
+
+  private static PlaybackRequestException AmbiguousMutation()
+  {
+    return new PlaybackRequestException(
+        StatusCodes.Status503ServiceUnavailable,
+        "PLAYBACK_MUTATION_AMBIGUOUS");
+  }
+
+  private static void RequireMatchingAmbiguousOpen(
+      AmbiguousPlaybackOpen replay,
+      PlaybackOpenRequest request)
+  {
+    var selectedAudioTrackIndex =
+        request.AudioTrackIndex ?? replay.SelectedAudioTrackIndex;
+    if (!string.Equals(replay.Request.PlanId, request.PlanId, StringComparison.Ordinal)
+        || selectedAudioTrackIndex != replay.SelectedAudioTrackIndex
+        || replay.Request.SubtitleDisabled != request.SubtitleDisabled
+        || replay.Request.SubtitleTrackIndex != request.SubtitleTrackIndex)
+    {
+      throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+    }
+    throw AmbiguousMutation();
+  }
+
+  private void RetainAmbiguousOpen(
+      PlaybackPlan plan,
+      PlaybackOpenRequest request)
+  {
+    var expiresAt = _timeProvider.GetUtcNow()
+        + TimeSpan.FromTicks(plan.RuntimeTicks)
+        + PlaybackConstants.SessionGrace;
+    var selectedAudioTrackIndex =
+        request.AudioTrackIndex ?? plan.Negotiation?.AudioTrackIndex;
+    var ambiguous = new AmbiguousPlaybackOpen(
+        request,
+        selectedAudioTrackIndex,
+        plan.Nonce,
+        expiresAt);
+    if (!_ambiguousOpensByOperationId.TryAdd(request.OperationId, ambiguous))
+    {
+      throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+    }
+    if (!_ambiguousOpenOperationByPlanId.TryAdd(request.PlanId, request.OperationId))
+    {
+      _ambiguousOpensByOperationId.TryRemove(request.OperationId, out _);
+      throw new PlaybackRequestException(StatusCodes.Status409Conflict);
+    }
+    if (!_ambiguousOpenOperationByPlanNonce.TryAdd(plan.Nonce, request.OperationId))
+    {
+      _ambiguousOpenOperationByPlanId.TryRemove(request.PlanId, out _);
+      _ambiguousOpensByOperationId.TryRemove(request.OperationId, out _);
+      throw new PlaybackRequestException(StatusCodes.Status409Conflict);
     }
   }
 
