@@ -52,6 +52,8 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Give multi-page production Jellyfin catalog replacement proofs ten seconds; the default five-second test budget can expire under the parallel server check.
 - Poll state or start filesystem watchers before their initial read in process-test await helpers; reading first and subscribing second can miss the only fast fixture transition and hang indefinitely.
 - Await process-exit, recovery, and retirement lifecycle log effects before dependent transitions, and persist blocked-fixture cancellation evidence before rejecting the request; fire-and-forget observation races flake lifecycle proofs.
+- Snapshot intentional-stop state in each child exit record and mark RPC-observed unexpected exits before recovery; reading mutable stop state in a delayed watcher suppresses genuine exit logs.
+- Keep candidate cancellation retirement proof separate from request-cancellation acknowledgement; forced one-shot teardown can terminate the fixture before its remote handler persists cancellation.
 - Give the compiled provider-discovery process integration flow sixty seconds under the parallel Linux check; runner contention makes its multi-operation proof exceed thirty seconds.
 - Assert secret absence with complete sensitive values, not short URL fragments such as ephemeral ports that can collide with request IDs, timestamps, or durations.
 - Do not treat generated Protobuf or Connect round trips as Nama behavior tests. Verify schema format/lint/build, generation drift, consumer compilation, and handwritten Nama policy or adapter behavior.

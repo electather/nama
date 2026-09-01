@@ -770,6 +770,9 @@ const recoverPluginAfterCall = (
   reason: PluginRecoveryReason,
 ): Effect.Effect<void> => {
   const { options } = state;
+  if (reason === "plugin_exited") {
+    plugin.stop.unexpectedExit = true;
+  }
   if (options.launch.kind === "candidate") {
     return Effect.void;
   }
@@ -828,7 +831,7 @@ const forkPluginExitWatcher = (
 ): Effect.Effect<void> =>
   Effect.promise(() => plugin.exit).pipe(
     Effect.flatMap((processExit) => {
-      if (plugin.requestedStop) {
+      if (processExit.requestedStop) {
         return Effect.void;
       }
       const { options } = state;

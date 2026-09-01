@@ -39,6 +39,7 @@ interface RunningPluginOptions {
   readonly connection: PluginConnection;
   readonly exit: RunningPlugin["exit"];
   readonly launchDirectory: string;
+  readonly stop: RunningPlugin["stop"];
 }
 
 const bundledPluginProcessAdapter: PluginProcessAdapter = Object.freeze({ launch: nodeSpawn });
@@ -66,13 +67,14 @@ const runningPlugin = ({
   connection,
   exit,
   launchDirectory,
+  stop,
 }: RunningPluginOptions): RunningPlugin => ({
   bearer: connection.bearer,
   child,
   exit,
   launchDirectory,
-  requestedStop: false,
   socketPath: connection.socketPath,
+  stop,
   transport: createConnectTransport({
     baseUrl: "http://localhost",
     httpVersion: "1.1",
@@ -100,7 +102,8 @@ const acquirePluginProcess = ({
             stdio: ["pipe", "pipe", "pipe"],
           },
         );
-        return { child, lifecycle: observePluginChild(child) };
+        const stop = { requested: false, unexpectedExit: false };
+        return { child, lifecycle: observePluginChild(child, stop), stop };
       },
     });
     return {
@@ -111,6 +114,7 @@ const acquirePluginProcess = ({
         connection,
         exit: spawned.lifecycle.exit,
         launchDirectory,
+        stop: spawned.stop,
       }),
     };
   });
