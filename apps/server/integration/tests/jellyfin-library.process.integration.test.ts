@@ -1286,111 +1286,114 @@ const assertNormalizedSources = (item: ProviderMediaItem, itemId = MOVIE_ID) => 
   ]);
 };
 
-it.effect("resumes a complete normalized catalog scan after plugin replacement", () =>
-  Effect.scoped(
-    Effect.gen(function* jellyfinCatalogScanTest() {
-      const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
-      const first = yield* plugin.call(
-        LibraryService.method.listItems,
-        { scan: { case: "begin", value: { pageSize: CATALOG_PAGE_SIZE } } },
-        CALL_DEADLINE_MILLISECONDS,
-      );
-      expect(first.complete).toBe(false);
-      expect(first.consistency).toBe(ListConsistency.BEST_EFFORT_SCAN);
-      expect(first.items).toHaveLength(CATALOG_PAGE_SIZE);
-      const [movie, show] = first.items;
-      if (movie === undefined || show === undefined || first.nextPageToken === undefined) {
-        throw new Error("first Jellyfin catalog page was incomplete");
-      }
-      assertNormalizedMetadata(movie);
-      assertNormalizedSources(movie);
-      assertNormalizedShow(show);
+it.effect(
+  "resumes a complete normalized catalog scan after plugin replacement",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* jellyfinCatalogScanTest() {
+        const { jellyfin, plugin } = yield* acquireConfiguredJellyfinPlugin;
+        const first = yield* plugin.call(
+          LibraryService.method.listItems,
+          { scan: { case: "begin", value: { pageSize: CATALOG_PAGE_SIZE } } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(first.complete).toBe(false);
+        expect(first.consistency).toBe(ListConsistency.BEST_EFFORT_SCAN);
+        expect(first.items).toHaveLength(CATALOG_PAGE_SIZE);
+        const [movie, show] = first.items;
+        if (movie === undefined || show === undefined || first.nextPageToken === undefined) {
+          throw new Error("first Jellyfin catalog page was incomplete");
+        }
+        assertNormalizedMetadata(movie);
+        assertNormalizedSources(movie);
+        assertNormalizedShow(show);
 
-      yield* TestClock.adjust(IDLE_RETIREMENT_MILLISECONDS);
-      const second = yield* plugin.call(
-        LibraryService.method.listItems,
-        { scan: { case: "continuation", value: first.nextPageToken } },
-        CALL_DEADLINE_MILLISECONDS,
-      );
-      expect(second.complete).toBe(false);
-      expect(second.items).toHaveLength(SINGLE_ITEM_COUNT);
-      const [season] = second.items;
-      if (season === undefined || second.nextPageToken === undefined) {
-        throw new Error("second Jellyfin catalog page was incomplete");
-      }
-      assertNormalizedSeason(season);
+        yield* TestClock.adjust(IDLE_RETIREMENT_MILLISECONDS);
+        const second = yield* plugin.call(
+          LibraryService.method.listItems,
+          { scan: { case: "continuation", value: first.nextPageToken } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(second.complete).toBe(false);
+        expect(second.items).toHaveLength(SINGLE_ITEM_COUNT);
+        const [season] = second.items;
+        if (season === undefined || second.nextPageToken === undefined) {
+          throw new Error("second Jellyfin catalog page was incomplete");
+        }
+        assertNormalizedSeason(season);
 
-      const third = yield* plugin.call(
-        LibraryService.method.listItems,
-        { scan: { case: "continuation", value: second.nextPageToken } },
-        CALL_DEADLINE_MILLISECONDS,
-      );
-      expect(third.complete).toBe(false);
-      expect(third.items).toHaveLength(SINGLE_ITEM_COUNT);
-      const [episode] = third.items;
-      if (episode === undefined || third.nextPageToken === undefined) {
-        throw new Error("third Jellyfin catalog page was incomplete");
-      }
-      assertNormalizedSources(episode, EPISODE_ID);
+        const third = yield* plugin.call(
+          LibraryService.method.listItems,
+          { scan: { case: "continuation", value: second.nextPageToken } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(third.complete).toBe(false);
+        expect(third.items).toHaveLength(SINGLE_ITEM_COUNT);
+        const [episode] = third.items;
+        if (episode === undefined || third.nextPageToken === undefined) {
+          throw new Error("third Jellyfin catalog page was incomplete");
+        }
+        assertNormalizedSources(episode, EPISODE_ID);
 
-      const fourth = yield* plugin.call(
-        LibraryService.method.listItems,
-        { scan: { case: "continuation", value: third.nextPageToken } },
-        CALL_DEADLINE_MILLISECONDS,
-      );
-      expect(fourth).toMatchObject({
-        complete: false,
-        consistency: ListConsistency.BEST_EFFORT_SCAN,
-        items: [],
-      });
-      if (fourth.nextPageToken === undefined) {
-        throw new Error("fourth Jellyfin catalog page was incomplete");
-      }
+        const fourth = yield* plugin.call(
+          LibraryService.method.listItems,
+          { scan: { case: "continuation", value: third.nextPageToken } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(fourth).toMatchObject({
+          complete: false,
+          consistency: ListConsistency.BEST_EFFORT_SCAN,
+          items: [],
+        });
+        if (fourth.nextPageToken === undefined) {
+          throw new Error("fourth Jellyfin catalog page was incomplete");
+        }
 
-      const complete = yield* plugin.call(
-        LibraryService.method.listItems,
-        { scan: { case: "continuation", value: fourth.nextPageToken } },
-        CALL_DEADLINE_MILLISECONDS,
-      );
-      expect(complete).toMatchObject({
-        complete: true,
-        consistency: ListConsistency.BEST_EFFORT_SCAN,
-        items: [],
-      });
-      expect(complete.nextPageToken).toBeUndefined();
+        const complete = yield* plugin.call(
+          LibraryService.method.listItems,
+          { scan: { case: "continuation", value: fourth.nextPageToken } },
+          CALL_DEADLINE_MILLISECONDS,
+        );
+        expect(complete).toMatchObject({
+          complete: true,
+          consistency: ListConsistency.BEST_EFFORT_SCAN,
+          items: [],
+        });
+        expect(complete.nextPageToken).toBeUndefined();
 
-      const catalogRequests = jellyfin.requests.map(({ authorization, url }) => {
-        const endpoint = new URL(url, "http://jellyfin.invalid");
-        return {
-          authorization,
-          pathname: endpoint.pathname,
-          query: Object.fromEntries(endpoint.searchParams),
-        };
-      });
-      expect(catalogRequests).toEqual(
-        ["0", "2", "4", "6", "8"].map((startIndex) => ({
-          authorization: `MediaBrowser Token="${API_KEY}"`,
-          pathname: "/jellyfin/Items",
-          query: {
-            collapseBoxSetItems: "false",
-            enableImages: "true",
-            enableTotalRecordCount: "false",
-            enableUserData: "false",
-            fields:
-              "ChildCount,Genres,MediaSources,MediaStreams,OriginalTitle,Overview,People,PlayAccess,ProviderIds,RecursiveItemCount,Studios,Taglines",
-            imageTypeLimit: "20",
-            includeItemTypes: "Movie,Series,Season,Episode",
-            limit: String(CATALOG_PAGE_SIZE),
-            recursive: "true",
-            sortBy: "SortName",
-            sortOrder: "Ascending",
-            startIndex,
-            userId: USER_ID,
-          },
-        })),
-      );
-    }).pipe(Effect.provide(PluginSupervisor.layer())),
-  ),
+        const catalogRequests = jellyfin.requests.map(({ authorization, url }) => {
+          const endpoint = new URL(url, "http://jellyfin.invalid");
+          return {
+            authorization,
+            pathname: endpoint.pathname,
+            query: Object.fromEntries(endpoint.searchParams),
+          };
+        });
+        expect(catalogRequests).toEqual(
+          ["0", "2", "4", "6", "8"].map((startIndex) => ({
+            authorization: `MediaBrowser Token="${API_KEY}"`,
+            pathname: "/jellyfin/Items",
+            query: {
+              collapseBoxSetItems: "false",
+              enableImages: "true",
+              enableTotalRecordCount: "false",
+              enableUserData: "false",
+              fields:
+                "ChildCount,Genres,MediaSources,MediaStreams,OriginalTitle,Overview,People,PlayAccess,ProviderIds,RecursiveItemCount,Studios,Taglines",
+              imageTypeLimit: "20",
+              includeItemTypes: "Movie,Series,Season,Episode",
+              limit: String(CATALOG_PAGE_SIZE),
+              recursive: "true",
+              sortBy: "SortName",
+              sortOrder: "Ascending",
+              startIndex,
+              userId: USER_ID,
+            },
+          })),
+        );
+      }).pipe(Effect.provide(PluginSupervisor.layer())),
+    ),
+  TEST_TIMEOUT_MILLISECONDS,
 );
 
 it.live(

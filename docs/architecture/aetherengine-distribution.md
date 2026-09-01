@@ -4,7 +4,7 @@ Status: the source, dependency closure, local Release linkage, bundled notices, 
 
 ## Dependency lock
 
-The application target requires AetherEngine with Xcode's `exactVersion` requirement at `6.21.0`. `apps/ios/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` pins the complete package graph below and has SHA-256 `3972fa972b67d60a503b5a2ceb4b0dbc3089e6dce308ecc410e2ab4c88a777d6`. `scripts/check-ios.sh` snapshots that file before its builds and fails if dependency resolution changes it.
+The application target requires AetherEngine with Xcode's `exactVersion` requirement at `6.21.0`. `apps/ios/Nama.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` pins the complete package graph below and has SHA-256 `3972fa972b67d60a503b5a2ceb4b0dbc3089e6dce308ecc410e2ab4c88a777d6`. `scripts/check-swift.sh` snapshots that file before its builds and fails if dependency resolution changes it.
 
 | Package | Version | Git commit checksum |
 | --- | --- | --- |

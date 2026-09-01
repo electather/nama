@@ -38,6 +38,9 @@ if [ "\${NAMA_TEST_JELLYFIN_URL+x}" = x ]; then
 else
   printf 'PNPM_JELLYFIN_URL=unset\\n'
 fi
+if [ "\${NAMA_TEST_HEALTH_REPORT+x}" = x ]; then
+  printf 'PNPM_HEALTH_REPORT=%s\\n' "$NAMA_TEST_HEALTH_REPORT"
+fi
 printf 'PNPM_ARGS=%s\\n' "$*"
 `;
 
@@ -64,6 +67,7 @@ const runServerCheck = async (
   testPaths: readonly string[] = [
     "integration/tests/jellyfin-real-provider.process.integration.test.ts",
   ],
+  environment: NodeJS.ProcessEnv = {},
 ): Promise<ProcessResult> => {
   const child = spawn(
     "/bin/bash",
@@ -72,8 +76,11 @@ const runServerCheck = async (
       cwd: REPOSITORY_ROOT,
       env: {
         ...process.env,
+        NAMA_TEST_EXTENSION_READY: undefined,
+        NAMA_TEST_HEALTH_REPORT: undefined,
         NAMA_TEST_JELLYFIN_URL: "http://stale-jellyfin.invalid/",
         PATH: `${fixtureDirectory}:${process.env["PATH"] ?? ""}`,
+        ...environment,
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -108,7 +115,7 @@ test("reports an unavailable Jellyfin container as an unrun provider proof", asy
   }
 });
 
-test("runs the restart-mutating Jellyfin proof after every other server test", async () => {
+test("runs both bounded worker projects in one server-test stage", async () => {
   const fixtureDirectory = await mkdtemp(join(tmpdir(), "nama-server-check-"));
   try {
     await Promise.all([
@@ -120,8 +127,7 @@ test("runs the restart-mutating Jellyfin proof after every other server test", a
 
     expect(result.exitCode).toBe(SUCCESS_EXIT_CODE);
     expect(result.stdout.split("\n").filter((line) => line.startsWith("PNPM_ARGS="))).toEqual([
-      `PNPM_ARGS=--dir ${REPOSITORY_ROOT} --filter @nama/server exec vitest run --exclude integration/tests/jellyfin-real-provider.process.integration.test.ts`,
-      `PNPM_ARGS=--dir ${REPOSITORY_ROOT} --filter @nama/server exec vitest run integration/tests/jellyfin-real-provider.process.integration.test.ts`,
+      `PNPM_ARGS=--dir ${REPOSITORY_ROOT} --filter @nama/server exec vitest run --project parallel --project shared-jellyfin`,
     ]);
   } finally {
     await rm(fixtureDirectory, { force: true, recursive: true });
@@ -146,7 +152,7 @@ test("rejects ambiguous Vitest arguments instead of co-running the restart proof
   }
 });
 
-test("keeps the restart proof last when it is one of several selected tests", async () => {
+test("keeps selected parallel and shared tests in one bounded stage", async () => {
   const fixtureDirectory = await mkdtemp(join(tmpdir(), "nama-server-check-"));
   try {
     await Promise.all([
@@ -161,9 +167,29 @@ test("keeps the restart proof last when it is one of several selected tests", as
 
     expect(result.exitCode).toBe(SUCCESS_EXIT_CODE);
     expect(result.stdout.split("\n").filter((line) => line.startsWith("PNPM_ARGS="))).toEqual([
-      `PNPM_ARGS=--dir ${REPOSITORY_ROOT} --filter @nama/server exec vitest run --exclude integration/tests/jellyfin-real-provider.process.integration.test.ts integration/tests/jellyfin-artwork.process.integration.test.ts`,
-      `PNPM_ARGS=--dir ${REPOSITORY_ROOT} --filter @nama/server exec vitest run integration/tests/jellyfin-real-provider.process.integration.test.ts`,
+      `PNPM_ARGS=--dir ${REPOSITORY_ROOT} --filter @nama/server exec vitest run --project parallel --project shared-jellyfin integration/tests/jellyfin-artwork.process.integration.test.ts integration/tests/jellyfin-real-provider.process.integration.test.ts`,
     ]);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test("resolves a relative health report from the repository root", async () => {
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), "nama-server-check-"));
+  try {
+    await Promise.all([
+      writeFile(join(fixtureDirectory, "docker"), AVAILABLE_DOCKER_FIXTURE, { mode: 0o700 }),
+      writeFile(join(fixtureDirectory, "pnpm"), PNPM_FIXTURE, { mode: 0o700 }),
+    ]);
+
+    const result = await runServerCheck(fixtureDirectory, [], {
+      NAMA_TEST_HEALTH_REPORT: "test-health/typescript.json",
+    });
+
+    expect(result.exitCode).toBe(SUCCESS_EXIT_CODE);
+    expect(result.stdout).toContain(
+      `PNPM_HEALTH_REPORT=${REPOSITORY_ROOT}/test-health/typescript.json`,
+    );
   } finally {
     await rm(fixtureDirectory, { force: true, recursive: true });
   }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // oxlint-disable eslint/max-lines-per-function, eslint/max-statements, eslint/no-await-in-loop, eslint/no-magic-numbers, eslint/no-ternary, sort-keys, unicorn/no-await-expression-member, unicorn/prefer-string-raw -- This disposable fixture keeps protocol variants explicit.
-// oxlint-disable typescript/no-implied-eval, typescript/no-unsafe-argument, typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access, typescript/no-unsafe-return, typescript/strict-void-return -- Oxlint cannot recover Node and Connect types for this executable JavaScript fixture.
+// oxlint-disable typescript/no-implied-eval, typescript/no-unsafe-argument, typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access, typescript/no-unsafe-return -- Oxlint cannot recover Node and Connect types for this executable JavaScript fixture.
 // fallow-ignore-file unused-file -- The supervisor integration test executes this fixture by absolute path.
 
 import { spawn } from "node:child_process";
@@ -248,13 +248,25 @@ const requireAuthorization = (context) => {
   }
 };
 const observeCancellation = (context) => {
+  const observed = Promise.withResolvers();
+  const recordCancellation = async () => {
+    try {
+      await appendFile(join(controlDirectory, "cancellations.ndjson"), "1\n", {
+        mode: 0o600,
+      });
+      observed.resolve();
+    } catch (error) {
+      observed.reject(error);
+    }
+  };
   context.signal.addEventListener(
     "abort",
     () => {
-      void appendFile(join(controlDirectory, "cancellations.ndjson"), "1\n", { mode: 0o600 });
+      void recordCancellation();
     },
     { once: true },
   );
+  return observed.promise;
 };
 
 let connectionRequestCount = 0;
@@ -275,7 +287,7 @@ const handler = connectNodeAdapter({
       getConnection: async (request, context) => {
         requireAuthorization(context);
         connectionRequestCount += 1;
-        observeCancellation(context);
+        const cancellationObserved = observeCancellation(context);
         const requestBoundary = `${JSON.stringify(request)} ${[...context.requestHeader.entries()]
           .flat()
           .join(" ")}`;
@@ -297,9 +309,19 @@ const handler = connectNodeAdapter({
           mode === "block-and-exit-after-ready-during-recovery"
         ) {
           const blockedRequest = Promise.withResolvers();
+          const rejectAfterCancellation = async () => {
+            try {
+              await cancellationObserved;
+              blockedRequest.reject(new ConnectError("cancelled", Code.Canceled));
+            } catch (error) {
+              blockedRequest.reject(error);
+            }
+          };
           context.signal.addEventListener(
             "abort",
-            () => blockedRequest.reject(new ConnectError("cancelled", Code.Canceled)),
+            () => {
+              void rejectAfterCancellation();
+            },
             { once: true },
           );
           await blockedRequest.promise;

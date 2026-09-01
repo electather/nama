@@ -10,7 +10,6 @@ import {
   readdir,
   rm,
   symlink,
-  watch,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -142,19 +141,16 @@ const awaitFileLineCount = (
           throw error;
         }
       };
-      const current = await readLines();
-      if (current.length >= expectedCount) {
-        return current;
-      }
-      for await (const event of watch(controlDirectory, { signal })) {
-        if (event.filename === filename) {
-          const lines = await readLines();
-          if (lines.length >= expectedCount) {
-            return lines;
-          }
+      while (true) {
+        signal.throwIfAborted();
+        const current = await readLines();
+        if (current.length >= expectedCount) {
+          return current;
         }
+        const nextTurn = Promise.withResolvers<void>();
+        setImmediate(nextTurn.resolve);
+        await nextTurn.promise;
       }
-      throw new Error("fixture control watch ended");
     },
   });
 
@@ -426,28 +422,31 @@ it.live("runs the production Jellyfin discovery contract without provider contex
   ),
 );
 
-it.live("authenticates unimplemented production Jellyfin plugin methods", () =>
-  withControlDirectory((temporaryDirectory) =>
-    Effect.scoped(
-      Effect.gen(function* jellyfinUnimplementedMethodAuthenticationTest() {
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          {
-            arguments: [JELLYFIN_PLUGIN_PATH],
-            executable: process.execPath,
-            expectedProviderType: "jellyfin",
-            stderrEvents: [],
-          },
-          { kind: "discovery" },
-        );
-        yield* plugin.call(PluginService.method.getInfo, {}, CALL_DEADLINE_MILLISECONDS);
-        const socketPath = yield* findPluginSocket(temporaryDirectory);
-        const failure = yield* directConnectionCheck(socketPath).pipe(Effect.flip);
+it.live(
+  "authenticates unimplemented production Jellyfin plugin methods",
+  () =>
+    withControlDirectory((temporaryDirectory) =>
+      Effect.scoped(
+        Effect.gen(function* jellyfinUnimplementedMethodAuthenticationTest() {
+          const supervisor = yield* PluginSupervisor;
+          const plugin = yield* supervisor.supervise(
+            {
+              arguments: [JELLYFIN_PLUGIN_PATH],
+              executable: process.execPath,
+              expectedProviderType: "jellyfin",
+              stderrEvents: [],
+            },
+            { kind: "discovery" },
+          );
+          yield* plugin.call(PluginService.method.getInfo, {}, RECOVERY_TEST_TIMEOUT_MILLISECONDS);
+          const socketPath = yield* findPluginSocket(temporaryDirectory);
+          const failure = yield* directConnectionCheck(socketPath).pipe(Effect.flip);
 
-        expect(ConnectError.from(failure).code).toBe(Code.Unauthenticated);
-      }).pipe(Effect.provide(PluginSupervisor.layer({ temporaryDirectory }))),
+          expect(ConnectError.from(failure).code).toBe(Code.Unauthenticated);
+        }).pipe(Effect.provide(PluginSupervisor.layer({ temporaryDirectory }))),
+      ),
     ),
-  ),
+  RECOVERY_TEST_TIMEOUT_MILLISECONDS,
 );
 
 it.live("rejects provider context on discovery launches", () =>
@@ -513,44 +512,47 @@ it.live("retires a candidate after its one verification attempt", () =>
   ),
 );
 
-it.live("cancels and fully retires a failed candidate attempt", () =>
-  withControlDirectory((controlDirectory) =>
-    Effect.scoped(
-      Effect.gen(function* cancelledCandidateTest() {
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          fixtureDescriptor(controlDirectory, "block-connection"),
-          {
-            configuration: { base_url: "fixture-configuration" },
-            credentials: { api_key: "fixture-credential" },
-            kind: "candidate",
-          },
-        );
-        const call = yield* Effect.forkChild(
-          plugin.call(PluginService.method.getConnection, {}, 10_000),
-        );
-        yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1);
-        const launch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
-        if (launch === undefined) {
-          return yield* Effect.die("fixture launch record missing");
-        }
+it.live(
+  "cancels and fully retires a failed candidate attempt",
+  () =>
+    withControlDirectory((controlDirectory) =>
+      Effect.scoped(
+        Effect.gen(function* cancelledCandidateTest() {
+          const supervisor = yield* PluginSupervisor;
+          const plugin = yield* supervisor.supervise(
+            fixtureDescriptor(controlDirectory, "block-connection"),
+            {
+              configuration: { base_url: "fixture-configuration" },
+              credentials: { api_key: "fixture-credential" },
+              kind: "candidate",
+            },
+          );
+          const call = yield* Effect.forkChild(
+            plugin.call(PluginService.method.getConnection, {}, 10_000),
+          );
+          yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1);
+          const launch = (yield* awaitLaunchCount(controlDirectory, 1))[0];
+          if (launch === undefined) {
+            return yield* Effect.die("fixture launch record missing");
+          }
 
-        yield* Fiber.interrupt(call);
-        yield* awaitFileLineCount(controlDirectory, "cancellations.ndjson", 1);
-        yield* awaitProcessExit(launch.pid);
-        yield* awaitPathRemoval(dirname(launch.socketPath));
-        const repeated = yield* plugin
-          .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
-          .pipe(Effect.flip);
+          yield* Fiber.interrupt(call);
+          yield* awaitFileLineCount(controlDirectory, "cancellations.ndjson", 1);
+          yield* awaitProcessExit(launch.pid);
+          yield* awaitPathRemoval(dirname(launch.socketPath));
+          const repeated = yield* plugin
+            .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
+            .pipe(Effect.flip);
 
-        expect(repeated).toMatchObject({
-          _tag: "PluginUnavailable",
-          reason: "plugin_exited",
-        });
-        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
-      }).pipe(Effect.provide(PluginSupervisor.layer())),
+          expect(repeated).toMatchObject({
+            _tag: "PluginUnavailable",
+            reason: "plugin_exited",
+          });
+          expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+        }).pipe(Effect.provide(PluginSupervisor.layer())),
+      ),
     ),
-  ),
+  RECOVERY_TEST_TIMEOUT_MILLISECONDS,
 );
 
 it.effect("keeps candidate cleanup running after its caller deadline", () =>
@@ -1227,148 +1229,154 @@ it.effect(
     ),
 );
 
-it.effect("emits one safe debug record after successful idle retirement", () =>
-  withControlDirectory((controlDirectory) => {
-    const lines: string[] = [];
-    return Effect.scoped(
-      Effect.gen(function* idleRetirementLoggingTest() {
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
-          configuration: {},
-          credentials: {},
-          kind: "instance",
-          providerInstanceId: "provider-instance",
-          revision: "fixture-revision",
-        });
-        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
-        const launch = (yield* readLaunchRecords(controlDirectory))[0];
-        if (launch === undefined) {
-          return yield* Effect.die("fixture launch record missing");
-        }
-
-        yield* TestClock.adjust(30_000);
-        yield* awaitPathRemoval(dirname(launch.socketPath));
-        yield* awaitCondition(() =>
-          lines.some((line) => line.includes('"event":"plugin.process_idle_stopped"')),
-        );
-
-        const idleRecords = lines
-          .map((line) => JSON.parse(line) as Record<string, unknown>)
-          .filter((record) => record["event"] === "plugin.process_idle_stopped");
-        expect(idleRecords).toHaveLength(1);
-        expect(idleRecords[0]).toMatchObject({
-          event: "plugin.process_idle_stopped",
-          level: "debug",
-          provider_instance_id: "provider-instance",
-          provider_type: "fixture",
-        });
-        expect(typeof idleRecords[0]?.["timestamp"]).toBe("string");
-        expect(Object.keys(idleRecords[0] ?? {}).toSorted()).toEqual([
-          "event",
-          "level",
-          "provider_instance_id",
-          "provider_type",
-          "timestamp",
-        ]);
-        const output = lines.join("");
-        expect(output).not.toContain(launch.bearer);
-        expect(output).not.toContain(launch.socketPath);
-        expect(output).not.toContain(controlDirectory);
-      }).pipe(
-        Effect.provide(PluginSupervisor.layer()),
-        Effect.provide(
-          configuredLoggingLayer(debugLoggingConfig, (line) => {
-            lines.push(line);
-          }),
-        ),
-      ),
-    );
-  }),
-);
-it.effect("contains failed idle cleanup and emits one safe error record", () =>
-  withControlDirectory((controlDirectory) => {
-    const lines: string[] = [];
-    return Effect.scoped(
-      Effect.gen(function* idleRetirementFailureTest() {
-        const supervisor = yield* PluginSupervisor;
-        const handleScope = yield* Scope.make();
-        const plugin = yield* Scope.provide(handleScope)(
-          supervisor.supervise(fixtureDescriptor(controlDirectory, "cleanup-failure"), {
+it.effect(
+  "emits one safe debug record after successful idle retirement",
+  () =>
+    withControlDirectory((controlDirectory) => {
+      const lines: string[] = [];
+      return Effect.scoped(
+        Effect.gen(function* idleRetirementLoggingTest() {
+          const supervisor = yield* PluginSupervisor;
+          const plugin = yield* supervisor.supervise(fixtureDescriptor(controlDirectory), {
             configuration: {},
             credentials: {},
             kind: "instance",
             providerInstanceId: "provider-instance",
             revision: "fixture-revision",
-          }),
-        );
-        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
-        const launch = (yield* readLaunchRecords(controlDirectory))[0];
-        if (launch === undefined) {
-          return yield* Effect.die("fixture launch record missing");
-        }
-        const launchDirectory = dirname(launch.socketPath);
-        const runtimeRoot = dirname(launchDirectory);
+          });
+          yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+          const launch = (yield* readLaunchRecords(controlDirectory))[0];
+          if (launch === undefined) {
+            return yield* Effect.die("fixture launch record missing");
+          }
 
-        yield* TestClock.adjust(30_000);
-        yield* awaitProcessExit(launch.pid);
-        yield* TestClock.withLive(Effect.sleep(10));
-        yield* awaitCondition(() =>
-          lines.some((line) => line.includes('"event":"plugin.process_idle_stop_failed"')),
-        );
+          yield* TestClock.adjust(30_000);
+          yield* awaitPathRemoval(dirname(launch.socketPath));
+          yield* awaitCondition(() =>
+            lines.some((line) => line.includes('"event":"plugin.process_idle_stopped"')),
+          );
 
-        expect((yield* Effect.promise(() => lstat(launchDirectory))).isDirectory()).toBe(true);
-        expect(
-          yield* plugin
-            .call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS)
-            .pipe(Effect.flip),
-        ).toMatchObject({
-          _tag: "PluginUnavailable",
-          reason: "plugin_exited",
-        });
-        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
-
-        const failureRecords = lines
-          .map((line) => JSON.parse(line) as Record<string, unknown>)
-          .filter((record) => record["event"] === "plugin.process_idle_stop_failed");
-        expect(failureRecords).toHaveLength(1);
-        expect(failureRecords[0]).toMatchObject({
-          event: "plugin.process_idle_stop_failed",
-          level: "error",
-          provider_instance_id: "provider-instance",
-          provider_type: "fixture",
-        });
-        expect(typeof failureRecords[0]?.["timestamp"]).toBe("string");
-        expect(Object.keys(failureRecords[0] ?? {}).toSorted()).toEqual([
-          "event",
-          "level",
-          "provider_instance_id",
-          "provider_type",
-          "timestamp",
-        ]);
-        const output = lines.join("");
-        expect(output).not.toContain(launch.bearer);
-        expect(output).not.toContain(launch.socketPath);
-        expect(output).not.toContain(controlDirectory);
-        expect(output).not.toContain("PluginSupervisorCleanupError");
-
-        yield* Effect.promise(() => chmod(runtimeRoot, 0o700));
-        const finalizationExit = yield* Scope.close(handleScope, Exit.void).pipe(Effect.exit);
-        expect(Exit.isSuccess(finalizationExit)).toBe(true);
-        const launchFailure = yield* Effect.tryPromise({
-          catch: (error) => error,
-          try: () => lstat(launchDirectory),
-        }).pipe(Effect.flip);
-        expect(launchFailure).toMatchObject({ code: "ENOENT" });
-      }).pipe(
-        Effect.provide(PluginSupervisor.layer()),
-        Effect.provide(
-          configuredLoggingLayer(loggingConfig, (line) => {
-            lines.push(line);
-          }),
+          const idleRecords = lines
+            .map((line) => JSON.parse(line) as Record<string, unknown>)
+            .filter((record) => record["event"] === "plugin.process_idle_stopped");
+          expect(idleRecords).toHaveLength(1);
+          expect(idleRecords[0]).toMatchObject({
+            event: "plugin.process_idle_stopped",
+            level: "debug",
+            provider_instance_id: "provider-instance",
+            provider_type: "fixture",
+          });
+          expect(typeof idleRecords[0]?.["timestamp"]).toBe("string");
+          expect(Object.keys(idleRecords[0] ?? {}).toSorted()).toEqual([
+            "event",
+            "level",
+            "provider_instance_id",
+            "provider_type",
+            "timestamp",
+          ]);
+          const output = lines.join("");
+          expect(output).not.toContain(launch.bearer);
+          expect(output).not.toContain(launch.socketPath);
+          expect(output).not.toContain(controlDirectory);
+        }).pipe(
+          Effect.provide(PluginSupervisor.layer()),
+          Effect.provide(
+            configuredLoggingLayer(debugLoggingConfig, (line) => {
+              lines.push(line);
+            }),
+          ),
         ),
-      ),
-    );
-  }),
+      );
+    }),
+  RECOVERY_TEST_TIMEOUT_MILLISECONDS,
+);
+it.effect(
+  "contains failed idle cleanup and emits one safe error record",
+  () =>
+    withControlDirectory((controlDirectory) => {
+      const lines: string[] = [];
+      return Effect.scoped(
+        Effect.gen(function* idleRetirementFailureTest() {
+          const supervisor = yield* PluginSupervisor;
+          const handleScope = yield* Scope.make();
+          const plugin = yield* Scope.provide(handleScope)(
+            supervisor.supervise(fixtureDescriptor(controlDirectory, "cleanup-failure"), {
+              configuration: {},
+              credentials: {},
+              kind: "instance",
+              providerInstanceId: "provider-instance",
+              revision: "fixture-revision",
+            }),
+          );
+          yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+          const launch = (yield* readLaunchRecords(controlDirectory))[0];
+          if (launch === undefined) {
+            return yield* Effect.die("fixture launch record missing");
+          }
+          const launchDirectory = dirname(launch.socketPath);
+          const runtimeRoot = dirname(launchDirectory);
+
+          yield* TestClock.adjust(30_000);
+          yield* awaitProcessExit(launch.pid);
+          yield* TestClock.withLive(Effect.sleep(10));
+          yield* awaitCondition(() =>
+            lines.some((line) => line.includes('"event":"plugin.process_idle_stop_failed"')),
+          );
+
+          expect((yield* Effect.promise(() => lstat(launchDirectory))).isDirectory()).toBe(true);
+          expect(
+            yield* plugin
+              .call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS)
+              .pipe(Effect.flip),
+          ).toMatchObject({
+            _tag: "PluginUnavailable",
+            reason: "plugin_exited",
+          });
+          expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(1);
+
+          const failureRecords = lines
+            .map((line) => JSON.parse(line) as Record<string, unknown>)
+            .filter((record) => record["event"] === "plugin.process_idle_stop_failed");
+          expect(failureRecords).toHaveLength(1);
+          expect(failureRecords[0]).toMatchObject({
+            event: "plugin.process_idle_stop_failed",
+            level: "error",
+            provider_instance_id: "provider-instance",
+            provider_type: "fixture",
+          });
+          expect(typeof failureRecords[0]?.["timestamp"]).toBe("string");
+          expect(Object.keys(failureRecords[0] ?? {}).toSorted()).toEqual([
+            "event",
+            "level",
+            "provider_instance_id",
+            "provider_type",
+            "timestamp",
+          ]);
+          const output = lines.join("");
+          expect(output).not.toContain(launch.bearer);
+          expect(output).not.toContain(launch.socketPath);
+          expect(output).not.toContain(controlDirectory);
+          expect(output).not.toContain("PluginSupervisorCleanupError");
+
+          yield* Effect.promise(() => chmod(runtimeRoot, 0o700));
+          const finalizationExit = yield* Scope.close(handleScope, Exit.void).pipe(Effect.exit);
+          expect(Exit.isSuccess(finalizationExit)).toBe(true);
+          const launchFailure = yield* Effect.tryPromise({
+            catch: (error) => error,
+            try: () => lstat(launchDirectory),
+          }).pipe(Effect.flip);
+          expect(launchFailure).toMatchObject({ code: "ENOENT" });
+        }).pipe(
+          Effect.provide(PluginSupervisor.layer()),
+          Effect.provide(
+            configuredLoggingLayer(loggingConfig, (line) => {
+              lines.push(line);
+            }),
+          ),
+        ),
+      );
+    }),
+  RECOVERY_TEST_TIMEOUT_MILLISECONDS,
 );
 it.effect("retains interrupted startup cleanup for scope-finalization retry", () =>
   withControlDirectory((controlDirectory) => {
@@ -3020,122 +3028,125 @@ it.effect("finishes demand-initiated recovery during idle grace", () =>
   }),
 );
 
-it.effect("preserves and resets the bounded episode across idle expiry", () =>
-  withControlDirectory((controlDirectory) => {
-    const lines: string[] = [];
-    return Effect.scoped(
-      Effect.gen(function* idleRecoveryEpisodeTest() {
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          fixtureDescriptor(controlDirectory, "idle-bounded-recovery"),
-          { kind: "discovery" },
-        );
-        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
-        const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
-        if (firstLaunch === undefined) {
-          return yield* Effect.die("fixture launch record missing");
-        }
+it.effect(
+  "preserves and resets the bounded episode across idle expiry",
+  () =>
+    withControlDirectory((controlDirectory) => {
+      const lines: string[] = [];
+      return Effect.scoped(
+        Effect.gen(function* idleRecoveryEpisodeTest() {
+          const supervisor = yield* PluginSupervisor;
+          const plugin = yield* supervisor.supervise(
+            fixtureDescriptor(controlDirectory, "idle-bounded-recovery"),
+            { kind: "discovery" },
+          );
+          yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+          const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
+          if (firstLaunch === undefined) {
+            return yield* Effect.die("fixture launch record missing");
+          }
 
-        process.kill(firstLaunch.pid, "SIGKILL");
-        yield* awaitProcessExit(firstLaunch.pid);
-        yield* awaitPathRemoval(dirname(firstLaunch.socketPath));
+          process.kill(firstLaunch.pid, "SIGKILL");
+          yield* awaitProcessExit(firstLaunch.pid);
+          yield* awaitPathRemoval(dirname(firstLaunch.socketPath));
 
-        const remainingEpisodeCall = yield* Effect.forkChild(
-          plugin.call(PluginService.method.getConnection, {}, 10_000),
-        );
-        yield* awaitCondition(() =>
-          lines.some(
-            (line) =>
-              line.includes('"event":"plugin.recovery_attempt"') &&
-              line.includes('"recovery_attempt":2'),
-          ),
-        );
-        yield* TestClock.adjust(100);
-        const secondLaunch = (yield* awaitLaunchCount(controlDirectory, 2))[1];
-        if (secondLaunch === undefined) {
-          return yield* Effect.die("second launch record missing");
-        }
-        yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
-        yield* awaitProcessExit(secondLaunch.pid);
-        yield* awaitCondition(() =>
-          lines.some(
-            (line) =>
-              line.includes('"event":"plugin.recovery_attempt"') &&
-              line.includes('"recovery_attempt":3'),
-          ),
-        );
-        yield* TestClock.adjust(500);
-        const thirdLaunch = (yield* awaitLaunchCount(controlDirectory, 3))[2];
-        if (thirdLaunch === undefined) {
-          return yield* Effect.die("third launch record missing");
-        }
-        yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 2);
-        yield* awaitProcessExit(thirdLaunch.pid);
-        expect(yield* Fiber.join(remainingEpisodeCall).pipe(Effect.flip)).toMatchObject({
-          _tag: "PluginUnavailable",
-          reason: "plugin_exited",
-        });
-
-        expect(
-          yield* plugin
-            .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
-            .pipe(Effect.flip),
-        ).toMatchObject({
-          _tag: "PluginUnavailable",
-          reason: "plugin_exited",
-        });
-        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(3);
-
-        yield* TestClock.adjust(30_001);
-        yield* Effect.yieldNow;
-        const freshEpisodeCall = yield* Effect.forkChild(
-          plugin.call(PluginService.method.getConnection, {}, 10_000),
-        );
-        const fourthLaunch = (yield* awaitLaunchCount(controlDirectory, 4))[3];
-        if (fourthLaunch === undefined) {
-          return yield* Effect.die("fourth launch record missing");
-        }
-        yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 3);
-        yield* awaitProcessExit(fourthLaunch.pid);
-        yield* awaitCondition(
-          () =>
-            lines.filter(
+          const remainingEpisodeCall = yield* Effect.forkChild(
+            plugin.call(PluginService.method.getConnection, {}, 10_000),
+          );
+          yield* awaitCondition(() =>
+            lines.some(
               (line) =>
                 line.includes('"event":"plugin.recovery_attempt"') &&
                 line.includes('"recovery_attempt":2'),
-            ).length >= 2,
-        );
-        yield* TestClock.adjust(100);
-        const fifthLaunch = (yield* awaitLaunchCount(controlDirectory, 5))[4];
-        if (fifthLaunch === undefined) {
-          return yield* Effect.die("fifth launch record missing");
-        }
-        yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 4);
-        yield* awaitProcessExit(fifthLaunch.pid);
-        yield* awaitCondition(
-          () =>
-            lines.filter(
+            ),
+          );
+          yield* TestClock.adjust(100);
+          const secondLaunch = (yield* awaitLaunchCount(controlDirectory, 2))[1];
+          if (secondLaunch === undefined) {
+            return yield* Effect.die("second launch record missing");
+          }
+          yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 1);
+          yield* awaitProcessExit(secondLaunch.pid);
+          yield* awaitCondition(() =>
+            lines.some(
               (line) =>
                 line.includes('"event":"plugin.recovery_attempt"') &&
                 line.includes('"recovery_attempt":3'),
-            ).length >= 2,
-        );
-        yield* TestClock.adjust(500);
-        const response = yield* Fiber.join(freshEpisodeCall);
+            ),
+          );
+          yield* TestClock.adjust(500);
+          const thirdLaunch = (yield* awaitLaunchCount(controlDirectory, 3))[2];
+          if (thirdLaunch === undefined) {
+            return yield* Effect.die("third launch record missing");
+          }
+          yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 2);
+          yield* awaitProcessExit(thirdLaunch.pid);
+          expect(yield* Fiber.join(remainingEpisodeCall).pipe(Effect.flip)).toMatchObject({
+            _tag: "PluginUnavailable",
+            reason: "plugin_exited",
+          });
 
-        expect(response.connection?.status).toBe(1);
-        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(6);
-        expect(yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1)).toHaveLength(1);
-      }).pipe(
-        Effect.provide(PluginSupervisor.layer()),
-        Effect.provide(
-          configuredLoggingLayer(loggingConfig, (line) => {
-            lines.push(line);
-          }),
+          expect(
+            yield* plugin
+              .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
+              .pipe(Effect.flip),
+          ).toMatchObject({
+            _tag: "PluginUnavailable",
+            reason: "plugin_exited",
+          });
+          expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(3);
+
+          yield* TestClock.adjust(30_001);
+          yield* Effect.yieldNow;
+          const freshEpisodeCall = yield* Effect.forkChild(
+            plugin.call(PluginService.method.getConnection, {}, 10_000),
+          );
+          const fourthLaunch = (yield* awaitLaunchCount(controlDirectory, 4))[3];
+          if (fourthLaunch === undefined) {
+            return yield* Effect.die("fourth launch record missing");
+          }
+          yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 3);
+          yield* awaitProcessExit(fourthLaunch.pid);
+          yield* awaitCondition(
+            () =>
+              lines.filter(
+                (line) =>
+                  line.includes('"event":"plugin.recovery_attempt"') &&
+                  line.includes('"recovery_attempt":2'),
+              ).length >= 2,
+          );
+          yield* TestClock.adjust(100);
+          const fifthLaunch = (yield* awaitLaunchCount(controlDirectory, 5))[4];
+          if (fifthLaunch === undefined) {
+            return yield* Effect.die("fifth launch record missing");
+          }
+          yield* awaitFileLineCount(controlDirectory, "exits.ndjson", 4);
+          yield* awaitProcessExit(fifthLaunch.pid);
+          yield* awaitCondition(
+            () =>
+              lines.filter(
+                (line) =>
+                  line.includes('"event":"plugin.recovery_attempt"') &&
+                  line.includes('"recovery_attempt":3'),
+              ).length >= 2,
+          );
+          yield* TestClock.adjust(500);
+          const response = yield* Fiber.join(freshEpisodeCall);
+
+          expect(response.connection?.status).toBe(1);
+          expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(6);
+          expect(yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1)).toHaveLength(1);
+        }).pipe(
+          Effect.provide(PluginSupervisor.layer()),
+          Effect.provide(
+            configuredLoggingLayer(loggingConfig, (line) => {
+              lines.push(line);
+            }),
+          ),
         ),
-      ),
-    );
-  }),
+      );
+    }),
+  RECOVERY_TEST_TIMEOUT_MILLISECONDS,
 );
 
 it.effect("rejects unsafe executable files before spawning them", () =>
@@ -3410,39 +3421,42 @@ it.effect("fails startup when a protected socket path cannot fit", () =>
   ),
 );
 
-it.live("fails sibling RPCs without replay when a deadline recycles the process", () =>
-  withControlDirectory((controlDirectory) =>
-    Effect.scoped(
-      Effect.gen(function* siblingDeadlineTest() {
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          fixtureDescriptor(controlDirectory, "block-connection"),
-          { kind: "discovery" },
-        );
-        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
-        const expiringCall = yield* Effect.forkChild(
-          plugin.call(PluginService.method.getConnection, {}, 100),
-        );
-        yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1);
-        const siblingCall = yield* Effect.forkChild(
-          plugin.call(PluginService.method.getConnection, {}, 10_000),
-        );
-        yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 2);
+it.live(
+  "fails sibling RPCs without replay when a deadline recycles the process",
+  () =>
+    withControlDirectory((controlDirectory) =>
+      Effect.scoped(
+        Effect.gen(function* siblingDeadlineTest() {
+          const supervisor = yield* PluginSupervisor;
+          const plugin = yield* supervisor.supervise(
+            fixtureDescriptor(controlDirectory, "block-connection"),
+            { kind: "discovery" },
+          );
+          yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+          const expiringCall = yield* Effect.forkChild(
+            plugin.call(PluginService.method.getConnection, {}, 100),
+          );
+          yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 1);
+          const siblingCall = yield* Effect.forkChild(
+            plugin.call(PluginService.method.getConnection, {}, 10_000),
+          );
+          yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 2);
 
-        expect(yield* Fiber.join(expiringCall).pipe(Effect.flip)).toMatchObject({
-          _tag: "PluginDeadlineExceeded",
-        });
-        const siblingFailure = yield* Fiber.join(siblingCall).pipe(Effect.flip);
-        expect(siblingFailure).toMatchObject({
-          _tag: "PluginUnavailable",
-          reason: "plugin_exited",
-        });
-        expect(yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 2)).toHaveLength(2);
-        yield* awaitLaunchCount(controlDirectory, 2);
-        expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(2);
-      }).pipe(Effect.provide(PluginSupervisor.layer())),
+          expect(yield* Fiber.join(expiringCall).pipe(Effect.flip)).toMatchObject({
+            _tag: "PluginDeadlineExceeded",
+          });
+          const siblingFailure = yield* Fiber.join(siblingCall).pipe(Effect.flip);
+          expect(siblingFailure).toMatchObject({
+            _tag: "PluginUnavailable",
+            reason: "plugin_exited",
+          });
+          expect(yield* awaitFileLineCount(controlDirectory, "requests.ndjson", 2)).toHaveLength(2);
+          yield* awaitLaunchCount(controlDirectory, 2);
+          expect(yield* readLaunchRecords(controlDirectory)).toHaveLength(2);
+        }).pipe(Effect.provide(PluginSupervisor.layer())),
+      ),
     ),
-  ),
+  RECOVERY_TEST_TIMEOUT_MILLISECONDS,
 );
 
 it.effect("reaps every active process before surfacing peer cleanup failure", () =>
@@ -3523,67 +3537,70 @@ it.live("closes active handles before the supervisor runtime root", () =>
   ),
 );
 
-it.live("emits safe allowlisted plugin lifecycle records", () =>
-  withControlDirectory((controlDirectory) => {
-    const lines: string[] = [];
-    return Effect.scoped(
-      Effect.gen(function* pluginLifecycleLoggingTest() {
-        const supervisor = yield* PluginSupervisor;
-        const plugin = yield* supervisor.supervise(
-          fixtureDescriptor(controlDirectory, "crash-connection"),
-          {
-            configuration: {},
-            credentials: {},
-            kind: "instance",
-            providerInstanceId: "provider-instance",
-            revision: "fixture-revision",
-          },
-        );
-        yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
-        const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
-        if (firstLaunch === undefined) {
-          return yield* Effect.die("fixture launch record missing");
-        }
-        expect(
-          yield* plugin
-            .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
-            .pipe(Effect.flip),
-        ).toMatchObject({
-          _tag: "PluginUnavailable",
-          reason: "plugin_exited",
-        });
-        yield* awaitLaunchCount(controlDirectory, 2);
-        yield* awaitCondition(
-          () =>
-            lines.some((line) => line.includes('"event":"plugin.process_exited"')) &&
-            lines.some((line) => line.includes('"event":"plugin.recovery_attempt"')),
-        );
+it.live(
+  "emits safe allowlisted plugin lifecycle records",
+  () =>
+    withControlDirectory((controlDirectory) => {
+      const lines: string[] = [];
+      return Effect.scoped(
+        Effect.gen(function* pluginLifecycleLoggingTest() {
+          const supervisor = yield* PluginSupervisor;
+          const plugin = yield* supervisor.supervise(
+            fixtureDescriptor(controlDirectory, "crash-connection"),
+            {
+              configuration: {},
+              credentials: {},
+              kind: "instance",
+              providerInstanceId: "provider-instance",
+              revision: "fixture-revision",
+            },
+          );
+          yield* plugin.call(HealthService.method.check, {}, CALL_DEADLINE_MILLISECONDS);
+          const firstLaunch = (yield* readLaunchRecords(controlDirectory))[0];
+          if (firstLaunch === undefined) {
+            return yield* Effect.die("fixture launch record missing");
+          }
+          expect(
+            yield* plugin
+              .call(PluginService.method.getConnection, {}, CALL_DEADLINE_MILLISECONDS)
+              .pipe(Effect.flip),
+          ).toMatchObject({
+            _tag: "PluginUnavailable",
+            reason: "plugin_exited",
+          });
+          yield* awaitLaunchCount(controlDirectory, 2);
+          yield* awaitCondition(
+            () =>
+              lines.some((line) => line.includes('"event":"plugin.process_exited"')) &&
+              lines.some((line) => line.includes('"event":"plugin.recovery_attempt"')),
+          );
 
-        const output = lines.join("");
-        const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
-        expect(records).toContainEqual(
-          expect.objectContaining({
-            event: "plugin.process_exited",
-            level: "warn",
-            provider_instance_id: "provider-instance",
-            provider_type: "fixture",
-            signal: "SIGKILL",
-          }),
-        );
-        expect(output).not.toContain(firstLaunch.bearer);
-        expect(output).not.toContain(firstLaunch.socketPath);
-        expect(output).not.toContain(controlDirectory);
-        expect(output).not.toContain("server.runtime_failed");
-      }).pipe(
-        Effect.provide(PluginSupervisor.layer()),
-        Effect.provide(
-          configuredLoggingLayer(loggingConfig, (line) => {
-            lines.push(line);
-          }),
+          const output = lines.join("");
+          const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+          expect(records).toContainEqual(
+            expect.objectContaining({
+              event: "plugin.process_exited",
+              level: "warn",
+              provider_instance_id: "provider-instance",
+              provider_type: "fixture",
+              signal: "SIGKILL",
+            }),
+          );
+          expect(output).not.toContain(firstLaunch.bearer);
+          expect(output).not.toContain(firstLaunch.socketPath);
+          expect(output).not.toContain(controlDirectory);
+          expect(output).not.toContain("server.runtime_failed");
+        }).pipe(
+          Effect.provide(PluginSupervisor.layer()),
+          Effect.provide(
+            configuredLoggingLayer(loggingConfig, (line) => {
+              lines.push(line);
+            }),
+          ),
         ),
-      ),
-    );
-  }),
+      );
+    }),
+  RECOVERY_TEST_TIMEOUT_MILLISECONDS,
 );
 
 it.live("tolerates plugin removal of its own runtime artifacts", () =>

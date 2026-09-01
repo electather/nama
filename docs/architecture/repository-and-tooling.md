@@ -59,18 +59,28 @@ note is not a command reference.
 
 Before changing a dependency, generator, or check, inspect its owning manifest
 and use that ecosystem's native tool to update its dependencies and lock state.
-Run the narrow native check first, then the aggregate repository check on a
-fully provisioned Mac. Root tasks coordinate this sequence but do not alter
-its ownership.
+Run the narrow native check first, then use the aggregate repository check on a
+fully provisioned Mac. Its declared Mise dependency graph starts independent
+native owners concurrently and respects Mise's standard job limit; native tasks
+remain independently runnable.
 
 Docker and Xcode are current native prerequisites. The universal Xcode project
-imports the generated public package, and `check:ios` runs focused Swift tests
-plus signing-disabled generic iOS, tvOS, and macOS builds. Generated bindings
-and compile-only builds do not prove application runtime behavior.
+imports the generated public package, and `check:swift` owns formatting, lint,
+macOS tests, signing-disabled generic iOS, tvOS, and macOS builds, transport and
+entitlement validation, dependency-lock drift, and analyzer lint. Generated
+bindings and compile-only builds do not prove application runtime behavior.
 
 CI runs the native checks and the contract-compatibility gate appropriate to
 the change. Compile-only boundaries prove compilation, not product or runtime
 behavior.
+
+Pull-request correctness starts Contracts, TypeScript, Go, Packaged Application,
+and Swift as independent jobs. The TypeScript job installs Go only because its
+server-runtime suite builds the public CLI; native Go checks remain owned by the
+Go job. Vitest, Go, and Xcode publish compact normalized test-health reports
+without raw logs or result bundles. A separate weekly and manual workflow
+repeats each ecosystem suite three times and rejects failed or inconsistent
+outcomes.
 
 ## Agent guardrails
 

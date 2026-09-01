@@ -1,38 +1,118 @@
-name: CI
+name: Correctness
 
 on:
   pull_request:
+
+concurrency:
+  group: correctness-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  linux:
+  contracts:
+    name: Contracts
     runs-on: ubuntu-24.04
     steps:
       - name: Check out full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Install locked tools
+      - name: Install locked contract tools
         uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
           version: 2026.8.3
           install: true
+          install_args: buf
           cache: true
-      - name: Resolve locked Node and Go dependencies
+      - name: Check contracts
+        run: mise run check:contracts
+      - name: Fetch pull request base
+        run: git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
+      - name: Reject breaking Protobuf changes
+        run: buf breaking proto --against ".git#ref=refs/remotes/origin/${{ github.event.pull_request.base.ref }},subdir=proto"
+
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install locked TypeScript tools
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+        with:
+          version: 2026.8.3
+          install: true
+          install_args: go node pnpm
+          cache: true
+      - name: Resolve locked TypeScript test dependencies
         run: |
           pnpm install --frozen-lockfile
           go mod download
           git diff --exit-code -- go.mod go.sum
-      - name: Check contracts
-        run: mise run check:contracts
-      - name: Check Jellyfin server extension
-        run: mise run check:jellyfin-extension
       - name: Check TypeScript
+        env:
+          NAMA_TEST_HEALTH_REPORT: test-health/typescript.json
+          NAMA_TEST_ITERATION: "1"
+          NAMA_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: mise run check:ts
+      - name: Upload TypeScript test health
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: test-health-typescript-${{ github.run_attempt }}
+          path: test-health/typescript.json
+          if-no-files-found: error
+          retention-days: 14
+
+  go:
+    name: Go
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install locked Go tools
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+        with:
+          version: 2026.8.3
+          install: true
+          install_args: go node go:honnef.co/go/tools/cmd/staticcheck
+          cache: true
+      - name: Resolve locked Go dependencies
+        run: |
+          go mod download
+          git diff --exit-code -- go.mod go.sum
       - name: Check Go
+        env:
+          NAMA_TEST_HEALTH_REPORT: test-health/go.json
+          NAMA_TEST_ITERATION: "1"
+          NAMA_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: mise run check:go
+      - name: Upload Go test health
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: test-health-go-${{ github.run_attempt }}
+          path: test-health/go.json
+          if-no-files-found: error
+          retention-days: 14
+
+  packaged-application:
+    name: Packaged Application
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install locked application tools
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+        with:
+          version: 2026.8.3
+          install: true
+          install_args: go node pnpm
+          cache: true
+      - name: Resolve locked application test dependencies
+        run: pnpm install --frozen-lockfile
       - name: Install the CLI credential-store service
         run: |
           sudo apt-get update
@@ -45,40 +125,30 @@ jobs:
             mise run check:docker
           '
 
-
   swift:
+    name: Swift
     runs-on: macos-26
     steps:
-      - name: Check out full history
+      - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
       - name: Install locked Swift tooling
         uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
           version: 2026.8.3
           install: true
-          install_args: swiftlint
+          install_args: node swiftlint
           cache: true
       - name: Check Swift
+        env:
+          NAMA_TEST_HEALTH_REPORT: test-health/swift.json
+          NAMA_TEST_ITERATION: "1"
+          NAMA_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: mise run check:swift
-
-  buf-breaking:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Check out full history
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Upload Swift test health
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          fetch-depth: 0
-      - name: Install locked Buf
-        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
-        with:
-          version: 2026.8.3
-          install: true
-          install_args: buf
-          cache: true
-      - name: Fetch pull request base
-        run: git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
-      - name: Reject breaking Protobuf changes
-        run: buf breaking proto --against ".git#ref=refs/remotes/origin/${{ github.event.pull_request.base.ref }},subdir=proto"
+          name: test-health-swift-${{ github.run_attempt }}
+          path: test-health/swift.json
+          if-no-files-found: error
+          retention-days: 14

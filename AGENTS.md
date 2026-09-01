@@ -48,6 +48,10 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Run the restart-mutating real Jellyfin provider proof only after every other shared-fixture server test; restarting the Compose service interrupts concurrent consumers and can republish its ephemeral host port.
 - Give PostgreSQL activity-state integration polls enough wall-clock time for a cold `nama-server` process to reach migrations under the parallel repository check; a one-second poll expires before lock admission.
 - Give compiled-process liveness, bootstrap-output, and plugin-supervisor retirement-finalization assertions twenty seconds under the parallel repository check; a five-second test budget can expire before cold Node startup or orderly process retirement under concurrent Apple and container builds.
+- Give end-to-end bootstrap process scenarios sixty seconds while retaining twenty-second individual readiness and output polls; database preparation and cold startup share the outer test budget.
+- Give multi-page production Jellyfin catalog replacement proofs ten seconds; the default five-second test budget can expire under the parallel server check.
+- Poll state or start filesystem watchers before their initial read in process-test await helpers; reading first and subscribing second can miss the only fast fixture transition and hang indefinitely.
+- Await process-exit, recovery, and retirement lifecycle log effects before dependent transitions, and persist blocked-fixture cancellation evidence before rejecting the request; fire-and-forget observation races flake lifecycle proofs.
 - Give the compiled provider-discovery process integration flow sixty seconds under the parallel Linux check; runner contention makes its multi-operation proof exceed thirty seconds.
 - Assert secret absence with complete sensitive values, not short URL fragments such as ephemeral ports that can collide with request IDs, timestamps, or durations.
 - Do not treat generated Protobuf or Connect round trips as Nama behavior tests. Verify schema format/lint/build, generation drift, consumer compilation, and handwritten Nama policy or adapter behavior.
@@ -64,12 +68,17 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Route every remote media, playlist child, key, and external-subtitle request through Nama's session-scoped loopback bridge; AetherEngine `6.21.0` cannot enforce `allowed_redirect_origins`, so never pass upstream Locator URLs or headers directly.
 - Keep the manually installed Jellyfin server extension distinct from the supervised provider plugin: the .NET extension owns host validation, protected lease keys, media interposition, and coherent user-data writes, while the TypeScript plugin alone translates its private JSON/HTTP protocol into `nama.plugin.v1`.
 - Advertise Jellyfin extension-backed playback and coherent-progress capabilities only after an authenticated compatible extension handshake; a missing, unhealthy, or incompatible extension leaves the implemented stock capabilities unchanged.
+- Keep extension-capable Jellyfin test handshakes on protocol version `2`; use version `1` only to prove incompatible fallback.
 - Require an actual Jellyfin API key on every private `/Nama/v1` control endpoint; never accept a user/device access token or label one as an API key in integration fixtures.
 - Bound the optional extension handshake independently from `GetConnection`; a stalled or unhealthy extension must preserve the already-verified stock capability result while caller cancellation still propagates.
 - Build the Jellyfin extension's playback Data Protection provider outside Jellyfin's host service collection; never configure the host-wide provider for extension lease keys.
 - Extract the packaged Jellyfin extension archive before fixture startup and mount its DLL into a writable plugin directory; a read-only directory prevents Jellyfin from writing `meta.json`.
-- Compile extension fault injection only into the unpackaged fixture DLL; never
-  ship it in the release archive.
+- Compile extension fault injection through a non-incremental Debug build after
+  every Release build and test, then explicitly replace the release-extracted
+  fixture DLL; never ship fault injection in the release archive.
+- Keep release playback expiry at a five-minute plan and thirty-minute session
+  grace; only the `NAMA_TEST_FAULTS` fixture uses two seconds and two minutes so
+  the real-provider gate can prove both expiries without weakening assertions.
 - Resolve an operation- and request-bound successful playback open before enforcing plan expiry, and retain that replay binding for the playback session lifetime.
 - Keep extension plan identifiers within the plugin contract's 256-character bound and advertise only track choices that `OpenPlayback` can materialize.
 - Tamper protected base64url fixture values in a non-final character and ensure

@@ -484,9 +484,10 @@ acceptance catalog row, endpoint state, UI harness, diagnostics, containers,
 volumes, and signed test artifacts were removed. No accepted flow invoked
 playback planning or media opening. Physical iPhone, iPad, and Apple TV
 hardware and expiry-driven actual-surface refresh remain unverified.
-`check:ios` lints Swift formatting, runs the test target through its macOS host,
-inspects the built ATS shape, and performs signing-disabled iOS, tvOS, and macOS
-builds. The real-player tests prove controlled SDR HLS rendering and control
+`check:swift` lints Swift formatting and style, runs the test target through its
+macOS host once, inspects the built transport and entitlement shape, performs
+signing-disabled iOS, tvOS, and macOS builds once, and runs analyzer lint from
+the captured compiler log. The real-player tests prove controlled SDR HLS rendering and control
 flow plus adversarial locator and shared lifecycle policy through the real
 adapter on the macOS host. Generic builds do not prove physical-device privacy
 prompts, focus, accessibility, or playback.
@@ -891,7 +892,7 @@ The implemented Connection boundary has these committed automated owners:
 | Ingress admission | `ConnectionFeatureTests`, `DiscoveryTests`, and `ConnectionRecoveryTests` | Manual and restored forbidden HTTP never invoke the verifier; discovery cannot construct a candidate from forbidden HTTP; Retry and Continue cannot escape blocked restoration. |
 | Consent and persistence | `ConnectionFeatureTests`, `ConnectionRecoveryTests`, `VerifiedEndpointStoreTests`, and `ConnectionPresentationTests` | Exact acknowledgement, source-specific cancellation, warning retention, migration, generation fencing, and cross-window visibility pass through the shared feature and store seams. |
 | Transport | `SetupStatusVerifierTests` | Redirect targets are not contacted, redirect metadata stays inside URLSession, local HTTP selects a proxy-free copy, HTTPS preserves the supplied normal configuration, and cancellation reaches both schemes. Platform trust remains URLSession-owned; the redirect delegate implements no authentication-challenge override. |
-| Application declarations | `check:ios` | Built iOS, tvOS, and macOS property lists must enable only ATS local networking and must omit arbitrary loads and static exception domains. |
+| Application declarations | `check:swift` | Built iOS, tvOS, and macOS property lists must enable only ATS local networking and must omit arbitrary loads and static exception domains. |
 | OAuth authorization and persistence | `OAuthAuthorizationFeatureTests`, `OAuthAuthorizationLifecycleTests`, `OAuthAuthorizationTransportTests`, and `OAuthTokenStoreTests` | Concrete native OAuth and scoped Connect requests, returned-interval polling, expiry-driven refresh, structured retry, window-local task cancellation, shared refresh admission and takeover, serialized mutation rollback, replacement publication ordering, damaged-record quarantine, and this-device-only non-synchronizing Keychain attributes are specified through deterministic seams. |
 
 The previews and platform builds above remain inspection and compilation aids,

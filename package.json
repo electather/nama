@@ -3,9 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check:format": "oxfmt --check .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server/.fallowrc.json apps/server plugins/jellyfin gen/ts/package.json",
+    "check:format": "oxfmt --check .oxfmtrc.json .oxlintrc.json package.json tsconfig.base.json apps/server/.fallowrc.json apps/server plugins/jellyfin gen/ts/package.json scripts/run-with-resources.mjs scripts/run-with-resources.test.mjs scripts/test-health.mjs scripts/test-health.test.mjs scripts/vitest-health-reporter.mjs",
     "check:lint": "oxlint apps/server plugins/jellyfin",
-    "check:ts": "concurrently --kill-others-on-fail --names format,lint,fallow,auth-schema,types,server-tests \"pnpm run check:format\" \"pnpm run check:lint\" \"pnpm --filter @nama/server --fail-if-no-match run check:fallow\" \"pnpm --filter @nama/server --fail-if-no-match run check:auth-schema\" \"pnpm run check:type\" \"pnpm --filter @nama/server --fail-if-no-match run check:test\"",
+    "check:test-health": "node --test scripts/run-with-resources.test.mjs scripts/test-health.test.mjs",
+    "check:ts": "scripts/check-ts.sh",
+    "check:ts:static": "concurrently --kill-others-on-fail --max-processes 2 --names format,lint,fallow,auth-schema,types,test-health \"pnpm run check:format\" \"pnpm run check:lint\" \"pnpm --filter @nama/server --fail-if-no-match run check:fallow\" \"pnpm --filter @nama/server --fail-if-no-match run check:auth-schema\" \"pnpm run check:type\" \"pnpm run check:test-health\"",
     "check:type": "concurrently --kill-others-on-fail --names server,jellyfin \"pnpm --filter @nama/server --fail-if-no-match run check:type\" \"pnpm --filter @nama/jellyfin --fail-if-no-match run check:type\""
   },
   "devDependencies": {
