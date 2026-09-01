@@ -81,7 +81,7 @@ internal sealed class PlaybackLeaseMiddleware
       }
       return Task.CompletedTask;
     });
-    if (context.Request.Method == "HEAD")
+    if (string.Equals(context.Request.Method, "HEAD", StringComparison.Ordinal))
     {
       await _next(context).ConfigureAwait(false);
       return;
@@ -114,7 +114,7 @@ internal sealed class PlaybackLeaseMiddleware
       DateTimeOffset expiration)
   {
     var responseBody = context.Response.Body;
-    await using var buffer = new BoundedMemoryStream(MaximumControlDocumentBytes);
+    using var buffer = new BoundedMemoryStream(MaximumControlDocumentBytes);
     context.Response.Body = buffer;
     try
     {
@@ -183,7 +183,7 @@ internal sealed class PlaybackLeaseMiddleware
     {
       return false;
     }
-    var queryIndex = stockTarget.IndexOf('?');
+    var queryIndex = stockTarget.IndexOf('?', StringComparison.Ordinal);
     var path = queryIndex < 0 ? stockTarget : stockTarget[..queryIndex];
     var query = queryIndex < 0 ? string.Empty : stockTarget[queryIndex..];
     if (path.Length == 0

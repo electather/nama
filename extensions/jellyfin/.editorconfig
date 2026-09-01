@@ -1,0 +1,79 @@
+[*.cs]
+csharp_prefer_braces = true:warning
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_style_qualification_for_event = false:warning
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_readonly_field = true:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_diagnostic.IDE0011.severity = warning
+dotnet_diagnostic.IDE0040.severity = warning
+dotnet_diagnostic.IDE0044.severity = warning
+dotnet_diagnostic.IDE0055.severity = warning
+dotnet_diagnostic.IDE0065.severity = warning
+
+dotnet_diagnostic.IDE0161.severity = warning
+
+[PlaybackTokenService.cs]
+# PlaybackRequestException is private token-boundary state and stays with its owner.
+dotnet_diagnostic.MA0048.severity = none
+
+# This internal exception carries only the extension's safe HTTP status and reason;
+# public serialization constructors would widen a private boundary.
+dotnet_diagnostic.CA1032.severity = none
+dotnet_diagnostic.CA1064.severity = none
+
+[PlaybackLeaseMiddleware.cs]
+# Bounded and redirect-suppressing response streams stay with their middleware owner.
+dotnet_diagnostic.MA0048.severity = none
+# InvokeAsync retains one auditable request/response ownership flow.
+dotnet_diagnostic.MA0051.severity = none
+
+# RedirectSuppressingStream borrows the ASP.NET response stream and must leave it open.
+dotnet_diagnostic.CA2213.severity = none
+
+[PlaybackSessionStore.cs]
+# Stored plan, Open request, and session state stay with the store that owns them.
+dotnet_diagnostic.MA0048.severity = none
+
+# The application-lifetime store keeps its async admission gate live until process exit;
+# disposing coordination can race requests, which this store explicitly prevents.
+dotnet_diagnostic.CA1001.severity = none
+
+[PlaybackNegotiationService.cs]
+# Negotiation-only selector and validation helpers stay with the exact-tag translator.
+dotnet_diagnostic.MA0048.severity = none
+# Negotiation remains one auditable translation from submitted profile to provider plan.
+dotnet_diagnostic.MA0051.severity = none
+
+# Nama and Jellyfin wire tokens are specified in canonical lowercase.
+dotnet_diagnostic.CA1308.severity = none
+
+[PlaybackRuntimeService.cs]
+# Runtime operation methods retain one auditable provider-side effect path.
+dotnet_diagnostic.MA0051.severity = none
+
+# Nama MIME and codec wire tokens are specified in canonical lowercase.
+dotnet_diagnostic.CA1308.severity = none
+
+[HandshakeController.cs]
+# The private handshake response stays beside its sole endpoint.
+dotnet_diagnostic.MA0048.severity = none
+
+[PlaybackModels.cs]
+# Private playback protocol records stay co-located as one bounded wire model.
+dotnet_diagnostic.MA0048.severity = none
+
+[PlaybackPlaylistRewriter.cs]
+# Stock-target and bounded-builder helpers stay beside the playlist rewriter.
+dotnet_diagnostic.MA0048.severity = none
+
+[ProgressModels.cs]
+# Private coherent-progress protocol records stay co-located as one wire model.
+dotnet_diagnostic.MA0048.severity = none
+
+[ProgressRuntimeService.cs]
+# SetProgress retains one auditable validation and provider mutation flow.
+dotnet_diagnostic.MA0051.severity = none

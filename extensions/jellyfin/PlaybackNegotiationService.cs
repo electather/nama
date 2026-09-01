@@ -18,7 +18,7 @@ internal sealed class PlaybackNegotiationService
   private const int MaximumTokenLength = 256;
   private const string ProgressiveProtocol = "http_progressive";
   private const string HlsProtocol = "hls";
-  private static readonly TranscodeReason AudioTranscodeReasons =
+  private const TranscodeReason AudioTranscodeReasons =
       TranscodeReason.AudioCodecNotSupported
       | TranscodeReason.AudioBitrateNotSupported
       | TranscodeReason.AudioChannelsNotSupported
@@ -28,7 +28,7 @@ internal sealed class PlaybackNegotiationService
       | TranscodeReason.AudioBitDepthNotSupported
       | TranscodeReason.AudioIsExternal
       | TranscodeReason.UnknownAudioStreamInfo;
-  private static readonly TranscodeReason VideoTranscodeReasons =
+  private const TranscodeReason VideoTranscodeReasons =
       TranscodeReason.VideoCodecNotSupported
       | TranscodeReason.VideoResolutionNotSupported
       | TranscodeReason.AnamorphicVideoNotSupported
@@ -43,6 +43,20 @@ internal sealed class PlaybackNegotiationService
       | TranscodeReason.VideoCodecTagNotSupported
       | TranscodeReason.ContainerBitrateExceedsLimit
       | TranscodeReason.UnknownVideoStreamInfo;
+  private static readonly string[] SdrDynamicRanges = ["SDR"];
+  private static readonly string[] Hdr10DynamicRanges = ["HDR10"];
+  private static readonly string[] Hdr10PlusDynamicRanges = ["HDR10Plus"];
+  private static readonly string[] HlgDynamicRanges = ["HLG"];
+  private static readonly string[] DolbyVisionDynamicRanges =
+  [
+    "DOVI",
+    "DOVIWithHDR10",
+    "DOVIWithHLG",
+    "DOVIWithSDR",
+    "DOVIWithEL",
+    "DOVIWithHDR10Plus",
+    "DOVIWithELHDR10Plus"
+  ];
 
   private readonly IMediaEncoder _mediaEncoder;
   private readonly ILogger<PlaybackNegotiationService> _logger;
@@ -136,8 +150,10 @@ internal sealed class PlaybackNegotiationService
     }) ?? throw Unsupported("PLAYBACK_UNSUPPORTED");
 
     var container = RequiredProviderToken(stream.Container);
-    var videoCodec = RequiredProviderToken(stream.VideoCodecs.FirstOrDefault());
-    var audioCodec = RequiredProviderToken(stream.AudioCodecs.FirstOrDefault());
+    var videoCodec = RequiredProviderToken(
+        stream.VideoCodecs.Count > 0 ? stream.VideoCodecs[0] : null);
+    var audioCodec = RequiredProviderToken(
+        stream.AudioCodecs.Count > 0 ? stream.AudioCodecs[0] : null);
     if (!SupportsOutput(capabilities.DirectPlayProfiles, container, videoCodec, audioCodec))
     {
       throw Unsupported("OUTPUT_PROFILE_UNSUPPORTED");
@@ -163,10 +179,14 @@ internal sealed class PlaybackNegotiationService
     {
       throw Unsupported("SUBTITLE_DELIVERY_UNSUPPORTED");
     }
-    var videoTranscodes = subtitleAction == "burn"
-        || (stream.TranscodeReasons & VideoTranscodeReasons) != 0
+    var videoTranscodes = string.Equals(subtitleAction, "burn", StringComparison.Ordinal)
+        || !EqualityComparer<TranscodeReason>.Default.Equals(
+            stream.TranscodeReasons & VideoTranscodeReasons,
+            default)
         || !string.Equals(video.Codec, videoCodec, StringComparison.OrdinalIgnoreCase);
-    var audioTranscodes = (stream.TranscodeReasons & AudioTranscodeReasons) != 0
+    var audioTranscodes = !EqualityComparer<TranscodeReason>.Default.Equals(
+        stream.TranscodeReasons & AudioTranscodeReasons,
+        default)
         || !string.Equals(audio.Codec, audioCodec, StringComparison.OrdinalIgnoreCase);
     if ((videoTranscodes && !SupportsVideoEncoder(videoCodec))
         || (audioTranscodes && !SupportsAudioEncoder(audioCodec)))
@@ -187,7 +207,7 @@ internal sealed class PlaybackNegotiationService
         videoTranscodes,
         audioTranscodes,
         subtitleAction);
-    var mimeType = protocol == HlsProtocol
+    var mimeType = string.Equals(protocol, HlsProtocol, StringComparison.Ordinal)
         ? "application/vnd.apple.mpegurl"
         : MimeType(container);
     return new NegotiatedPlayback(
@@ -204,7 +224,7 @@ internal sealed class PlaybackNegotiationService
         actions);
   }
 
-  public IReadOnlyList<PlaybackTrackModel> Tracks(MediaSourceInfo source)
+  public static IReadOnlyList<PlaybackTrackModel> Tracks(MediaSourceInfo source)
   {
     var streams = source.MediaStreams
         .Where(stream => stream.Type is MediaStreamType.Audio or MediaStreamType.Subtitle)
@@ -256,9 +276,10 @@ internal sealed class PlaybackNegotiationService
     {
       foreach (var input in inputs)
       {
+        var isHls = string.Equals(protocol, HlsProtocol, StringComparison.Ordinal);
         var container = RequiredToken(input.Container);
         var videoCodec = RequiredToken(input.VideoCodec);
-        if (protocol == HlsProtocol
+        if (isHls
             && (!string.Equals(container, "mp4", StringComparison.Ordinal)
                 || videoCodec is not ("h264" or "hevc")))
         {
@@ -269,10 +290,10 @@ internal sealed class PlaybackNegotiationService
           AudioCodec = string.Join(',', RequiredTokens(input.AudioCodecs)),
           Container = container,
           Context = EncodingContext.Streaming,
-          EnableSubtitlesInManifest = protocol == HlsProtocol,
+          EnableSubtitlesInManifest = isHls,
           MaxAudioChannels = capabilities.MaxAudioChannels?.ToString(CultureInfo.InvariantCulture),
-          Protocol = protocol == HlsProtocol ? MediaStreamProtocol.hls : MediaStreamProtocol.http,
-          SegmentLength = protocol == HlsProtocol ? 2 : 0,
+          Protocol = isHls ? MediaStreamProtocol.hls : MediaStreamProtocol.http,
+          SegmentLength = isHls ? 2 : 0,
           Type = DlnaProfileType.Video,
           VideoCodec = videoCodec
         });
@@ -298,7 +319,7 @@ internal sealed class PlaybackNegotiationService
         ProfileConditionValue.VideoBitDepth,
         capabilities.MaxVideoBitDepth);
     var dynamicRanges = JellyfinDynamicRanges(capabilities.DynamicRanges);
-    if (dynamicRanges.Count > 0)
+    if (dynamicRanges.Length > 0)
     {
       videoConditions.Add(new ProfileCondition(
           ProfileConditionType.EqualsAny,
@@ -310,7 +331,9 @@ internal sealed class PlaybackNegotiationService
     {
       profiles.Add(new CodecProfile
       {
-        Codec = string.Join(',', directProfiles.Select(profile => profile.VideoCodec).Distinct()),
+        Codec = string.Join(
+            ',',
+            directProfiles.Select(profile => profile.VideoCodec).Distinct(StringComparer.Ordinal)),
         Conditions = videoConditions.ToArray(),
         Type = CodecType.Video
       });
@@ -321,7 +344,7 @@ internal sealed class PlaybackNegotiationService
       {
         Codec = string.Join(',', directProfiles
             .SelectMany(profile => RequiredTokens(profile.AudioCodec?.Split(',')))
-            .Distinct()),
+            .Distinct(StringComparer.Ordinal)),
         Conditions =
         [
           new ProfileCondition(
@@ -338,7 +361,7 @@ internal sealed class PlaybackNegotiationService
 
   private static SubtitleProfile[] BuildSubtitleProfiles(
       PlaybackCapabilitiesInput capabilities,
-      IReadOnlyList<string> protocols,
+      string[] protocols,
       IReadOnlyList<DirectPlayProfile> directProfiles)
   {
     var inputs = capabilities.SubtitleCapabilities ?? [];
@@ -347,8 +370,11 @@ internal sealed class PlaybackNegotiationService
       throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
     }
     var profiles = new List<SubtitleProfile>();
-    var hlsOnly = protocols.Count == 1 && protocols[0] == HlsProtocol;
-    var containers = string.Join(',', directProfiles.Select(profile => profile.Container).Distinct());
+    var hlsOnly = protocols.Length == 1
+        && string.Equals(protocols[0], HlsProtocol, StringComparison.Ordinal);
+    var containers = string.Join(
+        ',',
+        directProfiles.Select(profile => profile.Container).Distinct(StringComparer.Ordinal));
     foreach (var input in inputs)
     {
       var format = RequiredToken(input.Format);
@@ -357,7 +383,9 @@ internal sealed class PlaybackNegotiationService
       {
         profiles.Add(new SubtitleProfile
         {
-          Container = mode == "embedded" ? containers : string.Empty,
+          Container = string.Equals(mode, "embedded", StringComparison.Ordinal)
+              ? containers
+              : string.Empty,
           Format = format,
           Method = mode switch
           {
@@ -368,7 +396,7 @@ internal sealed class PlaybackNegotiationService
             _ => throw new PlaybackRequestException(StatusCodes.Status400BadRequest)
           }
         });
-        if (mode == "external" && hlsOnly)
+        if (string.Equals(mode, "external", StringComparison.Ordinal) && hlsOnly)
         {
           profiles.Add(new SubtitleProfile
           {
@@ -382,7 +410,7 @@ internal sealed class PlaybackNegotiationService
     return profiles.ToArray();
   }
 
-  private static IReadOnlyList<PlaybackActionModel> BuildActions(
+  private static PlaybackActionModel[] BuildActions(
       MediaSourceInfo source,
       int audioTrackIndex,
       int? subtitleTrackIndex,
@@ -567,7 +595,7 @@ internal sealed class PlaybackNegotiationService
       }
       return null;
     }
-    if (preferences.Quality != "capped"
+    if (!string.Equals(preferences.Quality, "capped", StringComparison.Ordinal)
         || !ulong.TryParse(
             preferences.MaxBitRateBps,
             NumberStyles.None,
@@ -580,25 +608,16 @@ internal sealed class PlaybackNegotiationService
     return maximum > int.MaxValue ? int.MaxValue : (int)maximum;
   }
 
-  private static IReadOnlyList<string> JellyfinDynamicRanges(IReadOnlyList<string>? input)
+  private static string[] JellyfinDynamicRanges(IReadOnlyList<string>? input)
   {
     var ranges = RequiredTokens(input);
     return ranges.SelectMany(range => range switch
     {
-      "sdr" => new[] { "SDR" },
-      "hdr10" => new[] { "HDR10" },
-      "hdr10_plus" => new[] { "HDR10Plus" },
-      "hlg" => new[] { "HLG" },
-      "dolby_vision" => new[]
-      {
-        "DOVI",
-        "DOVIWithHDR10",
-        "DOVIWithHLG",
-        "DOVIWithSDR",
-        "DOVIWithEL",
-        "DOVIWithHDR10Plus",
-        "DOVIWithELHDR10Plus"
-      },
+      "sdr" => SdrDynamicRanges,
+      "hdr10" => Hdr10DynamicRanges,
+      "hdr10_plus" => Hdr10PlusDynamicRanges,
+      "hlg" => HlgDynamicRanges,
+      "dolby_vision" => DolbyVisionDynamicRanges,
       _ => throw new PlaybackRequestException(StatusCodes.Status400BadRequest)
     }).ToArray();
   }
@@ -649,7 +668,7 @@ internal sealed class PlaybackNegotiationService
     }
   }
 
-  private static IReadOnlyList<string> RequiredTokens(IReadOnlyList<string>? values)
+  private static string[] RequiredTokens(IReadOnlyList<string>? values)
   {
     if (values is null || values.Count > MaximumListItems)
     {
@@ -683,7 +702,7 @@ internal sealed class PlaybackNegotiationService
     return value.ToLowerInvariant();
   }
 
-  private static IReadOnlyList<string> ProviderContainers(string? value)
+  private static string[] ProviderContainers(string? value)
   {
     if (string.IsNullOrEmpty(value))
     {
@@ -714,7 +733,7 @@ internal sealed class PlaybackNegotiationService
   }
 
   private static void AddMaximumCondition(
-      ICollection<ProfileCondition> conditions,
+      List<ProfileCondition> conditions,
       ProfileConditionValue property,
       uint? maximum)
   {
@@ -750,27 +769,27 @@ internal static class PlaybackSubtitleSelector
       IReadOnlyList<string> preferredLanguages,
       IReadOnlyList<SubtitleCapabilityInput>? capabilities)
   {
-    if (preference == "off" || candidates.Count == 0)
+    if (string.Equals(preference, "off", StringComparison.Ordinal) || candidates.Count == 0)
     {
       return null;
     }
     var supported = candidates
         .Where(candidate => Supports(candidate, capabilities))
         .ToArray();
-    if (preference == "forced_only")
+    if (string.Equals(preference, "forced_only", StringComparison.Ordinal))
     {
       var forcedOnly = supported.Where(candidate => candidate.IsForced).ToArray();
       return Preferred(forcedOnly, preferredLanguages)?.Index
           ?? forcedOnly.FirstOrDefault()?.Index;
     }
-    if (preference == "always")
+    if (string.Equals(preference, "always", StringComparison.Ordinal))
     {
       return Preferred(supported, preferredLanguages)?.Index
           ?? supported.FirstOrDefault(candidate => candidate.Index == providerDefaultIndex)?.Index
           ?? supported.FirstOrDefault(candidate => candidate.IsDefault)?.Index
           ?? supported.FirstOrDefault()?.Index;
     }
-    if (preference != "auto")
+    if (!string.Equals(preference, "auto", StringComparison.Ordinal))
     {
       throw new PlaybackRequestException(StatusCodes.Status400BadRequest);
     }

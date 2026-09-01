@@ -45,7 +45,7 @@ public sealed class PlaybackController : ControllerBase
   }
 
   [HttpPost("sessions")]
-  public async Task<IActionResult> Open(JsonElement body)
+  public async Task<IActionResult> Open(JsonElement body, CancellationToken cancellationToken)
   {
     if (!await HasApiKeyAsync().ConfigureAwait(false))
     {
@@ -54,7 +54,10 @@ public sealed class PlaybackController : ControllerBase
 
     try
     {
-      return Ok(await _runtime.OpenAsync(body, Request.Headers.Authorization).ConfigureAwait(false));
+      return Ok(await _runtime.OpenAsync(
+          body,
+          Request.Headers.Authorization,
+          cancellationToken).ConfigureAwait(false));
     }
     catch (PlaybackRequestException exception)
     {

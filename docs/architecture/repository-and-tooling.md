@@ -33,6 +33,9 @@ Native configuration is the source of truth:
 - Buf module and generation configuration own Protobuf validation and
   generation.
 - Compose owns the local database service model.
+- The exact-versioned Jellyfin extension project manifest, its MSTest project,
+  committed NuGet locks, and nested EditorConfig own native .NET dependencies,
+  tests, SDK/Meziantou analysis, and C# style enforcement.
 
 This architecture note deliberately does not duplicate their versions, flags,
 commands, paths, or CI job implementation.
@@ -63,6 +66,14 @@ Run the narrow native check first, then use the aggregate repository check on a
 fully provisioned Mac. Its declared Mise dependency graph starts independent
 native owners concurrently and respects Mise's standard job limit; native tasks
 remain independently runnable.
+
+`mise run check:jellyfin-extension` is the independently runnable native .NET
+owner. Its script forces the pinned SDK container to Linux AMD64, restores both
+dependency graphs in locked mode, verifies formatting, runs the Release MSTest
+application through Microsoft Testing Platform, requires analyzer-clean Release
+compilation, packages the exact Jellyfin artifact, and prepares the
+fault-injected server-test fixture. TypeScript server-test setup consumes this
+owner rather than duplicating or narrowing it.
 
 Docker and Xcode are current native prerequisites. The universal Xcode project
 imports the generated public package, and `check:swift` owns formatting, lint,

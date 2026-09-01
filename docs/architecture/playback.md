@@ -160,6 +160,29 @@ ring, while lost provider resources fail safely. Stock Jellyfin routes retain
 their existing behavior; Nama's guarantee covers only access conferred through
 its opaque namespace.
 
+The private extension store admits at most 128 unexpired Playback plans and
+retains at most 16 unexpired Playback sessions. Closed sessions remain retained
+and count until their lease expiry so Open and Close replay stays exact. A
+session retains at most
+`min(8,192, ceil((runtime + grace) / 15 seconds) + 2,048)` accepted Event IDs
+and normalized signatures. It never evicts an accepted identity or acknowledges
+a new stale sequence that it cannot retain.
+
+Expired plans and sessions are removed before capacity is evaluated. A matching
+Open or Report replay is resolved before the corresponding capacity check; a
+conflicting identity remains a conflict. New work over the limit causes no
+Jellyfin side effect and fails with HTTP 429 plus
+`PLAYBACK_PLAN_LIMIT_REACHED`, `PLAYBACK_SESSION_LIMIT_REACHED`, or
+`PLAYBACK_EVENT_LIMIT_REACHED`.
+
+Open admission propagates request cancellation while it waits on extension
+coordination. Report and Close retain the same cancellable gate behavior and
+recheck session expiry after acquiring the gate. Once an uncancellable Jellyfin
+session or telemetry mutation starts, the extension completes its matching
+local replay, sequence, and terminal bookkeeping even if request cancellation
+arrives. Expiry cleanup acquires the session gate before removing indexes and
+never disposes coordination that a concurrent request can still reference.
+
 [ADR-0014](../adr/0014-four-stage-playback-lifecycle.md) defines the
 plan, open, report, and close lifecycle for the target public and plugin
 contracts.

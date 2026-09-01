@@ -10,13 +10,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
-    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisLevel>9.0-all</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Jellyfin.Controller" Version="10.11.11" PrivateAssets="all" ExcludeAssets="runtime" />
+    <PackageReference Include="Meziantou.Analyzer" Version="[3.0.198]" PrivateAssets="all" />
     <PackageReference Include="Jellyfin.Model" Version="10.11.11" PrivateAssets="all" ExcludeAssets="runtime" />
   </ItemGroup>
 
