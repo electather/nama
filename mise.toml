@@ -37,7 +37,7 @@ description = "Lint contracts and reject generated drift"
 run = "scripts/check-contracts.sh"
 
 [tasks."check:jellyfin-extension"]
-description = "Build the exact-versioned Jellyfin server extension artifact"
+description = "Test, analyze, and package the exact-versioned Jellyfin server extension"
 run = "scripts/check-jellyfin-extension.sh"
 
 [tasks."check:ts"]

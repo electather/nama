@@ -16,9 +16,13 @@ public sealed class ExtensionHostCompatibility
     IsCompatible = applicationHost.ApplicationVersion == SupportedVersion
         && typeof(IServerApplicationHost).Assembly.GetName().Version == SupportedVersion
         && typeof(MediaSourceInfo).Assembly.GetName().Version == SupportedVersion
-        && hostType.FullName == "Jellyfin.Server.CoreAppHost"
+        && string.Equals(hostType.FullName, "Jellyfin.Server.CoreAppHost", StringComparison.Ordinal)
         && hostType.Assembly.GetName().Version == SupportedVersion
-        && hostBaseType?.FullName == "Emby.Server.Implementations.ApplicationHost"
+        && hostBaseType is not null
+        && string.Equals(
+            hostBaseType.FullName,
+            "Emby.Server.Implementations.ApplicationHost",
+            StringComparison.Ordinal)
         && hostBaseType.Assembly.GetName().Version == SupportedVersion;
   }
 

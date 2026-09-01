@@ -1,0 +1,12 @@
+[*.cs]
+# MSTest discovers public test classes through its adapter contract.
+dotnet_diagnostic.CA1515.severity = none
+
+# Test methods run inside the MSTest runner context; ConfigureAwait(false) would
+# add noise without defending the production extension's async boundary.
+dotnet_diagnostic.CA2007.severity = none
+dotnet_diagnostic.MA0004.severity = none
+
+# MSTest string assertion APIs do not expose comparer overloads; the tests use
+# explicit ordinal comparisons where comparison semantics affect the contract.
+dotnet_diagnostic.MA0002.severity = none

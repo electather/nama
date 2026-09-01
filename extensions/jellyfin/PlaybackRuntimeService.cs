@@ -80,7 +80,8 @@ internal sealed class PlaybackRuntimeService
 
   public async Task<OpenPlaybackOutput> OpenAsync(
       JsonElement body,
-      StringValues authorizationHeaders)
+      StringValues authorizationHeaders,
+      CancellationToken cancellationToken)
   {
     RequireCompatibleHost();
     var input = Deserialize<OpenPlaybackInput>(body);
@@ -104,8 +105,8 @@ internal sealed class PlaybackRuntimeService
           var planNonce = _tokens.UnprotectPlan(openRequest.PlanId, out _);
           return _sessions.GetPlan(planNonce);
         },
-        async plan => await CreateSessionAsync(plan, openRequest, apiKey).ConfigureAwait(false))
-        .ConfigureAwait(false);
+        async plan => await CreateSessionAsync(plan, openRequest, apiKey).ConfigureAwait(false),
+        cancellationToken).ConfigureAwait(false);
     return state.Output;
   }
 
@@ -139,39 +140,13 @@ internal sealed class PlaybackRuntimeService
     var reportSignature = string.Create(
         CultureInfo.InvariantCulture,
         $"{sequence}\n{input.State}\n{positionTicks}\n{selectedAudioTrackIndex}\n{selectedSubtitleTrackIndex?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
-    await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-    try
-    {
-      if (state.Closed)
-      {
-        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
-      }
-
-      if (state.AcceptedEvents.TryGetValue(eventId, out var acceptedSignature))
-      {
-        if (!string.Equals(acceptedSignature, reportSignature, StringComparison.Ordinal))
-        {
-          throw new PlaybackRequestException(StatusCodes.Status409Conflict);
-        }
-
-        return;
-      }
-
-      if (sequence <= state.HighestSequence)
-      {
-        state.AcceptedEvents.Add(eventId, reportSignature);
-        return;
-      }
-
-      await WriteReportAsync(state, input.State, positionTicks).ConfigureAwait(false);
-      state.PlaybackStarted = true;
-      state.HighestSequence = sequence;
-      state.AcceptedEvents.Add(eventId, reportSignature);
-    }
-    finally
-    {
-      state.Gate.Release();
-    }
+    await _sessions.ReportAsync(
+        state.Output.SessionId,
+        eventId,
+        reportSignature,
+        sequence,
+        current => WriteReportAsync(current, input.State, positionTicks),
+        cancellationToken).ConfigureAwait(false);
   }
 
   public async Task CloseAsync(
@@ -193,41 +168,26 @@ internal sealed class PlaybackRuntimeService
     var closeSignature = string.Create(
         CultureInfo.InvariantCulture,
         $"{input.Reason}\n{positionTicks}");
-    await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-    try
-    {
-      if (state.Closed)
-      {
-        if (string.Equals(state.CloseOperationId, operationId, StringComparison.Ordinal)
-            && string.Equals(state.CloseSignature, closeSignature, StringComparison.Ordinal))
+    await _sessions.CloseAsync(
+        state.Output.SessionId,
+        operationId,
+        closeSignature,
+        async current =>
         {
-          return;
-        }
-
-        throw new PlaybackRequestException(StatusCodes.Status409Conflict);
-      }
-
-      if (state.PlaybackStarted)
-      {
-        await _sessionManager.OnPlaybackStopped(new PlaybackStopInfo
-        {
-          Failed = input.Reason is "failed" or "cancelled",
-          ItemId = state.Plan.ItemId,
-          MediaSourceId = state.Plan.SourceId,
-          PlaySessionId = state.Output.SessionId,
-          PositionTicks = positionTicks,
-          SessionId = state.JellyfinSessionId
-        }).ConfigureAwait(false);
-      }
-
-      state.Closed = true;
-      state.CloseOperationId = operationId;
-      state.CloseSignature = closeSignature;
-    }
-    finally
-    {
-      state.Gate.Release();
-    }
+          if (current.PlaybackStarted)
+          {
+            await _sessionManager.OnPlaybackStopped(new PlaybackStopInfo
+            {
+              Failed = input.Reason is "failed" or "cancelled",
+              ItemId = current.Plan.ItemId,
+              MediaSourceId = current.Plan.SourceId,
+              PlaySessionId = current.Output.SessionId,
+              PositionTicks = positionTicks,
+              SessionId = current.JellyfinSessionId
+            }).ConfigureAwait(false);
+          }
+        },
+        cancellationToken).ConfigureAwait(false);
   }
 
   private PlanPlaybackOutput CreatePlan(
@@ -271,7 +231,7 @@ internal sealed class PlaybackRuntimeService
         itemId,
         source,
         initialNegotiation,
-        _negotiation.Tracks(source));
+        PlaybackNegotiationService.Tracks(source));
     var trackIndexes = tracks.Select(track => track.Index).ToHashSet();
     var videoTrackIndex = source.VideoStream?.Index;
     var negotiation = initialNegotiation with
@@ -369,7 +329,7 @@ internal sealed class PlaybackRuntimeService
         new MediaResourcePayload(
             sessionId,
             stockTarget,
-            negotiation.Protocol == "hls"),
+            string.Equals(negotiation.Protocol, "hls", StringComparison.Ordinal)),
         expiresAt);
     var sessionContext = _tokens.ProtectSessionContext(
         new SessionContextPayload(sessionId),
@@ -398,7 +358,7 @@ internal sealed class PlaybackRuntimeService
         output);
   }
 
-  private IReadOnlyList<PlaybackTrackModel> MaterializableTracks(
+  private PlaybackTrackModel[] MaterializableTracks(
       PlanPlaybackInput input,
       Guid itemId,
       MediaSourceInfo source,
@@ -462,12 +422,13 @@ internal sealed class PlaybackRuntimeService
       DateTimeOffset expiresAt)
   {
     if (negotiation.SubtitleTrackIndex is not int subtitleIndex
-        || negotiation.SubtitleAction != "external")
+        || !string.Equals(negotiation.SubtitleAction, "external", StringComparison.Ordinal))
     {
       return [];
     }
     var subtitle = plan.Tracks.Single(track =>
-        track.Type == "subtitle" && track.Index == subtitleIndex);
+        string.Equals(track.Type, "subtitle", StringComparison.Ordinal)
+        && track.Index == subtitleIndex);
     var stockTarget = negotiation.Stream.SubtitleDeliveryMethod
         == MediaBrowser.Model.Dlna.SubtitleDeliveryMethod.Hls
         ? $"/Videos/{plan.ItemId.ToString("N", CultureInfo.InvariantCulture)}/{Uri.EscapeDataString(plan.SourceId)}/Subtitles/{subtitleIndex.ToString(CultureInfo.InvariantCulture)}/subtitles.m3u8?segmentLength=2"
@@ -502,7 +463,7 @@ internal sealed class PlaybackRuntimeService
       {
         AudioStreamIndex = state.Output.SelectedAudioTrackIndex,
         CanSeek = true,
-        IsPaused = playbackState == "paused",
+        IsPaused = string.Equals(playbackState, "paused", StringComparison.Ordinal),
         ItemId = state.Plan.ItemId,
         MediaSourceId = state.Plan.SourceId,
         PlayMethod = PlayMethodFrom(state.Plan.Negotiation.Strategy),
@@ -518,7 +479,7 @@ internal sealed class PlaybackRuntimeService
     {
       AudioStreamIndex = state.Output.SelectedAudioTrackIndex,
       CanSeek = true,
-      IsPaused = playbackState == "paused",
+      IsPaused = string.Equals(playbackState, "paused", StringComparison.Ordinal),
       ItemId = state.Plan.ItemId,
       MediaSourceId = state.Plan.SourceId,
       PlayMethod = PlayMethodFrom(state.Plan.Negotiation.Strategy),
@@ -630,7 +591,7 @@ internal sealed class PlaybackRuntimeService
 
   private static string RequiredStockTarget(string value)
   {
-    var queryIndex = value.IndexOf('?');
+    var queryIndex = value.IndexOf('?', StringComparison.Ordinal);
     var path = queryIndex < 0 ? value : value[..queryIndex];
     var query = queryIndex < 0 ? string.Empty : value[queryIndex..];
     if (value.Length is 0 or > 4096

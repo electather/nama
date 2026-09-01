@@ -29,12 +29,15 @@ run_dotnet sh -c \
 
 
 run_dotnet sh -c \
-  "dotnet restore tests/Nama.Jellyfin.Extension.Tests.csproj &&
+  "dotnet restore tests/Nama.Jellyfin.Extension.Tests.csproj --locked-mode &&
    dotnet format tests/Nama.Jellyfin.Extension.Tests.csproj --no-restore --verify-no-changes &&
    dotnet run --project tests/Nama.Jellyfin.Extension.Tests.csproj \
      --configuration Release \
      --no-restore \
-     --property:ContinuousIntegrationBuild=true &&
+     --property:ContinuousIntegrationBuild=true \
+     -- \
+     --minimum-expected-tests 1 \
+     --zero-tests-policy strict &&
    dotnet build Nama.Jellyfin.Extension.csproj \
      --configuration Debug \
      --no-restore \

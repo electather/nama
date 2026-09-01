@@ -31,6 +31,12 @@
           "System.Text.Json": "9.0.11"
         }
       },
+      "Meziantou.Analyzer": {
+        "type": "Direct",
+        "requested": "[3.0.198, 3.0.198]",
+        "resolved": "3.0.198",
+        "contentHash": "5EQWa60ihYGBQSR1+rFQNI8u77CxCMfYdQTO6Xe2sCdK5GN/ti0Es+KDfQB7KhYqQQkfnJ8Ot4XItrDtMWV0/w=="
+      },
       "BitFaster.Caching": {
         "type": "Transitive",
         "resolved": "2.5.4",

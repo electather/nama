@@ -122,8 +122,8 @@ internal sealed class PlaybackPlaylistRewriter
     var syntheticOrigin = new Uri("http://nama.invalid", UriKind.Absolute);
     var stockUri = new Uri(syntheticOrigin, stockTarget);
     if (!Uri.TryCreate(stockUri, value, out var child)
-        || child.Scheme != syntheticOrigin.Scheme
-        || child.Host != syntheticOrigin.Host
+        || !string.Equals(child.Scheme, syntheticOrigin.Scheme, StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(child.Host, syntheticOrigin.Host, StringComparison.OrdinalIgnoreCase)
         || child.Port != syntheticOrigin.Port
         || !string.IsNullOrEmpty(child.UserInfo)
         || !string.IsNullOrEmpty(child.Fragment))
