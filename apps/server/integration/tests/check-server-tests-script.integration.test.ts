@@ -29,6 +29,18 @@ case " $* " in
   *" port postgres 5432 "*) printf '127.0.0.1:54321\\n'; exit 0 ;;
   *" up --detach --wait jellyfin "*) exit 0 ;;
   *" port jellyfin 8096 "*) printf '127.0.0.1:58096\\n'; exit 0 ;;
+  *" up --detach --wait jellyfin-release "*) exit 0 ;;
+  *" port jellyfin-release 8096 "*) printf '127.0.0.1:58097\\n'; exit 0 ;;
+  *) printf 'unexpected docker invocation: %s\\n' "$*" >&2; exit 99 ;;
+esac
+`;
+const RELEASE_ONLY_DOCKER_FIXTURE = `#!/bin/sh
+case " $* " in
+  *" down "*) exit 0 ;;
+  *" up --detach --wait postgres "*) exit 0 ;;
+  *" port postgres 5432 "*) printf '127.0.0.1:54321\\n'; exit 0 ;;
+  *" up --detach --wait jellyfin-release "*) exit 0 ;;
+  *" port jellyfin-release 8096 "*) printf '127.0.0.1:58097\\n'; exit 0 ;;
   *) printf 'unexpected docker invocation: %s\\n' "$*" >&2; exit 99 ;;
 esac
 `;
@@ -37,6 +49,11 @@ if [ "\${NAMA_TEST_JELLYFIN_URL+x}" = x ]; then
   printf 'PNPM_JELLYFIN_URL=%s\\n' "$NAMA_TEST_JELLYFIN_URL"
 else
   printf 'PNPM_JELLYFIN_URL=unset\\n'
+fi
+if [ "\${NAMA_TEST_JELLYFIN_RELEASE_URL+x}" = x ]; then
+  printf 'PNPM_JELLYFIN_RELEASE_URL=%s\\n' "$NAMA_TEST_JELLYFIN_RELEASE_URL"
+else
+  printf 'PNPM_JELLYFIN_RELEASE_URL=unset\\n'
 fi
 if [ "\${NAMA_TEST_HEALTH_REPORT+x}" = x ]; then
   printf 'PNPM_HEALTH_REPORT=%s\\n' "$NAMA_TEST_HEALTH_REPORT"
@@ -76,7 +93,7 @@ const runServerCheck = async (
       cwd: REPOSITORY_ROOT,
       env: {
         ...process.env,
-        NAMA_TEST_EXTENSION_READY: undefined,
+        NAMA_TEST_EXTENSION_READY: "1",
         NAMA_TEST_HEALTH_REPORT: undefined,
         NAMA_TEST_JELLYFIN_URL: "http://stale-jellyfin.invalid/",
         PATH: `${fixtureDirectory}:${process.env["PATH"] ?? ""}`,
@@ -129,6 +146,32 @@ test("runs both bounded worker projects in one server-test stage", async () => {
     expect(result.stdout.split("\n").filter((line) => line.startsWith("PNPM_ARGS="))).toEqual([
       `PNPM_ARGS=--dir ${REPOSITORY_ROOT} --filter @nama/server exec vitest run --project parallel --project shared-jellyfin`,
     ]);
+    expect(result.stdout).toContain("PNPM_JELLYFIN_RELEASE_URL=http://127.0.0.1:58097/");
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test("runs the packaged Release proof without starting the fault fixture", async () => {
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), "nama-server-check-"));
+  try {
+    await Promise.all([
+      writeFile(join(fixtureDirectory, "docker"), RELEASE_ONLY_DOCKER_FIXTURE, { mode: 0o700 }),
+      writeFile(join(fixtureDirectory, "pnpm"), PNPM_FIXTURE, { mode: 0o700 }),
+    ]);
+
+    const result = await runServerCheck(
+      fixtureDirectory,
+      ["integration/tests/jellyfin-extension-release.process.integration.test.ts"],
+      { NAMA_TEST_EXTENSION_READY: "1" },
+    );
+
+    expect(result.exitCode).toBe(SUCCESS_EXIT_CODE);
+    expect(result.stdout).toContain("PNPM_JELLYFIN_URL=unset");
+    expect(result.stderr).not.toContain(
+      "Jellyfin unavailable; real-provider proof will be reported as skipped",
+    );
+    expect(result.stdout).toContain("PNPM_JELLYFIN_RELEASE_URL=http://127.0.0.1:58097/");
   } finally {
     await rm(fixtureDirectory, { force: true, recursive: true });
   }

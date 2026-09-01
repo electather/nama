@@ -78,10 +78,14 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Compile extension fault injection through a non-incremental Debug build after
   every Release build and test, then explicitly replace the release-extracted
   fixture DLL; never ship fault injection in the release archive.
+- Exercise the packaged Release DLL in a separate pinned Jellyfin fixture before replacing the fault fixture with `NAMA_TEST_FAULTS` Debug; build and archive checks are not runtime proof.
 - Keep release playback expiry at a five-minute plan and thirty-minute session
   grace; only the `NAMA_TEST_FAULTS` fixture uses two seconds and two minutes so
   the real-provider gate can prove both expiries without weakening assertions.
 - Resolve an operation- and request-bound successful playback open before enforcing plan expiry, and retain that replay binding for the playback session lifetime.
+- Reject a disabled configured Jellyfin user during both playback Plan and Open; a prior connection check or current extension handshake does not preserve principal eligibility.
+- Retain exact local ambiguity identities and admitted sequence or terminal state when an Open, Report, or Close provider mutation throws; identical retries return ambiguity without re-entering Jellyfin.
+- Revalidate source protocol, open/close requirements, runtime equality, and lifetime bounds during playback Open before any Jellyfin session mutation.
 - Keep extension plan identifiers within the plugin contract's 256-character bound and advertise only track choices that `OpenPlayback` can materialize.
 - Tamper protected base64url fixture values in a non-final character and ensure
   the replacement differs; changing the last character can preserve decoded
@@ -89,6 +93,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Keep every Nama-exposed Jellyfin media, playlist child, key, and subtitle URL in the opaque extension namespace with a scoped header; never expose stock paths, provider IDs, `ApiKey`, or broad authorization.
 - Enforce Jellyfin control-document byte limits while accepting stock writes and while constructing rewritten output; a post-buffer length check does not bound memory.
 - Remint safe same-origin Jellyfin media redirects as session-bound opaque resources and suppress redirect bodies; reject every unsafe target without forwarding its `Location`.
+- Normalize every non-success opaque stock-media response to an empty safe response with cleared provider headers; broad-API-key stock diagnostics never cross the extension boundary.
 - Treat independently discovered stock Jellyfin routes as outside Nama's scoped-access guarantee; never claim that the extension hardens or changes their behavior.
 - Keep the macOS incoming-network entitlement confined to `NamaPlayer`'s ephemeral broker and keep that listener bound to exact IPv4 loopback; never widen it to an any, link-local, or LAN endpoint.
 - Keep PR CI on a selected Actions allowlist that admits GitHub-owned actions and `jdx/mise-action`, and run `mise run check:swift` on `macos-26`; the Swift check invokes `xcodebuild` and cannot run on Ubuntu.

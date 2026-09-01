@@ -127,9 +127,12 @@ public sealed class PlaybackMediaBoundaryTests
   {
     using var fixture = new MediaFixture();
     var context = new DefaultHttpContext();
+    context.Request.Scheme = "http";
+    context.Request.Host = new HostString("jellyfin.example");
     context.Response.StatusCode = StatusCodes.Status302Found;
     context.Response.Headers.Location =
         "/Videos/provider-item/redirected.ts?ApiKey=broad-secret&version=2";
+    context.Response.Headers["X-Provider-Secret"] = "provider-secret-path";
 
     PlaybackLeaseMiddleware.RewriteRedirect(
         context.Response,
@@ -150,6 +153,37 @@ public sealed class PlaybackMediaBoundaryTests
     Assert.IsTrue(resource.StockTarget.Contains("version=2", StringComparison.Ordinal));
     Assert.IsFalse(resource.StockTarget.Contains("broad-secret", StringComparison.Ordinal));
     Assert.IsFalse(resource.RewritePlaylist);
+    Assert.IsFalse(context.Response.Headers.ContainsKey("X-Provider-Secret"));
+    Assert.AreEqual(fixture.Expiration, expiration);
+  }
+
+  [TestMethod]
+  public void AbsoluteSameOriginRedirectIsRemintedAsOpaqueResource()
+  {
+    using var fixture = new MediaFixture();
+    var context = new DefaultHttpContext();
+    context.Request.Scheme = "http";
+    context.Request.Host = new HostString("jellyfin.example");
+    context.Response.StatusCode = StatusCodes.Status302Found;
+    context.Response.Headers.Location =
+        "http://jellyfin.example/Videos/provider-item/redirected.ts?ApiKey=broad-secret&version=3";
+
+    PlaybackLeaseMiddleware.RewriteRedirect(
+        context.Response,
+        fixture.Rewriter,
+        new MediaResourcePayload(SessionId, "/Videos/provider-item/original.ts", false),
+        fixture.Expiration,
+        PublicPrefix);
+
+    var location = context.Response.Headers.Location.ToString();
+    Assert.AreEqual(StatusCodes.Status302Found, context.Response.StatusCode);
+    Assert.IsTrue(location.StartsWith(PublicPrefix, StringComparison.Ordinal));
+    Assert.IsTrue(fixture.Tokens.TryUnprotectMediaResource(
+        location[PublicPrefix.Length..],
+        out var resource,
+        out var expiration));
+    Assert.IsNotNull(resource);
+    Assert.AreEqual("/Videos/provider-item/redirected.ts?version=3", resource.StockTarget);
     Assert.AreEqual(fixture.Expiration, expiration);
   }
 
@@ -168,8 +202,8 @@ public sealed class PlaybackMediaBoundaryTests
         fixture.Expiration,
         PublicPrefix);
 
-    Assert.AreEqual(StatusCodes.Status304NotModified, context.Response.StatusCode);
-    Assert.AreEqual("\"provider-etag\"", context.Response.Headers.ETag.ToString());
+    Assert.AreEqual(0, context.Response.ContentLength);
+    Assert.IsFalse(context.Response.Headers.ContainsKey("ETag"));
   }
 
   [TestMethod]
@@ -196,6 +230,8 @@ public sealed class PlaybackMediaBoundaryTests
   {
     using var fixture = new MediaFixture();
     var context = new DefaultHttpContext();
+    context.Request.Scheme = "http";
+    context.Request.Host = new HostString("jellyfin.example");
     context.Response.StatusCode = StatusCodes.Status302Found;
     context.Response.Headers.Location = "https://attacker.example/media.ts";
 
@@ -222,6 +258,43 @@ public sealed class PlaybackMediaBoundaryTests
     }
 
     Assert.AreEqual(0, output.Length);
+  }
+
+  [TestMethod]
+  public async Task NonSuccessResponseBodyIsSuppressed()
+  {
+    await using var output = new MemoryStream();
+    var context = new DefaultHttpContext();
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    await using (var responseBody = new RedirectSuppressingStream(output, context.Response))
+    {
+      await responseBody.WriteAsync("provider-secret-path"u8.ToArray());
+    }
+
+    Assert.AreEqual(0, output.Length);
+  }
+
+  [TestMethod]
+  public void NonSuccessResponseIsNormalized()
+  {
+    using var fixture = new MediaFixture();
+    var context = new DefaultHttpContext();
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    context.Response.ContentLength = 20;
+    context.Response.ContentType = "text/plain";
+    context.Response.Headers["X-Provider-Secret"] = "provider-secret-path";
+
+    PlaybackLeaseMiddleware.RewriteRedirect(
+        context.Response,
+        fixture.Rewriter,
+        new MediaResourcePayload(SessionId, "/Videos/provider-item/original.ts", false),
+        fixture.Expiration,
+        PublicPrefix);
+
+    Assert.AreEqual(StatusCodes.Status502BadGateway, context.Response.StatusCode);
+    Assert.AreEqual(0, context.Response.ContentLength);
+    Assert.IsNull(context.Response.ContentType);
+    Assert.IsFalse(context.Response.Headers.ContainsKey("X-Provider-Secret"));
   }
 
   private sealed class MediaFixture : IDisposable

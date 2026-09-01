@@ -47,7 +47,10 @@ import { catalogPageFromPlugin } from "../../src/catalog/catalog-item-mapper.ts"
 import { PluginSupervisor } from "../../src/plugin/supervisor.ts";
 import { restartJellyfin } from "./jellyfin-extension-restart.test-support.ts";
 import { acquireJellyfinFaultProxy } from "./jellyfin-fault-proxy.test-support.ts";
-import { provisionJellyfin } from "./provider-durable-loop.test-support.ts";
+import {
+  provisionJellyfin,
+  setJellyfinUserDisabled,
+} from "./provider-durable-loop.test-support.ts";
 
 const JELLYFIN_PLUGIN_PATH = join(import.meta.dirname, "../../../../plugins/jellyfin/src/main.ts");
 const CALL_DEADLINE_MILLISECONDS = 10_000;
@@ -690,6 +693,21 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
             revision: "real-jellyfin-disabled-revision-1",
           },
         );
+        const mutablePrincipalPlugin = yield* supervisor.supervise(
+          {
+            arguments: [JELLYFIN_PLUGIN_PATH],
+            executable: process.execPath,
+            expectedProviderType: "jellyfin",
+            stderrEvents: [],
+          },
+          {
+            configuration: { base_url: jellyfin.baseUrl, user_id: jellyfin.otherUserId },
+            credentials: { api_key: jellyfin.primaryApiKey },
+            kind: "instance",
+            providerInstanceId: "real-jellyfin-mutable-principal",
+            revision: "real-jellyfin-mutable-revision-1",
+          },
+        );
         const forbiddenProgress = yield* disabledPlugin.call(
           WatchStateService.method.pushWatchStates,
           {
@@ -854,6 +872,61 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           strategy: "direct",
           video_codec: "h264",
         });
+        const openSourceChanges = ["runtime", "protocol", "requires_opening", "requires_closing"];
+        for (const [sourceChangeIndex, sourceChange] of openSourceChanges.entries()) {
+          let sourceChangePlan = privatePlanBody;
+          if (sourceChangeIndex > 0) {
+            const sourceChangePlanResponse = yield* Effect.promise(() =>
+              fetch(new URL("Nama/v1/playback/plans", jellyfin.baseUrl), {
+                body: JSON.stringify(privatePlanInput),
+                headers: {
+                  authorization: `MediaBrowser Token="${jellyfin.primaryApiKey}"`,
+                  "content-type": "application/json",
+                },
+                method: "POST",
+                redirect: "manual",
+              }),
+            );
+            if (sourceChangePlanResponse.status !== 200) {
+              throw new Error(
+                `source-change plan failed: ${String(sourceChangePlanResponse.status)}`,
+              );
+            }
+            const sourceChangePlanValue: unknown = yield* Effect.promise(() =>
+              sourceChangePlanResponse.json(),
+            );
+            if (!isUnknownRecord(sourceChangePlanValue)) {
+              throw new Error("source-change plan response was not an object");
+            }
+            sourceChangePlan = sourceChangePlanValue;
+          }
+          const sourceChangePlanId = sourceChangePlan["plan_id"];
+          const sourceChangeAudioTrack = sourceChangePlan["default_audio_track_index"];
+          if (
+            typeof sourceChangePlanId !== "string" ||
+            typeof sourceChangeAudioTrack !== "number"
+          ) {
+            throw new TypeError("source-change plan response was incomplete");
+          }
+          const sourceChangeOpen = yield* Effect.promise(() =>
+            fetch(new URL("Nama/v1/playback/sessions", jellyfin.baseUrl), {
+              body: JSON.stringify({
+                audio_track_index: sourceChangeAudioTrack,
+                operation_id: `source-change-${sourceChange}`,
+                plan_id: sourceChangePlanId,
+                subtitle_disabled: true,
+              }),
+              headers: {
+                authorization: `MediaBrowser Token="${jellyfin.primaryApiKey}"`,
+                "content-type": "application/json",
+                "x-nama-test-open-source-change": sourceChange,
+              },
+              method: "POST",
+              redirect: "manual",
+            }),
+          );
+          expect(sourceChangeOpen.status).toBe(412);
+        }
         const directPlanRequest = {
           capabilities: {
             directPlayProfiles: [{ audioCodecs: ["aac"], container: "mp4", videoCodec: "h264" }],
@@ -870,6 +943,18 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
           },
           sourceReference: movieSource,
         };
+        const disabledPlanFailure = yield* disabledPlugin
+          .call(PlaybackService.method.planPlayback, directPlanRequest, CALL_DEADLINE_MILLISECONDS)
+          .pipe(
+            Effect.flatMap(() =>
+              Effect.fail(new Error("disabled playback plan unexpectedly succeeded")),
+            ),
+            Effect.flip,
+          );
+        expect(disabledPlanFailure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.PermissionDenied,
+        });
         const planned = yield* plugin.call(
           PlaybackService.method.planPlayback,
           directPlanRequest,
@@ -1440,6 +1525,40 @@ it.live.skipIf(process.env["NAMA_TEST_JELLYFIN_URL"] === undefined)(
         );
         const playbackLease = required(opened.lease, "direct-progressive playback lease");
         expect(replayedOpen.lease).toEqual(playbackLease);
+        const mutablePrincipalPlan = required(
+          (yield* mutablePrincipalPlugin.call(
+            PlaybackService.method.planPlayback,
+            directPlanRequest,
+            CALL_DEADLINE_MILLISECONDS,
+          )).plan,
+          "mutable-principal playback plan",
+        );
+        const disabledOpenFailure = yield* Effect.acquireUseRelease(
+          setJellyfinUserDisabled(jellyfin, jellyfin.otherUserId, true),
+          () =>
+            mutablePrincipalPlugin
+              .call(
+                PlaybackService.method.openPlayback,
+                {
+                  audioTrackReference: mutablePrincipalPlan.defaultAudioTrackReference,
+                  operationId: "disabled-principal-open",
+                  planId: mutablePrincipalPlan.id,
+                  subtitle: mutablePrincipalPlan.defaultSubtitle,
+                },
+                CALL_DEADLINE_MILLISECONDS,
+              )
+              .pipe(
+                Effect.flatMap(() =>
+                  Effect.fail(new Error("disabled playback Open unexpectedly succeeded")),
+                ),
+                Effect.flip,
+              ),
+          () => setJellyfinUserDisabled(jellyfin, jellyfin.otherUserId, false),
+        );
+        expect(disabledOpenFailure).toMatchObject({
+          _tag: "PluginRpcError",
+          code: Code.PermissionDenied,
+        });
         const equivalentPlanId = Buffer.from(plan.id, "base64url").toString("base64");
         expect(equivalentPlanId).not.toBe(plan.id);
         const equivalentPlanFailure = yield* plugin

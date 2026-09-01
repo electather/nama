@@ -12,6 +12,9 @@ namespace Nama.Jellyfin.Extension;
 public sealed class PlaybackController : ControllerBase
 {
   private readonly PlaybackRuntimeService _runtime;
+#if NAMA_TEST_FAULTS
+  private const string OpenSourceChangeHeader = "x-nama-test-open-source-change";
+#endif
   private readonly IAuthService _authService;
 
   public PlaybackController(IServiceProvider services)
@@ -51,13 +54,19 @@ public sealed class PlaybackController : ControllerBase
     {
       return Forbid();
     }
+#if NAMA_TEST_FAULTS
+    var testSourceChange = Request.Headers[OpenSourceChangeHeader].ToString();
+#else
+    string? testSourceChange = null;
+#endif
 
     try
     {
       return Ok(await _runtime.OpenAsync(
           body,
           Request.Headers.Authorization,
-          cancellationToken).ConfigureAwait(false));
+          cancellationToken,
+          testSourceChange).ConfigureAwait(false));
     }
     catch (PlaybackRequestException exception)
     {

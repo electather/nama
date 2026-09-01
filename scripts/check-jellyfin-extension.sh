@@ -6,6 +6,7 @@ sdk_image="mcr.microsoft.com/dotnet/sdk:9.0.203@sha256:fe3c1ed472bb0964c100f06aa
 extension_directory="${repository_root}/extensions/jellyfin"
 artifact="${extension_directory}/artifacts/Nama.Jellyfin.Extension-1.0.0-jellyfin-10.11.11.zip"
 fixture_dll="${extension_directory}/artifacts/fixture/Nama.Jellyfin.Extension.dll"
+release_fixture_dll="${extension_directory}/artifacts/release-fixture/Nama.Jellyfin.Extension.dll"
 release_dll="${extension_directory}/bin/Release/net9.0/Nama.Jellyfin.Extension.dll"
 
 run_dotnet() {
@@ -26,7 +27,9 @@ run_dotnet sh -c \
      --configuration Release \
      --no-restore \
      --property:ContinuousIntegrationBuild=true"
-
+mkdir -p "$(dirname "${release_fixture_dll}")"
+python3 -c 'import pathlib,sys,zipfile; pathlib.Path(sys.argv[2]).write_bytes(zipfile.ZipFile(sys.argv[1]).read("Nama.Jellyfin.Extension.dll"))' \
+  "${artifact}" "${release_fixture_dll}"
 
 run_dotnet sh -c \
   "dotnet restore tests/Nama.Jellyfin.Extension.Tests.csproj --locked-mode &&
@@ -37,7 +40,24 @@ run_dotnet sh -c \
      --property:ContinuousIntegrationBuild=true \
      -- \
      --minimum-expected-tests 1 \
-     --zero-tests-policy strict &&
+     --zero-tests-policy strict"
+
+test -f "${artifact}"
+test -s "${artifact}"
+test -f "${release_fixture_dll}"
+test -s "${release_fixture_dll}"
+test -f "${release_dll}"
+if ! cmp -s "${release_fixture_dll}" "${release_dll}"; then
+  printf '%s\n' "packaged Release fixture DLL differs from the Release build" >&2
+  exit 1
+fi
+
+NAMA_TEST_EXTENSION_READY=1 \
+  "${repository_root}/scripts/check-server-tests.sh" \
+  integration/tests/jellyfin-extension-release.process.integration.test.ts
+
+run_dotnet sh -c \
+  "dotnet restore Nama.Jellyfin.Extension.csproj --locked-mode &&
    dotnet build Nama.Jellyfin.Extension.csproj \
      --configuration Debug \
      --no-restore \
@@ -46,11 +66,8 @@ run_dotnet sh -c \
    cp bin/Debug/net9.0/Nama.Jellyfin.Extension.dll \
      artifacts/fixture/Nama.Jellyfin.Extension.dll"
 
-test -f "${artifact}"
-test -s "${artifact}"
 test -f "${fixture_dll}"
 test -s "${fixture_dll}"
-test -f "${release_dll}"
 if cmp -s "${fixture_dll}" "${release_dll}"; then
   printf '%s\n' "fault-injected fixture DLL matches the release DLL" >&2
   exit 1

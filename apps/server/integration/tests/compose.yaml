@@ -90,8 +90,34 @@ services:
       - jellyfin-media:/media:ro
       - ../../../../extensions/jellyfin/artifacts/fixture/Nama.Jellyfin.Extension.dll:/config/plugins/Nama_1.0.0/Nama.Jellyfin.Extension.dll:ro
 
+  jellyfin-release:
+    depends_on:
+      jellyfin-fixture-media:
+        condition: service_completed_successfully
+    image: jellyfin/jellyfin:10.11.11@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db
+    platform: linux/amd64
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl --fail --silent http://127.0.0.1:8096/System/Info/Public |
+          grep --quiet '"StartupWizardCompleted":'
+      interval: 1s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+    ports:
+      - "127.0.0.1::8096"
+    volumes:
+      - jellyfin-release-cache:/cache
+      - jellyfin-release-config:/config
+      - jellyfin-media:/media:ro
+      - ../../../../extensions/jellyfin/artifacts/release-fixture/Nama.Jellyfin.Extension.dll:/config/plugins/Nama_1.0.0/Nama.Jellyfin.Extension.dll:ro
+
 volumes:
   jellyfin-cache:
+  jellyfin-release-cache:
+  jellyfin-release-config:
   jellyfin-media:
   jellyfin-config:
   postgres-data:
