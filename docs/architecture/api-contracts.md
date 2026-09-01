@@ -994,10 +994,12 @@ UTF-8 bytes, explicit `user_id` with at most 128 UTF-8 bytes, and write-only
 unauthenticated public system information, then reads the configured user with
 Jellyfin's credentialed authorization header. It requires matching canonical
 server and user identities and a non-disabled user, and returns their versioned
-combination as the opaque principal reference. Jellyfin base URLs may use HTTP
-or HTTPS, private destinations, and one path prefix but no embedded credentials,
-query, or fragment. Requests refuse redirects and propagate the RPC
-cancellation signal so the API key never crosses the configured origin or path.
+combination as the opaque principal reference. Jellyfin base URLs accept public
+and private hostnames or address literals over HTTPS. HTTP remains limited to
+private, link-local, loopback, local, or single-label destinations. Both
+schemes admit one path prefix but no embedded credentials, query, or fragment.
+Requests refuse redirects and propagate the RPC cancellation signal so the API
+key never crosses the configured origin or path.
 Issue #29 advertises no media capability; issue #30 adds only capabilities it
 implements.
 

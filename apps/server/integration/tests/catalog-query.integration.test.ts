@@ -318,6 +318,43 @@ it.live("returns stored Movies and Shows with effective playability and default 
   ),
 );
 
+it.live("serves credit portraits only through credits", () =>
+  withIsolatedDatabase((databaseUrl) =>
+    Effect.gen(function* creditPortraitProjection() {
+      yield* initializeCatalogDatabase(databaseUrl, [{ id: PROVIDER_INSTANCE_ID, priority: 1 }]);
+      yield* markProviderHealthy(databaseUrl, PROVIDER_INSTANCE_ID);
+      yield* markCatalogComplete(databaseUrl, PROVIDER_INSTANCE_ID);
+      yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+        Effect.gen(function* queryCreditPortraitProjection() {
+          const movie = yield* database.catalog.observeItem(movieObservation(PROVIDER_INSTANCE_ID));
+          const directArtworkId = movie.artwork[FIRST_ROW_INDEX]?.id;
+          if (directArtworkId === undefined) {
+            throw new Error("movie artwork fixture is incomplete");
+          }
+          const query = yield* makeStoredQuery(database);
+
+          const home = yield* query.getHome(
+            PRINCIPAL_ID,
+            create(GetHomeRequestSchema, { sectionSize: 20 }),
+          );
+          const homeMovie = home.sections
+            .find(({ kind }) => kind === HomeSectionKind.MOVIES)
+            ?.items.find(({ id }) => id === movie.id);
+          expect(homeMovie?.artwork.map(({ id }) => id)).toEqual([directArtworkId]);
+
+          const media = yield* query.getMedia(
+            PRINCIPAL_ID,
+            create(GetMediaRequestSchema, { mediaId: movie.id }),
+          );
+          expect(media.media?.summary?.artwork.map(({ id }) => id)).toEqual([directArtworkId]);
+          expect(media.media?.artwork.map(({ id }) => id)).toEqual([directArtworkId]);
+          expect(media.media?.credits[FIRST_ROW_INDEX]?.portraitArtwork?.id).toBeDefined();
+        }),
+      );
+    }),
+  ),
+);
+
 it.live("filters and keyset-paginates stored Library entries with bound expiring tokens", () =>
   withIsolatedDatabase((databaseUrl) =>
     Effect.gen(function* storedLibraryPagination() {

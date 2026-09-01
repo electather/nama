@@ -271,7 +271,7 @@ it.live(
         const mappedRequestCount = jellyfin.requests.length;
 
         const publicDestination = yield* candidateConnection(supervisor, {
-          baseUrl: "https://public.example.test",
+          baseUrl: "http://public.example.test",
         });
         expect(publicDestination.connection?.status).toBe(PluginConnectionStatus.INCOMPATIBLE);
         expect(jellyfin.requests).toHaveLength(mappedRequestCount);

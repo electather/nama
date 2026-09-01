@@ -1,4 +1,4 @@
-import { asc, eq, getTableColumns, sql } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { canonicalArtwork, canonicalCredit } from "./catalog-artwork-schema.ts";
@@ -26,9 +26,10 @@ import { mediaSource } from "./catalog-source-schema.ts";
 const FIRST_ROW = 0;
 const SINGLE_ROW_LIMIT = 1;
 
+// oxlint-disable-next-line eslint/sort-keys -- Drizzle needs the non-nullable ID first to preserve left-joined artwork without dimensions.
 const artworkSelection = {
-  height: canonicalArtwork.height,
   id: canonicalArtwork.id,
+  height: canonicalArtwork.height,
   locale: canonicalArtwork.locale,
   role: canonicalArtwork.role,
   textPresence: canonicalArtwork.textPresence,
@@ -79,7 +80,12 @@ const loadArtworkRows = (database: CatalogTransaction, canonicalItemId: string) 
   database
     .select(artworkSelection)
     .from(canonicalArtwork)
-    .where(eq(canonicalArtwork.canonicalItemId, canonicalItemId))
+    .where(
+      and(
+        eq(canonicalArtwork.canonicalItemId, canonicalItemId),
+        eq(canonicalArtwork.targetItemReference, canonicalArtwork.itemReference),
+      ),
+    )
     .orderBy(asc(canonicalArtwork.displayOrder));
 
 const loadCreditRows = (database: CatalogTransaction, canonicalItemId: string) =>
@@ -136,31 +142,20 @@ const loadRelatedRows = async (
   return { artwork, credits, parents, sources };
 };
 
-const creditPortraitArtwork = (
-  activeArtwork: ArtworkReadRow | null,
-  artworkById: ReadonlyMap<string, StoredCatalogArtwork>,
-): StoredCatalogArtwork | undefined => {
-  if (!activeArtwork) {
+const storedCreditArtwork = (row: ArtworkReadRow | null): StoredCatalogArtwork | undefined => {
+  if (row === null) {
     return undefined;
   }
-  return artworkById.get(activeArtwork.id);
+  return storedArtwork(row);
 };
 
-const storedCredits = (
-  rows: RelatedRows["credits"],
-  artwork: readonly StoredCatalogArtwork[],
-): readonly StoredCatalogCredit[] => {
-  const artworkById = new Map(artwork.map((entry) => [entry.id, entry]));
-  return rows.map((credit) => {
-    const portraitArtwork = creditPortraitArtwork(credit.artwork, artworkById);
-    return {
-      characterName: credit.characterName ?? undefined,
-      name: credit.name,
-      portraitArtwork,
-      role: creditRole(credit.role),
-    };
-  });
-};
+const storedCredits = (rows: RelatedRows["credits"]): readonly StoredCatalogCredit[] =>
+  rows.map((credit) => ({
+    characterName: credit.characterName ?? undefined,
+    name: credit.name,
+    portraitArtwork: storedCreditArtwork(credit.artwork),
+    role: creditRole(credit.role),
+  }));
 
 const storedParents = (rows: RelatedRows["parents"]): readonly StoredCatalogParent[] =>
   rows.map((parent) => {
@@ -216,7 +211,7 @@ const storedItem = (
     ...storedKindDetails(item),
     ...storedMetadata(item),
     artwork,
-    credits: storedCredits(related.credits, artwork),
+    credits: storedCredits(related.credits),
     genres: item.genres,
     id: item.id,
     kind: mediaKind(item.kind),

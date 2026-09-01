@@ -23,13 +23,13 @@ lock_state="$(cksum go.mod go.sum)"
 go vet ./...
 staticcheck ./apps/cli/...
 
-shuffle=()
+go_test_arguments=(./...)
 if test -n "${NAMA_TEST_SHUFFLE_SEED:-}"; then
   if ! [[ "${NAMA_TEST_SHUFFLE_SEED}" =~ ^-?[0-9]+$ ]]; then
     printf '%s\n' "NAMA_TEST_SHUFFLE_SEED must be an integer" >&2
     exit 64
   fi
-  shuffle=("-shuffle=${NAMA_TEST_SHUFFLE_SEED}")
+  go_test_arguments=("-shuffle=${NAMA_TEST_SHUFFLE_SEED}" "${go_test_arguments[@]}")
 fi
 
 status=0
@@ -38,7 +38,7 @@ if test -n "${NAMA_TEST_HEALTH_REPORT:-}"; then
   resource_file="$(mktemp)"
   node "${repository_root}/scripts/run-with-resources.mjs" \
     "${resource_file}" "go test process" \
-    go test -json "${shuffle[@]}" ./... >"${raw_events}" || status=$?
+    go test -json "${go_test_arguments[@]}" >"${raw_events}" || status=$?
   if (( status != 0 )); then
     cat "${raw_events}"
   fi
@@ -49,7 +49,7 @@ if test -n "${NAMA_TEST_HEALTH_REPORT:-}"; then
   node "${repository_root}/scripts/test-health.mjs" \
     summarize "${NAMA_TEST_HEALTH_REPORT}"
 else
-  go test "${shuffle[@]}" ./... || status=$?
+  go test "${go_test_arguments[@]}" || status=$?
 fi
 test "$lock_state" = "$(cksum go.mod go.sum)"
 exit "${status}"

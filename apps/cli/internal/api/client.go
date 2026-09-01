@@ -103,7 +103,7 @@ func Version() string {
 func versionFromBuildInfo(info *debug.BuildInfo, ok bool) string {
 	if ok && info != nil {
 		version := strings.TrimPrefix(info.Main.Version, "v")
-		if version != "" && version != "(devel)" && !goPseudoVersionPattern.MatchString(version) {
+		if version != "" && version != "(devel)" && !strings.HasSuffix(version, "+dirty") && !goPseudoVersionPattern.MatchString(version) {
 			return version
 		}
 	}

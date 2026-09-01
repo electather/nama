@@ -7,7 +7,7 @@
     "check:lint": "oxlint apps/server plugins/jellyfin",
     "check:test-health": "node --test scripts/run-with-resources.test.mjs scripts/test-health.test.mjs",
     "check:ts": "scripts/check-ts.sh",
-    "check:ts:static": "concurrently --kill-others-on-fail --max-processes 2 --names format,lint,fallow,auth-schema,types,test-health \"pnpm run check:format\" \"pnpm run check:lint\" \"pnpm --filter @nama/server --fail-if-no-match run check:fallow\" \"pnpm --filter @nama/server --fail-if-no-match run check:auth-schema\" \"pnpm run check:type\" \"pnpm run check:test-health\"",
+    "check:ts:static": "concurrently --kill-others-on-fail --max-processes 2 --names format,lint,fallow,auth-schema,types,test-health,jellyfin-tests \"pnpm run check:format\" \"pnpm run check:lint\" \"pnpm --filter @nama/server --fail-if-no-match run check:fallow\" \"pnpm --filter @nama/server --fail-if-no-match run check:auth-schema\" \"pnpm run check:type\" \"pnpm run check:test-health\" \"pnpm --filter @nama/jellyfin --fail-if-no-match run check:test\"",
     "check:type": "concurrently --kill-others-on-fail --names server,jellyfin \"pnpm --filter @nama/server --fail-if-no-match run check:type\" \"pnpm --filter @nama/jellyfin --fail-if-no-match run check:type\""
   },
   "devDependencies": {

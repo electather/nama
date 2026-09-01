@@ -213,6 +213,20 @@ const expectCompleteState = (
   });
 };
 
+const databaseCurrentTime = (databaseUrl: string) =>
+  withPool(databaseUrl, (pool) =>
+    Effect.promise(async () => {
+      const result = await pool.query<{ readonly currentTime: Date }>(
+        `SELECT clock_timestamp() AS "currentTime"`,
+      );
+      const [row] = result.rows;
+      if (row === undefined) {
+        throw new Error("database clock query returned no row");
+      }
+      return row.currentTime;
+    }),
+  );
+
 const expectDatabaseCommitTime = (
   state: CanonicalWatchState,
   beforeCommit: Date,
@@ -222,7 +236,7 @@ const expectDatabaseCommitTime = (
   expect(state.committedAt.getTime()).toBeLessThanOrEqual(afterCommit.getTime());
 };
 
-const commitRoundTripFixture = (database: DatabaseService) =>
+const commitRoundTripFixture = (databaseUrl: string, database: DatabaseService) =>
   Effect.gen(function* commitDurableCanonicalWatchState() {
     const { movie, sourceId } = yield* observeMovieWithSource(database);
     const absent = yield* database.watchState.loadCanonicalWatchState({
@@ -231,12 +245,12 @@ const commitRoundTripFixture = (database: DatabaseService) =>
     });
     expect(absent).toBeUndefined();
 
-    const beforeCommit = new Date();
+    const beforeCommit = yield* databaseCurrentTime(databaseUrl);
     const result = yield* database.watchState.compareAndCommitCanonicalWatchState({
       expectedVersion: undefined,
       target: completeTarget(movie.id, sourceId),
     });
-    const afterCommit = new Date();
+    const afterCommit = yield* databaseCurrentTime(databaseUrl);
     const state = committedState(result);
     expectCompleteState(state, movie.id, sourceId);
     expectDatabaseCommitTime(state, beforeCommit, afterCommit);
@@ -246,7 +260,9 @@ const commitRoundTripFixture = (database: DatabaseService) =>
 const roundTripScenario = (databaseUrl: string) =>
   Effect.gen(function* roundTripCanonicalWatchState() {
     yield* initializeWatchStateDatabase(databaseUrl);
-    const committed = yield* useDatabase(databaseUrl, productionMigrations, commitRoundTripFixture);
+    const committed = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
+      commitRoundTripFixture(databaseUrl, database),
+    );
     const reconstructed = yield* useDatabase(databaseUrl, productionMigrations, (database) =>
       database.watchState.loadCanonicalWatchState({
         canonicalItemId: committed.canonicalItemId,

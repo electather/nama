@@ -461,7 +461,7 @@ it.live(
 
         const unsafePlugin = yield* superviseJellyfin(
           supervisor,
-          "https://public.example.test",
+          "http://public.example.test",
           "unsafe-artwork-provider-instance",
         );
         const unsafeOriginFailure = yield* unsafePlugin

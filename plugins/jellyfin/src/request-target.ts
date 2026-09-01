@@ -103,7 +103,7 @@ const normalizedBaseUrl = (value: string) => {
     parsed.search.length > EMPTY_LENGTH ||
     parsed.hash.length > EMPTY_LENGTH ||
     pathSegments.length > 1 ||
-    !isPrivateHostname(parsed.hostname)
+    (parsed.protocol === "http:" && !isPrivateHostname(parsed.hostname))
   ) {
     return INVALID_REQUEST_TARGET;
   }

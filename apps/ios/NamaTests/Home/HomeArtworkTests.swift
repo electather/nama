@@ -36,6 +36,32 @@ struct HomeArtworkTests {
     #expect(poster.identity == ArtworkIdentity("first-textless-poster"))
   }
 
+  @Test("falls back to the first unknown poster when no textless poster exists")
+  func selectsUnknownPoster() throws {
+    let item = homeArtworkItem(
+      artwork: [
+        homeArtworkReference(
+          identity: "unknown-backdrop",
+          role: .backdrop,
+          textPresence: .unknown
+        ),
+        homeArtworkReference(
+          identity: "first-unknown-poster",
+          role: .poster,
+          textPresence: .unknown
+        ),
+        homeArtworkReference(
+          identity: "second-unknown-poster",
+          role: .poster,
+          textPresence: .unknown
+        ),
+      ]
+    )
+
+    let poster = try #require(item.preferredPosterArtwork)
+    #expect(poster.identity == ArtworkIdentity("first-unknown-poster"))
+  }
+
   @Test("rounds a poster request up to a bounded decoded-size bucket")
   func posterSizeBucket() {
     let bucket = artworkSize()
