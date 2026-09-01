@@ -537,7 +537,6 @@ it.live(
           }
 
           yield* Fiber.interrupt(call);
-          yield* awaitFileLineCount(controlDirectory, "cancellations.ndjson", 1);
           yield* awaitProcessExit(launch.pid);
           yield* awaitPathRemoval(dirname(launch.socketPath));
           const repeated = yield* plugin

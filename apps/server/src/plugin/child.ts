@@ -5,7 +5,7 @@ import { Effect } from "effect";
 
 import { unavailable } from "./errors.ts";
 import type { PluginUnavailableFailure } from "./errors.ts";
-import type { ProcessExit, RunningPlugin } from "./model.ts";
+import type { PluginStopState, ProcessExit, RunningPlugin } from "./model.ts";
 
 interface PluginChildLifecycle {
   readonly exit: Promise<ProcessExit>;
@@ -23,14 +23,24 @@ const spawnFailure = (error: unknown): PluginUnavailableFailure => {
   return unavailable("executable_invalid");
 };
 
-const observePluginChild = (child: ChildProcessWithoutNullStreams): PluginChildLifecycle => {
+const requestedStopAtExit = (stop: PluginStopState): boolean =>
+  stop.requested && !stop.unexpectedExit;
+
+const observePluginChild = (
+  child: ChildProcessWithoutNullStreams,
+  stop: PluginStopState,
+): PluginChildLifecycle => {
   const launched = Promise.withResolvers<void>();
   const exited = Promise.withResolvers<ProcessExit>();
   let didSpawn = false;
   child.on("error", (error) => {
     if (!didSpawn) {
       launched.reject(error);
-      exited.resolve({ code: child.exitCode, signal: child.signalCode });
+      exited.resolve({
+        code: child.exitCode,
+        requestedStop: requestedStopAtExit(stop),
+        signal: child.signalCode,
+      });
     }
   });
   child.once("spawn", () => {
@@ -38,7 +48,7 @@ const observePluginChild = (child: ChildProcessWithoutNullStreams): PluginChildL
     launched.resolve();
   });
   child.once("exit", (code, signal) => {
-    exited.resolve({ code, signal });
+    exited.resolve({ code, requestedStop: requestedStopAtExit(stop), signal });
   });
   return { exit: exited.promise, launched: launched.promise };
 };

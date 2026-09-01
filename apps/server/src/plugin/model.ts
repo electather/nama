@@ -87,8 +87,14 @@ interface PluginSupervisorLayerOptions {
   readonly spawnProcess?: typeof spawn;
 }
 
+interface PluginStopState {
+  requested: boolean;
+  unexpectedExit: boolean;
+}
+
 interface ProcessExit {
   readonly code: number | null;
+  readonly requestedStop: boolean;
   readonly signal: NodeJS.Signals | null;
 }
 
@@ -98,8 +104,8 @@ interface RunningPlugin {
   readonly exit: Promise<ProcessExit>;
   readonly launchDirectory: string;
   readonly socketPath: string;
+  readonly stop: PluginStopState;
   readonly transport: Transport;
-  requestedStop: boolean;
 }
 
 interface AcquiredPluginProcess {
@@ -125,6 +131,7 @@ export type {
   PluginSupervisorService,
   PreparedPluginLaunch,
   ProcessExit,
+  PluginStopState,
   RunningPlugin,
   SupervisedPlugin,
 };

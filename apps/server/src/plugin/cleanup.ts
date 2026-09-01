@@ -98,7 +98,7 @@ const awaitPluginStop = (
 
 const stopPlugin = (plugin: RunningPlugin): Effect.Effect<void, PluginSupervisorCleanupFailure> =>
   Effect.gen(function* stopPluginProcess() {
-    plugin.requestedStop = true;
+    plugin.stop.requested = true;
     const groupExited = yield* terminatePluginProcess(plugin);
     if (!groupExited) {
       yield* Effect.try({
