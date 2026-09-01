@@ -98,6 +98,7 @@ Single-context: [CONTEXT.md](CONTEXT.md) owns domain language, accepted [ADRs](d
 - Treat independently discovered stock Jellyfin routes as outside Nama's scoped-access guarantee; never claim that the extension hardens or changes their behavior.
 - Keep the macOS incoming-network entitlement confined to `NamaPlayer`'s ephemeral broker and keep that listener bound to exact IPv4 loopback; never widen it to an any, link-local, or LAN endpoint.
 - Keep PR CI on a selected Actions allowlist that admits GitHub-owned actions and `jdx/mise-action`, and run `mise run check:swift` on `macos-26`; the Swift check invokes `xcodebuild` and cannot run on Ubuntu.
+- Disable Mise auto-install in CI workflows that select tools through `jdx/mise-action`; otherwise `mise run` installs unrelated project tools.
 - Run Swift CodeQL as a manual one-architecture x86_64 build on `macos-26-intel`; CodeQL initialization exposes only an x86_64 macOS destination even on an arm64 runner, while default autobuild selects an unqualified Release target, rebuilds universal AetherEngine dependencies, and eventually fails dependency module resolution.
 - Do not claim generic Apple-platform builds prove runtime behavior; inspect the actual universal application on every affected platform and keep unrun physical-device rows explicit.
 - Use an Apple Development-signed sandboxed macOS build for actual-surface acceptance; an ad hoc-signed sandboxed build can stay alive without creating a window and is not runtime proof.

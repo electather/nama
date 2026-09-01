@@ -10,6 +10,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  MISE_AUTO_INSTALL: "0"
+
 jobs:
   contracts:
     name: Contracts
