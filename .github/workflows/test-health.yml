@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  MISE_AUTO_INSTALL: "0"
+
 jobs:
   typescript:
     name: TypeScript health
