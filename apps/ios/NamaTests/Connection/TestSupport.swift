@@ -66,15 +66,31 @@ actor ManualVerifier: ConnectionVerifying {
 }
 
 actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
-  private(set) var endpoint: NamaEndpoint?
+  private var restoredEndpoint: RestoredNamaEndpoint?
   private var generation: UInt64 = 0
+  private var acknowledgedLocalHTTPEndpoint: NamaEndpoint?
+
+  var endpoint: NamaEndpoint? {
+    guard case .eligible(let endpoint)? = restoredEndpoint else {
+      return nil
+    }
+    return endpoint
+  }
 
   init(endpoint: NamaEndpoint? = nil) {
-    self.endpoint = endpoint
+    restoredEndpoint = endpoint.map(RestoredNamaEndpoint.eligible)
+  }
+
+  init(restoredEndpoint: RestoredNamaEndpoint) {
+    self.restoredEndpoint = restoredEndpoint
   }
 
   func snapshot() -> VerifiedEndpointStoreSnapshot {
-    VerifiedEndpointStoreSnapshot(endpoint: endpoint, generation: generation)
+    VerifiedEndpointStoreSnapshot(
+      endpoint: restoredEndpoint,
+      generation: generation,
+      acknowledgedLocalHTTPEndpoint: acknowledgedLocalHTTPEndpoint
+    )
   }
 
   func save(
@@ -84,7 +100,8 @@ actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
     guard snapshot.generation == generation else {
       return false
     }
-    self.endpoint = endpoint
+    restoredEndpoint = .eligible(endpoint)
+    acknowledgedLocalHTTPEndpoint = endpoint.usesUnencryptedHTTP ? endpoint : nil
     return true
   }
 
@@ -94,6 +111,21 @@ actor InMemoryVerifiedEndpointStore: VerifiedEndpointStoring {
 
   func clear() {
     generation &+= 1
-    endpoint = nil
+    restoredEndpoint = nil
+    acknowledgedLocalHTTPEndpoint = nil
+  }
+}
+
+actor ImmediateVerifier: ConnectionVerifying {
+  private(set) var callCount = 0
+  private let result: ConnectionVerificationResult
+
+  init(result: ConnectionVerificationResult) {
+    self.result = result
+  }
+
+  func verify(_: NamaEndpoint) -> ConnectionVerificationResult {
+    callCount += 1
+    return result
   }
 }

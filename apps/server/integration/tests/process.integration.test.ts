@@ -41,6 +41,7 @@ const DATABASE_PATH_PREFIX_LENGTH = 1;
 const UNAVAILABLE_PORT = "1";
 const SIGNAL_TEST_TIMEOUT_MILLISECONDS = 20_000;
 const FAILURE_TEST_TIMEOUT_MILLISECONDS = 10_000;
+const PRODUCTION_MIGRATION_COUNT = "3";
 const INTEGRITY_USERS = [
   ["integrity-user-one", "Integrity One", "integrity-one@example.test"],
   ["integrity-user-two", "Integrity Two", "integrity-two@example.test"],
@@ -116,6 +117,7 @@ const exerciseDatabaseRecovery = (databaseUrl: string) =>
     yield* observeDatabaseRecovery(runningProcess, admin, databaseName);
     expect(yield* withPool(databaseUrl, readMigratedState)).toEqual(before);
   });
+
 const expectFatalOutput = (
   runningProcess: RunningProcess,
   errorTag: "DatabaseConnectionError" | "DatabaseIntegrityError" | "MigrationError",
@@ -139,7 +141,7 @@ const expectFatalOutput = (
 };
 
 const expectFreshMigratedState = (migratedState: MigratedState): void => {
-  expect(migratedState.migrationCount).toBe("2");
+  expect(migratedState.migrationCount).toBe(PRODUCTION_MIGRATION_COUNT);
   expect(migratedState.serverState?.key).toBe("server");
   expect(migratedState.serverState?.administrator_user_id).toBeNull();
   expect(migratedState.serverState?.initialized_at).toBeNull();

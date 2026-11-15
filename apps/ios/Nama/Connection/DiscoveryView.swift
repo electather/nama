@@ -152,62 +152,9 @@ private struct DiscoveryCandidateButton: View {
     case permissionDenied
     case failed
 
-    static let holdDurationSeconds = 3_600
-    static let holdDuration = Duration.seconds(holdDurationSeconds)
-    static let candidateEndpoint: NamaEndpoint = {
-      do {
-        return try NamaEndpoint("https://nama-living-room.example.com")
-      } catch {
-        preconditionFailure("Preview endpoint must be valid")
-      }
-    }()
-  }
-
-  nonisolated private struct PreviewDiscovery: NamaDiscovering {
-    let event: NamaDiscoveryEvent?
-
-    func browse() -> AsyncStream<NamaDiscoveryEvent> {
-      AsyncStream { continuation in
-        if let event {
-          continuation.yield(event)
-        }
-      }
-    }
-  }
-
-  nonisolated private struct PreviewVerifier: ConnectionVerifying {
-    func verify(_: NamaEndpoint) -> ConnectionVerificationResult {
-      .ready
-    }
-  }
-
-  private actor PreviewEndpointStore: VerifiedEndpointStoring {
-    private var endpoint: NamaEndpoint?
-    private var generation: UInt64 = 0
-
-    func snapshot() -> VerifiedEndpointStoreSnapshot {
-      VerifiedEndpointStoreSnapshot(endpoint: endpoint, generation: generation)
-    }
-
-    func save(
-      _ endpoint: NamaEndpoint,
-      ifUnchangedSince snapshot: VerifiedEndpointStoreSnapshot
-    ) -> Bool {
-      guard snapshot.generation == generation else {
-        return false
-      }
-      self.endpoint = endpoint
-      return true
-    }
-
-    func isCurrent(_ snapshot: VerifiedEndpointStoreSnapshot) -> Bool {
-      snapshot.generation == generation
-    }
-
-    func clear() {
-      generation &+= 1
-      endpoint = nil
-    }
+    static let candidateEndpoint = makeConnectionPreviewEndpoint(
+      "https://nama-living-room.example.com"
+    )
   }
 
   @MainActor
@@ -232,16 +179,10 @@ private struct DiscoveryCandidateButton: View {
       event = .failed(.unavailable)
     }
 
-    let feature = ConnectionFeature(
-      verifier: PreviewVerifier(),
-      discovery: PreviewDiscovery(event: event),
-      endpointStore: PreviewEndpointStore()
-    ) { _ in
-      if preview == .empty {
-        return
-      }
-      try await Task.sleep(for: DiscoveryPreview.holdDuration)
-    }
+    let feature = makeConnectionPreviewFeature(
+      discoveryEvent: event,
+      completesDiscoveryScan: preview == .empty
+    )
     feature.flowDidEnter()
     if preview != .inactive {
       feature.activateDiscovery()

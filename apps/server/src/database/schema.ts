@@ -3,6 +3,27 @@ import { check, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 import { account, session, user, verification } from "./auth-schema.ts";
 import {
+  canonicalArtwork,
+  canonicalCredit,
+  providerArtworkMapping,
+} from "./catalog-artwork-schema.ts";
+import {
+  canonicalHierarchy,
+  canonicalItem,
+  libraryEntry,
+  providerCatalogScanState,
+  providerExternalIdentifier,
+  providerItemMapping,
+  providerItemParentReference,
+} from "./catalog-item-schema.ts";
+import {
+  mediaPart,
+  mediaSource,
+  providerPartMapping,
+  providerSourceMapping,
+} from "./catalog-source-schema.ts";
+import { mediaTrack, providerTrackMapping } from "./catalog-track-schema.ts";
+import {
   providerCredential,
   providerInstallation,
   providerInstance,
@@ -31,13 +52,33 @@ const namaServerState = pgTable(
 const authenticationDatabaseSchema = { account, namaServerState, session, user, verification };
 const databaseSchema = {
   ...authenticationDatabaseSchema,
+  canonicalArtwork,
+  canonicalCredit,
+  canonicalHierarchy,
+  canonicalItem,
+  libraryEntry,
+  mediaPart,
+  mediaSource,
+  mediaTrack,
+  providerArtworkMapping,
+  providerCatalogScanState,
   providerCredential,
+  providerExternalIdentifier,
   providerInstallation,
   providerInstance,
   providerInstanceObservation,
+  providerItemMapping,
+  providerItemParentReference,
   providerOperationResult,
+  providerPartMapping,
+  providerSourceMapping,
+  providerTrackMapping,
 };
 
 export * from "./auth-schema.ts";
+export * from "./catalog-artwork-schema.ts";
+export * from "./catalog-item-schema.ts";
+export * from "./catalog-source-schema.ts";
+export * from "./catalog-track-schema.ts";
 export * from "./provider-schema.ts";
 export { databaseSchema, namaServerState };

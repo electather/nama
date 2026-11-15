@@ -14,6 +14,13 @@ the generated private Connect interface, supervised production plugin, and
 controlled provider fixtures. `LIBRARY_READ`, `ARTWORK_RESOLVE`,
 `WATCH_STATE_READ`, and `WATCHED_WRITE` are advertised.
 
+Issue #145's Better Auth OAuth authorization-server routes, authenticated CLI
+approval, JWT-protected consumer access, broad client-grant revocation, and
+Apple token ownership are accepted target requirements but are not implemented.
+Issue #167 separately owns browser sign-in and device confirmation. The
+currently generated `DeviceService` contract is obsolete and remains only until
+that implementation removes it and regenerates all consumers.
+
 The files under `proto/` are the source of truth for service and message definitions, field numbers, validation annotations, and generated APIs; this document remains the source of truth for boundary ownership and semantics.
 
 The core implements Setup and Auth workflows plus `ProviderService.ListProviderTypes`, `CreateProviderInstance`, `ListProviderInstances`, `GetProviderInstance`, `TestProviderConfiguration`, `UpdateProviderInstance`, `TestProviderInstance`, and `DeleteProviderInstance`. It also implements private plugin process launch, bearer authentication, health/identity handshake, deadline and cancellation propagation, bounded recovery, cleanup, code-owned bundled discovery, restricted-schema acceptance, instance-local credential containment, durable installation reconciliation, one-shot candidate and exact-revision stored-instance inspection, encrypted provider credentials, immutable principal digests, revision-fenced observations, durable create/update/delete idempotency, supervised runtime cutover, and safe disabled-instance deletion against generated `nama.plugin.v1` clients. The remaining public and plugin method workflows are durable contracts, not evidence that their handlers, provider adapters, persistence flows, or scheduling exist.
@@ -25,7 +32,7 @@ The contract covers:
 - initial setup and administrator authentication;
 - operator health and diagnostics;
 - provider discovery, configuration, connection testing, and instance management;
-- device pairing, listing, and revocation;
+- OAuth device authorization, scoped consumer access, refresh, and broad first-party client revocation;
 - provider-neutral home, browse, search, media details, artwork, and technical source details;
 - playback planning, opening, telemetry, and cleanup;
 - the current principal's watched and resume state;
@@ -45,8 +52,8 @@ The MVP remains single-administrator and single-user. User administration, invit
 6. Canonical Nama item IDs and provider-instance IDs are Nama-owned. A canonical item may have sources from more than one provider instance.
 7. The core maps plugin observations into stored canonical media before serving consumer reads. Public browse and search never proxy a live provider query.
 8. The core is a control plane. Artwork and media bytes travel directly from the provider to the client through short-lived, narrowly scoped locators when the provider can supply them safely.
-9. All MVP RPCs are unary. Streaming RPCs, event feeds, REST, and GraphQL are deferred until a concrete consumer requires them.
-10. Better Auth and provider wire formats are server implementation details. Only Nama-owned messages cross either public boundary ([ADR-0007](../adr/0007-private-better-auth-adapter.md)).
+9. Nama application RPCs are unary Connect. Better Auth's target OAuth metadata, JWKS, device-code issuance, token, refresh, and revocation endpoints use their standard HTTP contracts; streaming application RPCs, event feeds, unrelated REST, and GraphQL remain deferred.
+10. Better Auth wire formats are public only on those standard OAuth authorization-server endpoints. Nama Connect APIs and provider boundaries continue to expose only Nama-owned messages ([ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md)).
 
 ## Package and file layout
 
@@ -57,8 +64,8 @@ The public contract is split across these files under `proto/nama/api/v1/`:
 | `common.proto` | Cross-cutting public values such as credentials and HTTP headers |
 | `health.proto` | Operator status and diagnostics; extends the existing health anchor |
 | `setup.proto` | One-time administrator setup |
-| `auth.proto` | Administrator sign-in, current user, and sign-out |
-| `device.proto` | Pairing approval and device credential lifecycle |
+| `auth.proto` | Administrator sign-in, current user, and sign-out plus role-neutral device-authorization approval |
+| `device.proto` | Obsolete unimplemented Pairing/Device contract; issue #145 removes it and reserves removed names and numbers |
 | `provider.proto` | Provider type schema, testing, and instance management |
 | `media.proto` | Canonical summaries, details, artwork, sources, parts, and tracks |
 | `library.proto` | Home, browse, search, details, hierarchy, source, and artwork reads |
@@ -79,6 +86,11 @@ The private contract is split across these files under `proto/nama/plugin/v1/`:
 | `watch_state.proto` | Best-effort state scans, targeted reads, and explicit mutations |
 
 The `.proto` files are authoritative for service and message names, field numbers, validation, and generated APIs. The summaries below explain their durable semantics. Existing field numbers must never be renumbered or reused.
+
+The target OAuth device flow is not represented by replacement Protobuf
+messages. Its standard Better Auth HTTP endpoints are advertised through OAuth
+metadata. Issue #145 removes `device.proto`; it does not mirror OAuth payloads
+through Connect.
 
 ## Shared conventions
 
@@ -134,15 +146,33 @@ Each plugin returns its build version and contract major from `PluginService.Get
 
 ### Transport, correlation, and secrets
 
-- Public and plugin RPCs use only Connect over HTTP; Nama does not expose gRPC or gRPC-Web ([ADR-0003](../adr/0003-protobuf-connectrpc-boundary.md)). The plugin transport is a core-owned Unix socket authenticated by one random per-launch bearer.
+- Nama application RPCs and all plugin RPCs use Connect over HTTP; Nama exposes neither gRPC nor gRPC-Web ([ADR-0003](../adr/0003-protobuf-connectrpc-boundary.md)). Better Auth's target OAuth authorization-server routes use their standard HTTP methods and media types. The plugin transport remains a core-owned Unix socket authenticated by one random per-launch bearer.
 - Supervising a code-owned descriptor and explicit launch kind validates both without creating a child process, socket, or launch artifact. The first valid call starts or joins one shared launch or recovery episode. That episode delivers one canonical versioned UTF-8 JSON launch document of at most 64 KiB through child stdin, then closes stdin. Discovery carries no provider context; one-shot candidate and exact-revision instance launches may carry one configuration and credential snapshot. Children inherit no environment values, and provider context never enters arguments, RPC bodies, RPC metadata, diagnostics, spans, or logs. Readiness requires socket mode `0600`, authenticated health, expected provider type, and contract major `1`; every provider RPC carries an explicit deadline and cancellation.
-- The only ordinary public HTTP endpoints are exact `GET /health/live` and `GET /health/ready`. Better Auth routes and callbacks are not mounted.
-- Public administrator and device credentials use `Authorization: Bearer`. Plugin credentials use the same header on the private socket.
+- The implemented ordinary public HTTP endpoints are exact `GET /health/live` and `GET /health/ready`. Issue #145 additionally mounts Better Auth's authorization-server metadata, JWKS, device-code issuance, token, refresh, and revocation routes on the same listener; it does not expose browser email/password, session, verification, or approve/deny routes.
+- Public Better Auth sessions and OAuth access tokens use `Authorization: Bearer`. Plugin credentials use the same header only on the private socket.
+- After explicit endpoint acknowledgement, the existing eligible local-HTTP policy applies to session, OAuth, refresh, and consumer bearer traffic: loopback, private, link-local, `localhost`/`.localhost`, and `.local` endpoints may use HTTP, while public names and addresses require HTTPS. This deliberately deviates from Better Auth's production HTTPS guidance and accepts local-network interception risk.
 - The server, not the client, assigns `nama-request-id` at outer Node dispatch and returns it on every Connect-delegated response, including malformed-body failures. Application-generated errors carry the identical value in `google.rpc.RequestInfo`; Connect may reject malformed input before the application pipeline, where the response header is the sole correlation value.
-- Request and response bodies, authorization headers, locator headers, passwords, bootstrap tokens, polling tokens, provider configuration, and opaque plugin session context are never logged.
+- Request and response bodies, authorization headers, locator headers, passwords, bootstrap tokens, device and user codes, access tokens, refresh tokens, provider configuration, and opaque plugin session context are never logged.
 - Locators are absolute HTTP or HTTPS URLs. Any attached headers are allowlisted by the core and valid only for the referenced artwork or playback session.
 
-`nama.api.v1.HttpHeader` contains `name` and `value`. It is used only inside artwork, media, and external-subtitle locator responses and applies only to the locator URL's origin. Every locator also contains repeated `allowed_redirect_origins`, validated by the core. Each value is a normalized scheme/host/port origin with no credentials, path, query, or fragment. Clients enforce that allowlist and never forward any custom locator header when the origin changes. A client or playback engine that cannot enforce both rules is ineligible for adoption; it does not turn either rule into advisory behavior. Exact-source review rejected tvOS AetherEngine `6.21.0`: it replays unrecognized custom headers across origins, preserves recognized credentials for same-host HTTP-to-HTTPS redirects without comparing ports, and publicly logs complete locator URLs in Release. `nama.api.v1.BearerCredential` contains `token` and `expires_at`. Credential-bearing responses are sensitive in their entirety.
+`nama.api.v1.HttpHeader` contains `name` and `value`. It is used only inside
+artwork, media, and external-subtitle locator responses. The core associates
+each header with the locator URL's origin. Every locator also contains repeated
+`allowed_redirect_origins`, validated by the core; each value is a normalized
+scheme/host/port origin with no credentials, path, query, or fragment.
+
+Clients reject every destination outside that allowlist. Clients normally strip
+custom locator headers when the normalized origin changes. Under
+[ADR-0032](../adr/0032-aetherengine-mvp-security-exception.md), the selected
+Apple MVP engine may replay locator headers only to another origin already in
+the core-validated allowlist and may write complete short-lived locator URLs to
+its own local Release logs. The exception never permits a non-allowlisted
+destination, a reusable provider-account credential, Nama-owned locator
+logging or persistence, or a locator-bearing user error. A client or engine
+that cannot enforce the redirect allowlist remains ineligible.
+
+`nama.api.v1.BearerCredential` contains `token` and `expires_at`.
+Credential-bearing responses are sensitive in their entirety.
 
 ## Public services
 
@@ -190,30 +220,78 @@ In the process that detects fatal commit ambiguity, `GetStatus` fails `UNAVAILAB
 | `SignIn` | Public, rate-limited | `email`, `password` | `administrator`, `credential` |
 | `GetCurrentUser` | Administrator | none | `administrator` |
 | `SignOut` | Administrator | none | none |
+| `ApproveDeviceAuthorization` | Authenticated principal | `user_code` | none |
 
 `SignIn` calls Better Auth's private server API with automatic sign-in disabled and returns the signed token extracted from its `set-auth-token` response header, never a raw session token or cookie ([ADR-0007](../adr/0007-private-better-auth-adapter.md)). Better Auth owns expiry, rotation, and revocation; Nama adds no refresh-token protocol and does not force a different expiry. Authentication failure always uses the same public reason regardless of whether an email exists. A Nama-owned limiter wraps the public SignIn RPC because private server-API calls do not rely on Better Auth's HTTP-route limiter.
 
 Under [ADR-0009](../adr/0009-confirm-durable-session-revocation.md), `SignOut` succeeds only after the durable session store confirms that the presented bearer no longer resolves to an active session. Clearing cookies or client state is not proof of revocation. If deletion fails or its outcome cannot be confirmed, Nama returns `UNAVAILABLE` with reason `SESSION_REVOCATION_UNCONFIRMED`; the caller retains the bearer and resolves the ambiguity with `GetCurrentUser` before retrying. An unauthenticated read proves the credential is no longer usable. PostgreSQL coverage forces session-deletion failure and proves Nama never reports successful sign-out while the bearer remains valid.
 
-### DeviceService
+`ApproveDeviceAuthorization` accepts one bounded non-empty user code, no target
+user ID, and returns an empty response. Its handler derives the grant subject
+only from the authenticated session context and passes that context to Better
+Auth's internal `deviceVerify` then `deviceApprove` APIs. It does not require
+the Administrator role, grant Administrator authority, call Better Auth over
+loopback HTTP, read or mutate Better Auth tables, or reproduce device-code
+policy. Invalid or unknown, expired, already-processed, and session-mismatched
+requests map respectively to
+`INVALID_ARGUMENT/DEVICE_AUTHORIZATION_CODE_INVALID`,
+`FAILED_PRECONDITION/DEVICE_AUTHORIZATION_EXPIRED`,
+`FAILED_PRECONDITION/DEVICE_AUTHORIZATION_ALREADY_PROCESSED`, and
+`PERMISSION_DENIED/DEVICE_AUTHORIZATION_ACCESS_DENIED`. Missing or invalid
+session authentication remains `UNAUTHENTICATED`.
 
-Device pairing separates the short human code from a high-entropy polling secret. Possession of the human code alone can never obtain a device credential.
+### Better Auth OAuth authorization server
 
-| RPC | Access | Request fields | Response fields |
-| --- | --- | --- | --- |
-| `BeginPairing` | Public, rate-limited | `display_name` | `pairing_id`, `user_code`, `polling_token`, `expires_at`, `poll_interval` |
-| `GetPairingStatus` | Matching polling token | `pairing_id`, `polling_token` | `status`, optional `device`, optional `credential` |
-| `ApprovePairing` | Administrator | `operation_id`, `user_code` | `device` |
-| `ListDevices` | Administrator | `page_size`, `page_token` | repeated `devices`, `next_page_token` |
-| `RevokeDevice` | Administrator | `device_id` | `device` |
+Issue #145 removes `DeviceService` and additively adds
+`AuthService.ApproveDeviceAuthorization`. The Apple public client uses Better
+Auth's OAuth Device Authorization and OAuth Provider HTTP contracts directly
+under the configured authorization-server base URL:
 
-`BeginPairing` is not idempotent because an unauthenticated global key could disclose another request's polling secret. A lost response leaves only an expiring orphan, and the device begins again. `PairingStatus` is `PENDING`, `APPROVED`, or `EXPIRED`. Denial is not an MVP operation; an administrator may leave an unwanted request to expire. `GetPairingStatus` is safely repeatable until expiry. Once approved, repeated polling returns the same logical device and credential rather than minting additional devices.
+| Endpoint | Access | Purpose |
+| --- | --- | --- |
+| OAuth authorization-server metadata and JWKS | Public | Advertise issuer, device authorization, token, revocation, resource, and signing-key metadata |
+| `POST /device/code` | Fixed public client, rate-limited | Request user and device codes for the exact resource and allowed scopes |
+| `POST /oauth2/token` | Fixed public client, rate-limited | Poll with the device-code grant or rotate through the refresh-token grant |
+| `POST /oauth2/revoke` | Token-holding fixed public client | Revoke a presented refresh token through the standard OAuth endpoint |
 
-`Device` contains `id`, `display_name`, `created_at`, optional `last_seen_at`, `revoked`, and optional `revoked_at`. A device bearer authorizes only consumer library, playback, and user-state RPCs. Revocation is naturally idempotent and immediately prevents new authenticated calls.
+The fixed first-party Apple client is a migration-seeded native public client
+with no secret. It supports only the device-code and refresh-token grants and
+requests one exact Nama API resource. The authorization request contains
+`nama:library`, `nama:playback`, `nama:user-state`, and `offline_access`; it
+does not request `openid`, profile claims, or an ID token.
 
-`ListDevices` follows the common page contract and orders devices by creation time then opaque ID, so every credential remains discoverable and revocable.
+Better Auth owns code generation, persistence, collision handling, polling
+admission, approval, one-time device-code consumption, token issuance, refresh
+rotation, expiry, revocation endpoints, and cleanup. Clients use the returned
+code lifetime and polling interval rather than Nama constants. A lost token
+response is recovered only through Better Auth's supported device-code or
+refresh behavior; Nama adds no logical-operation replay record or parallel
+credential delivery.
 
-Pairing requests expire, user codes are single-use, and polling earlier than `poll_interval` is rate-limited with `RetryInfo`. An authenticated administrator approves the human code shown on the television; the polling-only `pairing_id` is not required at the CLI. User codes are normalized for human entry; polling tokens are compared as secrets and never accepted in place of administrator authentication.
+An already authenticated CLI user runs
+`nama auth approve-device <user-code>`. The CLI sends the code through the
+generated `AuthService.ApproveDeviceAuthorization` Connect client using the
+existing signed session bearer from the selected profile or `NAMA_TOKEN`. The
+server binds the grant to that session principal and invokes Better Auth
+in-process with the same context. It accepts no target user ID and does not
+collect the password again, mint another session, call Better Auth over loopback
+HTTP, or manipulate plugin persistence. Milestone 4 still has only the existing
+Administrator account, but the method's authorization policy admits a later
+non-Administrator session without a wire or CLI change. Issue #167 separately
+owns browser sign-in and explicit approve/deny as an optional web-app surface
+over the same role-neutral internal application service.
+
+Access JWTs use Better Auth's pinned one-hour default and refresh tokens use its
+pinned 30-day default. The Apple client stores and rotates the refresh token;
+expiry or definitive refresh failure requires a new device authorization.
+Because the device grant creates no `oauthConsent` record, consent-management
+endpoints are not an authority for these grants.
+
+A narrow target Nama management operation lets an Administrator revoke every
+Better Auth refresh-token family for the fixed Apple client. It deliberately
+does not expose installation identity, display name, last-seen state,
+per-installation listing, or targeted revocation. Already-issued locally
+verified JWTs remain valid until their one-hour expiry.
 
 ### ProviderService
 
@@ -321,7 +399,17 @@ disabled-to-enabled transition validates the full merged candidate as the
 existing principal before committing; failure preserves configuration,
 credentials, binding, status, and revision.
 
-Deleting an instance is allowed only after it is disabled and has no active playback session or sync run; otherwise it fails with `PROVIDER_INSTANCE_BUSY`. Delete invalidates unopened plans and atomically removes encrypted credentials, configuration, scheduler state, scan continuations, provider sources, and provider-to-canonical mappings for that instance. It never calls a destructive provider API and never cascades into canonical user state. Canonical items backed by another source remain. Items left without any source lose public library membership—browse, search, and `GetMedia` treat them as absent—while their internal Nama-owned state is retained indefinitely in the MVP. Garbage collection requires a separately reviewed lifecycle policy.
+Deleting an instance is allowed only after it is disabled and has no active
+playback session or sync run; otherwise it fails
+`PROVIDER_INSTANCE_BUSY`. Delete invalidates unopened plans and atomically
+removes encrypted credentials, configuration, scheduler state, scan
+continuations, provider sources, and provider-to-canonical mappings for that
+instance. It never calls a destructive provider API and never cascades into
+canonical user state. Canonical items backed by another source remain. Items
+left without any source lose their Library entry—browse, search, and
+`GetMedia` treat them as absent—while their internal Nama-owned state is
+retained indefinitely in the MVP. Garbage collection requires a separately
+reviewed lifecycle policy.
 
 Provider update and delete acquire a per-instance writer gate and recheck
 `expected_revision`. Configuration cutover closes old-revision admission,
@@ -383,6 +471,15 @@ multiple Nama-owned sources when identity reconciliation has enough evidence
 cuts or editions remain distinct items; alternate encodes and resolutions of
 the same edition are sources.
 
+Milestone 4 creates one canonical item for each previously unseen exact
+provider-instance and provider-item-reference mapping. Later observations of
+that mapping replace the stored projection without changing its Nama ID.
+External identifiers are retained only as private future reconciliation
+evidence; cross-instance, cross-provider, external-ID, title, and fuzzy matching
+remain deferred to Milestone 7. The relational model permits several mappings
+to contribute sources to one canonical item once that later reconciliation
+policy exists.
+
 ### MediaSummary
 
 `MediaSummary` is the only item shape used in home, browse, search, and child lists. It contains:
@@ -409,6 +506,12 @@ the same edition are sources.
 - optional `audio_quality` with codec, channel count, and spatial format.
 
 Quality fields describe the source's default video and audio selection. The optional label is user-assigned or core-generated neutral text. The API never synthesizes a provider type or instance identifier into it; user-entered text is returned as entered. These structured fields let clients render familiar badges such as resolution, HDR, and spatial audio without provider-specific display strings. `SourceAvailability` is `AVAILABLE`, `PROVIDER_UNAVAILABLE`, or `UNSUPPORTED`.
+
+Milestone 4 selects the default deterministically from provider observation
+order: first `AVAILABLE`, otherwise first `PROVIDER_UNAVAILABLE`, otherwise
+first `UNSUPPORTED`. It performs no quality scoring or provider-type preference.
+The same private source reference reuses its Nama source ID after temporary
+omission, while an omitted source remains outside the active public projection.
 
 ### MediaDetails
 
@@ -482,17 +585,25 @@ Technical tracks returned by `GetMediaSource` are descriptive and not selectable
 
 | RPC | Access | Request | Response |
 | --- | --- | --- | --- |
-| `GetHome` | Administrator or device | optional `section_size` | repeated `sections` |
-| `ListLibrary` | Administrator or device | filters, sort, `page_size`, `page_token` | repeated `items`, `next_page_token` |
-| `Search` | Administrator or device | `query`, optional kinds, `page_size`, `page_token` | repeated `items`, `next_page_token` |
-| `GetMedia` | Administrator or device | `media_id` | `media` |
-| `ListChildren` | Administrator or device | `parent_media_id`, `page_size`, `page_token` | repeated `items`, `next_page_token` |
-| `GetMediaSource` | Administrator or device | `media_id`, `source_id` | `source` |
-| `ResolveArtwork` | Administrator or device | `artwork_id`, optional `max_width`, optional `max_height` | `locator` |
+| `GetHome` | Authenticated principal | optional `section_size` | repeated `sections` |
+| `ListLibrary` | Authenticated principal | filters, sort, `page_size`, `page_token` | repeated `items`, `next_page_token` |
+| `Search` | Authenticated principal | `query`, optional kinds, `page_size`, `page_token` | repeated `items`, `next_page_token` |
+| `GetMedia` | Authenticated principal | `media_id` | `media` |
+| `ListChildren` | Authenticated principal | `parent_media_id`, `page_size`, `page_token` | repeated `items`, `next_page_token` |
+| `GetMediaSource` | Authenticated principal | `media_id`, `source_id` | `source` |
+| `ResolveArtwork` | Authenticated principal | `artwork_id`, optional `max_width`, optional `max_height` | `locator` |
 
-`GetHome` returns ordered `HomeSection` values with stable `id`, display `title`, `kind`, and ordered `MediaSummary` items. Initial section kinds are `CONTINUE_WATCHING`, `MOVIES`, and `SHOWS`. The default section size is 20 and maximum is 50. Home is intentionally a bounded snapshot with no per-section pagination contract. `RECENTLY_ADDED` remains the conditional release-plan feature and is added only after navigation evidence requires it.
+`GetHome` returns ordered `HomeSection` values with stable `id`, display
+`title`, `kind`, and ordered `MediaSummary` items. Initial section kinds are
+`CONTINUE_WATCHING`, `MOVIES`, and `SHOWS`; Milestone 4 returns only Movies and
+Shows, while Milestone 5 adds Continue Watching after canonical user state
+exists. The default section size is 20 and maximum is 50. Home is intentionally
+a bounded snapshot with no per-section pagination contract.
+`RECENTLY_ADDED` remains conditional and is added only after navigation evidence
+requires it.
 
-`ListLibrary` accepts a small `LibraryFilter` rather than a generic query language:
+`ListLibrary` accepts a small `LibraryFilter` rather than a generic query
+language:
 
 - repeated `kinds`;
 - optional `genre`;
@@ -500,11 +611,43 @@ Technical tracks returned by `GetMediaSource` are descriptive and not selectable
 - `watch_filter` (`ANY`, `WATCHED`, `UNWATCHED`, or `IN_PROGRESS`); and
 - `playable_only`.
 
-Initial `LibrarySort` values are `TITLE_ASC`, `RELEASE_DATE_DESC`, and `DATE_ADDED_DESC`. Search uses server relevance and does not accept arbitrary sort. It matches normalized title, original title, cast names, and genres in the stored canonical index. An empty or whitespace-only query is invalid.
+Milestone 4 supports `ANY`; the other watch filters fail
+`MEDIA_STATE_UNAVAILABLE` until Milestone 5 stores canonical user state. Initial
+`LibrarySort` values are `TITLE_ASC`, `RELEASE_DATE_DESC`, and
+`DATE_ADDED_DESC`.
 
-`ListChildren` is valid for a show or season and returns the next canonical level in display order. A movie or episode parent fails with `FAILED_PRECONDITION` and reason `MEDIA_HAS_NO_CHILDREN`.
+Search matches a stored PostgreSQL `simple` full-text projection over normalized
+title, original title, cast names, and genres. Title has the highest weight,
+original title the next, and cast and genres the lowest. Query tokens use prefix
+matching without typo correction or fuzzy similarity. Results order by rank
+descending, normalized title ascending, then opaque Nama ID; all cursor values
+are bound into the page token. An empty or whitespace-only query is invalid.
 
-All reads use the stored canonical model. `NOT_FOUND` means the canonical resource or artwork reference does not exist or is not visible to the principal. A present item whose retained source is temporarily unusable remains visible with its availability and playability state; intentional deletion of its last source removes library visibility as specified by `ProviderService`.
+`ListChildren` is valid for a show or season and returns the next canonical
+level in display order. A movie or episode parent fails with
+`MEDIA_HAS_NO_CHILDREN`. Seasons and episodes remain invisible until their
+required canonical parent mappings exist; public reads never expose placeholder
+parents.
+
+All reads use Library entries and the stored canonical model. If enabled
+providers exist but none has completed an initial catalog pass,
+`GetHome`, `ListLibrary`, `Search`, `GetMedia`, `ListChildren`, and
+`GetMediaSource` fail `CATALOG_NOT_READY` with bounded `RetryInfo`. With no
+stored entries and no enabled provider, the library is legitimately empty.
+After one enabled provider completes a pass, reads serve committed healthy data
+without waiting for another provider. A present item remains visible through a
+provider outage or disabled instance; intentional removal of its final source
+removes its Library entry while preserving the internal canonical item.
+
+Playability is derived without provider traffic. An item is `PLAYABLE` when at
+least one stored source is `AVAILABLE` through an enabled, currently usable
+provider instance; `TEMPORARILY_UNAVAILABLE` when no source is usable but at
+least one source or provider is temporarily unavailable; and
+`NO_AVAILABLE_SOURCE` when no active source remains or every source is
+permanently unsupported. `NOT_FOUND` means the canonical resource or artwork
+reference does not exist or is not visible. `ResolveArtwork` is the only
+Library read that calls a provider, and only to exchange a stored private
+artwork reference for a validated short-lived locator.
 
 ## PlaybackService
 
@@ -576,7 +719,17 @@ Opening the same operation ID with the same request returns the same logical ses
 
 Under [ADR-0013](../adr/0013-origin-scoped-short-lived-locators.md), the locator authorizes only the planned item/session and expires no earlier than the expected runtime plus a bounded grace period. It never contains an administrator, device, provider API-key, or reusable provider-account credential. Media bytes then flow from the provider to the Apple client without traversing the core.
 
-Milestone 1 must prove that Jellyfin can satisfy this security boundary on real hardware. Current documented Jellyfin APIs do not themselves promise an item- or session-scoped media credential, so this is a release-blocking proof rather than an assumed implementation detail. Jellyfin does not advertise usable `PLAYBACK_OPEN` to the core until that proof passes. Milestone 4 repeats the transport, logging, and redirect proof on iOS, tvOS, and macOS. The same rule applies to every later provider, including Plex. If a provider cannot safely constrain direct authorization, playback returns to security design; Nama does not ship a reusable provider credential or silently become a proxy.
+Milestone 1 must prove that Jellyfin can satisfy this security boundary on real
+hardware. Current documented Jellyfin APIs do not themselves promise an item-
+or session-scoped media credential, so this is a release-blocking proof rather
+than an assumed implementation detail. Jellyfin does not advertise usable
+`PLAYBACK_OPEN` to the core until that proof passes. Milestone 4 repeats the
+transport and redirect proof on iOS, tvOS, and macOS, records ADR-0032's two
+accepted Apple-engine limitations, and verifies that neither limitation widens
+the core's credential scope or redirect allowlist. The same rule applies to
+every later provider, including Plex. If a provider cannot safely constrain
+direct authorization, playback returns to security design; Nama does not ship a
+reusable provider credential or silently become a proxy.
 
 ### ReportPlayback
 
@@ -606,8 +759,8 @@ Canonical state commits before provider telemetry is considered delivered. A pro
 
 | RPC | Access | Request | Response |
 | --- | --- | --- | --- |
-| `GetUserState` | Administrator or device | `media_id` | `user_state` |
-| `SetWatched` | Administrator or device | `operation_id`, `media_id`, `watched` | `user_state` |
+| `GetUserState` | Authenticated principal | `media_id` | `user_state` |
+| `SetWatched` | Authenticated principal | `operation_id`, `media_id`, `watched` | `user_state` |
 
 `SetWatched` is an explicit target, never a toggle. Both marking watched and marking unwatched are valid state changes. The server timestamps the local action; the client does not supply a trusted activity time. Direct state applies to playable movies and episodes in the MVP. Playback progress is persisted through `ReportPlayback` and `ClosePlayback`; there is no second public `SetProgress` path. Provider export occurs asynchronously after the Nama state commits.
 
@@ -767,6 +920,22 @@ The core durably records the catalog scan run and last accepted continuation
 resumes a valid token or begins the full scan again; an opaque plugin token is
 never treated as an authoritative provider change cursor.
 
+Milestone 4 starts one background initial catalog scan for every enabled
+provider instance without making process readiness depend on provider
+availability. The core stores one current scan state per instance and commits
+each normalized item aggregate plus its next continuation atomically and
+incrementally. A page applies only while its captured provider revision remains
+current and enabled. Disable pauses without deleting stored media; re-enable or
+revision replacement begins a fresh pass.
+
+The initial scan adds or refreshes exact mappings and never treats omission from
+one best-effort pass as deletion. A stale page is discarded. Restart resumes a
+valid continuation or begins again after invalidation. Retryable availability
+failures honor `RetryInfo` and then use persisted exponential backoff from five
+seconds to a five-minute cap with jitter; permission, incompatible capability,
+and invalid-response failures wait for revision change or re-enable. Milestone
+5 extends this checkpoint with recurring catalog refresh and watch-state work.
+
 `GetItem` supports targeted repair and refresh before a write. Missing items return `NOT_FOUND`; provider unavailability returns `UNAVAILABLE`. Provider event subscriptions are not part of the unary MVP contract.
 
 `ProviderArtworkLease` contains provider URL, required headers, repeated proposed `allowed_redirect_origins`, optional provider-enforced `access_expires_at`, MIME type, and artwork authorization scope (`PUBLIC`, `MEDIA_ITEM`, or `PROVIDER_ACCOUNT`). A `PUBLIC` lease carries no credential and may omit access expiry. A `MEDIA_ITEM` lease must be constrained to that item and include an enforced access expiry. `PROVIDER_ACCOUNT` is always rejected.
@@ -802,7 +971,13 @@ The package-local `OpenPlaybackRequest` contains `operation_id`, plugin plan ID,
 
 `session_context` may contain provider state or secrets. The core keeps it only for the active session, never logs it, and supplies it unchanged to later plugin processes if the original process restarts. It is never copied to a public response.
 
-The core exposes only `SESSION` or sufficiently constrained `MEDIA_ITEM` leases. It rejects `PROVIDER_ACCOUNT` authorization and any header, URL, or redirect origin that is reusable or unsafe outside the planned item. Redirect origins proposed by a plugin are untrusted and must match core configuration; public clients strip custom headers on every origin change. A plugin cannot weaken this rule by advertising a capability.
+The core exposes only `SESSION` or sufficiently constrained `MEDIA_ITEM` leases.
+It rejects `PROVIDER_ACCOUNT` authorization and any header, URL, or redirect
+origin that is reusable or unsafe outside the planned item. Redirect origins
+proposed by a plugin are untrusted and must match core configuration; public
+clients enforce that allowlist and apply the shared locator-header rules,
+including ADR-0032's bounded Apple MVP exception. A plugin cannot weaken this
+rule by advertising a capability.
 
 Plugin report fields mirror public event ID, sequence, state, position, duration, observed selected tracks, and optional diagnostic client time, plus the private session context. Selected track references must belong to the active lease and are observations rather than switch commands. Plugin close fields mirror final position, duration, reason, operation ID, and optional diagnostic client time, plus the context.
 
@@ -885,19 +1060,33 @@ forbidden because a real seek, unwatch, or rewatch can race the export.
 | `SetupService.GetStatus` | Public |
 | `SetupService.CreateAdministrator` | Valid current-process bootstrap token |
 | `AuthService.SignIn` | Public, rate-limited |
-| `DeviceService.BeginPairing` | Public, rate-limited |
-| `DeviceService.GetPairingStatus` | Matching high-entropy polling token |
 | `HealthService.*` | Administrator session |
 | `AuthService.GetCurrentUser`, `AuthService.SignOut` | Administrator session |
-| `DeviceService.ApprovePairing`, `ListDevices`, `RevokeDevice` | Administrator session |
+| `AuthService.ApproveDeviceAuthorization` | Authenticated session; current principal only |
+| Target broad first-party client grant-revocation operation | Administrator session |
 | `ProviderService.*` | Administrator session |
 | `SyncService.*` | Administrator session |
-| `LibraryService.*`, `PlaybackService.*`, `UserStateService.*` | Administrator session or active device bearer |
+| `LibraryService.*` | Authenticated session or OAuth JWT with `nama:library` |
+| `PlaybackService.*` | Authenticated session or OAuth JWT with `nama:playback` |
+| `UserStateService.*` | Authenticated session or OAuth JWT with `nama:user-state` |
 | Every `nama.plugin.v1` method | Matching per-launch plugin bearer |
 
-Before initialization, only the two operational HTTP health endpoints and setup RPCs can succeed. `SignIn` and `BeginPairing` remain publicly callable descriptors but return `FAILED_PRECONDITION` with `NOT_INITIALIZED`. After initialization, `CreateAdministrator` always returns `ALREADY_INITIALIZED`, even after database damage; setup never reopens itself.
+Before initialization, only the two operational HTTP health endpoints and setup
+RPCs can succeed. `SignIn` remains publicly callable but returns
+`FAILED_PRECONDITION/NOT_INITIALIZED`. The target OAuth metadata and JWKS may be
+discovered before initialization, but device-code issuance, CLI approval, and
+token exchange fail until setup is complete. After initialization,
+`CreateAdministrator` always returns `ALREADY_INITIALIZED`, even after database
+damage; setup never reopens itself.
 
-Administrator sessions cannot be manufactured from device credentials. Device credentials cannot call provider, device-management, sync, health, setup, or administrator-auth methods. A plugin bearer is accepted only on its process socket and never on the public listener.
+Better Auth session bearers and OAuth access JWTs are distinct authorities.
+OAuth validation requires the Better Auth signature, issuer, exact resource
+audience, expiry, fixed client ID, and method-specific scope. A candidate that
+looks like an OAuth access token never falls back to session resolution after
+OAuth validation fails or inherits Administrator authority. OAuth access cannot
+call provider, synchronization, health, setup, session-authentication, or
+grant-management methods. A plugin bearer is accepted only on its process
+socket and never on the public listener.
 
 Authentication and correlation run before handler validation so unauthenticated protected requests do not receive field-level oracle details. Public and bootstrap methods still receive complete field validation. Node dispatch assigns the request ID before decoding, authentication, and validation. Application failures carry it in `RequestInfo`; decoder failures retain only the same server-owned response header.
 
@@ -954,7 +1143,8 @@ Clients first branch on Connect code, then on `ErrorInfo.reason`. They must fall
 | Canonical resource is absent or invisible | `NOT_FOUND` | `RESOURCE_NOT_FOUND` |
 | Media kind cannot have children | `FAILED_PRECONDITION` | `MEDIA_HAS_NO_CHILDREN` |
 | Media kind has no direct MVP user state | `FAILED_PRECONDITION` | `MEDIA_STATE_UNSUPPORTED` |
-| Administrator attempts to approve an expired pairing | `FAILED_PRECONDITION` | `PAIRING_EXPIRED` |
+| Canonical user state is not implemented for a requested filter | `FAILED_PRECONDITION` | `MEDIA_STATE_UNAVAILABLE` |
+| Enabled providers have no completed catalog import | `UNAVAILABLE` | `CATALOG_NOT_READY` |
 | Requested source is unavailable | `UNAVAILABLE` | `SOURCE_UNAVAILABLE` |
 | No safe compatible playback can be built | `FAILED_PRECONDITION` | `PLAYBACK_UNSUPPORTED` |
 | Playback plan expired | `FAILED_PRECONDITION` | `PLAYBACK_PLAN_EXPIRED` |
@@ -972,7 +1162,7 @@ Clients first branch on Connect code, then on `ErrorInfo.reason`. They must fall
 | Provider is temporarily unreachable | `UNAVAILABLE` | `PROVIDER_UNAVAILABLE` |
 | Plugin launch or runtime is unavailable | `UNAVAILABLE` | `PLUGIN_UNAVAILABLE` |
 | Plugin returned invalid or unsafe data | `INTERNAL` | `PLUGIN_RESPONSE_INVALID` |
-| Public or pairing rate limit exceeded | `RESOURCE_EXHAUSTED` | `RATE_LIMITED` |
+| Public Connect rate limit exceeded | `RESOURCE_EXHAUSTED` | `RATE_LIMITED` |
 | Client cancelled | `CANCELLED` | `REQUEST_CANCELLED` |
 | Deadline elapsed | `DEADLINE_EXCEEDED` | `DEADLINE_EXCEEDED` |
 | Unexpected defect | `INTERNAL` | `INTERNAL` |
@@ -987,13 +1177,12 @@ Expected application errors include `ErrorInfo` and `RequestInfo`. Rate limiting
 
 ### Safe retries
 
-The following are safe to retry after `UNAVAILABLE` or `DEADLINE_EXCEEDED`: reads, lists, search, status checks, connection tests, targeted state reads, `PlanPlayback`, and polling pairing status. Clients still honor deadlines and `RetryInfo`.
+The following are safe to retry after `UNAVAILABLE` or `DEADLINE_EXCEEDED`: reads, lists, search, status checks, connection tests, targeted state reads, and `PlanPlayback`. Clients still honor deadlines and `RetryInfo`. OAuth device-code and token polling follows Better Auth's protocol errors and returned interval instead of Connect retry rules.
 
-`CreateAdministrator`, `SignIn`, and `SignOut` are never retried automatically. Lost setup response recovery is status then sign-in. After `SESSION_REVOCATION_UNCONFIRMED`, a client retains the bearer and calls `GetCurrentUser`: `UNAUTHENTICATED` resolves the operation as revoked, while a still-active session permits an explicit `SignOut` retry. Device revocation is naturally convergent, but clients read current state after an ambiguous result.
+`CreateAdministrator`, `SignIn`, and `SignOut` are never retried automatically. Lost setup response recovery is status then sign-in. After `SESSION_REVOCATION_UNCONFIRMED`, a client retains the bearer and calls `GetCurrentUser`: `UNAUTHENTICATED` resolves the operation as revoked, while a still-active session permits an explicit `SignOut` retry. The target broad first-party client grant-revocation operation is not retried automatically after an ambiguous response.
 
 These public mutations carry `operation_id` and are retried only with the same ID and identical payload:
 
-- approve pairing;
 - create, update, and delete provider instance;
 - open and close playback;
 - set watched state; and
@@ -1031,7 +1220,6 @@ At the plugin boundary, operation, event, batch, and mutation IDs are correlatio
 - Provider create serializes count and omitted-priority allocation so the
   100-instance bound and default ordering hold under concurrency.
 - Setup is process single-flight and permanently closes immediately after administrator creation commits.
-- Pairing approval is single-flight per pairing request. Only one logical device can result.
 - Only one sync run is active per provider instance. A trigger joins the active run.
 - Playback telemetry applies increasing sequence numbers. Higher sequence, not greater position, determines event order.
 - Plugin watch batches are the only specified non-atomic batch; every member has its own result.
@@ -1048,6 +1236,13 @@ global fatal-ambiguity rule or blindly replay candidate/provider work.
 ## Compatibility policy
 
 Both v1 packages follow additive wire compatibility from the first complete Milestone 0 commit. Buf `FILE` breaking checks protect both packages.
+
+Issue #145 is the accepted pre-release exception for the unimplemented
+`DeviceService`: the implementation cutover removes that service and its
+messages, reserves removed message fields and enum values where Protobuf
+supports reservation, regenerates every consumer in the same change, and then
+advances the breaking-change baseline. No released client has consumed this
+surface, and no replacement Protobuf API mirrors the Better Auth HTTP contract.
 
 - Never renumber or reuse a field or enum value.
 - Never change a field's scalar/message type, cardinality, presence, map shape, or oneof membership.
@@ -1137,13 +1332,15 @@ These flows define how the services compose. They are not authorization shortcut
 4. It calls `CreateProviderInstance`; the core encrypts write-only values and returns only configured markers.
 5. Later edits use a patch plus clear list and the instance revision.
 
-### Pair an Apple device
+### Authorize the Apple public client
 
-1. The Apple app calls `BeginPairing`, retains the polling token, and displays the human code.
-2. The administrator approves the displayed human code through the CLI.
-3. The app polls no faster than instructed until it receives the single logical device credential.
-4. The app stores the credential in Keychain and uses it only for consumer RPCs.
-5. Administrator revocation immediately blocks new calls made with that bearer.
+1. The Apple app requests a device authorization from Better Auth with the fixed public client ID, exact Nama API resource, `nama:library`, `nama:playback`, `nama:user-state`, and `offline_access`.
+2. It displays the returned user code with instructions for the already authenticated CLI user to run `nama auth approve-device <user-code>` against the same endpoint and polls no faster than the returned interval.
+3. The CLI sends the code through the generated `AuthService.ApproveDeviceAuthorization` Connect method with its existing signed session bearer; the server binds the grant to that principal and invokes Better Auth's internal verification and approval APIs with the same session context, so no Administrator role, target user ID, browser, repeated password entry, or loopback HTTP is required.
+4. The app exchanges the approved device code at Better Auth's OAuth token endpoint and commits the endpoint-bound access and refresh token bundle to Keychain before replacing any active bundle.
+5. Connect consumer calls present the JWT access token; each method verifies issuer, audience, expiry, fixed client ID, and its required scope locally.
+6. The app rotates through Better Auth's refresh-token grant. Expiry or definitive refresh failure returns to visible device authorization; ordinary offline failures preserve the stored grant.
+7. The Administrator CLI may revoke every refresh-token family for the fixed Apple client. Already-issued access JWTs remain usable until their one-hour expiry.
 
 ### Browse and play
 
@@ -1151,7 +1348,7 @@ These flows define how the services compose. They are not authorization shortcut
 2. The core reconciles and stores canonical items and source mappings.
 3. The Apple app loads lean home/list summaries, then details and technical source data only as screens require them.
 4. Artwork references are separately resolved to safe refresh-bounded locators, with access expiry when authorization is present.
-5. The app sends the current device's real player capabilities and preferences to `PlanPlayback`.
+5. The app sends the current player's real capabilities and preferences to `PlanPlayback`.
 6. The core calls the owning plugin plan method and maps provider track references to public plan IDs.
 7. `OpenPlayback` materializes a private provider lease and returns a safe direct descriptor with session-scoped tracks and any external subtitle locators.
 8. Media bytes flow from the provider to the app. The app reports ordered telemetry, including observed session tracks, and closes the session.
@@ -1184,7 +1381,7 @@ These flows define how the services compose. They are not authorization shortcut
 This design follows established provider and television behavior without adopting provider wire shapes:
 
 - Apple tvOS interaction and media-detail expectations: [Designing for tvOS](https://developer.apple.com/design/human-interface-guidelines/designing-for-tvos/) and [Apple TV movie and show information](https://support.apple.com/en-ca/guide/tv/atvb0d26676e/tvos).
-- AetherEngine's player surface and separate sidecar-subtitle URL/header handling: [README](https://github.com/superuser404notfound/aetherengine/blob/main/README.md) and [format support](https://github.com/superuser404notfound/aetherengine/blob/main/docs/formats.md).
+- AetherEngine `6.21.0` player-surface and separate sidecar-subtitle URL/header handling: [README](https://github.com/superuser404notfound/AetherEngine/blob/6.21.0/README.md) and [format support](https://github.com/superuser404notfound/AetherEngine/blob/6.21.0/docs/formats.md).
 - Better Auth's sign-out implementation, whose caught session-deletion failure must not become a successful Nama response: [sign-out source](https://github.com/better-auth/better-auth/blob/v1.6.26/packages/better-auth/src/api/routes/sign-out.ts#L34-L49). Nama's runtime confirms revocation with an authoritative follow-up lookup.
 - Jellyfin's documented surface: [stable OpenAPI](https://api.jellyfin.org/openapi/jellyfin-openapi-stable.json). Current source was also inspected at commit [`1fbd873`](https://github.com/jellyfin/jellyfin/tree/1fbd8739292cce610231be93daf43368733edf63) to distinguish implementation behavior from API guarantees.
 - Plex's documented surface: [metadata](https://developer.plex.tv/pms/#section/API-Info/Metadata-Response), [pagination](https://developer.plex.tv/pms/#section/API-Info/Pagination), [scrobble](https://developer.plex.tv/pms/#tag/Timeline/operation/putScrobble), and [timeline reporting](https://developer.plex.tv/pms/#tag/Timeline/operation/timelinePostSlash).

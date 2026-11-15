@@ -3,9 +3,9 @@
 [ADR-0010](../adr/0010-postgresql-drizzle-persistence-boundary.md)
 establishes the shared PostgreSQL and Drizzle persistence boundary. Persistence
 stores Nama-owned users, server and plugin configuration, canonical media
-records, provider-to-canonical identifier mappings, library membership,
-playback progress, watched state, device pairing, and per-source synchronization
-replicas and checkpoints.
+records, provider-to-canonical identifier mappings, Library entries, playback
+progress, watched state, OAuth authorization state, and per-source synchronization replicas
+and checkpoints.
 
 Canonical media records and their provider-to-canonical mappings are Nama-owned;
 provider payloads may be retained only as bounded diagnostic metadata, never as
@@ -14,6 +14,74 @@ the model clients depend on
 Synchronization replicas and checkpoints are evidence for reconciling
 Nama-owned watch state, not canonical state themselves
 ([ADR-0023](../adr/0023-canonical-watch-state-reconciliation.md)).
+OAuth authorization persistence is Better Auth-owned under
+[ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md).
+
+## Target OAuth authorization persistence
+
+The pinned Better Auth JWT, OAuth Provider, and OAuth Device Authorization
+schemas own the authorization-server records. Nama generates and reviews their
+Drizzle migration but does not reproduce their models behind a generic
+repository or parallel credential store.
+
+The target record families are:
+
+- Better Auth device-code records for RFC 8628 request, user-code, approval,
+  polling, expiry, client, scope, and resource state;
+- one migration-seeded native public OAuth client for the first-party Apple
+  application, protected through Better Auth's cached-trusted-client policy;
+- Better Auth refresh-token families for `offline_access`, using the plugin's
+  supported storage, rotation, replay, expiry, and revocation behavior; and
+- Better Auth JWT signing keys exposed through its JWKS endpoint.
+
+JWT access tokens are self-contained and are not stored. The OAuth device grant
+does not create an `oauthConsent` row, so consent records are not the authority
+for Apple authorization or revocation. The narrow Administrator revoke-all
+operation acts on Better Auth's refresh-token families for the fixed client and
+does not introduce a Nama Device, grant, verifier, delivery, last-seen, or
+approval-result table.
+
+Better Auth owns expiry and bounded cleanup for its records. Nama adds no
+human-code or polling-token digest, master-key domain, encrypted credential
+delivery, logical-operation replay record, custom authorization capacity row,
+or startup/minute cleanup loop.
+
+## Target canonical catalog persistence
+
+The stored catalog is a typed relational projection, not a serialized plugin
+message or provider payload. Its record graph covers canonical items, Library
+entries, hierarchy, credits, artwork, sources, parts, tracks, exact
+provider-item mappings, nested provider-reference mappings, external-identifier
+evidence, and one catalog-scan state per provider instance. Bounded ordered
+scalar collections such as genres and studios may use PostgreSQL arrays.
+
+Milestone 4 performs exact mapping only. A previously unseen provider-instance
+and item-reference pair creates one canonical item; later observations of that
+pair replace its complete projection atomically. No external-ID, title, fuzzy,
+cross-instance, or cross-provider merge occurs before Milestone 7. Mapping rows
+retain normalized external IDs as later reconciliation evidence without
+retaining a second full observation replica.
+
+Nama-owned IDs remain stable while the same private item, source, part, track,
+or artwork reference exists. A refreshed item may remove a nested resource from
+the active public projection while retaining an inactive reference mapping, so
+the same reference reuses its Nama ID if it returns. Provider-instance deletion
+removes that instance's mappings permanently.
+
+Each accepted catalog item commits as one complete aggregate and publishes
+incrementally; a full scan is not staged as a false provider snapshot. Seasons
+and episodes with unresolved private parent references remain outside the
+Library until the required canonical hierarchy exists. A best-effort Milestone
+4 scan adds or refreshes observed mappings but never infers deletion from
+omission. Explicit removal of a final source removes the Library entry while
+retaining the internal canonical item and its Nama-owned state.
+
+The scan-state row retains the captured provider revision, core run ID, status,
+last accepted continuation, safe failure reason, timestamps, and next retry
+time. Page acceptance and continuation advancement share one transaction and
+apply only while that provider revision remains current and enabled. Restart
+resumes a valid continuation or begins again; disable pauses scanning without
+removing stored media, and re-enable starts a fresh pass.
 
 ## Provider management persistence
 

@@ -27,6 +27,10 @@ _Avoid_: Provider user, account
 Nama's provider-neutral identity for one movie, show, season, or episode; matching provider observations may contribute sources to it.
 _Avoid_: Provider item, title
 
+**Library entry**:
+A canonical item's inclusion in Nama's installation-wide catalog; it is not a per-person grant or temporary provider-availability status.
+_Avoid_: Library membership, user grant
+
 **Source**:
 One playable edition or encode of a canonical item supplied through a provider instance. Alternate encodes or resolutions of one edition are sources, while distinct cuts are separate canonical items.
 _Avoid_: Provider item
@@ -82,6 +86,22 @@ _Avoid_: Server connection, server identity
 The sole MVP person authorized to set up, configure, diagnose, and manage Nama.
 _Avoid_: Admin user, owner
 
-**Device**:
-A paired client installation with a revocable credential limited to consumer library, playback, and user-state behavior.
-_Avoid_: Client, app
+**Authorizing user**:
+The authenticated person whose current Nama session approves an OAuth device authorization for their own access; approval cannot select another person or grant Administrator authority.
+_Avoid_: Approving Administrator, target user
+
+**Apple public client**:
+The fixed first-party native OAuth client shared by universal Apple app installations and limited to one exact Nama API resource and the consumer scopes.
+_Avoid_: Device, paired client
+
+**Consumer scope**:
+One of `nama:library`, `nama:playback`, or `nama:user-state`, each authorizing only its owning protected-resource method group.
+_Avoid_: Device permission
+
+**Endpoint-bound token bundle**:
+One Apple app installation's Keychain record containing its exact Nama endpoint and OAuth access and refresh token material.
+_Avoid_: Pairing, Device credential, paired session
+
+**Broad client revocation**:
+An Administrator's withdrawal of every refresh-token family for the Apple public client rather than one app installation.
+_Avoid_: Device revocation, consent deletion

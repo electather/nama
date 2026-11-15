@@ -2,11 +2,11 @@
   "sourceLanguage" : "en",
   "strings" : {
     "Cancel" : {
-      "comment" : "Button that cancels the active endpoint verification request.",
+      "comment" : "Button that declines local HTTP confirmation or cancels an active endpoint verification request.",
       "extractionState" : "manual"
     },
     "Change Endpoint" : {
-      "comment" : "Button that returns to manual Nama endpoint entry.",
+      "comment" : "Button that clears the verified Nama endpoint and returns to endpoint selection.",
       "extractionState" : "manual"
     },
     "Connect" : {
@@ -17,6 +17,14 @@
       "comment" : "Title for the manual Nama endpoint entry surface on television.",
       "extractionState" : "manual"
     },
+    "Connect without HTTPS?" : {
+      "comment" : "Title asking for explicit consent before contacting a permitted local HTTP Nama endpoint.",
+      "extractionState" : "manual"
+    },
+    "Continue" : {
+      "comment" : "Button that acknowledges unencrypted local HTTP and starts endpoint verification.",
+      "extractionState" : "manual"
+    },
     "Couldn’t connect to this address. Check the address and network connection, then try again." : {
       "comment" : "Safe message for transport, TLS, and timeout failures.",
       "extractionState" : "manual"
@@ -25,16 +33,16 @@
       "comment" : "Title shown when local-network discovery fails.",
       "extractionState" : "manual"
     },
-    "Endpoint" : {
-      "comment" : "Label for the normalized Nama endpoint being verified or displayed.",
-      "extractionState" : "manual"
-    },
     "Enable Local Network access in Settings to find nearby Nama servers, or enter an address manually." : {
       "comment" : "Guidance shown after local-network access is denied.",
       "extractionState" : "manual"
     },
-    "Enter a valid HTTP or HTTPS server address." : {
-      "comment" : "Inline validation error shown after an invalid manual submission.",
+    "Endpoint" : {
+      "comment" : "Label for the normalized Nama endpoint being verified or displayed.",
+      "extractionState" : "manual"
+    },
+    "Enter a valid HTTP or HTTPS Nama endpoint." : {
+      "comment" : "Inline validation error shown after a malformed manual submission.",
       "extractionState" : "manual"
     },
     "Find Nama on Local Network" : {
@@ -43,6 +51,22 @@
     },
     "Finish setting up Nama" : {
       "comment" : "Status shown when the verified Nama endpoint has no Administrator yet.",
+      "extractionState" : "manual"
+    },
+    "HTTP connection — traffic is not encrypted." : {
+      "comment" : "Persistent warning shown while a permitted local HTTP Nama endpoint remains selected.",
+      "extractionState" : "manual"
+    },
+    "HTTPS required" : {
+      "comment" : "Title shown when a saved Nama endpoint can no longer be contacted over HTTP.",
+      "extractionState" : "manual"
+    },
+    "https://nama.example.com" : {
+      "comment" : "Example placeholder showing the required endpoint shape.",
+      "extractionState" : "manual"
+    },
+    "Local Network Access Is Off" : {
+      "comment" : "Title shown after local-network access is denied.",
       "extractionState" : "manual"
     },
     "Looking for Nama servers…" : {
@@ -57,8 +81,16 @@
       "comment" : "Label for the manual Nama endpoint text field.",
       "extractionState" : "manual"
     },
+    "Nama Endpoint" : {
+      "comment" : "Navigation title for the connection and terminal status surfaces.",
+      "extractionState" : "manual"
+    },
     "Nama is ready" : {
       "comment" : "Status shown when the verified Nama endpoint is initialized.",
+      "extractionState" : "manual"
+    },
+    "Nama is temporarily unavailable. Try again." : {
+      "comment" : "Safe message for an availability failure returned by Nama.",
       "extractionState" : "manual"
     },
     "No Nama servers found" : {
@@ -67,14 +99,6 @@
     },
     "Open Settings" : {
       "comment" : "Button that opens this application's Settings page after local-network denial on iPhone or iPad.",
-      "extractionState" : "manual"
-    },
-    "Nama is temporarily unavailable. Try again." : {
-      "comment" : "Safe message for an availability failure returned by Nama.",
-      "extractionState" : "manual"
-    },
-    "Nama Endpoint" : {
-      "comment" : "Navigation title for the connection and terminal status surfaces.",
       "extractionState" : "manual"
     },
     "Retry" : {
@@ -93,16 +117,20 @@
       "comment" : "Safe message for a response that is not compatible with the public Nama contract.",
       "extractionState" : "manual"
     },
+    "This Nama endpoint requires HTTPS." : {
+      "comment" : "Inline validation error shown when a manual HTTP endpoint is not local.",
+      "extractionState" : "manual"
+    },
+    "This saved Nama endpoint can no longer be contacted over HTTP. Change the endpoint to use HTTPS." : {
+      "comment" : "Recovery guidance shown for a saved HTTP endpoint that is no longer eligible.",
+      "extractionState" : "manual"
+    },
+    "Traffic to this Nama endpoint won’t be encrypted. Continue only if you trust this endpoint and network." : {
+      "comment" : "Explanation shown before the first request to a permitted local HTTP Nama endpoint.",
+      "extractionState" : "manual"
+    },
     "Try again, or enter the Nama address manually." : {
       "comment" : "Recovery guidance shown after local-network discovery fails.",
-      "extractionState" : "manual"
-    },
-    "Local Network Access Is Off" : {
-      "comment" : "Title shown after local-network access is denied.",
-      "extractionState" : "manual"
-    },
-    "https://nama.example.com" : {
-      "comment" : "Example placeholder showing the required endpoint shape.",
       "extractionState" : "manual"
     }
   },

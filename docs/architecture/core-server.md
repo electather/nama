@@ -373,6 +373,64 @@ returns its original safe response without replaying provider work. Unrelated
 provider instances and authentication remain available whenever their owners
 and PostgreSQL are healthy.
 
+## Target OAuth authorization and canonical-catalog runtime
+
+Issues #145 and #36 add two owners without changing the one-pool database
+boundary. Better Auth's JWT, OAuth Provider, and OAuth Device Authorization
+plugins own the authorization-server routes, device-code state, fixed public
+client, signing keys, and token lifecycle. Canonical catalog owns exact mapping,
+normalized persistence, initial scan state, item-aggregate transactions, and
+stored query behavior.
+
+The native listener dispatches exact health routes first, the configured Better
+Auth OAuth and metadata paths second, and Connect application RPCs last. A
+reviewed Better Auth/Drizzle migration seeds
+the fixed native public Apple client. An already authenticated Go CLI sends the
+displayed user code through `AuthService.ApproveDeviceAuthorization`. The
+Connect handler binds the grant to that session principal and invokes Better
+Auth's internal verification and approval APIs without a target user ID,
+Administrator-role check, loopback HTTP, or direct persistence access. Issue
+#145 exposes no browser email/password, session, verification, or approve/deny
+routes; issue #167 may add a web surface over the same role-neutral internal
+application service. Nama adds no Pairing or Device
+owner, generic repository, crypto service, scheduler framework, or duplicate
+OAuth endpoint.
+
+Connect's default-deny inventory locally verifies Better Auth access JWT
+signature, issuer, exact resource audience, expiry, fixed client ID, and the
+method-specific library, playback, or user-state scope. Session resolution
+stays separate and is never a fallback for a rejected OAuth JWT or a source of
+inherited Administrator authority. The role-neutral approval handler delegates
+its principal-bound mutation to Better Auth. One additional
+Nama-owned grant-management operation revokes every Better Auth refresh-token
+family for the fixed Apple client; issued JWTs remain valid until their pinned
+one-hour expiry.
+
+After runtime readiness, Canonical catalog starts one background initial scan
+for each enabled provider instance lacking a completed pass. Provider
+availability never changes process readiness. One persisted current scan per
+instance resumes a valid continuation after restart, serializes page acceptance
+with continuation advancement, and retries only safe availability failures on
+persisted bounded backoff. Every page uses the provider-management scoped
+activity gate and current-revision condition; a stale page cannot commit after
+configuration cutover, disable, or delete.
+
+Catalog item commits are idempotent by exact provider mapping and replace one
+complete relational aggregate while retaining stable Nama mappings. Ambiguous
+database completion is resolved by reading the scan state and mapping before
+advancing; reprocessing an unconfirmed page cannot create a second canonical
+item. Provider delete removes its catalog mappings and sources inside the
+existing fenced delete transaction. It removes a Library entry only when no
+source remains and never deletes the internal canonical item or Nama-owned user
+state.
+
+Stored catalog reads use PostgreSQL filtering, ordering, pagination, hierarchy,
+and full-text search. They make no provider call except artwork resolution,
+which starts from a stored private reference and retains the existing safe
+locator boundary. A fresh catalog with enabled providers but no completed pass
+fails `CATALOG_NOT_READY`; healthy stored data remains readable beside another
+provider's failed or incomplete import.
+
 ## Verification contract
 
 The server test gate must continue to exercise behavior, not only generated contracts or compilation:
@@ -395,6 +453,18 @@ The server test gate must continue to exercise behavior, not only generated cont
   server/user/API-key connection;
 - real Connect and compiled-CLI provider-management flows with exact redacted
   output;
+- Better Auth authorization-server behavior against production migrations:
+  fixed public-client seeding, metadata and JWKS, generated Connect CLI approval
+  through the in-process Better Auth adapter, device-code polling, scoped
+  audience-bound JWT issuance, refresh rotation, expiry, broad client-grant
+  revocation, wrong-issuer/audience/client/scope rejection, and
+  credential/code/token redaction;
+- one supervised production Jellyfin catalog scan through revision-fenced
+  incremental commits, restart continuation, duplicate pages, out-of-order
+  hierarchy, provider failure, disable/re-enable, and provider deletion; and
+- real Connect Library reads over stored canonical state proving stable Nama
+  IDs, search and pagination, unavailable-source projection, and absence of
+  provider references or payload sentinels;
 - root TypeScript checks that execute the complete server suite.
 
 Integration PostgreSQL must use an isolated Compose project, dynamically published host port, and disposable volume; it must never touch the developer database. A compile-only check or generated Protobuf round trip is not server runtime proof.
@@ -414,4 +484,4 @@ operation rows.
 
 ## Deferred work
 
-Configuration reload, startup retries, multiple administrators, signup, password recovery, OAuth/OIDC, roles, a web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. User-facing provider connection-test commands, Jellyfin media behavior, pairing, playback, and synchronization belong to their owning milestones.
+Configuration reload, startup retries, multiple administrators, signup, password recovery, dynamic OAuth client registration, authorization-code and client-credentials grants, OIDC identity scopes, roles, a general web administration app, multi-process migration coordination, Redis, worker pools, a job framework, exported tracing, and an observability backend remain deferred until a concrete accepted use case requires them. User-facing provider connection-test commands, Jellyfin media behavior, Better Auth OAuth authorization, playback, and synchronization belong to their owning milestones.

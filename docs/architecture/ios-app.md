@@ -1,8 +1,11 @@
 # Universal Apple application
 
-Status: the universal SwiftUI target, manual-connection tracer, explicit
+Status: the universal SwiftUI target, manual-connection tracer, endpoint
+transport eligibility, explicit permitted local-HTTP confirmation,
+endpoint-bound persistent acknowledgement, persistent selected-endpoint warning,
+endpoint-scoped local-HTTP proxy bypass, the ATS local-networking declaration,
 foreground LAN discovery, and verified endpoint restoration are implemented.
-Device pairing, consumer media behavior, and product playback remain target
+Better Auth OAuth authorization, consumer media behavior, and product playback remain target
 work. This note labels implemented, target, and deferred behavior explicitly;
 a target invariant is required architecture, not a claim that its runtime
 exists.
@@ -36,9 +39,9 @@ The application boundary is:
   before implementation. Add Swift source, interfaces, adapters, or packages
   only when current behavior requires them, and add no multi-engine factory
   before a second engine proves that interface.
-- Under [ADR-0030](../adr/0030-one-active-apple-pairing.md), one app
-  installation has one active endpoint-bound Device credential. Windows share
-  that pairing while retaining independent presentation state.
+- Under [ADR-0033](../adr/0033-better-auth-oauth-device-authorization.md), one
+  app installation has one active endpoint-bound OAuth token bundle. Windows
+  share that authorization while retaining independent presentation state.
 
 ## Implemented baseline
 
@@ -49,62 +52,104 @@ optional LAN discovery, and verified endpoint restoration:
   Network-framework discovery adapter for each `WindowGroup` window.
 - `NamaEndpoint` accepts an absolute HTTP or HTTPS URL with an explicit scheme
   and non-empty host, no credentials, query, or fragment, and an optional
-  reverse-proxy path prefix. It lowercases the host, removes default ports, and
-  normalizes the path.
+  reverse-proxy path prefix. It normalizes the address and represents only
+  HTTPS or the lexically permitted local-HTTP classes defined under
+  [Connection target](#connection-target), without DNS resolution.
 - `NWBrowser` browses `_nama._tcp` only after explicit activation and only
   while the window is foregrounded. It accepts a result only when TXT `url`
-  normalizes as a `NamaEndpoint`; unknown keys and malformed records are
-  ignored without contacting the advertiser.
+  normalizes as a transport-eligible `NamaEndpoint`; malformed and forbidden
+  HTTP records are ignored without contacting the advertiser.
 - Discovery candidates are keyed and sorted by normalized endpoint, merge
   duplicate records and interfaces, and retain sorted DNS-SD instance names
   only as untrusted secondary display text.
 - Initial scanning lasts two seconds before an empty state. The browser remains
   active so later candidates appear immediately, and removal of the final
   candidate returns directly to empty.
-- Selecting a candidate invokes the same verifier as manual submission.
-  Selection replacement cancels the prior attempt, while later advertisement
-  removal does not cancel verification of the selected endpoint.
-- `NamaSetupStatusVerifier` calls generated `SetupService.GetStatus` once with
-  a ten-second timeout, platform TLS trust, and allowlisted client name,
-  version, and platform metadata.
-- The async `UserDefaultsVerifiedEndpointStore` actor retains only the last
-  successfully verified canonical endpoint. Each window activates restoration
-  once after SwiftUI installs its feature state, avoiding I/O from disposable
-  view initializers while reusing the manual verification states.
+- Selecting an HTTPS candidate invokes the same verifier as HTTPS manual
+  submission. Selecting permitted local HTTP without an exact persisted
+  acknowledgement first enters confirmation; Continue invokes that shared
+  verifier, while Cancel returns to the candidate list. Selection replacement
+  cancels the prior attempt, while later advertisement removal does not cancel
+  verification of the selected endpoint.
+- `NamaSetupStatusVerifier` calls generated `SetupService.GetStatus` once
+  through a Nama-owned unary URLSession transport with a ten-second timeout and
+  allowlisted client name, version, and platform metadata. Permitted local HTTP
+  uses an endpoint-scoped proxy-free configuration; HTTPS preserves the supplied
+  normal configuration and system proxy behavior. The transport retains platform
+  TLS trust, refuses every redirect before target contact, discards its location
+  and response body, reports incompatible, and rejects streaming as
+  unimplemented.
+- The async `UserDefaultsVerifiedEndpointStore` actor retains the last
+  successfully verified canonical endpoint and, for local HTTP, its exact
+  endpoint-bound acknowledgement. The independently stored values authorize
+  unencrypted contact only when both parse and match the same canonical local
+  HTTP endpoint; missing, stale, malformed, or mismatched values ask again.
+  Each window activates restoration once after SwiftUI installs its feature
+  state, avoiding I/O from disposable view initializers while reusing the
+  manual verification states. A legacy forbidden HTTP value is retained as
+  display-only recovery data rather than constructed as a `NamaEndpoint`.
 - Ready and setup-required results conditionally save against the preference
-  generation captured when verification started. Safe failures and local
-  cancellation retain the endpoint; Retry starts one new attempt. Change Server
-  cancels local work, advances the installation-wide generation, and clears the
-  preference so an older completion in another window cannot restore it.
-- The `@MainActor @Observable` feature owns editing, verifying, ready,
-  setup-required, safe verification failure, and discovery presentation
-  states. It rejects stale verification and discovery completion by attempt
-  identity.
+  generation captured when verification started. Successful local HTTP saves
+  its acknowledgement, while saving HTTPS removes a stale acknowledgement.
+  Safe failures and local cancellation retain the endpoint; Retry starts one
+  new attempt. Change Endpoint cancels local work, advances the
+  installation-wide generation, and clears both values so an older completion
+  in another window cannot restore them.
+- Local HTTP acknowledgement remains in the selected feature flow through safe
+  failures and explicit Retry before successful persistence. The exact
+  persisted acknowledgement is then shared across windows.
+- The `@MainActor @Observable` feature owns editing, endpoint-bound local-HTTP
+  acknowledgement lookup, local-HTTP confirmation, paused HTTP restoration,
+  HTTPS-required, verifying, ready, setup-required, safe verification failure,
+  and discovery presentation states. Forbidden
+  manual HTTP remains editable, and a blocked restored value offers only Change
+  Endpoint. The feature rejects stale verification and discovery completion by
+  attempt identity.
 - Leaving the foreground or closing the surface cancels active discovery and
-  only an active verification while preserving terminal verification state.
+  only active connection work while preserving terminal verification state.
   Local task cancellation is silent; a remote Connect `canceled` response is a
   visible cannot-connect failure.
 - iPhone, iPad, and Mac use the shared native form presentation. Apple TV uses
-  a focus-specific scrolling presentation over the same feature state.
-  Platform-specific permission guidance exists only where Apple exposes the
-  Local Network privacy state.
-- The app declares `_nama._tcp` and its Local Network purpose in its partial
-  Info property list without a multicast entitlement. The macOS build uses App
-  Sandbox with outgoing network-client access only.
+  a focus-specific scrolling presentation over the same feature state. Every
+  selected local HTTP state shows the unencrypted connection through text,
+  symbol, and explicit accessibility semantics. Platform-specific permission
+  guidance exists only where Apple exposes the Local Network privacy state.
+- The app declares `_nama._tcp`, its Local Network purpose, and the narrow ATS
+  local-networking allowance in its partial Info property list without a
+  multicast entitlement, arbitrary loads, or static per-domain exceptions. The
+  macOS build uses App Sandbox with outgoing network-client access only.
 
-The Swift Testing target covers endpoint normalization, TXT parsing, canonical
-candidate reconciliation, duplicate and removal behavior, discovery lifecycle
-and timing, explicit selection, endpoint preference contents, clearing,
-cross-window invalidation, explicit one-time restoration, successful and failed
-restoration, verification replacement and cancellation, request construction
-and client metadata, safe failure mapping, state transitions, retry, stale
-completions, and presentation actions. `check:ios` lints Swift formatting, runs
-the test target through its macOS host, and performs signing-disabled iOS, tvOS,
-and macOS builds. These checks do not prove physical-device privacy prompts,
-focus, accessibility, or playback behavior.
+The Swift Testing target covers endpoint normalization and every approved and
+forbidden address-class boundary, mapped and scoped IPv6, local DNS label and
+name-length boundaries, and DNS-alias rejection. It also covers forbidden-HTTP
+discovery suppression, TXT parsing, canonical candidate reconciliation,
+duplicate and removal behavior, discovery lifecycle and timing, explicit
+selection, endpoint preference contents, blocked legacy restoration, clearing,
+generation and stale-completion races, explicit one-time restoration,
+successful and failed restoration, local-HTTP confirmation and source-specific
+cancellation, exact endpoint-bound acknowledgement, cross-window visibility,
+partial and mismatched preference recovery, acknowledgement across failure and
+Retry, verification replacement and cancellation, proxy selection, request
+construction and client metadata, redirect refusal, unary-only transport
+enforcement, safe failure mapping, state transitions, stale completions, long
+endpoint presentation state, localized copy, warning semantics, presentation
+actions, and television focus intent.
 
-The implemented source does not yet contain Keychain Device credentials,
-Pairing, Home, Library, Details, Watch State, or Playback behavior.
+Self-contained previews render discovery outcomes, local-HTTP confirmation with
+a long endpoint, persistent ready and failure warnings, and blocked
+restoration. They make the states available for actual-surface inspection but
+are not runtime evidence. `check:ios` lints Swift formatting, runs the test
+target through its macOS host, inspects the built ATS shape, and performs
+signing-disabled iOS, tvOS, and macOS builds. These checks do not prove
+physical-device privacy prompts, focus, accessibility, or playback behavior.
+
+This baseline implements endpoint eligibility, endpoint-bound persistent
+local-HTTP consent, persistent selected-endpoint warnings, forbidden-HTTP
+recovery, endpoint-scoped local-HTTP proxy bypass, and the narrow ATS
+local-networking allowance.
+
+The implemented source does not yet contain Keychain OAuth tokens, device
+authorization, Home, Library, Details, Watch State, or Playback behavior.
 
 ## Target runtime topology
 
@@ -115,13 +160,14 @@ own its lifecycle:
 NamaApp composition root
 ├── application session
 ├── one playback coordinator
-├── endpoint and paired-Device stores
-├── concrete public-contract adapters
+├── endpoint and OAuth token stores
+├── Better Auth OAuth and scoped Connect adapters
 └── WindowGroup
     └── scene/window state
         ├── typed navigation and presentation
         └── feature owners
             └── narrow feature interfaces
+                ├── Better Auth OAuth HTTP
                 └── generated api.v1 networking adapters
 ```
 
@@ -129,15 +175,15 @@ NamaApp composition root
 
 | Lifetime | Owns | Never owns |
 | --- | --- | --- |
-| App installation | Current verified Nama endpoint, paired-Device availability, authentication phase, session identity, and the single playback coordinator | Navigation, media collections, view errors, sheets, or control state |
-| Scene or window | Typed navigation, sidebar or tab selection, sheets, selected opaque IDs, and feature-owner instances | Device credentials or another window's transient work |
+| App installation | Current verified Nama endpoint, OAuth authorization availability and phase, endpoint-bound token bundle, and the single playback coordinator | Navigation, media collections, view errors, sheets, or control state |
+| Scene or window | Typed navigation, sidebar or tab selection, sheets, selected opaque IDs, and feature-owner instances | OAuth tokens or another window's transient work |
 | Feature | Its explicit state machine, loaded values, current operation identity, and structured tasks | Another feature owner or global presentation |
 | View | Focus, field editing, disclosure, and animation triggers | Passed-in model ownership, networking, persistence, or business policy |
 
 The application session is a narrow state module, not a view model for the
-entire product. It exposes credential availability and session identity; secret
-credential material remains inside the paired-Device store and authenticated
-networking adapter.
+entire product. It exposes authorization availability and access-token expiry;
+secret token material remains inside the installation-scoped OAuth token store
+and authenticated networking adapters.
 
 ### Feature ownership
 
@@ -147,9 +193,9 @@ claim that the module compiles or runs:
 
 | Module | Ownership |
 | --- | --- |
-| Application Session | Verified endpoint, paired-Device availability, authentication phase, and session identity |
+| Application Session | Verified endpoint, OAuth authorization availability, authorization phase, and shared access-token expiry |
 | Connection | Explicit LAN discovery, manual endpoint entry, verification, and last-verified endpoint persistence |
-| Pairing | Device-code lifecycle, approval polling, endpoint-bound credential commit, and revocation response |
+| OAuth Authorization | RFC 8628 request and polling, displayed CLI-approval code and instructions, endpoint-bound token commit, refresh, and revocation response |
 | Home | Product entry composition, including Continue Watching when Watch state exists |
 | Library | Provider-neutral browse, search, and bounded list loading |
 | Details | Movie, show, season, and episode presentation plus watched and playback intents |
@@ -158,9 +204,9 @@ claim that the module compiles or runs:
 
 Features expose typed values and user intents. The scene root handles
 navigation and presentation intents; installation-scoped modules handle only
-genuinely shared behavior. Details does not own Playback, Pairing does not
-mutate Home, and no application event bus or notification-driven control flow
-connects feature owners.
+genuinely shared behavior. Details does not own Playback, OAuth Authorization
+does not mutate Home, and no application event bus or notification-driven
+control flow connects feature owners.
 
 Networking, persistence, presentation, fixtures, and platform-specific files
 stay with their owning feature while only that feature uses them. A
@@ -173,7 +219,7 @@ reuse, or test-isolation value justifies the package. The committed generated
 
 ### Composition and dependency direction
 
-`NamaApp` constructs the endpoint store, paired-Device store, public-contract
+`NamaApp` constructs the endpoint store, OAuth token store, concrete network
 adapters, application session, and playback coordinator. Observable
 installation state and the playback coordinator may use typed SwiftUI
 environment injection where hierarchy-wide access is legitimate. Feature
@@ -184,7 +230,8 @@ The dependency direction is:
 
 ```text
 views -> feature owners -> narrow interfaces -> concrete adapters
-                                             -> generated api.v1
+                                             ├── Better Auth OAuth HTTP
+                                             └── generated api.v1
 ```
 
 The interface is the caller and test surface. Feature interfaces describe
@@ -194,66 +241,85 @@ MVP, so the application adds no generic repository layer.
 
 ## Session, windows, and navigation
 
-### One active pairing
+### One active authorization
 
-One app installation has one active paired Nama endpoint and Device credential.
-Candidate endpoints may be verified in any window without receiving the active
-credential. Switching is an explicit replacement transaction:
+One app installation has one active endpoint-bound OAuth token bundle.
+Candidate endpoints may be verified in any window without attaching the active
+access token or refresh token. Switching is an explicit replacement
+transaction:
 
-1. verify the candidate endpoint without attaching the existing credential;
-2. complete a fresh Device pairing at that endpoint;
-3. durably store the new endpoint-bound Keychain record; and
-4. only then retire the old paired record and publish the new session identity.
+1. verify the candidate endpoint without attaching existing tokens;
+2. request a Better Auth device authorization for the fixed public client,
+   exact candidate resource, granular consumer scopes, and `offline_access`;
+3. present the user code with instructions for an already authenticated CLI
+   user to run `nama auth approve-device <user-code>` for their own access
+   against the same endpoint, while polling no faster than the returned interval;
+4. exchange the approved device code for access and refresh tokens;
+5. durably store the complete endpoint-bound Keychain record; and
+6. only then delete the old bundle and publish the new authorization.
 
 Cancellation, denial, expiry, verification failure, or network loss before the
-new durable commit leaves the existing pairing intact. Endpoint similarity,
-service name, certificate identity, or a similar response never permits
-credential replay.
+new durable commit leaves the active authorization intact. Endpoint similarity,
+service name, certificate identity, or a similar response never permits token
+replay against another resource or issuer.
+
+The app treats Better Auth codes and tokens as opaque OAuth values. It uses the
+returned polling interval and expiry, refreshes through the standard
+refresh-token grant, and never invents a credential lifetime. The pinned target
+defaults are one hour for access JWTs and 30 days for refresh tokens. A
+definitive `invalid_grant`, expired refresh authority, or damaged token record
+returns to visible device authorization; an ordinary offline failure preserves
+the stored grant.
 
 ### Persistence and restoration
 
-Connection and Pairing own two intentionally different records:
+Connection and OAuth Authorization own two intentionally different records:
 
-- The implemented `UserDefaults` record stores only the last verified canonical
-  Nama endpoint for unpaired reconnection convenience.
-- The target Keychain record contains both the Device credential and its exact
-  canonical Nama endpoint. It uses
+- The implemented `UserDefaults` record stores the last verified canonical
+  Nama endpoint and, when applicable, its exact local-HTTP acknowledgement for
+  unauthenticated reconnection convenience.
+- The target Keychain record contains the exact canonical Nama endpoint,
+  current access-token material and expiry, and rotating refresh token. It uses
   `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, does not synchronize through
   iCloud Keychain, and is not reconstructed from independent defaults values.
 
-Successful ready and setup-required status responses write only the canonical
-endpoint when no later explicit clear has invalidated their preference
-generation. On launch, each Connection window reads the preference once and
-reverifies it through the same bounded request as manual entry. Safe failure and
-cancellation retain the preference. Retry creates one new attempt; Change Server
-cancels local work, invalidates every older window attempt, removes the
-preference, and returns to endpoint selection.
+Successful ready and setup-required status responses write the canonical
+endpoint and its exact local-HTTP acknowledgement when no later explicit clear
+has invalidated their preference generation. Saving HTTPS removes stale HTTP
+acknowledgement. On launch, each Connection window reads the preference once
+and reverifies it through the same bounded request as manual entry. Safe
+failure and cancellation retain the preference. Retry creates one new attempt;
+Change Endpoint cancels local work, invalidates every older window attempt,
+removes both preference values, and returns to endpoint selection.
 
-A successful pairing writes the Keychain record before updating the convenience
-endpoint. On launch, a paired session comes entirely from the Keychain record.
-Unknown, partial, damaged, or unauthenticatable record versions fail closed
-into visible re-pairing and are quarantined rather than silently rewritten.
-Only explicit, tested migrations may transform a known record version.
+A successful OAuth authorization writes the Keychain record before updating
+the convenience endpoint. On launch, authorization comes entirely from the
+Keychain record. Unknown, partial, damaged, or unauthenticatable record versions
+fail closed into visible device authorization and are quarantined rather than
+silently rewritten. Only explicit, tested migrations may transform a known
+record version.
 
 Launch uses an explicit restoration gate:
 
-1. read and validate the endpoint-bound paired-Device record;
-2. reverify that exact Nama endpoint without redirecting the credential;
-3. establish authenticated availability through the public Device contract
-   when its runtime exists; and
-4. enter consumer content only after the session is usable.
+1. read and validate the endpoint-bound OAuth token record;
+2. reverify that exact Nama endpoint without redirecting or attaching tokens;
+3. use the current access token or rotate the refresh token through its exact
+   issuer and resource; and
+4. enter consumer content only after scoped authorization is usable.
 
-With no device-local media cache, an offline paired launch shows a
-paired-but-unavailable retry state rather than stale Home content. A definitive
-invalid or revoked Device credential returns to Pairing while preserving the
+With no device-local media cache, an offline authorized launch shows an
+authorized-but-unavailable retry state rather than stale Home content. A
+definitive refresh failure returns to device authorization while preserving the
 last verified endpoint. Offline, timeout, TLS, server-unavailable, or transient
-authentication failures preserve the paired record. The app never flashes
-Connection or Home while restoration remains unresolved.
+authentication failures preserve the token record. Broad Administrator
+revocation becomes definitive on refresh; a previously issued access JWT may
+remain usable until its one-hour expiry. The app never flashes Connection or
+Home while restoration remains unresolved.
 
 ### Windows and navigation
 
 `WindowGroup` supports multiple windows where iPadOS and macOS offer them.
-Every window shares the installation pairing but owns its navigation,
+Every window shares the installation authorization but owns its navigation,
 selection, presentation, searches, and in-flight feature work. iPhone and Apple
 TV naturally remain effectively single-window.
 
@@ -264,8 +330,8 @@ sidebar sections, or toolbar layout before the owning product feature exists,
 and it adds no global router.
 
 Restoration may retain only safe durable context such as a selected section or
-opaque canonical item ID. The app restores it only after the paired session is
-re-established. Forms, failures, generated messages, locators, playback plans,
+opaque canonical item ID. The app restores it only after scoped authorization
+is re-established. Forms, failures, generated messages, locators, playback plans,
 and playback sessions are never restored. External deep links remain deferred
 until an accepted ingress use case exists.
 
@@ -297,28 +363,29 @@ decoding, sorting, filtering, or other expensive work in `body`.
 Each active feature owns its load and refresh policy. Identity-keyed tasks
 cancel when the endpoint, session, selection, or query changes. Returning to
 the foreground lets only visible stale features refresh; it does not trigger a
-global refresh storm or hidden prefetch. A session-identity change invalidates
-all values derived from the previous paired session.
+global refresh storm or hidden prefetch. An authorization-identity change
+invalidates all values derived from the previous grant.
 
 The Apple application schedules no catalog synchronization, reconciliation, or
 general retries in the background; the core owns those responsibilities.
-Pairing polling, discovery, browsing, and refresh run only while their feature
-is active. Bounded background execution may be added only for a demonstrated
-final playback checkpoint or credential transition, not as a general
+OAuth device-code polling, discovery, browsing, and token refresh run only
+while their owner is active. Bounded background execution may be added only
+for a demonstrated final playback checkpoint or token transition, not as a general
 `BGTaskScheduler` framework.
 
 Logical mutations create an `operation_id` once per user intent and retain it
 with an identical payload across transport retries. A genuinely new user action
 receives a new ID. Playback telemetry follows the contract's `event_id` and
-sequence rules. Reads, pairing status, and other documented safe operations may
-retry only within owned deadlines and `RetryInfo`; unsafe operations never gain
-automatic retries merely because a generic client supports them.
+sequence rules. Connect reads and other documented safe operations may retry
+only within owned deadlines and `RetryInfo`. Better Auth device-code polling
+and refresh follow its returned interval and OAuth errors; unsafe operations
+never gain automatic retries merely because a generic client supports them.
 
 ## Connection target
 
 Connection treats a Nama endpoint as a transport address, not deployment
 identity. Changing endpoints always requires fresh verification and, once
-paired, fresh Pairing.
+authorized, a fresh OAuth device authorization.
 
 LAN discovery uses Network framework `NWBrowser` for `_nama._tcp`. Browsing
 starts only after explicit user action and stops outside the foreground. A
@@ -380,7 +447,7 @@ incompatible without exposing or logging the redirect location.
 
 Verification makes one cancellable, ten-second `SetupService.GetStatus` call
 with platform TLS trust and no certificate bypass. `initialized=true` means the
-endpoint is ready for Pairing; `initialized=false` is a verified endpoint that
+endpoint is ready for OAuth authorization; `initialized=false` is a verified endpoint that
 requires Administrator setup. Nama availability, transport/TLS/timeout, and
 incompatible responses remain distinct safe states without raw URLSession,
 TLS, or response detail.
@@ -398,33 +465,54 @@ The app does not use a global `NWPathMonitor` to gate requests. A path
 observation cannot prove that one Nama endpoint is reachable, trusted,
 compatible, or healthy; bounded endpoint operations remain authoritative.
 
-### Connection runtime acceptance
+### Connection verification evidence
 
-When Connection target behavior lands, runtime acceptance requires:
+The implemented Connection boundary has these committed automated owners:
 
-- LAN discovery on a physical iPhone, physical iPad, Apple TV, and Mac;
-- manual HTTPS and permitted local-HTTP entry for LAN, VPN, and reverse-proxy
-  deployments on all four surfaces;
-- HTTP confirmation, persistent warning, cancellation, legacy restoration, long
-  endpoint, and accessibility behavior on all four actual surfaces;
-- focused coverage of every allowed and forbidden address class, local-name
-  boundary, discovery suppression, proxy selection, and redirect refusal;
-- public HTTP rejection before transport creation on every ingress path;
-- local-network and ATS allow, deny, and later-settings-change behavior on
-  physical iPhone, physical iPad, Apple TV, and Mac;
-- foreground cancellation, candidate deduplication, manual fallback, and
-  pairing replacement behavior on their actual surfaces; and
-- every unrun physical-device row remaining explicitly unverified.
+| Boundary | Automated owner | Covered behavior |
+| --- | --- | --- |
+| Endpoint eligibility | `EndpointTests` | Every approved IPv4 and IPv6 range and adjacent forbidden boundary, mapped IPv6, scoped link-local IPv6, proper local-name label and total-length boundaries, suffix lookalikes, trailing dots, public and special-use addresses, and DNS aliases remain lexical-only policy decisions. |
+| Ingress admission | `ConnectionFeatureTests`, `DiscoveryTests`, and `ConnectionRecoveryTests` | Manual and restored forbidden HTTP never invoke the verifier; discovery cannot construct a candidate from forbidden HTTP; Retry and Continue cannot escape blocked restoration. |
+| Consent and persistence | `ConnectionFeatureTests`, `ConnectionRecoveryTests`, `VerifiedEndpointStoreTests`, and `ConnectionPresentationTests` | Exact acknowledgement, source-specific cancellation, warning retention, migration, generation fencing, and cross-window visibility pass through the shared feature and store seams. |
+| Transport | `SetupStatusVerifierTests` | Redirect targets are not contacted, redirect metadata stays inside URLSession, local HTTP selects a proxy-free copy, HTTPS preserves the supplied normal configuration, and cancellation reaches both schemes. Platform trust remains URLSession-owned; the redirect delegate implements no authentication-challenge override. |
+| Application declarations | `check:ios` | Built iOS, tvOS, and macOS property lists must enable only ATS local networking and must omit arbitrary loads and static exception domains. |
 
-Simulator behavior is not local-network privacy proof.
+The previews and platform builds above remain inspection and compilation aids,
+not runtime evidence. Local acceptance has exercised only the scenarios
+recorded below; every omitted requirement remains **Unverified**.
+
+Actual-surface inspection on each row also requires source-specific
+cancellation, foreground cancellation, candidate deduplication, and manual
+fallback. OAuth authorization replacement remains target behavior without a
+current implementation or runtime claim and is therefore **Unverified** on
+every actual surface.
+
+| Surface | Required inspection | Recorded result |
+| --- | --- | --- |
+| iPhone | Confirmation, persistent warning, blocked restoration, long endpoint, touch and keyboard focus, Dynamic Type, VoiceOver labels and order, contrast, and non-color-only meaning | **Partially verified** — an iPhone 17 Pro simulator rendered blocked restoration and the persistent failed local-HTTP warning with a long endpoint. The warning remained legible through the largest Dynamic Type category with Increase Contrast enabled and communicated its meaning through text and symbol. Confirmation, input focus, operation, and VoiceOver order remain **Unverified**. |
+| iPad | The iPhone inspection plus window resizing and cross-window policy behavior | **Partially verified** — an iPad Pro 13-inch simulator rendered the persistent failed local-HTTP warning and long endpoint without clipping. The remaining inspection is **Unverified**. |
+| Apple TV | Confirmation, persistent warning, blocked restoration, long endpoint, remote focus and operation, VoiceOver labels and order, contrast, and non-color-only meaning; Dynamic Type is not applicable | **Partially verified** — an Apple TV 4K simulator rendered the persistent failed local-HTTP warning and long endpoint with visible initial focus on Retry. Confirmation, blocked restoration, remote operation, and VoiceOver order remain **Unverified**. |
+| Mac | Confirmation, persistent warning, blocked restoration, long endpoint, keyboard and pointer focus, window and cross-window behavior, Dynamic Type, VoiceOver labels and order, contrast, and non-color-only meaning | **Partially verified** — a locally Apple Development-signed sandboxed build on Mac hardware rendered confirmation, approved local HTTP against a live Nama server, the resulting setup-required warning, and the failed long-endpoint state. The accessibility tree exposed the visible labels and actions. Blocked restoration, keyboard and pointer focus, cross-window behavior, Dynamic Type, and VoiceOver order remain **Unverified**. |
+
+Simulator behavior, shared source, and built declarations are not Local Network
+privacy, ATS, LAN, or proxy-routing proof. Physical iPhone, iPad, and Apple TV
+hardware were unavailable for this acceptance run and remain explicitly
+**Unverified**:
+
+| Hardware | Required runtime exercise | Recorded result |
+| --- | --- | --- |
+| Physical iPhone | `_nama._tcp` discovery, approved local HTTP, manual HTTPS and HTTP for LAN, VPN, and reverse-proxy deployments, and Local Network allow, deny, and later-Settings behavior | **Unverified** |
+| Physical iPad | `_nama._tcp` discovery, approved local HTTP, manual HTTPS and HTTP for LAN, VPN, and reverse-proxy deployments, and Local Network allow, deny, and later-Settings behavior | **Unverified** |
+| Apple TV | `_nama._tcp` discovery, approved local HTTP, and manual HTTPS and HTTP for LAN, VPN, and reverse-proxy deployments; the iPhone/iPad Local Network prompt is not exposed | **Unverified** |
+| Mac hardware | `_nama._tcp` discovery, approved local HTTP, manual HTTPS and HTTP for LAN, VPN, and reverse-proxy deployments, and exposed Local Network privacy behavior | **Partially verified** — a native Nama publisher advertised the exact local HTTP endpoint through Apple `NWBrowser`; the signed sandboxed app confirmed that endpoint, contacted its live `SetupService`, and displayed the setup-required result with the persistent HTTP warning. Manual HTTPS, VPN and reverse-proxy HTTP, and Local Network privacy-state behavior remain **Unverified**. |
 
 ## Networking, compatibility, and failures
 
-The composition root creates concrete adapters over generated Connect clients.
-Connection verification, Pairing, Library, Playback, and Watch State expose
-narrow interfaces that accept and return Nama-owned values. There is no broad
-public `NamaClient`, generated-message environment value, or handwritten
-parallel client.
+The composition root creates concrete adapters over generated Connect clients
+and Better Auth's OAuth HTTP contract. Connection verification, OAuth
+Authorization, Library, Playback, and Watch State expose narrow interfaces
+that accept and return app-owned values. There is no broad public `NamaClient`,
+generated-message environment value, or handwritten parallel OAuth client.
 
 Every released RPC sends the allowlisted `nama-client-name`,
 `nama-client-platform`, and `nama-client-version` metadata defined by the API
@@ -443,11 +531,15 @@ details, and safe field details into closed feature failures. Unexpected
 defects expose only an allowlisted correlation ID where useful. Feature owners,
 not a global error presenter, decide recovery presentation.
 
-Structured logging uses allowlisted fields and categories owned by each feature
-or adapter. Logs never contain request or response bodies, arbitrary headers,
-credentials, polling tokens, raw generated messages, unrestricted endpoint
-input, locator URLs, locator headers, or provider failures. No analytics or
-telemetry backend is added without a current accepted use case.
+Nama-owned structured logging uses allowlisted fields and categories owned by
+each feature or adapter. It never contains request or response bodies,
+arbitrary headers, credentials, polling tokens, raw generated messages,
+unrestricted endpoint input, locator material, or provider failures.
+[ADR-0032](../adr/0032-aetherengine-mvp-security-exception.md) permits the
+selected engine's own local Release logs to contain complete short-lived
+locator URLs during the MVP; the app never persists, uploads, or exposes those
+engine logs. No analytics or telemetry backend is added without a current
+accepted use case.
 
 ## Media data and presentation
 
@@ -528,11 +620,11 @@ services or credentials.
 
 ## Playback boundary
 
-[ADR-0012](../adr/0012-single-playback-engine-adapter.md) confines the selected
-engine to one concrete Nama-owned adapter. The adapter is the only module
-allowed to import the engine. Engine views, publishers, tracks, cues, errors,
-and configuration types never cross into another feature or the public RPC
-layer.
+[ADR-0012](../adr/0012-single-playback-engine-adapter.md) confines AetherEngine
+`6.21.0` to one concrete Nama-owned adapter. The module containing `NamaPlayer`
+and its `NamaPlayerSurface` is the only one allowed to import the engine.
+Engine views, publishers, tracks, cues, errors, and configuration types never
+cross into another feature or the public RPC layer.
 
 The adapter exposes Nama-owned values:
 
@@ -550,11 +642,15 @@ is not a user-visible failure. Native and software rendering surfaces may
 switch inside the adapter, but the adapter remains the sole engine lifecycle
 owner.
 
-The architecture does not select an engine before one exact revision passes the
-source, locator-security, logging, licensing, media, distribution, and
-physical-device gates below. It adds neither a lowest-common-denominator player
-interface nor a multi-engine factory. AetherEngine `6.21.0` remains ineligible
-under the recorded source-review findings.
+A locator expiry is not refreshed inside the engine. The coordinator closes the
+old playback session, replans and opens at the current clamped position, and
+supplies one complete replacement request; the newer load owns all locator,
+header, redirect, track, and rendering state.
+
+[ADR-0032](../adr/0032-aetherengine-mvp-security-exception.md) selects
+AetherEngine `6.21.0` and requires its exact source revision and complete
+resolved dependency closure to remain pinned. The adapter adds neither a
+lowest-common-denominator player interface nor a multi-engine factory.
 
 ### Locator and logging invariants
 
@@ -563,21 +659,25 @@ direct-delivery security boundary. Media travels directly from the provider to
 the client. The core is not a media relay, and an on-device loopback bridge used
 by a player does not change that boundary.
 
-- Locators and locator headers are session-memory-only. Never persist or place
-  them in logs, errors, analytics, diagnostics, metadata, defaults, or
-  Keychain.
-- Custom locator headers apply only to the locator's exact normalized
-  scheme/host/effective-port origin. A redirect never widens that scope.
-- Enforce the same rule independently for every HLS playlist, variant,
-  rendition, segment, key, subtitle, and redirect request.
-- Follow only origins present in the validated `allowed_redirect_origins`
-  allowlist, without forwarding origin-scoped headers to a changed origin.
-- Normalize engine and network failures into a closed, secret-free Nama error
-  model.
+- Nama-owned locator values and headers are session-memory-only. Never persist,
+  upload, or place them in Nama-owned logs, errors, analytics, diagnostics,
+  metadata, defaults, or Keychain. The selected engine's local Release logs may
+  contain complete short-lived locator URLs under ADR-0032's MVP exception.
+- Follow only origins present in the core-validated
+  `allowed_redirect_origins` allowlist. Each value is an exact normalized
+  scheme/host/effective-port origin.
+- Locator headers target the locator's original normalized origin. During the
+  MVP, AetherEngine may replay them when an HLS subrequest or redirect moves to
+  another allowed origin. Enforce the allowlist independently for every
+  playlist, variant, rendition, segment, key, subtitle, and redirect request.
+- The core never supplies Administrator sessions, OAuth access or refresh
+  tokens, or reusable provider-account credentials in a locator. Normalize
+  engine and network failures into a closed, secret-free Nama error model.
 
-An engine that cannot enforce these rules internally is ineligible. Removing
-all headers, marking secrets private after interpolation, or sanitizing only at
-the app boundary is not an acceptable workaround.
+An engine or adapter that permits a destination outside the validated allowlist
+remains ineligible. ADR-0032 defers only Release locator-URL redaction and
+header stripping on an allowed-origin change; it does not make other locator
+rules advisory.
 
 ### Player interaction invariants
 
@@ -597,20 +697,23 @@ the app boundary is not an acceptable workaround.
 
 ### Engine acceptance
 
-Before product playback depends on an engine:
+Before product playback depends on AetherEngine:
 
-1. Pin and inspect the exact source revision, including redirect, HLS
-   subrequest, logging, error, and locator-refresh behavior on iOS, tvOS, and
-   macOS.
-2. Keep engine imports confined to the adapter and test Nama-owned mapping,
-   lifecycle, track selection, platform interaction, and redaction behavior.
-3. Exercise SDR, HDR10, Dolby Vision, multichannel audio, text and image
-   subtitles, seeking, track switching, redirects, expiry, and recovery on
-   representative physical iPhone or iPad, Apple TV, and Mac hardware. Display
-   switching and home-theater audio claims require the actual Apple TV,
-   display, and audio route.
-4. Verify Release logs and network captures contain no locator, query secret,
-   header, or cross-origin credential replay on every supported platform.
+1. Pin `6.21.0` and its complete resolved dependency closure. Record source and
+   artifact checksums, build configuration, and the two accepted ADR-0032
+   limitations.
+2. Keep engine imports confined to `NamaPlayer` and `NamaPlayerSurface`, and
+   test the complete Nama-owned request, state, clock, lifecycle, track,
+   rendering, replacement-load, and failure mapping.
+3. Play one known-good SDR HLS fixture through `NamaPlayer` on representative
+   physical iPhone or iPad, Apple TV, and Mac hardware. Issue #39 owns
+   capability and fallback evidence; issue #40 owns the full media and
+   interaction matrix.
+4. Inspect Release logs and network captures on every supported platform.
+   Record the accepted local locator-URL logging and allowed-origin header
+   replay, and verify there is no request to a non-allowlisted destination,
+   Nama-owned locator logging, persistence, upload, or locator-bearing user
+   error.
 5. Inspect signed artifacts, linkage, bundled media libraries, notices,
    corresponding source, and relinking obligations before distribution.
 
@@ -628,9 +731,9 @@ Each module interface is both its caller and automated test surface:
 - networking-adapter tests cover generated request paths, client metadata,
   deadlines, safe retry rules, failure normalization, correlation, and absence
   of generated-type leakage;
-- persistence-adapter tests cover endpoint normalization, endpoint-credential
-  binding, replacement commit ordering, known-version migration, and damaged
-  records;
+- persistence-adapter tests cover endpoint normalization, endpoint-token
+  binding, replacement commit ordering, known-version migration, refresh
+  rotation, and damaged records;
 - artwork and playback tests cover origin/header policy, cancellation, mapping,
   lifecycle, and redaction without treating generated round trips as product
   behavior; and
@@ -639,10 +742,10 @@ Each module interface is both its caller and automated test surface:
 
 UI automation is added only when a critical interaction cannot be defended
 reliably through a module interface and actual-surface verification. Platform
-builds remain compile evidence. Real Pairing, focus, navigation, local-network
-privacy, accessibility, playback, and lifecycle flows run on each affected
-surface. No unrun hardware, provider, security, or accessibility row is
-reported as passing.
+builds remain compile evidence. Real OAuth device authorization, focus,
+navigation, local-network privacy, accessibility, playback, and lifecycle flows
+run on each affected surface. No unrun hardware, provider, security, or
+accessibility row is reported as passing.
 
 ## Deferred behavior
 

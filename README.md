@@ -7,7 +7,7 @@ external media servers.
 This repository is in its foundation milestones. The current baseline proves
 the TypeScript, Go, Protobuf, Docker, and universal Apple application
 boundaries. The Apple application currently implements manual Nama endpoint
-verification; discovery, pairing, and media behavior remain unimplemented.
+verification; Better Auth OAuth authorization and media behavior remain unimplemented.
 
 ## Prerequisites
 

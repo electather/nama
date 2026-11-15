@@ -19,20 +19,31 @@
     @ViewBuilder
     private var content: some View {
       switch feature.state {
-      case .editing(let showsValidationError):
+      case .editing(let validationError):
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text("Connect to Nama")
             .font(.largeTitle)
           NamaDiscoveryContent(feature: feature)
           addressField
-          if showsValidationError {
-            Text(EndpointValidationError.invalid.message)
+          if let validationError {
+            Text(validationError.message)
               .foregroundStyle(.red)
           }
           actionButtons(feature.state.actions)
         }
 
-      case .verifying(let endpoint):
+      case .confirmingHTTP(let endpoint, _), .pausedHTTPRestoration(let endpoint):
+        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+          Text(LocalHTTPConfirmationCopy.title)
+            .font(.largeTitle)
+          Text(LocalHTTPConfirmationCopy.message)
+            .fixedSize(horizontal: false, vertical: true)
+          TVEndpointValue(endpoint: endpoint)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
+          actionButtons(feature.state.actions)
+        }
+
+      case .checkingHTTPAcknowledgement(let endpoint), .verifying(let endpoint):
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           NamaDiscoveryContent(feature: feature)
           addressField
@@ -40,6 +51,7 @@
             ProgressView()
             TVEndpointValue(endpoint: endpoint)
           }
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
           actionButtons(feature.state.actions)
         }
 
@@ -48,6 +60,7 @@
           Text("Nama is ready")
             .font(.largeTitle)
           TVEndpointValue(endpoint: endpoint)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
           actionButtons(feature.state.actions)
         }
 
@@ -58,6 +71,7 @@
           TVEndpointValue(endpoint: endpoint)
           Text("Run `nama setup` from a trusted computer, then try again.")
             .foregroundStyle(.secondary)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
           actionButtons(feature.state.actions)
         }
 
@@ -65,6 +79,17 @@
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
           Text(failure.message)
             .font(.title2)
+          TVEndpointValue(endpoint: endpoint)
+          HTTPConnectionWarning(isPresented: feature.state.showsUnencryptedHTTPWarning)
+          actionButtons(feature.state.actions)
+        }
+
+      case .requiresHTTPS(let endpoint):
+        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+          Text(SavedEndpointHTTPSRequiredCopy.title)
+            .font(.largeTitle)
+          Text(SavedEndpointHTTPSRequiredCopy.message)
+            .foregroundStyle(.red)
           TVEndpointValue(endpoint: endpoint)
           actionButtons(feature.state.actions)
         }
@@ -110,6 +135,13 @@
         }
         .focused($focusedControl, equals: .cancel)
 
+      case .continueWithoutHTTPS:
+        Button("Continue") {
+          feature.continueWithoutHTTPS()
+        }
+        .buttonStyle(.borderedProminent)
+        .focused($focusedControl, equals: .continueWithoutHTTPS)
+
       case .retry:
         Button("Retry") {
           feature.retry()
@@ -118,7 +150,7 @@
         .focused($focusedControl, equals: .retry)
 
       case .changeEndpoint:
-        Button("Change Server") {
+        Button("Change Endpoint") {
           Task {
             await feature.changeEndpoint()
           }
@@ -128,16 +160,7 @@
     }
 
     private var preferredFocus: Focus? {
-      switch feature.state {
-      case .editing, .verifying:
-        .address
-
-      case .ready:
-        .changeEndpoint
-
-      case .setupRequired, .failed:
-        .retry
-      }
+      Focus(feature.state.televisionFocus)
     }
 
     private enum Layout {
@@ -152,21 +175,55 @@
       case address
       case connect
       case cancel
+      case continueWithoutHTTPS
       case retry
       case changeEndpoint
+
+      init(_ focus: TelevisionConnectionFocus) {
+        switch focus {
+        case .address:
+          self = .address
+
+        case .action(let action):
+          switch action {
+          case .connect:
+            self = .connect
+
+          case .cancel:
+            self = .cancel
+
+          case .continueWithoutHTTPS:
+            self = .continueWithoutHTTPS
+
+          case .retry:
+            self = .retry
+
+          case .changeEndpoint:
+            self = .changeEndpoint
+          }
+        }
+      }
     }
   }
 
   private struct TVEndpointValue: View {
-    let endpoint: NamaEndpoint
-
     private static let verticalSpacing: CGFloat = 8
+
+    private let address: String
+
+    init(endpoint: NamaEndpoint) {
+      address = endpoint.absoluteString
+    }
+
+    init(endpoint: HTTPSRequiredEndpoint) {
+      address = endpoint.absoluteString
+    }
 
     var body: some View {
       VStack(alignment: .leading, spacing: Self.verticalSpacing) {
         Text("Endpoint")
           .font(.headline)
-        Text(endpoint.absoluteString)
+        Text(address)
           .font(.body.monospaced())
           .fixedSize(horizontal: false, vertical: true)
       }

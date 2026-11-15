@@ -30,6 +30,10 @@
 		100000000000000000000021 /* VerifiedEndpointStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000024 /* VerifiedEndpointStore.swift */; };
 		100000000000000000000022 /* ConnectionRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000025 /* ConnectionRecoveryTests.swift */; };
 		100000000000000000000023 /* ConnectionDiscoverySession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000026 /* ConnectionDiscoverySession.swift */; };
+		100000000000000000000024 /* ConnectionFeatureFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000027 /* ConnectionFeatureFlow.swift */; };
+		100000000000000000000025 /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000028 /* ConnectionState.swift */; };
+		100000000000000000000026 /* ConnectionVerification.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000029 /* ConnectionVerification.swift */; };
+		100000000000000000000027 /* Nama.icon in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000030 /* Nama.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,6 +73,10 @@
 		200000000000000000000024 /* VerifiedEndpointStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifiedEndpointStore.swift; sourceTree = "<group>"; };
 		200000000000000000000025 /* ConnectionRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionRecoveryTests.swift; sourceTree = "<group>"; };
 		200000000000000000000026 /* ConnectionDiscoverySession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionDiscoverySession.swift; sourceTree = "<group>"; };
+		200000000000000000000027 /* ConnectionFeatureFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionFeatureFlow.swift; sourceTree = "<group>"; };
+		200000000000000000000028 /* ConnectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionState.swift; sourceTree = "<group>"; };
+		200000000000000000000029 /* ConnectionVerification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionVerification.swift; sourceTree = "<group>"; };
+		200000000000000000000030 /* Nama.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = Nama.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +143,9 @@
 				200000000000000000000021 /* DiscoveryView.swift */,
 				200000000000000000000024 /* VerifiedEndpointStore.swift */,
 				200000000000000000000007 /* ConnectionFeature.swift */,
+				200000000000000000000027 /* ConnectionFeatureFlow.swift */,
+				200000000000000000000028 /* ConnectionState.swift */,
+				200000000000000000000029 /* ConnectionVerification.swift */,
 				200000000000000000000009 /* SetupStatusVerifier.swift */,
 				200000000000000000000011 /* ConnectionPresentation.swift */,
 				200000000000000000000012 /* ConnectionView.swift */,
@@ -166,6 +177,7 @@
 				200000000000000000000022 /* InfoPlist.xcstrings */,
 				200000000000000000000020 /* Info.plist */,
 				200000000000000000000015 /* Nama.entitlements */,
+				200000000000000000000030 /* Nama.icon */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -258,6 +270,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000013 /* Localizable.xcstrings in Resources */,
+				100000000000000000000027 /* Nama.icon in Resources */,
 				100000000000000000000019 /* InfoPlist.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -283,6 +296,9 @@
 				100000000000000000000018 /* DiscoveryView.swift in Sources */,
 				100000000000000000000021 /* VerifiedEndpointStore.swift in Sources */,
 				100000000000000000000006 /* ConnectionFeature.swift in Sources */,
+				100000000000000000000024 /* ConnectionFeatureFlow.swift in Sources */,
+				100000000000000000000025 /* ConnectionState.swift in Sources */,
+				100000000000000000000026 /* ConnectionVerification.swift in Sources */,
 				100000000000000000000008 /* SetupStatusVerifier.swift in Sources */,
 				100000000000000000000010 /* ConnectionPresentation.swift in Sources */,
 				100000000000000000000011 /* ConnectionView.swift in Sources */,
@@ -366,6 +382,8 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Nama/Resources/Nama.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=iphone*]" = Nama;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=macosx*]" = Nama;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -402,6 +420,8 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = Nama/Resources/Nama.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=iphone*]" = Nama;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=macosx*]" = Nama;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;

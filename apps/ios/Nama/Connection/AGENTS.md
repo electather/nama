@@ -7,5 +7,8 @@ Read the Connection section of
   feature state and views remain transport-free.
 - Preserve `ConnectionFeature` attempt identity when changing task ownership so
   stale completions stay ineffective.
+- Keep a selected local-HTTP endpoint identifiable while its persisted
+  acknowledgement lookup is active; SwiftUI's address `onChange` must not
+  cancel an unchanged discovery selection.
 - Keep Connection test support in `NamaTests/Connection`; use
   `TestSupport.eventually` for asynchronous assertions.
